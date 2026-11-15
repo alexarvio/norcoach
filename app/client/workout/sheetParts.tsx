@@ -128,20 +128,21 @@ export function WsFold({ open, easing, className = "", children }: { open: boole
 }
 
 /**
- * A folded block's one line, flat on the page: the done check, the name, its facts grey, a chevron pointing right. One
+ * A folded block's one line, flat on the page: the done check, the name and a chevron pointing right, no facts (15 Nov, Alex:
+ * "take out the 3 sets"). One
  * that stopped being complete while folded (a set the server refused) stays folded, as nothing moves by itself, but
  * never claims done: its number ring in place of the check (`check`, the caller's), `done` false, and `alert` (`1 set
  * not saved`) the line's one rust fact after the drawn bar.
  */
-export function FoldedLine({ name, facts, check, done = true, alert = null, onOpen }: { name: string; facts: string[]; check: ReactNode; done?: boolean; alert?: string | null; onOpen: () => void }) {
-  const said = [...facts, ...(alert ? [alert] : [])];
+export function FoldedLine({ name, check, done = true, alert = null, onOpen }: { name: string; facts?: string[]; check: ReactNode; done?: boolean; alert?: string | null; onOpen: () => void }) {
+  const said = alert ? [alert] : [];
   return (
     <button type="button" className="ws-foldline" onClick={onOpen} aria-label={`${name}${done ? ", done" : ""}${said.length ? `, ${said.join(", ")}` : ""}. Open`}>
       {check}
       <span className="ws-foldline-name">{name}</span>
       {said.length > 0 && (
         <span className="ws-foldline-facts">
-          <Bars parts={[...facts, alert ? <span className="ws-foldline-alert">{alert}</span> : null]} />
+          <span className="ws-foldline-alert">{alert}</span>
         </span>
       )}
       <span className="ws-foldline-chev" aria-hidden="true" />
