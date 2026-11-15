@@ -226,7 +226,7 @@ export function keyboardSettled(ms = 500) {
 // to its foot) says data-kb-own.
 
 /** A field's block, brought in whole when it fits: its note's Cancel and Save, its row, its label. */
-const BLOCK = ".fdi-panel, .wo-note, .cki-row, .cki-note-box, .st-details-row, .evs-field, .evs-note";
+const BLOCK = ".fdi-panel, .wo-note, .cki-row, .cki-note-box, .st-details-row, .evs-field, .evs-note, .ws-noteedit, .ws-rowwrap";
 /** What sits over the foot of a screen, so a field must stay above it too. */
 const DOCKS = ".wo-dock, .cm-compose, .app-sticky-footer, .evs-savebar";
 

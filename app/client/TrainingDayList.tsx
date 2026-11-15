@@ -9,6 +9,7 @@ import { applyWorkoutOutbox, clearNotSaved, enqueueWorkout, notSavedWords, useWo
 import GymPickerDialog, { type GymOption } from "./GymPickerDialog";
 import SessionOverview, { STATUS_LABEL } from "./SessionOverview";
 import WorkoutScreen from "./WorkoutScreen";
+import WorkoutSheet from "./WorkoutSheet";
 import { CopyIcon, PlusIcon } from "../components/icons";
 import AddSessionSheet from "./AddSessionSheet";
 import RingEdge from "../components/RingEdge";
@@ -54,6 +55,7 @@ export default function TrainingDayList({
   headerPicture = null,
   clientId,
   library = [],
+  sheet = false,
 }: {
   days: SessionDay[];
   /** Whose sessions: a free session is made for them (19 Oct). */
@@ -72,6 +74,9 @@ export default function TrainingDayList({
   liveSession: { id: number; label: string; startedAt: string; week: number } | null;
   /** The client's own training picture (15 Oct) behind the session header; none, the stock one. */
   headerPicture?: string | null;
+  /** The workout as one scrolling sheet (15 Nov, Alex; on test, decided on the server by workoutSheetOn): the sheet
+   *  instead of the pager. Off (the default), the pager exactly as it is. */
+  sheet?: boolean;
 }) {
   // Discarded here (19 Oct, Alex: discarding took seconds): the workout closes
   // at once and the session reads as never started, its sets gone, until the
@@ -135,6 +140,8 @@ export default function TrainingDayList({
   const focusExercise = trainingFocus?.exercise ?? null;
   const focusStart = !!trainingFocus?.start;
   const openMessages = useOpenMessages();
+  // The workout: one scrolling sheet on test (15 Nov, Alex), else the pager exactly as it is.
+  const Workout = sheet ? WorkoutSheet : WorkoutScreen;
   const goToTab = useNavigateTab();
   // The link from the chat whose way back has been used, so opening the same
   // session again from the list comes back to the list.
@@ -576,7 +583,9 @@ export default function TrainingDayList({
       )}
 
       {openDay && host && (view?.screen === "workout" || (view?.screen === "edit" && openDay.endedAt)) && createPortal(
-        <WorkoutScreen
+        // The workout sheet on test for this client (15 Nov, Alex; workoutSheetOn on the server), else the pager as it is:
+        // one set of props for both.
+        <Workout
           key={`${openDay.key}:${view.screen}`}
           day={openDay}
           editing={view.screen === "edit"}

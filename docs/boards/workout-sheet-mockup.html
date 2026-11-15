@@ -1,0 +1,279 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Workout as a sheet</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600&display=swap" rel="stylesheet"><style>
+  :root { --ink:#141a24; --body:#3a4250; --sec:#5b6474; --faint:#8b93a1; --label:#98A2B3; --line:#E1E5EB; --soft:#EEF0F3; --page:#F5F6F8; --green:#2f7a3f; --rust:#b8471f; --amber:#a8761f; --indigo:#3a3390; }
+  * { box-sizing:border-box; margin:0; }
+  body { font-family:Archivo,system-ui,sans-serif; font-weight:500; color:var(--ink); background:#fff; padding:28px 20px 72px; -webkit-font-smoothing:antialiased; }
+  h1 { font-size:20px; font-weight:600; margin-bottom:4px; }
+  h2 { font-size:17px; font-weight:600; margin:44px 0 4px; }
+  .sub { color:var(--faint); font-size:13px; margin-bottom:22px; max-width:920px; line-height:1.55; }
+  .opts { display:flex; flex-wrap:wrap; gap:34px; align-items:flex-start; }
+  .opt { width:340px; }
+  .opt h3 { font-size:14px; font-weight:600; margin-bottom:4px; }
+  .opt h3 em { font-style:normal; margin-left:6px; padding:2px 8px; border-radius:999px; font-size:11px; color:var(--green); box-shadow:inset 0 0 0 1px rgba(47,122,63,.35); }
+  .opt > p { font-size:12.5px; color:var(--faint); line-height:1.5; min-height:112px; margin-bottom:12px; }
+  .phone { position:relative; overflow:hidden; border-radius:34px; background:var(--page); box-shadow:0 0 0 8px #1b1f27, 0 30px 60px -30px rgba(0,0,0,.4); height:760px; }
+  .scroll { position:absolute; inset:0; overflow:hidden; padding:0 0 120px; }
+  .pick { margin-top:22px; font-size:13px; color:var(--body); max-width:920px; line-height:1.6; }
+  .pick b { font-weight:600; color:var(--ink); }
+  svg.i { fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+
+  /* Top bar */
+  .top { position:sticky; top:0; z-index:3; background:var(--page); padding:52px 16px 10px; }
+  .toprow { display:flex; align-items:center; justify-content:space-between; }
+  .back { width:34px; height:34px; display:grid; place-items:center; }
+  .back svg { width:18px; height:18px; stroke-width:2; }
+  .gpill { display:flex; align-items:center; gap:8px; height:36px; padding:0 14px 0 6px; border-radius:999px; background:var(--ink); color:#fff; font-size:13px; font-weight:600; }
+  .gface { width:24px; height:24px; border-radius:50%; background:#c2417a; display:grid; place-items:center; font-size:10px; }
+  .gpill .clk { font-variant-numeric:tabular-nums; opacity:.9; }
+  .more { width:34px; height:34px; display:grid; place-items:center; color:var(--ink); }
+  .more svg { width:18px; height:18px; }
+  .prog { display:flex; gap:4px; margin-top:12px; }
+  .prog i { flex:1; height:3px; border-radius:2px; background:var(--line); }
+  .prog i.d { background:var(--green); }
+  .prog i.on { background:var(--indigo); }
+
+  /* Session title */
+  .sess { padding:6px 16px 4px; }
+  .sess .eb { font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--sec); }
+  .sess .t { font-size:24px; font-weight:600; margin-top:2px; }
+
+  /* Exercise block (A) */
+  .blk { padding:18px 16px 6px; }
+  .bh { display:flex; align-items:center; gap:10px; }
+  .bn { width:22px; height:22px; border-radius:50%; box-shadow:inset 0 0 0 1.5px var(--line); display:grid; place-items:center; font-size:11px; color:var(--faint); flex:none; font-variant-numeric:tabular-nums; }
+  .bn.on { box-shadow:inset 0 0 0 1.5px var(--ink); color:var(--ink); }
+  .bn.d { box-shadow:inset 0 0 0 1.5px var(--green); color:var(--green); }
+  .bn.d svg { width:12px; height:12px; }
+  .bname { font-size:17px; font-weight:600; flex:1; min-width:0; }
+  .btools { display:flex; gap:6px; }
+  .rb { width:28px; height:28px; border-radius:50%; box-shadow:inset 0 0 0 1.5px var(--line); display:grid; place-items:center; color:var(--ink); }
+  .rb svg { width:13px; height:13px; }
+  .tgt { margin:8px 0 0 32px; font-size:12.5px; color:var(--sec); display:flex; gap:8px; align-items:center; }
+  .tgt b { font-weight:600; color:var(--indigo); font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; }
+  .tgt i { width:1px; height:11px; background:var(--label); }
+  .note { margin:6px 0 0 32px; font-size:12.5px; color:var(--faint); line-height:1.45; }
+  .grid { margin:10px 0 0 32px; }
+  .gh, .gr { display:grid; grid-template-columns:30px 1fr 64px 52px 30px; gap:8px; align-items:center; }
+  .gh { font-size:10px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--label); height:20px; }
+  .gh span:nth-child(3), .gh span:nth-child(4) { text-align:center; }
+  .gr { height:44px; }
+  .sn { font-size:13px; color:var(--faint); font-variant-numeric:tabular-nums; }
+  .sn.w { color:var(--amber); }
+  .last { font-size:12.5px; color:var(--faint); font-variant-numeric:tabular-nums; }
+  .cell { height:36px; border-radius:10px; background:#fff; box-shadow:inset 0 0 0 1px var(--line); display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .cell.g { color:var(--label); font-weight:500; }
+  .cell.typing { box-shadow:inset 0 0 0 1.5px var(--ink); }
+  .cell.typing::after { content:""; width:1.5px; height:18px; background:var(--ink); margin-left:2px; animation:blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity:0; } }
+  .tick { width:28px; height:28px; border-radius:50%; box-shadow:inset 0 0 0 1.5px var(--line); display:grid; place-items:center; color:transparent; }
+  .tick svg { width:13px; height:13px; }
+  .tick.d { box-shadow:inset 0 0 0 1.5px var(--green); color:var(--green); }
+  .gr.done .cell { background:transparent; box-shadow:none; color:var(--body); font-weight:500; }
+  .delta { position:absolute; }
+  .gr .vv { position:relative; }
+  .up { position:absolute; top:-1px; right:-2px; font-size:10px; font-weight:600; color:var(--green); }
+  .pb { display:inline-flex; align-items:center; justify-content:center; height:18px; padding:0 6px; border-radius:999px; font-size:10px; font-weight:600; letter-spacing:.06em; color:var(--green); box-shadow:inset 0 0 0 1px rgba(47,122,63,.5); }
+  .addrow { margin:2px 0 0 32px; display:flex; gap:18px; font-size:13px; font-weight:600; color:var(--sec); height:34px; align-items:center; }
+  .addrow .wu { color:var(--amber); }
+
+  /* Done block, closed (B) */
+  .dline { display:flex; align-items:center; gap:10px; padding:12px 16px; }
+  .dline .bname { font-size:15px; font-weight:500; color:var(--body); }
+  .dline .facts { font-size:12px; color:var(--faint); font-variant-numeric:tabular-nums; }
+  .dline .chev { width:7px; height:7px; border-right:1.5px solid var(--faint); border-bottom:1.5px solid var(--faint); transform:rotate(-45deg); margin-left:4px; }
+  .upnext { font-size:15px; color:var(--faint); }
+
+  /* PB moment */
+  .pbtoast { margin:10px 16px 0 48px; display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:14px; background:#fff; box-shadow:inset 0 0 0 1px rgba(47,122,63,.35); }
+  .pbtoast .ring { width:30px; height:30px; border-radius:50%; box-shadow:inset 0 0 0 1.5px var(--green); display:grid; place-items:center; color:var(--green); font-size:10.5px; font-weight:600; flex:none; animation:pulse 1.6s ease-out infinite; }
+  @keyframes pulse { 0% { box-shadow:inset 0 0 0 1.5px var(--green), 0 0 0 0 rgba(47,122,63,.35); } 100% { box-shadow:inset 0 0 0 1.5px var(--green), 0 0 0 10px rgba(47,122,63,0); } }
+  .pbtoast b { display:block; font-size:13.5px; font-weight:600; }
+  .pbtoast span { font-size:12px; color:var(--faint); }
+
+  /* Dock */
+  .dock { position:absolute; left:0; right:0; bottom:0; padding:12px 16px 26px; background:var(--page); display:flex; gap:10px; align-items:center; }
+  .wpill { height:42px; padding:0 16px; border-radius:999px; background:#fff; box-shadow:inset 0 0 0 1px var(--line); display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; }
+  .wpill svg { width:15px; height:15px; }
+  .ipill { flex:1; height:42px; border-radius:999px; background:var(--ink); color:#fff; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:600; }
+
+  /* Training + notifications for PB */
+  .trtop { padding:56px 16px 0; }
+  .trtop .w { font-size:22px; font-weight:600; }
+  .card { margin:10px 16px 0; height:64px; border-radius:16px; background:#fff; box-shadow:inset 0 0 0 1px var(--line); display:flex; align-items:center; gap:12px; padding:0 14px; }
+  .card.done { background:rgba(47,122,63,.08); box-shadow:none; }
+  .card b { font-size:15px; font-weight:600; display:block; }
+  .card span { font-size:12px; color:var(--faint); }
+  .num { width:32px; height:32px; border-radius:50%; box-shadow:inset 0 0 0 1.5px var(--line); display:grid; place-items:center; font-size:13px; color:var(--faint); flex:none; }
+  .num.g { box-shadow:inset 0 0 0 1.5px var(--green); color:var(--green); }
+  .num.g svg { width:14px; height:14px; }
+  .toast { position:absolute; left:12px; right:12px; bottom:84px; height:58px; border-radius:999px; background:#fff; box-shadow:inset 0 0 0 1px var(--line); display:flex; align-items:center; gap:10px; padding:0 18px 0 14px; }
+  .toast .tx b { font-size:14px; font-weight:600; display:block; }
+  .toast .tx span { font-size:11.5px; color:var(--faint); }
+  .toast .tx span em { font-style:normal; color:var(--green); font-weight:600; }
+  .chk { width:22px; height:22px; border-radius:50%; box-shadow:inset 0 0 0 1.5px var(--green); display:grid; place-items:center; color:var(--green); flex:none; }
+  .chk svg { width:12px; height:12px; }
+  .tabs { position:absolute; left:12px; right:12px; bottom:16px; height:58px; border-radius:999px; background:#fff; box-shadow:inset 0 0 0 1px var(--line); display:flex; justify-content:space-around; align-items:center; }
+  .tabs i { width:22px; height:22px; border-radius:6px; background:var(--line); }
+  .tabs i.on { background:var(--ink); }
+  .nhead { padding:56px 16px 14px; text-align:center; font-size:15px; font-weight:600; letter-spacing:.16em; }
+  .nrow { display:flex; gap:12px; padding:12px 16px; }
+  .nbadge { width:36px; height:36px; border-radius:50%; background:rgba(47,122,63,.12); color:var(--green); display:grid; place-items:center; flex:none; font-size:11px; font-weight:600; }
+  .nrow .tx { flex:1; }
+  .nrow .k { font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--green); display:flex; justify-content:space-between; }
+  .nrow .k span { color:var(--faint); letter-spacing:0; text-transform:none; font-weight:500; font-size:12px; }
+  .nrow b { display:block; font-size:14.5px; font-weight:600; margin-top:2px; }
+  .nrow p { font-size:12.5px; color:var(--faint); margin-top:2px; }
+  .nrow.old b { font-weight:500; }
+  .dot { width:7px; height:7px; border-radius:50%; background:var(--ink); margin-top:6px; flex:none; }
+  .mini { width:300px; }
+  .mini .phone { height:560px; }
+</style></head><body>
+
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="chk" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+  <symbol id="more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="19" cy="12" r="1.3" fill="currentColor"/></symbol>
+  <symbol id="play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></symbol>
+  <symbol id="chat" viewBox="0 0 24 24"><path d="M4 5.5h16v10H9l-5 4z"/></symbol>
+  <symbol id="timer" viewBox="0 0 24 24"><circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 1.5M10 3h4"/></symbol>
+</defs></svg>
+
+<h1>Workout as a sheet</h1>
+<p class="sub">The idea from Kahunas: the session as one page you scroll down, each exercise a small table of its sets, like a spreadsheet, but in our own look. No swiping between exercises, and nothing ever moves on by itself while you type: a set counts once you tick it or fill its last box, and you scroll on when you want to. The jump you hit today can't happen here, because there is no timer moving the screen.</p>
+
+<div class="opts">
+
+  <!-- A -->
+  <div class="opt">
+    <h3>A · Every exercise open, one long sheet <em>Suggested</em></h3>
+    <p>Every exercise is a block on one page: its name with the demo, chat and ⋯ beside it, the target as one grey line, then a row for each set with last time, kg, reps and a tick. Done rows go flat with a green check. The progress bar at the top lights as you scroll. Closest to Kahunas, and easy to read back at a glance.</p>
+    <div class="phone"><div class="scroll">
+      <div class="top">
+        <div class="toprow"><span class="back"><svg class="i"><use href="#back"/></svg></span>
+          <span class="gpill"><span class="gface">MF</span>Muscle Factory<span class="clk">24:18</span></span>
+          <span class="more"><svg class="i"><use href="#more"/></svg></span></div>
+        <div class="prog"><i class="d"></i><i class="on"></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="sess"><div class="eb">Week 3 | Session 2</div><div class="t">Lower</div></div>
+
+      <div class="blk">
+        <div class="bh"><span class="bn d"><svg class="i"><use href="#chk"/></svg></span><span class="bname">Back squat</span>
+          <span class="btools"><span class="rb"><svg class="i"><use href="#play"/></svg></span><span class="rb"><svg class="i"><use href="#chat"/></svg></span></span></div>
+        <div class="tgt"><b>Target</b>4 × 6–8<i></i>80 kg<i></i>RPE 8</div>
+        <div class="grid">
+          <div class="gh"><span>Set</span><span>Last</span><span>kg</span><span>Reps</span><span></span></div>
+          <div class="gr done"><span class="sn">1</span><span class="last">80 × 8</span><span class="cell">80</span><span class="cell">8</span><span class="tick d"><svg class="i"><use href="#chk"/></svg></span></div>
+          <div class="gr done"><span class="sn">2</span><span class="last">80 × 8</span><span class="cell vv">82.5<span class="up">+2.5</span></span><span class="cell">7</span><span class="tick d"><svg class="i"><use href="#chk"/></svg></span></div>
+          <div class="gr done"><span class="sn">3</span><span class="last">80 × 7</span><span class="cell">82.5</span><span class="cell">7</span><span class="tick d"><svg class="i"><use href="#chk"/></svg></span></div>
+          <div class="gr done"><span class="sn">4</span><span class="last">80 × 6</span><span class="cell">82.5</span><span class="cell">6</span><span class="tick d"><svg class="i"><use href="#chk"/></svg></span></div>
+        </div>
+      </div>
+
+      <div class="blk">
+        <div class="bh"><span class="bn on">2</span><span class="bname">Romanian deadlift</span>
+          <span class="btools"><span class="rb"><svg class="i"><use href="#play"/></svg></span><span class="rb"><svg class="i"><use href="#chat"/></svg></span><span class="rb"><svg class="i"><use href="#more"/></svg></span></span></div>
+        <div class="tgt"><b>Target</b>3 × 10–12<i></i>60 kg</div>
+        <div class="note">“Hips back, soft knees. Stop at mid-shin.”</div>
+        <div class="grid">
+          <div class="gh"><span>Set</span><span>Last</span><span>kg</span><span>Reps</span><span></span></div>
+          <div class="gr done"><span class="sn">1</span><span class="last">60 × 12</span><span class="cell">60</span><span class="cell">12</span><span class="tick d"><svg class="i"><use href="#chk"/></svg></span></div>
+          <div class="gr"><span class="sn">2</span><span class="last">60 × 11</span><span class="cell typing">6</span><span class="cell g">11</span><span class="tick"></span></div>
+          <div class="gr"><span class="sn">3</span><span class="last">60 × 10</span><span class="cell g">60</span><span class="cell g">10</span><span class="tick"></span></div>
+        </div>
+        <div class="addrow"><span class="wu">+ Warm-up</span><span>+ Add a set</span></div>
+      </div>
+
+      <div class="blk">
+        <div class="bh"><span class="bn">3</span><span class="bname">Leg press</span></div>
+        <div class="tgt"><b>Target</b>3 × 12<i></i>140 kg</div>
+      </div>
+    </div>
+    <div class="dock"><span class="wpill"><svg class="i"><use href="#timer"/></svg>Rest timer</span><span class="ipill">Finish</span></div>
+    </div>
+  </div>
+
+  <!-- B -->
+  <div class="opt">
+    <h3>B · Done exercises fold to one line</h3>
+    <p>The same sheet, but an exercise you've finished folds down to one line (name, sets, best set) and the one you're on is open. The page stays short, so what you're doing is always near the top. A tap on a folded line opens it again to change something. A little less like a spreadsheet, a little calmer.</p>
+    <div class="phone"><div class="scroll">
+      <div class="top">
+        <div class="toprow"><span class="back"><svg class="i"><use href="#back"/></svg></span>
+          <span class="gpill"><span class="gface">MF</span>Muscle Factory<span class="clk">24:18</span></span>
+          <span class="more"><svg class="i"><use href="#more"/></svg></span></div>
+        <div class="prog"><i class="d"></i><i class="on"></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="sess"><div class="eb">Week 3 | Session 2</div><div class="t">Lower</div></div>
+
+      <div class="dline"><span class="bn d"><svg class="i"><use href="#chk"/></svg></span><span class="bname">Back squat</span><span class="facts">4 sets | 82.5 × 7</span><span class="chev"></span></div>
+
+      <div class="blk" style="padding-top:8px">
+        <div class="bh"><span class="bn on">2</span><span class="bname">Romanian deadlift</span>
+          <span class="btools"><span class="rb"><svg class="i"><use href="#play"/></svg></span><span class="rb"><svg class="i"><use href="#chat"/></svg></span><span class="rb"><svg class="i"><use href="#more"/></svg></span></span></div>
+        <div class="tgt"><b>Target</b>3 × 10–12<i></i>60 kg</div>
+        <div class="note">“Hips back, soft knees. Stop at mid-shin.”</div>
+        <div class="grid">
+          <div class="gh"><span>Set</span><span>Last</span><span>kg</span><span>Reps</span><span></span></div>
+          <div class="gr done"><span class="sn">1</span><span class="last">60 × 12</span><span class="cell">60</span><span class="cell">12</span><span class="tick d"><svg class="i"><use href="#chk"/></svg></span></div>
+          <div class="gr"><span class="sn">2</span><span class="last">60 × 11</span><span class="cell typing">6</span><span class="cell g">11</span><span class="tick"></span></div>
+          <div class="gr"><span class="sn">3</span><span class="last">60 × 10</span><span class="cell g">60</span><span class="cell g">10</span><span class="tick"></span></div>
+        </div>
+        <div class="addrow"><span class="wu">+ Warm-up</span><span>+ Add a set</span></div>
+      </div>
+
+      <div class="dline" style="margin-top:6px"><span class="bn">3</span><span class="bname upnext">Leg press</span><span class="facts">3 × 12</span></div>
+      <div class="dline"><span class="bn">4</span><span class="bname upnext">Leg curl</span><span class="facts">3 × 10–12</span></div>
+      <div class="dline"><span class="bn">5</span><span class="bname upnext">Calf raise</span><span class="facts">4 × 15</span></div>
+    </div>
+    <div class="dock"><span class="wpill"><svg class="i"><use href="#timer"/></svg>Rest timer</span><span class="ipill">Finish</span></div>
+    </div>
+  </div>
+
+</div>
+
+<h2>The PB moment</h2>
+<p class="sub">Three places, from the moment it happens to later. The phone needs each lift's best inside its rep range sent ahead, so it can tell on the spot, with no signal too. Today it only learns about a PB after the server has the set.</p>
+<div class="opts">
+  <div class="opt mini">
+    <h3>1 · On the set, as it's ticked</h3>
+    <p>The tick turns into a green PB ring, the phone buzzes, and a small card under the exercise says what beat what. It goes away by itself, and if the number was a typo and gets changed, it goes with it.</p>
+    <div class="phone"><div class="scroll">
+      <div class="top"><div class="toprow"><span class="back"><svg class="i"><use href="#back"/></svg></span><span class="gpill"><span class="gface">MF</span>Muscle Factory<span class="clk">31:02</span></span><span class="more"><svg class="i"><use href="#more"/></svg></span></div></div>
+      <div class="blk" style="padding-top:10px">
+        <div class="bh"><span class="bn on">2</span><span class="bname">Romanian deadlift</span></div>
+        <div class="tgt"><b>Target</b>3 × 10–12<i></i>60 kg</div>
+        <div class="grid">
+          <div class="gh"><span>Set</span><span>Last</span><span>kg</span><span>Reps</span><span></span></div>
+          <div class="gr done"><span class="sn">1</span><span class="last">60 × 12</span><span class="cell">60</span><span class="cell">12</span><span class="tick d"><svg class="i"><use href="#chk"/></svg></span></div>
+          <div class="gr done"><span class="sn">2</span><span class="last">60 × 11</span><span class="cell vv">65<span class="up">+5</span></span><span class="cell">10</span><span class="pb">PB</span></div>
+          <div class="gr"><span class="sn">3</span><span class="last">60 × 10</span><span class="cell g">65</span><span class="cell g">10</span><span class="tick"></span></div>
+        </div>
+      </div>
+      <div class="pbtoast"><span class="ring">PB</span><div><b>New best on Romanian deadlift</b><span>65 kg × 10 | was 62.5 kg</span></div></div>
+    </div></div>
+  </div>
+  <div class="opt mini">
+    <h3>2 · In the saved pill</h3>
+    <p>When the session ends, the pill that says it's saved counts the PBs in green after the time and sets. One more fact, no sentence.</p>
+    <div class="phone">
+      <div class="trtop"><div class="w">Week 3</div></div>
+      <div class="card done"><span class="num g"><svg class="i"><use href="#chk"/></svg></span><div><b>Upper</b><span>Mon 10 Nov | 52 min</span></div></div>
+      <div class="card done"><span class="num g"><svg class="i"><use href="#chk"/></svg></span><div><b>Lower</b><span>Thu 13 Nov | 46 min</span></div></div>
+      <div class="card"><span class="num">3</span><div><b>Push</b><span>6 exercises</span></div></div>
+      <div class="toast"><span class="chk"><svg class="i"><use href="#chk"/></svg></span><div class="tx"><b>Lower saved</b><span>46 min | 18 sets | <em>2 PBs</em></span></div></div>
+      <div class="tabs"><i></i><i class="on"></i><i></i><i></i></div>
+    </div>
+  </div>
+  <div class="opt mini">
+    <h3>3 · A notification to keep</h3>
+    <p>A row in Notifications, green, one per session however many PBs, landing on the exercise. Kept as a record; no push, since they're already in the app when it happens.</p>
+    <div class="phone">
+      <div class="nhead">NOTIFICATIONS</div>
+      <div class="nrow"><span class="nbadge">PB</span><div class="tx"><div class="k">Personal best<span>Just now</span></div><b>2 new bests in Lower</b><p>Romanian deadlift 65 kg × 10 | Leg press 150 kg × 12</p></div><span class="dot"></span></div>
+      <div class="nrow old"><span class="nbadge" style="background:rgba(47,111,214,.12);color:#2f6fd6">✓</span><div class="tx"><div class="k" style="color:#2f6fd6">Meeting<span>Yesterday</span></div><b>Finlay scheduled your check-in</b><p>Fri 21 Nov | 09:00</p></div></div>
+    </div>
+  </div>
+</div>
+
+<p class="pick"><b>My pick: A, with all three PB moments.</b> A gives you the spreadsheet calm you liked, keeps every number in sight, and removes the jump completely. B is calmer if sessions get long. Building it is a real change to the workout (about a week of careful work: the logging logic, offline saving, last time, the far-off check, warm-ups and swaps all carry over; the pages, the swiping and the timers go). Until then I'd fix today's jump in the current screen right away: leaving a box never logs the grey numbers, and nothing moves on while you're typing.</p>
+</body></html>

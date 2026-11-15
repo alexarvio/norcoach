@@ -9,6 +9,7 @@ import type { GymOption } from "./GymPickerDialog";
 import { Bar, Bars } from "./Bars";
 import { fmtWeight, planToDisplay, unitLabel } from "../lib/units";
 import { dayWords } from "../lib/clientDates";
+import type { PbBar } from "../lib/repTarget";
 
 // What the client's Training tab, a session's overview and the workout all
 // share: the shapes the server page hands over, the unit rules, and the
@@ -59,6 +60,10 @@ export type SessionExercise = {
   videoRequest: VideoAsk | null;
   /** The set numbers that were a personal best (13 Nov, Alex: marked on a finished session, as the coach's rows). */
   pbSets?: number[];
+  /** The workout sheet's PB bar (15 Nov, Alex): the heaviest earlier set inside the rep target in another session, as
+   *  lifted kg, so the PB ring shows offline (isPbNow in lib/repTarget.ts). null: no PB possible; undefined: not sent
+   *  (the pager, a rogue session). */
+  pbBar?: PbBar | null;
   /** With gyms: the weight target and "My notes" at each gym, by gym id. */
   gymTargets?: Record<number, number | null>;
   gymNotes?: Record<number, string>;

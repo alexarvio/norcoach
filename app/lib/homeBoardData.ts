@@ -31,6 +31,7 @@ import {
 import { phaseLastDay, phaseWeekIndex, phaseWeeks } from "./phases";
 import { invoicingFor } from "./countries";
 import { isAssisted, liftedKg } from "./progressRules";
+import { insideTarget, repTarget, type PbBar } from "./repTarget";
 import { sub } from "./timing";
 
 type ProgramDayRow = Data["program_days"][number];
@@ -159,6 +160,12 @@ type Ctx = {
   /** The client's metrics the workout answers (workoutFed): not check-ins, so never counted as one. Ids, and names. */
   fedIds: Set<number>;
   fedNames: Set<string>;
+  /** The exercise as the coach set it, ignoring a swap (a row's own lift, for its PB bar): `${exercise_id}:${variation_id}`, or null. */
+  prescribedKey: (a: AssignmentRow) => string | null;
+  /** The prescribed lift is an assisted one, ignoring a swap. */
+  prescribedAssisted: (a: AssignmentRow) => boolean;
+  /** The client's body weight on a day (bodyWeightOn). */
+  bodyOn: (day: string | null | undefined) => number | null;
 };
 
 /** withCalendar false: the activity calendar left empty, for a read that never looks at it (exerciseTrends; 23 Oct, speed). */
@@ -210,14 +217,18 @@ function context(clientId: number, today: string, withCalendar = true): Ctx {
   // What was done: a swap to a library exercise is that exercise; one typed in by name keeps the prescription's group.
   const doneGroup = (a: AssignmentRow) => (a.swap?.library_exercise_id != null ? groupOfExercise(a.swap.library_exercise_id) : prescribedGroup(a));
   // An assisted lift is known by the name of what was done: the exercise, its variation, a swap's (23 Oct).
-  const doneAssisted = (a: AssignmentRow): boolean => {
-    if (a.swap) return a.swap.library_exercise_id != null ? isAssisted(exercises.get(a.swap.library_exercise_id)?.name) : isAssisted(a.swap.custom_name);
+  const prescribedAssisted = (a: AssignmentRow): boolean => {
     const e = a.exercise_id ? exercises.get(a.exercise_id) : undefined;
     return isAssisted(e?.name) || (a.variation_id != null && isAssisted(e?.variations?.find((v) => v.id === a.variation_id)?.name));
   };
+  const doneAssisted = (a: AssignmentRow): boolean => {
+    if (a.swap) return a.swap.library_exercise_id != null ? isAssisted(exercises.get(a.swap.library_exercise_id)?.name) : isAssisted(a.swap.custom_name);
+    return prescribedAssisted(a);
+  };
+  const prescribedKey = (a: AssignmentRow): string | null => (a.exercise_id && exercises.has(a.exercise_id) ? `${a.exercise_id}:${a.variation_id ?? ""}` : null);
   const doneKey = (a: AssignmentRow): string | null => {
     if (a.swap) return a.swap.library_exercise_id != null ? `${a.swap.library_exercise_id}:` : null;
-    return a.exercise_id && exercises.has(a.exercise_id) ? `${a.exercise_id}:${a.variation_id ?? ""}` : null;
+    return prescribedKey(a);
   };
 
   const days = data.program_days.filter((d) => d.client_id === clientId);
@@ -284,6 +295,9 @@ function context(clientId: number, today: string, withCalendar = true): Ctx {
     weightStamps: sub("weights", () => weightStampsOf(clientId)),
     fedIds: new Set(fed.map((m) => m.id)),
     fedNames: new Set(fed.map((m) => m.name)),
+    prescribedKey,
+    prescribedAssisted,
+    bodyOn,
   };
 }
 
@@ -986,17 +1000,9 @@ export function exerciseTrends(clientId: number, today: string = localDateStr())
   return out;
 }
 
-/** The reps a target asks for: "8-10" → 8 to 10, "10+" or "12" → that many or more; nothing to read (AMRAP, a time): null. */
-export function repTarget(reps: string | null | undefined): { lo: number; hi: number } | null {
-  const s = (reps ?? "").trim();
-  const range = /^(\d+)\s*(?:-|–|—|to)\s*(\d+)$/i.exec(s);
-  if (range) {
-    const [a, b] = [Number(range[1]), Number(range[2])];
-    return a > 0 && b >= a ? { lo: a, hi: b } : null;
-  }
-  const one = /^(\d+)\s*\+?$/.exec(s);
-  return one && Number(one[1]) > 0 ? { lo: Number(one[1]), hi: Infinity } : null;
-}
+// The rep target lives in repTarget.ts (pure, so the phone reads the same rule); kept exported from here for the
+// readers that import it with the board.
+export { repTarget };
 
 /**
  * Personal bests (24 Oct, Alex: "as long as the weight is logged with a rep range inside the target"): a set is one
@@ -1009,10 +1015,13 @@ export function repTarget(reps: string | null | undefined): { lo: number; hi: nu
  */
 export type PersonalBest = { sets: number[]; kg: number; prevKg: number | null; assisted: boolean };
 export function personalBests(clientId: number, today: string = localDateStr()): Map<number, PersonalBest> {
-  const ctx = context(clientId, today, false);
+  return trainingBests(clientId, today).bests;
+}
+
+/** Every row of the client's by id, and every weighed set (reps and a lifted weight) of each exercise, oldest first. */
+function bestIndex(ctx: Ctx): { rowOf: Map<number, AssignmentRow>; byKey: Map<string, LoggedSet[]> } {
   const rowOf = new Map<number, AssignmentRow>();
   for (const list of ctx.byDay.values()) for (const a of list) rowOf.set(a.id, a);
-  // Every weighed set of each exercise, oldest first.
   const byKey = new Map<string, LoggedSet[]>();
   for (const s of ctx.sets) {
     if (!s.exerciseKey || s.weight == null || !(s.weight > 0) || s.reps == null || !(s.reps > 0)) continue;
@@ -1020,16 +1029,29 @@ export function personalBests(clientId: number, today: string = localDateStr()):
     if (list) list.push(s);
     else byKey.set(s.exerciseKey, [s]);
   }
+  for (const list of byKey.values()) list.sort((p, q) => (Number.isFinite(p.ms) && Number.isFinite(q.ms) ? p.ms - q.ms : p.day < q.day ? -1 : p.day > q.day ? 1 : 0));
+  return { rowOf, byKey };
+}
+
+/**
+ * The personal bests (personalBests, above) and, from the same read and the same rule, what a row's next set has to
+ * beat to be one (the workout sheet's PB ring on the phone, 15 Nov, Alex; isPbNow in repTarget.ts): the heaviest
+ * earlier set of the lift as the coach set it, inside the row's rep target, on another row, before this session began
+ * (every one when it hasn't begun), as lifted kg. Null when no best is possible: a rogue row, no rep target, a first
+ * time (nothing to beat), an assisted lift with no body weight known. Worked out per row only when asked.
+ */
+export function trainingBests(clientId: number, today: string = localDateStr()): { bests: Map<number, PersonalBest>; barOf: (assignmentId: number) => PbBar | null } {
+  const ctx = context(clientId, today, false);
+  const { rowOf, byKey } = bestIndex(ctx);
   const out = new Map<number, PersonalBest>();
   for (const list of byKey.values()) {
-    list.sort((p, q) => (Number.isFinite(p.ms) && Number.isFinite(q.ms) ? p.ms - q.ms : p.day < q.day ? -1 : p.day > q.day ? 1 : 0));
     for (let i = 0; i < list.length; i++) {
       const s = list[i];
       const row = rowOf.get(s.assignmentId);
       if (!row || row.swap) continue;
       const target = repTarget(row.reps);
       if (!target) continue;
-      const inside = (reps: number) => reps >= target.lo && reps <= target.hi;
+      const inside = (reps: number) => insideTarget(reps, target);
       if (!inside(s.reps!)) continue;
       // The best before this session: earlier sets on another row (another day) inside the same target.
       let prev = 0;
@@ -1046,5 +1068,36 @@ export function personalBests(clientId: number, today: string = localDateStr()):
       } else out.set(s.assignmentId, { sets: [s.log.set_number], kg, prevKg: s.assisted ? null : prev, assisted: s.assisted });
     }
   }
-  return out;
+
+  const dayOf = new Map(ctx.days.map((d) => [d.id, d] as const));
+  const bars = new Map<number, PbBar | null>();
+  const barOf = (assignmentId: number): PbBar | null => {
+    if (bars.has(assignmentId)) return bars.get(assignmentId)!;
+    const bar = ((): PbBar | null => {
+      const row = rowOf.get(assignmentId);
+      const key = row && row.exercise_id ? ctx.prescribedKey(row) : null;
+      const target = row ? repTarget(row.reps) : null;
+      if (!row || !key || !target) return null;
+      const start = dayOf.get(row.program_day_id)?.session_started_at;
+      const startMs = start ? stampMs(start) : NaN;
+      const startDay = start ? stampDay(start) : null;
+      let kg = 0;
+      for (const s of byKey.get(key) ?? []) {
+        if (s.assignmentId === row.id || !insideTarget(s.reps!, target)) continue;
+        if (startDay != null) {
+          const before = Number.isFinite(s.ms) && Number.isFinite(startMs) ? s.ms < startMs : s.day < startDay;
+          if (!before) continue;
+        }
+        if (s.weight! > kg) kg = s.weight!;
+      }
+      if (!(kg > 0)) return null;
+      const assisted = ctx.prescribedAssisted(row);
+      const bodyKg = assisted ? ctx.bodyOn(today) : null;
+      if (assisted && bodyKg == null) return null;
+      return { kg, assisted, bodyKg };
+    })();
+    bars.set(assignmentId, bar);
+    return bar;
+  };
+  return { bests: out, barOf };
 }
