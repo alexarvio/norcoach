@@ -325,6 +325,7 @@ function SetRow({
   onAskWarm: (v: boolean) => void;
 }) {
   const repsRef = useRef<HTMLInputElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const warm = row.kind === "warm";
   const asksWeight = s.askWeight || warm;
   const label = warm ? "Warm-up" : `Set ${row.n}`;
@@ -347,11 +348,36 @@ function SetRow({
     }
     s.tick(row);
   };
+  // It ticks itself (15 Nov, Alex: "I add the weights and it goes green by itself and onto the next"): once both figures
+  // are typed, leaving the row logs it, by Next on the reps or a tap anywhere outside the row. Never while typing in it,
+  // and never moving between its own two figures, so a half-typed 12 is never logged as 1.
+  const leave = (e: React.FocusEvent<HTMLInputElement>) => {
+    const to = e.relatedTarget as Node | null;
+    if (to && wrapRef.current?.contains(to)) return;
+    if (tickState === "ready") s.tick(row);
+  };
+  // Next on the reps: on to the next set still to do (its first figure), the keyboard staying up; the last one puts it
+  // away. Either way the row is left, so it logs itself above.
+  const onward = (from: HTMLInputElement) => {
+    const wraps = [...(wrapRef.current?.closest(".ws-grid")?.querySelectorAll<HTMLElement>(".ws-rowwrap") ?? [])];
+    const at = wrapRef.current ? wraps.indexOf(wrapRef.current) : -1;
+    const next = wraps.slice(at + 1).find((w) => w.querySelector(".ws-gr:not(.done)"))?.querySelector<HTMLInputElement>("input.ws-num");
+    if (next) next.focus();
+    else from.blur();
+  };
+  // A tap on a logged figure opens the row straight away to type over it (15 Nov, Alex: "if I click on the green number it
+  // unchecks itself"), the figure selected so typing replaces it.
+  const reopen = (e: React.FocusEvent<HTMLInputElement>) => {
+    if (!row.done) return;
+    const input = e.currentTarget;
+    s.tick(row);
+    requestAnimationFrame(() => input.select());
+  };
   const tickLabel =
     tickState === "done" ? `${label} logged. Change it` : tickState === "refused" ? `${label} not saved${cantResend ? "" : ". Send again"}` : tickState === "ready" ? `Log ${label.toLowerCase()}` : `${label}: nothing to log yet`;
 
   return (
-    <div className="ws-rowwrap">
+    <div className="ws-rowwrap" ref={wrapRef}>
       <div className={`ws-gr${row.done ? " done" : ""}${warm ? " warm" : ""}`} role="group" aria-label={label}>
         <span className="ws-sn">
           {warmEmpty ? (
@@ -376,6 +402,8 @@ function SetRow({
             tone={(d) => weightTone(d, s.assisted)}
             onType={(t) => s.type(row, "w", t)}
             next={() => repsRef.current?.focus()}
+            onLeave={leave}
+            onReopen={reopen}
           />
         )}
         <NumBox
@@ -387,6 +415,9 @@ function SetRow({
           delta={doubt ? null : row.delta.reps}
           tone={(d) => (d > 0 ? "up" : "down")}
           onType={(t) => s.type(row, "r", t)}
+          onNext={onward}
+          onLeave={leave}
+          onReopen={reopen}
         />
         <span className="ws-pbcell">
           {row.pb && !warm && !free && (
@@ -495,6 +526,9 @@ function NumBox({
   tone,
   onType,
   next,
+  onNext,
+  onLeave,
+  onReopen,
   inputRef,
 }: {
   row: SheetRow;
@@ -505,6 +539,10 @@ function NumBox({
   tone: (d: number) => "up" | "down";
   onType: (text: string) => void;
   next?: () => void;
+  /** Enter on the row's last figure: on to the next set. */
+  onNext?: (from: HTMLInputElement) => void;
+  onLeave?: (e: React.FocusEvent<HTMLInputElement>) => void;
+  onReopen?: (e: React.FocusEvent<HTMLInputElement>) => void;
   inputRef?: React.Ref<HTMLInputElement>;
 }) {
   const shown = delta != null && value !== "";
@@ -516,16 +554,17 @@ function NumBox({
         type="text"
         inputMode={field === "w" ? "decimal" : "numeric"}
         autoComplete="off"
-        enterKeyHint={next ? "next" : "done"}
+        enterKeyHint="next"
         value={value}
-        readOnly={row.done}
-        tabIndex={row.done ? -1 : undefined}
         aria-label={label}
         onChange={(e) => onType(e.target.value)}
+        onFocus={onReopen}
+        onBlur={onLeave}
         onKeyDown={(e) => {
           if (e.key !== "Enter") return;
           e.preventDefault();
           if (next) next();
+          else if (onNext) onNext(e.currentTarget);
           else e.currentTarget.blur();
         }}
       />
