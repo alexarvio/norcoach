@@ -687,7 +687,7 @@ const MENU_ICONS = {
   discard: ["M3 6h18", "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6", "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2", "M10 11v6", "M14 11v6"],
 } as const;
 
-function MenuIcon({ kind }: { kind: keyof typeof MENU_ICONS }) {
+export function MenuIcon({ kind }: { kind: keyof typeof MENU_ICONS }) {
   return (
     <svg className="wo-menu-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {MENU_ICONS[kind].map((d) => (
@@ -699,7 +699,7 @@ function MenuIcon({ kind }: { kind: keyof typeof MENU_ICONS }) {
 
 // Kg or lbs on the finish list, beside Done (21 Oct, Alex): the words alone, the one on in ink, the other grey; a tap
 // switches the exercise's logged sets (the weights stay kg) and it opens in it next time. Shown at once, saved behind.
-function CheckUnit({ ex, session, disabled }: { ex: SessionExercise; session: { dayId: number; startedAt: string | null }; disabled: boolean }) {
+export function CheckUnit({ ex, session, disabled }: { ex: SessionExercise; session: { dayId: number; startedAt: string | null }; disabled: boolean }) {
   const [unit, setUnit] = useState<WeightUnit>(ex.unit ?? "kg");
   const pick = (u: WeightUnit) => {
     if (disabled || u === unit) return;
@@ -720,7 +720,7 @@ function CheckUnit({ ex, session, disabled }: { ex: SessionExercise; session: { 
 }
 
 // One question of the wrap-up: 1 to 10, a tap picks, a tap on the pick takes it back.
-function Scale({ label, value, onChange, disabled }: { label: string; value: number | null; onChange: (v: number | null) => void; disabled?: boolean }) {
+export function Scale({ label, value, onChange, disabled }: { label: string; value: number | null; onChange: (v: number | null) => void; disabled?: boolean }) {
   return (
     <div className="wo-scale">
       <div className="wo-scale-head">

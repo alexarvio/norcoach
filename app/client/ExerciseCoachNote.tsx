@@ -14,12 +14,15 @@ export default function ExerciseCoachNote({
   dateLabel,
   text,
   unread,
+  label = "From your coach",
 }: {
   /** null: a note with no read tracking (cardio). */
   assignmentId: number | null;
   dateLabel: string;
   text: string | null;
   unread: boolean;
+  /** The small caps line over the words (the workout sheet: the coach's name and the date, 15 Nov). */
+  label?: React.ReactNode;
 }) {
   useEffect(() => {
     // Fire and forget: a failed write only means it is marked read next time.
@@ -29,7 +32,7 @@ export default function ExerciseCoachNote({
   if (!text) return null;
   return (
     <div className="ts-coachnote">
-      <CoachSays label="From your coach">{text}</CoachSays>
+      <CoachSays label={label}>{text}</CoachSays>
     </div>
   );
 }

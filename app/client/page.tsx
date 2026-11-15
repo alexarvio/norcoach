@@ -151,7 +151,8 @@ import {
   HomeIcon,
 } from "../components/icons";
 import PrefSwitch from "./PrefSwitch";
-import { personalBests } from "../lib/homeBoardData";
+import { trainingBests } from "../lib/homeBoardData";
+import { workoutSheetOn } from "../lib/workoutSheet";
 
 // Reads live from the JSON store on every request — without this, Next
 // statically prerenders this page at build time (before any real data
@@ -638,7 +639,20 @@ function bannerPictures(clientId: number, track: "training" | "nutrition" | "lif
   return cover ? [cover] : [];
 }
 
-function TrainingTab({ CLIENT_ID, week, currentWeek, showMyNotes }: { CLIENT_ID: number; week: number; currentWeek: number; showMyNotes: boolean }) {
+function TrainingTab({
+  CLIENT_ID,
+  week,
+  currentWeek,
+  showMyNotes,
+  workoutSheet = false,
+}: {
+  CLIENT_ID: number;
+  week: number;
+  currentWeek: number;
+  showMyNotes: boolean;
+  /** The workout as one scrolling sheet (15 Nov, on test: workoutSheetOn); off, the pager. */
+  workoutSheet?: boolean;
+}) {
   const days = getWeekDays(CLIENT_ID, week);
   // The client's note about the whole programme sits between the week's
   // figures and its sessions, outside any day.
@@ -758,12 +772,21 @@ function TrainingTab({ CLIENT_ID, week, currentWeek, showMyNotes }: { CLIENT_ID:
           const libraryName = new Map([...library].map(([id, e]) => [id, e.name] as const));
           const videoReplies = listVideoReplies(CLIENT_ID);
           // Each exercise's personal bests, as the coach's rows mark them (13 Nov, Alex: the marks on a finished session).
-          let bests: ReturnType<typeof personalBests> = new Map();
+          // And, for the workout sheet (15 Nov), what each row's next set has to beat: the same read, the same rule.
+          let bests: ReturnType<typeof trainingBests>["bests"] = new Map();
+          let barOf: ReturnType<typeof trainingBests>["barOf"] = () => null;
           try {
-            bests = personalBests(CLIENT_ID);
+            ({ bests, barOf } = trainingBests(CLIENT_ID));
           } catch {
             /* none shown */
           }
+          const pbBarOf = (id: number) => {
+            try {
+              return barOf(id);
+            } catch {
+              return null;
+            }
+          };
           return (
             <>
             <div className="tr-sessions-head">
@@ -771,6 +794,7 @@ function TrainingTab({ CLIENT_ID, week, currentWeek, showMyNotes }: { CLIENT_ID:
             </div>
             <div className="tr-sessions">
             <TrainingDayList
+              sheet={workoutSheet}
               currentWeek={isCurrent}
               pastWeek={isPast}
               coachName={getCoachFirstName(CLIENT_ID)}
@@ -845,6 +869,8 @@ function TrainingTab({ CLIENT_ID, week, currentWeek, showMyNotes }: { CLIENT_ID:
                   warmups: (a.warmup_sets ?? []).map((w) => ({ weight: w.weight_kg, reps: w.reps })),
                   lastWarmups: getLastWarmupSets(a.id).map((w) => ({ weight: w.weight_kg, reps: w.reps })),
                   pbSets: bests.get(a.id)?.sets ?? [],
+                  // The sheet's alone, never on a rogue session; the pager gets none, so nothing more is worked out.
+                  pbBar: workoutSheet && !rogue ? pbBarOf(a.id) : undefined,
                   videoRequest: (() => {
                     const r = videoAsks.get(a.id);
                     if (r) return { id: r.id, note: r.note, src: r.file_path, sentAt: r.submitted_at, reply: videoReplies.find((x) => x.id === r.id) ?? null, fromClient: !!r.from_client, media: r.media ?? "video", about: r.about ?? null, clientNote: r.client_note ?? null };
@@ -1258,6 +1284,8 @@ export default async function ClientPage({
 }) {
   const params = await searchParams;
   const CLIENT_ID = await resolveClientId(params.client);
+  // The workout as one scrolling sheet (15 Nov, Alex), on test for some clients (workoutSheetOn); else the pager.
+  const workoutSheet = CLIENT_ID != null && workoutSheetOn(CLIENT_ID);
   // The coach's phone preview (21 Oct): ?phone=1 from the admin's panel draws this client's app read-only on the
   // screen it names (AppShell readOnly). A coach only; for a client the parameters are ignored.
   const phone = params.phone === "1" && (await getSessionUser())?.role === "coach";
@@ -1369,7 +1397,7 @@ export default async function ClientPage({
   const trainingWeekLabels = deployedProgram
     ? Object.fromEntries(trainingWeeks.map((w) => [w, programWeekLabel(deployedProgram, w)]))
     : undefined;
-  const trainingWeekContents = Object.fromEntries(trainingWeeks.map((w) => [w, <TrainingTab key={w} CLIENT_ID={CLIENT_ID} week={w} currentWeek={currentWeekNum} showMyNotes={viewerIsClient} />]));
+  const trainingWeekContents = Object.fromEntries(trainingWeeks.map((w) => [w, <TrainingTab key={w} CLIENT_ID={CLIENT_ID} week={w} currentWeek={currentWeekNum} showMyNotes={viewerIsClient} workoutSheet={workoutSheet} />]));
   // A week is complete when every planned set on every training day is
   // logged — the same rule TrainingTab's progress ring uses for 100%.
   const completedWeeks = trainingWeeks.filter((w) => {
