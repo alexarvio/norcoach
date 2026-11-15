@@ -1,10 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import { Scale } from "../WorkoutScreen";
-import { unTickedChanges } from "./useExerciseSets";
 import SwipeToEnd from "../SwipeToEnd";
-import { Bars } from "../Bars";
 import { isDone, loggedCount, shownName, tidyDecimal, type SessionDay } from "../workoutShared";
 
 // The workout sheet's finish (15 Nov, Alex: docs/boards/workout-sheet-a-mockup.html): a sheet from the foot in the shared
@@ -58,9 +55,6 @@ export default function FinishSheet({
   onSaveEdit: () => void;
   onClose: () => void;
 }) {
-  // Sets opened again to fix and changed, not ticked since: never dropped unsaid (Save changes or the end don't send them).
-  const [changes] = useState(() => unTickedChanges(day.key));
-  const left = [...leftParts(day), ...(changes > 0 ? [`${changes} change${changes === 1 ? "" : "s"} not ticked`] : [])];
   return (
     <div className="wo-sheet-scrim" onClick={onClose}>
       <div className="wo-sheet ws-finish" role="dialog" aria-label={editing ? "Save changes" : `Finish ${day.title}`} onClick={(e) => e.stopPropagation()}>
@@ -73,11 +67,7 @@ export default function FinishSheet({
             </svg>
           </button>
         </div>
-        {left.length > 0 && (
-          <p className="ws-finish-left">
-            <Bars parts={left} />
-          </p>
-        )}
+        {/* No word on what is left (15 Nov, Alex: "do not say what I haven't completed"): the questions, the note, the swipe. */}
         <div className="wo-page-inner wo-wrap ws-finish-body">
           {day.questions.length > 0 && (
             <div className="wo-ask">
