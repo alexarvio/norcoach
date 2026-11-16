@@ -106,7 +106,7 @@
 .ws-sn { font-size: 18px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; }
 .ws-gr.warm .ws-sn { font-weight: 600; color: #a8761f; }
 .ws-sn-w { display: inline-flex; align-items: center; justify-content: flex-start; min-width: 22px; height: 28px; padding: 0; border: 0; background: none; font: inherit; font-size: 18px; font-weight: 600; color: #a8761f; cursor: pointer; }
-.ws-last { min-width: 0; font-size: 15px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws-last { min-width: 0; font-size: 15px; font-weight: 600; color: #8b93a1; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* A figure's slot (15 Nov, Alex): no box and no fill, a 1.5px underline in #C9CFD8, ink while typing, 16px so the
    phone never zooms; empty until typed. Done, no underline. */
