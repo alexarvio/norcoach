@@ -95,11 +95,11 @@
 
 /* ---- The sets grid: Set | Last | kg | Reps | PB | tick. */
 .ws-grid { display: flex; flex-direction: column; margin-top: 2px; }
-.ws-gh, .ws-gr { display: grid; grid-template-columns: 22px minmax(0, 1fr) 84px 64px 24px 28px; column-gap: 7px; align-items: center; }
-.ws-grid.nokg .ws-gh, .ws-grid.nokg .ws-gr { grid-template-columns: 22px minmax(0, 1fr) 64px 24px 28px; }
+.ws-gh, .ws-gr { display: grid; grid-template-columns: 36px minmax(0, 1fr) 84px 60px 24px 28px; column-gap: 7px; align-items: center; }
+.ws-grid.nokg .ws-gh, .ws-grid.nokg .ws-gr { grid-template-columns: 36px minmax(0, 1fr) 60px 24px 28px; }
 /* Nothing to compare (15 Nov, Alex: the first week, a swap): no Last column, the slots share its room. */
-.ws-grid.nolast .ws-gh, .ws-grid.nolast .ws-gr { grid-template-columns: 22px minmax(0, 1fr) minmax(0, 1fr) 24px 28px; }
-.ws-grid.nolast.nokg .ws-gh, .ws-grid.nolast.nokg .ws-gr { grid-template-columns: 22px minmax(0, 1fr) 24px 28px; }
+.ws-grid.nolast .ws-gh, .ws-grid.nolast .ws-gr { grid-template-columns: 36px minmax(0, 1fr) minmax(0, 1fr) 24px 28px; }
+.ws-grid.nolast.nokg .ws-gh, .ws-grid.nolast.nokg .ws-gr { grid-template-columns: 36px minmax(0, 1fr) 24px 28px; }
 .ws-gh { height: 22px; font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #98A2B3; }
 .ws-gh .c { text-align: center; }
 .ws-gr { height: 54px; }
