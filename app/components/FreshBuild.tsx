@@ -18,6 +18,8 @@ const onAdmin = () => window.location.pathname.startsWith("/admin");
 
 export default function FreshBuild({ build }: { build: string }) {
   useEffect(() => {
+    // The page's build, for the admin's read on coming back (RefreshOnReturn), which never reads across a deploy.
+    document.documentElement.dataset.build = build;
     let reloading = false;
     const reload = () => {
       if (reloading) return;

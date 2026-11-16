@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from "react";
 import OpeningLogo, { OPENING_HOLD_MS } from "../components/OpeningLogo";
-import { QUIET_COOKIE } from "../lib/quietLoad";
+import { OPENED_COOKIE, QUIET_COOKIE } from "../lib/quietLoad";
 
 let played = false;
 
@@ -25,6 +25,8 @@ export default function AdminOpening({ quiet = false }: { quiet?: boolean }) {
   useEffect(() => {
     if (!opening) return;
     played = true;
+    // Played: the rest of this browser session opens quietly (a session cookie, no max-age).
+    document.cookie = `${OPENED_COOKIE}=1; path=/; samesite=lax`;
     // Hydrated: the admin can be clicked. The star alone for a moment at the least, then two frames so the admin is
     // painted under the paper before the word comes and the paper goes.
     const hold = Math.max(300, OPENING_HOLD_MS - performance.now());
