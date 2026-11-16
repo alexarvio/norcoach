@@ -50,6 +50,7 @@ import { landOn } from "../lib/landOn";
 import { dayWords } from "../lib/clientDates";
 import { Bars } from "./Bars";
 import CoachSays from "./CoachSays";
+import RingEdge from "../components/RingEdge";
 import { pic } from "../lib/pic";
 import "./food-cards.css";
 
@@ -989,7 +990,10 @@ export default function FoodDiaryScreen({
                             aria-label={d === today ? "Today" : d}
                           >
                             <span className="fdi-day-letter">{WEEKDAY[i]}</span>
-                            <span className="fdi-day-num">{Number(d.slice(8))}</span>
+                            <span className="fdi-day-num">
+                              {Number(d.slice(8))}
+                              <RingEdge size={30} stroke={1.5} />
+                            </span>
                             <span className={`fdi-day-dot${on ? " on" : logged.has(d) ? " logged" : ""}`} aria-hidden="true" />
                           </button>
                         );
@@ -3263,6 +3267,7 @@ function SpineAdd({ label, on, onClick, action }: { label: string; on: boolean; 
       {action && <div className="fdc-spine-act">{action}</div>}
       <button type="button" className={`fdc-spine-plus${on ? " on" : ""}`} onClick={onClick} aria-label={label} aria-pressed={on}>
         <span className="fdc-spine-ring" aria-hidden="true">
+          <RingEdge size={21} stroke={1.5} />
           <PlusIcon />
         </span>
       </button>

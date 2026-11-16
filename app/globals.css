@@ -19380,7 +19380,8 @@ button.ts-circle:focus-visible { outline: 2px solid #00897B; outline-offset: 2px
 .hm-mt-date small { margin-top: 4px; padding-left: 2px; font-size: 10px; font-weight: 600; letter-spacing: 0.16em; color: #98A2B3; }
 .hm-mt-row { gap: 14px; }
 .hm-mt-eyebrow { font-size: 10px; font-weight: 600; letter-spacing: 0.16em; color: #98A2B3; }
-.hm-mt-pill, .hm-recap-head .hm-mt-pill { padding: 0 9px; height: 22px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; font-size: 10px; font-weight: 600; letter-spacing: 0.12em; color: #3a4250; }
+/* Centred by its letters (16 Nov, Alex: TODAY sat off in its pill): the tracking after the last letter made up on the left, and Archivo's capitals a half pixel low. */
+.hm-mt-pill, .hm-recap-head .hm-mt-pill { padding: 1px 9px 0 calc(9px + 0.12em); height: 22px; box-sizing: border-box; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; font-size: 10px; font-weight: 600; letter-spacing: 0.12em; color: #3a4250; }
 .hm-mt-pill.today { background: #fff; box-shadow: inset 0 0 0 1px #2f6fd6; color: #2f6fd6; }
 .hm-mt-pill.live { background: #fff; box-shadow: inset 0 0 0 1px #2f7a3f; color: #2f7a3f; }
 .hm-mt-live-dot { background: #2f7a3f; }
@@ -21287,19 +21288,20 @@ html.kb-open .pc-aura::before, html.kb-open .pc-aura::after, html.kb-open .ev-au
 .pg-view .pg-range.pg-range, .evs-seg.evs-seg, .cmg-tabs.cmg-tabs, .pc-cmp-view.pc-cmp-view, .au-card .au-plan-cap.au-plan-cap, .hw-range.hw-range { height: 36px; padding: 3px; gap: 0; box-sizing: border-box; }
 .pg-view .pg-range.pg-range button, .evs-seg.evs-seg button, .cmg-tabs.cmg-tabs button, .pc-cmp-view.pc-cmp-view button, .au-card .au-plan-cap.au-plan-cap button, .hw-range.hw-range button { height: 30px; padding: 0 14px; font-size: 13px; font-weight: 600; }
 /* The food diary's week strip as every calendar marks a day: no tile; today's numeral on an ink disc, the picked day
-   ringed in ink, the days to come faint; 500/600 only. */
+   ringed in ink, the days to come faint; 500/600 only. The ring is a vector (`RingEdge`, 16 Nov): the days share the
+   strip's width, so a numeral lands on a part pixel and an inset shadow came out lopsided on an iPhone. */
 .fdi-day.fdi-day, .fdi-day.fdi-day.on { background: none; box-shadow: none; }
 .fdi-day.fdi-day .fdi-day-letter { font-weight: 600; color: #8b93a1; }
-.fdi-day.fdi-day .fdi-day-num { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 999px; font-weight: 500; color: #141a24; }
-.fdi-day.fdi-day.on .fdi-day-num { box-shadow: inset 0 0 0 1.5px #141a24; }
-.fdi-day.fdi-day.today .fdi-day-num { background: #141a24; color: #fff; box-shadow: none; }
+.fdi-day.fdi-day .fdi-day-num { position: relative; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 999px; font-weight: 500; color: #141a24; --ring: none; }
+.fdi-day.fdi-day.on .fdi-day-num { --ring: #141a24; }
+.fdi-day.fdi-day.today .fdi-day-num { background: #141a24; color: #fff; --ring: none; }
 .fdi-day.fdi-day.off .fdi-day-num, .fdi-day.fdi-day.off .fdi-day-letter { color: #c5ccd8; }
 /* Over the food diary's photo banner the same marks in white: the numerals white, today on a white disc in ink, the
    picked day ringed in white, the days to come faint. */
 .fdi-banner .fdi-day.fdi-day .fdi-day-letter { color: rgba(255, 255, 255, 0.7); }
 .fdi-banner .fdi-day.fdi-day .fdi-day-num { color: #fff; }
-.fdi-banner .fdi-day.fdi-day.on .fdi-day-num { box-shadow: inset 0 0 0 1.5px #fff; }
-.fdi-banner .fdi-day.fdi-day.today .fdi-day-num { background: #fff; color: #141a24; box-shadow: none; }
+.fdi-banner .fdi-day.fdi-day.on .fdi-day-num { --ring: #fff; }
+.fdi-banner .fdi-day.fdi-day.today .fdi-day-num { background: #fff; color: #141a24; --ring: none; }
 .fdi-banner .fdi-day.fdi-day.off .fdi-day-num, .fdi-banner .fdi-day.fdi-day.off .fdi-day-letter { color: rgba(255, 255, 255, 0.4); }
 
 /* ---- Rows parted by space alone (3 Nov, Alex: option A of docs/boards/row-lines-mockup.html; the rule since 17 Oct):
