@@ -282,7 +282,7 @@ export default function MeetingsScreen({ upcoming, past, request = null, clientI
             {/* `Past` as on Events; with none, nothing (10 Nov, Alex: `No upcoming meetings` over it already says so). */}
             {pastSorted.length > 0 && <div className="evp-sec">Past</div>}
             {pastShown.map((m, i) => (
-              <PastRow
+              <PastRow coachFirst={coachFirst}
                 key={m.id}
                 m={m}
                 label={i === 0 ? "Last" : null}
@@ -377,7 +377,7 @@ function NextPill({ m, now, coachFirst, open = false, lit = false, onToggle }: {
         <div className={`ev-x mtp-next-x${open ? " open" : ""}`} aria-hidden={!open}>
           <div className="ev-x-clip">
             <div className="ev-x-in">
-              <MeetingNotes notes={m.notes} />
+              <MeetingNotes notes={m.notes} coach={coachFirst} />
             </div>
           </div>
         </div>
@@ -420,7 +420,7 @@ export function EventChip({ e, onOpen }: { e: { id: number; title: string; kind:
 // the call's icon, the title and when. With notes it opens in place with what
 // was agreed and the events made from it; a chevron says so.
 
-function PastRow({ m, label, now, focus, open, lit, refFn, onTap }: { m: ClientMeetingView; label: string | null; now: number | null; focus: boolean; open: boolean; lit: boolean; refFn: (el: HTMLElement | null) => void; onTap: (opens: boolean) => void }) {
+function PastRow({ m, label, now, focus, open, lit, refFn, onTap, coachFirst }: { m: ClientMeetingView; coachFirst: string; label: string | null; now: number | null; focus: boolean; open: boolean; lit: boolean; refFn: (el: HTMLElement | null) => void; onTap: (opens: boolean) => void }) {
   const t = meetingTypeOf(m.type);
   const ms = startMsOf(m);
   const d = new Date(ms);
@@ -475,7 +475,7 @@ function PastRow({ m, label, now, focus, open, lit, refFn, onTap }: { m: ClientM
           <div className="ev-x-clip">
             <div className="ev-x-in">
               {clipped && <p className="evp-x-title">{m.title}</p>}
-              {points.length > 0 && <MeetingNotes notes={m.notes} />}
+              {points.length > 0 && <MeetingNotes notes={m.notes} coach={coachFirst} />}
               {m.linkedEvents.length > 0 && (
                 <span className="mt-linked">
                   <span className="mt-linked-label">Added to your events</span>

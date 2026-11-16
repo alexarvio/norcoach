@@ -10,6 +10,7 @@ import CheckInDialog, { type CheckInForm } from "./CheckInDialog";
 import { FEATURES } from "../lib/features";
 import { pic } from "../lib/pic";
 import { Bars } from "./Bars";
+import CoachSays from "./CoachSays";
 import { dayWords } from "../lib/clientDates";
 
 /** The coach's goals for a phase, none while phase goals are off (23 Oct, Alex: To focus on replaces them). */
@@ -589,7 +590,12 @@ function PhaseCardStack({ ph, coachName, today, defaultOpen }: { ph: HomePhase; 
                 </ol>
               </>
             )}
-            {ph.note && <p className="pc-snote">&ldquo;{ph.note}&rdquo;</p>}
+            {/* The coach's note (16 Nov, Alex: whatever the coach says, their face and name are with it). */}
+            {ph.note && (
+              <div className="pc-snote-says">
+                <CoachSays label={coachName}>{ph.note}</CoachSays>
+              </div>
+            )}
             {tab && (
               <button type="button" className="pc-sopen" onClick={() => goToTab?.(tab)}>
                 Open {TRACK_LABEL[ph.track].toLowerCase()} →

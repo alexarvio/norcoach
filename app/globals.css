@@ -21874,3 +21874,10 @@ html.vrec-on, html.vrec-on * { -webkit-user-select: none !important; user-select
 .cv-sheet .cv-btn.cv-btn { height: 44px; border: 0; border-radius: 999px; font-size: 14.5px; font-weight: 600; }
 .cv-sheet .cv-btn.primary.primary { background: #141a24; color: #fff; }
 .cv-sheet .cv-btn.plain.plain { width: auto; height: 36px; padding: 0 12px; background: none; color: #5b6474; font-size: 13px; font-weight: 600; }
+
+/* ---- The coach's words with their face and name wherever they show (16 Nov, Alex; docs/DESIGN-RULES.md §9, CoachSays). */
+.pc-snote-says { padding-top: 10px; }
+.sw-row.sw-row { flex-wrap: wrap; }
+.sw-says { flex: 0 0 100%; padding: 4px 4px 4px 4px; }
+.ev-x-says { margin-top: 8px; }
+.nd-supp-says { padding: 0 16px 14px; }
