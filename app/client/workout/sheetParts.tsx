@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useDismiss } from "../useDismiss";
 import { Bars } from "../Bars";
@@ -62,8 +62,8 @@ export function ToolButton({ label, onClick, expanded, children }: { label: stri
  * on (the tick's log never landed) goes, so nothing else later folds it. A block complete on opening starts folded; a
  * tap on its line opens it, until another last tick. `easing` while it moves, so the fold clips only then.
  */
-export function useBlockFold(complete: boolean, blockEl: () => HTMLElement | null, armKey = 0) {
-  const [folded, setFolded] = useState(complete);
+export function useBlockFold(complete: boolean, blockEl: () => HTMLElement | null, armKey = 0, startFolded: boolean = complete) {
+  const [folded, setFolded] = useState(startFolded);
   const [armed, setArmed] = useState(false);
   const [easing, setEasing] = useState(false);
   // The set the last tick logged: armed by it alone.
@@ -145,6 +145,35 @@ export function BlockTitle({ ring, name, onFold }: { ring: ReactNode; name: stri
       <span className="ws-bfold-chev" aria-hidden="true" />
     </button>
   );
+}
+
+/**
+ * A rogue session's "moved on" (16 Nov, Alex): each exercise says when it logs a set (`logged` going up) or the client
+ * adds one (`movedOnFrom(dayId, -1)`); every OTHER exercise of that session counts it, the count being its fold's armKey.
+ * Off the rogue session it counts nothing.
+ */
+const MOVED = "ws-moved-on";
+export function movedOnFrom(dayId: number, exerciseId: number) {
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(MOVED, { detail: { dayId, exerciseId } }));
+}
+export function useMovedOn(free: boolean, dayId: number, exerciseId: number, logged: number) {
+  const [count, setCount] = useState(0);
+  const prevLogged = useRef(logged);
+  useEffect(() => {
+    if (!free) return;
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ dayId: number; exerciseId: number }>).detail;
+      if (d && d.dayId === dayId && d.exerciseId !== exerciseId) setCount((c) => c + 1);
+    };
+    window.addEventListener(MOVED, on);
+    return () => window.removeEventListener(MOVED, on);
+  }, [free, dayId, exerciseId]);
+  // A set logged here: the others move on (only on the way up, so taking a set back folds nothing).
+  useEffect(() => {
+    if (free && logged > prevLogged.current) movedOnFrom(dayId, exerciseId);
+    prevLogged.current = logged;
+  }, [logged, free, dayId, exerciseId]);
+  return count;
 }
 
 /** The shared fold (the end of globals.css: rows 0fr → 1fr over 340ms), its inside clipped only while it eases. */
