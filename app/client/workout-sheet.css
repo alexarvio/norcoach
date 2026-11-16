@@ -156,7 +156,7 @@
 .ws-doubt-alt { background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; color: #141a24; }
 
 /* + Add a set and − Remove a set, in words. */
-.ws-setacts { display: flex; align-items: center; gap: 18px; min-height: 34px; margin-top: -4px; }
+.ws-setacts { display: flex; align-items: center; justify-content: flex-end; gap: 18px; min-height: 34px; margin-top: -4px; }
 .ws-setask { font-size: 13px; font-weight: 600; color: #141a24; }
 
 /* ---- A cardio: what was done (a rogue session) in hairline boxes, Mark as done the white pill, Done in green. */
