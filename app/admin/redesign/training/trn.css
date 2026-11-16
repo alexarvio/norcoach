@@ -39,7 +39,7 @@
 .rd.trn .trn-btn.ghost.trn-iconbtn:hover { background: #f5f6f8; color: #b42318; }
 .rd.trn .trn-btn.primary { background: var(--trn-navy); box-shadow: none; color: #fff; }
 .rd.trn .trn-btn.primary:disabled { opacity: 0.4; cursor: default; }
-.rd.trn .trn-chev { display: inline-flex; color: var(--trn-faint); transition: transform 0.15s; }
+.rd.trn .trn-chev { display: inline-flex; color: var(--trn-faint); transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
 .rd.trn .trn-chev svg { width: 16px; height: 16px; }
 .rd.trn .trn-chev.open { transform: rotate(90deg); }
 .rd.trn .trn-state { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px var(--trn-line); font-size: 11.5px; font-weight: 600; color: var(--trn-muted); white-space: nowrap; }
@@ -187,7 +187,19 @@
 /* .trn-row-more, the ⋯ of every row and card, is one admin-wide rule in draft.css (25 Oct, Alex). */
 .rd.trn .trn-row-toggle { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; background: none; cursor: pointer; }
 .rd.trn .trn-row-toggle:hover .trn-chev { color: var(--trn-ink); }
-.rd.trn .trn-list .rd-session.open > .rd-rows { border-top: 0; }
+.rd.trn .trn-list .rd-session.open .trn-sfold-in > .rd-rows { border-top: 0; }
+/* A session's body opens and shuts on the shared fold (16 Nov, Alex: "the whole screen jumps"; docs/DESIGN-RULES.md §7):
+   its rows 0fr → 1fr over 340ms on the fold's curve, what is in it fading in over 220ms and settling 4px down; shutting,
+   the same back before it leaves the page (TrainingDraft's `shut`). The row clicked stays put meanwhile (pinOnScreen). */
+.rd.trn .trn-sfold { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.34s cubic-bezier(0.22, 1, 0.36, 1); animation: trn-sfold-open 0.34s cubic-bezier(0.22, 1, 0.36, 1); }
+.rd.trn .trn-sfold > .trn-sfold-in { min-height: 0; overflow: hidden; transition: opacity 0.22s ease, translate 0.34s cubic-bezier(0.22, 1, 0.36, 1); animation: trn-sfold-in 0.34s cubic-bezier(0.22, 1, 0.36, 1); }
+.rd.trn .trn-sfold.shut { grid-template-rows: 0fr; pointer-events: none; }
+.rd.trn .trn-sfold.shut > .trn-sfold-in { opacity: 0; translate: 0 -4px; }
+@keyframes trn-sfold-open { from { grid-template-rows: 0fr; } }
+@keyframes trn-sfold-in { 0% { opacity: 0; translate: 0 -4px; } 65% { opacity: 1; } 100% { opacity: 1; translate: 0 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .rd.trn .trn-sfold, .rd.trn .trn-sfold > .trn-sfold-in { animation: none; transition: none; }
+}
 /* An opened session's own actions (+ Exercise, + Cardio…) as the other text actions: 13px at 600 (29 Oct, Alex). */
 .rd.trn .rd-add .rd-btn.ghost { font-size: 13px; font-weight: 600; }
 /* A session table's fields as clean lines (21 Oct, Alex: no box): the text where it stands, as wide as what is

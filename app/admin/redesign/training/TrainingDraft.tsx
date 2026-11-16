@@ -27,6 +27,7 @@ import PhaseDatesDialog from "../PhaseDatesDialog";
 import PhaseSwitcher from "../PhaseSwitcher";
 import { goToHash, TodoStrip } from "../TodoStrip";
 import { landOn, landOnSoon } from "../../../lib/landOn";
+import { pinOnScreen } from "./pinOnScreen";
 import { AfterWorkoutCheck, GoalsNotePills, GripIcon, WeekRail } from "./TrainingParts";
 import "./trn.css";
 import { SortableItem, SortableList } from "../Sortable";
@@ -680,7 +681,21 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
       });
     };
   });
+  // The one folding shut, kept on the page until its fold has eased away (340ms, the shared fold).
+  const [shut, setShut] = useState<number | null>(null);
+  const shutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (shutTimer.current) clearTimeout(shutTimer.current);
+  }, []);
+  // One open at a time, as it was; the row clicked stays where it is on screen while the one before folds away above
+  // or below it and its own opens (16 Nov, Alex: "the whole screen jumps"; pinOnScreen). No scroll to it on a click.
   const openSession = (id: number | null) => {
+    const anchor = id ?? open;
+    pinOnScreen(anchor != null ? document.getElementById(`session-${anchor}`) : null);
+    if (shutTimer.current) clearTimeout(shutTimer.current);
+    const leaving = open != null && open !== id ? open : null;
+    setShut(leaving);
+    if (leaving != null) shutTimer.current = setTimeout(() => setShut((v) => (v === leaving ? null : v)), 360);
     setOpen(id);
     if (id != null) markRead.current(id);
   };
@@ -1105,7 +1120,10 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
                 )}
               </div>
 
-              {isOpen && (
+              {(isOpen || shut === s.id) && (
+                // The shared fold (docs/DESIGN-RULES.md §7): eases open on arriving, eases shut before it leaves.
+                <div className={`trn-sfold${isOpen ? "" : " shut"}`}>
+                <div className="trn-sfold-in">
                 <div className="rd-rows rd-rows-scroll" style={{ "--rd-minw": `${tableMinW}px` } as React.CSSProperties}>
                   {s.skip && <p className="rd-skip">{firstName} couldn&rsquo;t train: &ldquo;{s.skip}&rdquo;</p>}
                   {/* Answers in words only: the numbers are the head row's pills already. */}
@@ -1649,6 +1667,8 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
                     </div>
                   )}
 
+                </div>
+                </div>
                 </div>
               )}
               </>
