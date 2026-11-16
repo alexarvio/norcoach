@@ -77,7 +77,10 @@
 .rd .nd-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px 4px; font-size: 10.5px; font-weight: 600; line-height: 16px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--c); }
 .rd .nd-head svg { flex: none; width: 14px; height: 14px; }
 .rd .nd-head small { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; color: #98a2b3; font-variant-numeric: tabular-nums; }
-.rd .rls-card.nd-card { padding: 0; overflow: hidden; }
+/* The rows fill the card, no room over or under them (16 Nov, Alex: "the text is not on the center… more empty space
+   either on top or below"): the shared list card's 2px over and 8px under (measurements.css) beat this rule on the Feed
+   and Phases, so each card's last row sat high. Doubled so it holds whatever order the files load in. */
+.rd .rls-card.nd-card.nd-card { padding: 0; overflow: hidden; }
 .rd .nd-row { display: grid; grid-template-columns: var(--nd-date, 84px) 200px minmax(0, 1fr) 96px auto 18px; align-items: center; column-gap: 16px; min-height: 52px; padding: 0 12px 0 18px; cursor: pointer; }
 .rd .nd-row + .nd-row { border-top: 1px solid #eef0f3; }
 .rd .nd-row:hover { background: var(--color-row-hover, #fafbfd); }
