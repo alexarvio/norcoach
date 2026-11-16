@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createUser, requireCoach } from "../../lib/auth";
 import { getData } from "../../lib/db";
 import { buildDemoClient } from "../../lib/demoClient";
+import { REVIEW_EMAIL } from "../../lib/reviewAccount";
 
 // The App Review account: a login Apple's reviewers can use to try every
 // client screen with something on it. A demo coach of its own ("Sam Carter")
@@ -17,7 +18,9 @@ import { buildDemoClient } from "../../lib/demoClient";
 export const dynamic = "force-dynamic";
 
 const COACH_EMAIL = "sam.carter@example.com";
-const CLIENT_EMAIL = "reviewer@example.com";
+// The address Apple's reviewer signs in with, by the fixed code (lib/reviewAccount.ts, app/auth/review). The password
+// printed below is from the password days; under Clerk it is not used.
+const CLIENT_EMAIL = REVIEW_EMAIL;
 const CLIENT_NAME = "Jamie Reviewer";
 
 // Twelve characters, no look-alikes (0/O, 1/l/I), so it can be typed from a screen.

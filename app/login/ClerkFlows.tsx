@@ -6,6 +6,7 @@ import { useSignIn, useSignUp } from "@clerk/nextjs/legacy";
 import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
 import { AuthShell, CodeScreen, CoachSignUpScreen, InviteWelcomeScreen, SignInScreen } from "./SignInScreens";
 import { callNative, nativePlatform } from "../lib/native";
+import { isReviewEmail } from "../lib/reviewAccount";
 
 // Clerk behind the sign-in screens (26 Sep). One way in for everyone: an
 // email code, or Apple or Google. An email Clerk doesn't know yet (anyone
@@ -52,13 +53,19 @@ function useEmailCode() {
   const { isLoaded: inLoaded, signIn, setActive } = useSignIn();
   const { isLoaded: upLoaded, signUp } = useSignUp();
   // "in2": Clerk asked for a second code after the first (a new device, say).
-  const [step, setStep] = useState<{ email: string; via: "in" | "up" | "in2" } | null>(null);
+  // "review": the App Review address, whose code is the fixed one on the server (app/auth/review), no email sent.
+  const [step, setStep] = useState<{ email: string; via: "in" | "up" | "in2" | "review" } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const ready = inLoaded && upLoaded;
 
   const send = async (email: string) => {
     if (!ready) return;
+    if (isReviewEmail(email)) {
+      setError(null);
+      setStep({ email, via: "review" });
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -91,6 +98,23 @@ function useEmailCode() {
     if (!ready || !step) return;
     setBusy(true);
     setError(null);
+    if (step.via === "review") {
+      try {
+        const res = await fetch("/auth/review", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: step.email, code }) });
+        const { ticket } = (await res.json().catch(() => ({}))) as { ticket?: string };
+        if (!res.ok || !ticket) throw new Error(res.status === 429 ? "Too many tries. Wait an hour." : "That code isn't right. Check the email and try again.");
+        const done = await signIn.create({ strategy: "ticket", ticket });
+        if (done.status !== "complete" || !done.createdSessionId) throw new Error("Sign-in didn't finish. Try again.");
+        await setActive({ session: done.createdSessionId });
+        land();
+        return;
+      } catch (e) {
+        if (signedIn(e)) return land();
+        setError(isClerkAPIResponseError(e) ? says(e) : e instanceof Error ? e.message : "Something went wrong. Try again.");
+        setBusy(false);
+        return;
+      }
+    }
     try {
       const done =
         step.via === "in"
