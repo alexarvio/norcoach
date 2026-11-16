@@ -1054,6 +1054,27 @@ type MeetingNote = {
 };
 /** What the client is to focus on until their next call (23 Oct, Alex; lib/focus.ts): one list a client, up to three
     goals the coach sets (completing a call, or Meetings' To focus on) and the client ticks on Home. */
+/** A workout from the phone's Apple Health / Health Connect (16 Nov, Alex; lib/healthSync.ts): read for the coach's
+ *  Activity alone, never a Norcoach session (no Consistency, adherence or week bars). One a store and `platform_id`. */
+export type HealthWorkout = {
+  id: number;
+  client_id: number;
+  /** Which phone store it came from: "apple" (Apple Health) or "google" (Health Connect). */
+  store: "apple" | "google";
+  /** The store's own id (HealthKit UUID, Health Connect metadata id), else its type and start. */
+  platform_id: string;
+  /** The store's workout type: "running", "traditionalStrengthTraining"… */
+  type: string;
+  /** ISO moments. */
+  start: string;
+  end: string;
+  seconds: number;
+  kcal: number | null;
+  meters: number | null;
+  /** The app that recorded it ("Strava", "Apple Watch"…), when the store says. */
+  source: string | null;
+  synced_at: string;
+};
 /** A weight goal (2 Nov, Alex): a weight by a date, from where the client was when it was set; several make
  *  milestones. Stored in kg; `unit` is how it was typed, to show it back as typed. */
 export type WeightGoal = {
@@ -1423,6 +1444,8 @@ export type Data = {
   client_focus?: ClientFocus[];
   // Weight goals (2 Nov, lib/weightGoal.ts): a weight on a date the coach or client set. Not a Postgres table of its own: kept in `kv`.
   weight_goals?: WeightGoal[];
+  // Workouts from the phone's health store (16 Nov, lib/healthSync.ts), for the coach's Activity. Not a Postgres table of its own: kept in `kv`.
+  health_workouts?: HealthWorkout[];
   event_categories: EventCategory[];
   calorie_logs: CalorieLog[];
   food_entries: FoodEntry[];

@@ -2,6 +2,7 @@ import fs from "fs";
 import { sortReasons, type AttentionReason } from "./attentionReasons";
 import path from "path";
 import { chatChanged } from "./chatBus";
+import { healthStoreName, healthWorkoutFacts, healthWorkoutWords } from "./healthWorkouts";
 import { allocId, DATA_DIR, DAY_NAMES_FULL, getData, persist, mergeDuplicateMetricDefinitions, CardioEntry } from "./db";
 import type { CalorieLog, CheckInNote, CustomFood, FoodDay, FoodEntry, FoodMealSlot, OffFood, SavedDay, SavedMeal, ClientEvent, ClientGym, ClientPhase, CoachProfile, CoachBusiness, CoachNotify, CoachInvoicing, CoachPayments, CoachSettings, Data, EventCategory, InvoiceEvery, InvoiceLine, InvoiceParty, InvoiceRecipient, InvoiceRepeat, InvoiceTemplate, KeptActivity, MetricAskAt, PhaseTrack, SessionAnswer, VideoRequest, WorkoutQuestion, MeetingRequest } from "./db";
 import type { CoachProfileFields, CoachProfileView } from "./coachProfileView";
@@ -30,7 +31,7 @@ import { setsDue } from "./setsDue";
 import { assistedRow, beforeStop, copiedWeights, isReset, laneKg, laneOfGym, laneTypedAt, laterSlot, liftOf, raisedTo, repWindow, setsSinceReset, stopAfter, writeLane, type Lane } from "./targetRule";
 import { FEATURES } from "./features";
 import { daysBetween, weightGoalViews, type WeightGoalView } from "./weightGoal";
-import type { WeightGoal } from "./db";
+import type { HealthWorkout, WeightGoal } from "./db";
 
 // "Today" (or any Date) as a local YYYY-MM-DD calendar-date string. This is
 // deliberately NOT `date.toISOString().slice(0, 10)` — toISOString always
@@ -2977,6 +2978,8 @@ export type FeedEvent = {
   session?: SessionState;
   /** Words another row already quotes (a session's note, which the app also sends to the chat): the logs leave it out. */
   echo?: boolean;
+  /** A workout from the phone's health store (16 Nov): the coach's logs alone, never a session, a dot or news. */
+  health?: boolean;
   /** Progress picture thumbnails. */
   thumbs: string[];
 };
@@ -3053,7 +3056,7 @@ export function getActivityFeed(coachId: number): FeedEvent[] {
   const events: FeedEvent[] = [];
   const add = (
     clientId: number,
-    e: Pick<FeedEvent, "id" | "category" | "at" | "tab" | "text" | "thing"> & Partial<Pick<FeedEvent, "note" | "quote" | "eventKind" | "session" | "echo" | "thumbs" | "timeKnown" | "dayId" | "target">>
+    e: Pick<FeedEvent, "id" | "category" | "at" | "tab" | "text" | "thing"> & Partial<Pick<FeedEvent, "note" | "quote" | "eventKind" | "session" | "echo" | "thumbs" | "timeKnown" | "dayId" | "target" | "health">>
   ) => {
     const client = clientsById.get(clientId);
     if (!client || !Number.isFinite(e.at)) return;
@@ -3133,6 +3136,55 @@ export function getActivityFeed(coachId: number): FeedEvent[] {
       quote: note,
       session: news.state,
     });
+  }
+
+  // ---- Workouts from the phone's health store (16 Nov, Alex) ----
+  // One row a workout the client recorded in Apple Health / Health Connect (a run, a class), under Training, at its end:
+  // "Running from Apple Health", the thing alone as every overall feed's row (DESIGN-RULES-ADMIN §9b, 23 Oct: no facts).
+  // One they trained in Norcoach as well (a session whose time covers more than half of it) is that session's row alone,
+  // and one two apps both wrote (a watch and Strava) is one row: the richer (a distance or kcal, else the longer).
+  // Never a session: no Since count, dot, Consistency or week bar.
+  const rich = (w: HealthWorkout) => (w.meters != null ? 2 : 0) + (w.kcal != null ? 1 : 0);
+  const healthRows = (data.health_workouts ?? [])
+    .filter((w) => clientsById.has(w.client_id))
+    .sort((a, b) => rich(b) - rich(a) || b.seconds - a.seconds);
+  if (healthRows.length) {
+    const spans = new Map<number, [number, number][]>();
+    for (const day of data.program_days) {
+      if (!clientsById.has(day.client_id)) continue;
+      const logs = (logsByDay.get(day.id) ?? []).map((l) => stampMs(l.logged_at)).filter(Number.isFinite);
+      const from = day.session_started_at ? stampMs(day.session_started_at) : logs.length ? Math.min(...logs) : NaN;
+      const to = day.session_ended_at ? stampMs(day.session_ended_at) : logs.length ? Math.max(...logs) : NaN;
+      if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) continue;
+      const list = spans.get(day.client_id) ?? [];
+      list.push([from, to]);
+      spans.set(day.client_id, list);
+    }
+    const shown = new Map<number, [number, number][]>();
+    for (const w of healthRows) {
+      const start = Date.parse(w.start);
+      const end = Date.parse(w.end);
+      if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+      const length = Math.max(1, end - start);
+      const overlap = (a: number, b: number) => Math.max(0, Math.min(end, b) - Math.max(start, a));
+      const shared = (spans.get(w.client_id) ?? []).reduce((sum, [a, b]) => sum + overlap(a, b), 0);
+      if (shared > length / 2) continue;
+      const mine = shown.get(w.client_id) ?? [];
+      if (mine.some(([a, b]) => overlap(a, b) > Math.min(length, Math.max(1, b - a)) / 2)) continue;
+      mine.push([start, end]);
+      shown.set(w.client_id, mine);
+      const what = `${healthWorkoutWords(w.type)} from ${healthStoreName(w.store)}`;
+      const facts = healthWorkoutFacts(w);
+      add(w.client_id, {
+        id: `health-${w.id}`,
+        category: "training",
+        at: end,
+        tab: "training",
+        text: `recorded ${what}${facts.length ? ` · ${facts.join(", ")}` : ""}`,
+        thing: what,
+        health: true,
+      });
+    }
   }
 
   // A session the client said they could not do, in their words.
@@ -4864,17 +4916,27 @@ export function applyMetricTemplateToClient(clientId: number, templateCategoryId
 
 // Upsert: logging the same metric for the same period again overwrites the
 // value rather than creating a duplicate row.
-export function setMetricEntry(metricDefinitionId: number, period: string, value: number | null, loggedAt?: string, source?: "health") {
+export function setMetricEntry(
+  metricDefinitionId: number,
+  period: string,
+  value: number | null,
+  loggedAt?: string,
+  source?: "health",
+  /** The phone's reading carries its own moment (a weigh-in): it takes it even over an older one's (16 Nov). */
+  restamp?: boolean
+): boolean {
   const data = getData();
   const existing = data.metric_entries.find(
     (e) => e.metric_definition_id === metricDefinitionId && e.period === period
   );
   if (existing) {
     // The same figure saved again is no new reading (13 Nov, Alex: a save re-dated old days on Activity): it keeps its time.
-    if (existing.value === value && existing.source === source) return;
+    // A weigh-in of the same figure at a later moment still takes that moment (restamp).
+    const newMoment = !!(restamp && loggedAt && loggedAt !== existing.logged_at);
+    if (existing.value === value && existing.source === source && !newMoment) return false;
     existing.value = value;
     // The phone's count growing on a day already in keeps that day's time; a typed one takes the save's.
-    if (loggedAt && !(source === "health" && existing.logged_at)) existing.logged_at = loggedAt;
+    if (loggedAt && (restamp || !(source === "health" && existing.logged_at))) existing.logged_at = loggedAt;
     if (source) existing.source = source;
     else delete existing.source;
   } else {
@@ -4888,6 +4950,7 @@ export function setMetricEntry(metricDefinitionId: number, period: string, value
     });
   }
   persist();
+  return true;
 }
 
 export function getMetricEntries(metricDefinitionIds: number[]): MetricEntry[] {
@@ -7376,7 +7439,8 @@ export function getClientHome(clientId: number, feed?: FeedEvent[], ix?: Trainin
   let tix = ix;
   const rows = () => (tix ??= trainingIndex(clientId));
   const client = data.clients.find((c) => c.id === clientId);
-  const all = (feed ?? getActivityFeed(client?.coach_id ?? 0)).filter((e) => e.clientId === clientId);
+  // A phone workout is the coach's logs alone (16 Nov): never news, a dot or a note to read here.
+  const all = (feed ?? getActivityFeed(client?.coach_id ?? 0)).filter((e) => e.clientId === clientId && !e.health);
   const since = Date.now() - HOME_NEW_DAYS * 86400000;
   const events = all.slice(0, 60).map((e) => ({ ...e, when: feedTimeLabel(e.at, e.timeKnown), unseen: isUnseen(client?.coach_seen, e, since) }));
   const unseen = events.filter((e) => e.unseen);
@@ -15084,6 +15148,8 @@ export type ActivityDay = {
   food: { kcal: number; protein: number | null; carbs: number | null; fat: number | null } | null;
   /** What was checked in for that day, by name. */
   checkIns: string[];
+  /** What the phone's health store filled that day, by name (16 Nov): never a check-in, but not missing either. */
+  auto?: string[];
 };
 
 /**
@@ -15127,11 +15193,21 @@ export function getActivityCalendar(clientId: number): ActivityDay[] {
 
   // Check-ins: a daily reading on its day, a weekly one on the day it was sent, a measurement on its date.
   const defs = new Map(data.metric_definitions.filter((m) => m.client_id === clientId).map((m) => [m.id, m] as const));
+  const auto = new Map<string, string[]>();
   for (const e of data.metric_entries) {
     const def = defs.get(e.metric_definition_id);
     if (!def || e.value == null) continue;
     const date = def.frequency === "daily" ? e.period : e.logged_at ? localDateStr(new Date(e.logged_at)) : null;
-    if (date && !day(date).checkIns.includes(def.name)) day(date).checkIns.push(def.name);
+    if (!date) continue;
+    // The phone's figure is not the client checking in (16 Nov; Activity leaves it out too): kept apart, so a day it
+    // filled reads neither checked in nor short of it. Noted only on a day that has something else.
+    if (e.source === "health") {
+      const names = auto.get(date) ?? [];
+      if (!names.includes(def.name)) names.push(def.name);
+      auto.set(date, names);
+      continue;
+    }
+    if (!day(date).checkIns.includes(def.name)) day(date).checkIns.push(def.name);
   }
   const fields = new Map(listMeasurementFields(clientId).map((f) => [f.id, f] as const));
   for (const v of getMeasurementValues([...fields.keys()])) {
@@ -15139,6 +15215,10 @@ export function getActivityCalendar(clientId: number): ActivityDay[] {
     if (f && v.value != null && !day(v.date).checkIns.includes(f.name)) day(v.date).checkIns.push(f.name);
   }
   for (const k of kept) if (k.kind === "checkin" && !day(k.date).checkIns.includes(k.name)) day(k.date).checkIns.push(k.name);
+  for (const [date, names] of auto) {
+    const d = days.get(date);
+    if (d) d.auto = names;
+  }
 
   return [...days.values()].filter((d) => d.sessions.length || d.food || d.checkIns.length).sort((a, b) => (a.date < b.date ? 1 : -1));
 }
