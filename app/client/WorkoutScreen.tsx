@@ -47,12 +47,13 @@ const PAGE_KEY = "ironline.client.workout-page";
 type Page = { kind: "exercise"; index: number } | { kind: "cardio"; index: number } | { kind: "add" } | { kind: "wrap" };
 const NO_LIBRARY: LibraryPick[] = [];
 
-function readPage(dayId: number, editing: boolean): number | null {
+// This start's page alone (16 Nov, Alex): a session discarded and started again opens on its first page.
+function readPage(dayId: number, startedAt: string | null, editing: boolean): number | null {
   try {
     const raw = window.sessionStorage.getItem(PAGE_KEY);
     if (!raw) return null;
-    const v = JSON.parse(raw) as { dayId: number; index: number; editing?: boolean };
-    return v.dayId === dayId && !!v.editing === editing ? v.index : null;
+    const v = JSON.parse(raw) as { dayId: number; startedAt?: string | null; index: number; editing?: boolean };
+    return v.dayId === dayId && (v.startedAt ?? null) === startedAt && !!v.editing === editing ? v.index : null;
   } catch {
     return null;
   }
@@ -146,7 +147,7 @@ export default function WorkoutScreen({
   useEffect(() => {
     // A link to an exercise wins over the page last looked at (24 Oct, Alex: a link lands on its thing).
     const linked = focusExercise != null ? day.exercises.findIndex((e) => e.id === focusExercise) : -1;
-    const t = setTimeout(() => jumpTo(linked >= 0 ? linked : readPage(day.key, editing) ?? (editing ? 0 : firstPage()), true), 0);
+    const t = setTimeout(() => jumpTo(linked >= 0 ? linked : readPage(day.key, day.startedAt ?? null, editing) ?? (editing ? 0 : firstPage()), true), 0);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on opening
   }, []);
@@ -158,9 +159,9 @@ export default function WorkoutScreen({
   };
   useEffect(() => {
     try {
-      window.sessionStorage.setItem(PAGE_KEY, JSON.stringify({ dayId: day.key, index: page, editing }));
+      window.sessionStorage.setItem(PAGE_KEY, JSON.stringify({ dayId: day.key, startedAt: day.startedAt ?? null, index: page, editing }));
     } catch {}
-  }, [day.key, page, editing]);
+  }, [day.key, day.startedAt, page, editing]);
 
   // The clock.
   const ended = day.endedAt != null;
