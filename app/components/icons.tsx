@@ -463,6 +463,24 @@ export function CopyIcon() {
   );
 }
 
+/** Apply forward (16 Nov, Alex: B of docs/boards/training-tools-mockup.html): an arrow to a line, carrying a thing into the weeks after. */
+export function ApplyIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 12h12M12 7l5 5-5 5M20 5v14" />
+    </svg>
+  );
+}
+
+/** Copy into this one: an arrow coming in to a line (Training's Copy menu, 16 Nov). */
+export function IntoIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20 12H8M12 8l-4 4 4 4M4 5v14" />
+    </svg>
+  );
+}
+
 export function PlayIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

@@ -1,7 +1,7 @@
 import { getData } from "../../../lib/db";
 import { MAX_SESSIONS_PER_WEEK, assignmentsForDayIn, cardioForDayIn, getAssignmentsForDay, getWeek, homeGymId, listCardioForDay, listClientGyms, trainingIndex, weekIn } from "../../../lib/queries";
 import { assistedRow, beforeStop, coachKg, copiedWeights, laneKg, laneOfGym, laterSlot, liftOf, raisedTo, repWindow, setsSinceReset, stopAfter, writeLane, type Lane } from "../../../lib/targetRule";
-import { changedWeeks, type ApplyFig, type ApplyItem, type ApplyPreview, type ApplySession, type ApplyWeek } from "./applyShape";
+import { changeCount, changedWeeks, type ApplyFig, type ApplyItem, type ApplyPreview, type ApplySession, type ApplyWeek } from "./applyShape";
 
 // What Apply to the rest (copyProgramWeek, one target week at a time) and a session's Apply to remaining weeks
 // (copyProgramDayToLaterWeeks → copyProgramDay) would change in the later weeks (23 Oct, Alex: "naming nicely and
@@ -344,7 +344,7 @@ export function applyReader(clientId: number) {
  * confirm shows a weight. The same reads as the confirm's, so the button is there exactly while its list has something.
  * Null when no week comes after it.
  */
-export function applyReads(clientId: number, program: Span, weekNumber: number) {
+export function applyReads(clientId: number, program: Span, weekNumber: number, open?: (index: number) => boolean) {
   const later: number[] = [];
   for (let w = weekNumber + 1; w < program.start_week + program.total_weeks; w++) later.push(w);
   if (!later.length) return null;
@@ -355,5 +355,8 @@ export function applyReads(clientId: number, program: Span, weekNumber: number) 
     const p = read.session(d, program);
     sessions[d.id] = { kg: changedWeeks(p, false).length > 0, lbs: changedWeeks(p, true).length > 0 };
   }
-  return { rest: { kg: changedWeeks(rest, false), lbs: changedWeeks(rest, true) }, sessions };
+  // `count`: the changes Apply would carry, each once (16 Nov, Alex), the small count on the week line's Apply. Only the
+  // weeks it can reach (`open`: the later weeks that aren't over, as its confirm's targets), so a done week that differs
+  // never adds to it.
+  return { rest: { kg: changedWeeks(rest, false), lbs: changedWeeks(rest, true), count: { kg: changeCount(rest, false, open), lbs: changeCount(rest, true, open) } }, sessions };
 }

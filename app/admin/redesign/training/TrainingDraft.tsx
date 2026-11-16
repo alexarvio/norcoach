@@ -14,7 +14,7 @@ import type { MuscleMapData } from "../../../lib/muscles";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
 import { Popover, PopoverAnchor, PopoverContent } from "../../../components/ui/popover";
-import { CalendarIcon, ChatIcon, NoteIcon, ChevronDownIcon, ChevronRightIcon, ColumnsIcon, CompassIcon, CopyIcon, DumbbellIcon, MoreIcon, PlayIcon, PlusIcon, TrashIcon } from "../../../components/icons";
+import { ApplyIcon, IntoIcon, CalendarIcon, ChatIcon, NoteIcon, ChevronDownIcon, ChevronRightIcon, ColumnsIcon, CompassIcon, CopyIcon, DumbbellIcon, MoreIcon, PlayIcon, PlusIcon, TrashIcon } from "../../../components/icons";
 import { PhotoIcon, VideoIcon } from "../../VideoRequestButton";
 import HelpTip from "../HelpTip";
 import ClientNote from "./ClientNote";
@@ -165,7 +165,7 @@ export type DraftProgram = {
    * (applyPreviewData.ts), in kg and in lbs: `rest`, the later weeks Apply to the rest would change; `sessions`, by
    * session id, whether its Apply to remaining weeks would change one. Null for a done week or the last.
    */
-  apply?: { week: number; rest: { kg: number[]; lbs: number[] }; sessions: Record<number, { kg: boolean; lbs: boolean }> } | null;
+  apply?: { week: number; rest: { kg: number[]; lbs: number[]; /** The changes Apply would carry, each once (16 Nov). */ count?: { kg: number; lbs: number } }; sessions: Record<number, { kg: boolean; lbs: boolean }> } | null;
   /** The weeks whose copy would change the week on screen (25 Oct), as Apply to the rest reads a change. */
   copyIn?: { week: number; kg: number[]; lbs: number[] } | null;
   /** The client's rogue sessions (19 Oct), by week index: their own workouts off the plan, read only. */
@@ -316,30 +316,6 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
     setGyms(program.gyms);
   }
   const multiGym = gyms.length > 1;
-  // Room for the figures: the name and the log stretch with the screen, the
-  // figure columns keep a set width, so on a wide screen they get more air.
-  const GAP = 24;
-  const exWidths = [cols.sets && 72, cols.weight && 92, cols.reps && 88, cols.rpe && 68, cols.tempo && 88, cols.rest && 84].filter((w): w is number => typeof w === "number");
-  // The name, Note and "did" columns' least (24 Oct, Alex: a table a few px too wide for the card scrolled by a few px):
-  // 200 / 160 / 220, so a laptop's full screen holds every column without scrolling.
-  const gridCols = `20px minmax(200px, 1.5fr)${exWidths.map((w) => ` ${w}px`).join("")} minmax(160px, 1fr) minmax(220px, 1.3fr) 80px 80px 112px`;
-  const colStyle = { gridTemplateColumns: gridCols, columnGap: GAP } as const;
-  // The narrowest the table can be (every column at its minimum, the gaps and
-  // the row's padding): every row takes at least this, so on a narrow window
-  // they scroll sideways together inside the card and stay lined up.
-  const tableMinW = 20 + 200 + exWidths.reduce((t, w) => t + w, 0) + 160 + 220 + 80 + 80 + 112 + (exWidths.length + 7) * GAP + 14;
-  // The band the exercise figures take up, gaps included: cardio's figures
-  // share it, so the name, "did" and ⋯ columns line up across both tables.
-  const bandW = exWidths.reduce((t, w) => t + w, 0) + Math.max(0, exWidths.length - 1) * GAP;
-  // Cardio's four figures (time, pace, incline, distance) sit in the exercise figure columns, one under each,
-  // and its note under the exercises' Note (21 Oct, Alex). A column unticked in Columns keeps its place, empty.
-  // With fewer than four exercise columns on, the four share a band of their own.
-  const cardioAligned = exWidths.length >= 4;
-  const cardioBandW = cardioAligned ? bandW : Math.max(bandW, 4 * 72 + 3 * GAP);
-  const cardioStyle = {
-    grid: { gridTemplateColumns: `20px minmax(200px, 1.5fr) ${cardioBandW}px minmax(160px, 1fr) minmax(220px, 1.3fr) 80px 80px 112px`, columnGap: GAP } as const,
-    band: { gridTemplateColumns: cardioAligned ? exWidths.map((w) => `${w}px`).join(" ") : "repeat(4, minmax(0, 1fr))", columnGap: GAP } as const,
-  };
 
   // The week's sessions, and the weeks, live in state so delete, reorder and
   // add can show what they would do.
@@ -361,6 +337,40 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
   // looked at (sessions open, what the client did, their videos and notes, replies to them); nothing that changes the
   // plan is offered: no adding, removing, reordering, renaming or copying, and its figures and notes read, not typed.
   const weekLocked = program.status === "past" || week.state === "past";
+  // Room for the figures: the name and the log stretch with the screen, the
+  // figure columns keep a set width, so on a wide screen they get more air.
+  const GAP = 24;
+  const exWidths = [cols.sets && 72, cols.weight && 92, cols.reps && 88, cols.rpe && 68, cols.tempo && 88, cols.rest && 84].filter((w): w is number => typeof w === "number");
+  // The row's last column: its marks and ⋯ (112px), and the room its tools take on hover (16 Nov, Alex: B of
+  // docs/boards/training-tools-mockup.html), kept always so nothing moves when they come: the video, the swap (not on a
+  // done week) and the chat (live only), 30px each, 2px apart, 6px before the marks. The cardio table's matches it.
+  const rowToolsN = 1 + (weekLocked ? 0 : 1) + (program.status === "live" ? 1 : 0);
+  const MORE_W = 112 + rowToolsN * 30 + (rowToolsN - 1) * 2 + 6;
+  // The name, Note and "did" columns' least (24 Oct, Alex: a table a few px too wide for the card scrolled by a few px):
+  // 200 / 160 / 220, so a laptop's full screen holds every column without scrolling. The tools' room comes out of
+  // those three (16 Nov), so the table's least width stays what it was and a laptop still holds every column.
+  const toolsW = MORE_W - 112;
+  const nameMin = 200 - Math.round(toolsW * 0.36);
+  const noteMin = 160 - Math.round(toolsW * 0.32);
+  const didMin = 220 - (toolsW - (200 - nameMin) - (160 - noteMin));
+  const gridCols = `20px minmax(${nameMin}px, 1.5fr)${exWidths.map((w) => ` ${w}px`).join("")} minmax(${noteMin}px, 1fr) minmax(${didMin}px, 1.3fr) 80px 80px ${MORE_W}px`;
+  const colStyle = { gridTemplateColumns: gridCols, columnGap: GAP } as const;
+  // The narrowest the table can be (every column at its minimum, the gaps and
+  // the row's padding): every row takes at least this, so on a narrow window
+  // they scroll sideways together inside the card and stay lined up.
+  const tableMinW = 20 + nameMin + exWidths.reduce((t, w) => t + w, 0) + noteMin + didMin + 80 + 80 + MORE_W + (exWidths.length + 7) * GAP + 14;
+  // The band the exercise figures take up, gaps included: cardio's figures
+  // share it, so the name, "did" and ⋯ columns line up across both tables.
+  const bandW = exWidths.reduce((t, w) => t + w, 0) + Math.max(0, exWidths.length - 1) * GAP;
+  // Cardio's four figures (time, pace, incline, distance) sit in the exercise figure columns, one under each,
+  // and its note under the exercises' Note (21 Oct, Alex). A column unticked in Columns keeps its place, empty.
+  // With fewer than four exercise columns on, the four share a band of their own.
+  const cardioAligned = exWidths.length >= 4;
+  const cardioBandW = cardioAligned ? bandW : Math.max(bandW, 4 * 72 + 3 * GAP);
+  const cardioStyle = {
+    grid: { gridTemplateColumns: `20px minmax(${nameMin}px, 1.5fr) ${cardioBandW}px minmax(${noteMin}px, 1fr) minmax(${didMin}px, 1.3fr) 80px 80px ${MORE_W}px`, columnGap: GAP } as const,
+    band: { gridTemplateColumns: cardioAligned ? exWidths.map((w) => `${w}px`).join(" ") : "repeat(4, minmax(0, 1fr))", columnGap: GAP } as const,
+  };
   // The loaded week's duplicates (a week added on this screen has none).
   // Kept per week as the server sends them, so a week come back to on this screen still has its own.
   const extrasSeen = useRef<Record<string, { copies: DraftSession[]; rogues: DraftSession[] }>>({});
@@ -901,13 +911,27 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
   // An empty week that isn't over takes the last week before it with something in it, in one tap (10 Nov, Alex: "we need to
   // be able to copy"): nothing is on it to lose, so no pop-up. Never over a week with something on it (4 Nov, Alex).
   const weekEmpty = !week.filled && !weekSaving && sessions.every((s) => s.rows.length === 0 && s.cardio.length === 0);
-  const copyHereFrom = !weekLocked && weekEmpty ? [...weeks].reverse().find((w) => w.index < viewIdx && w.filled > 0) ?? null : null;
   const copyHere = (source: number) => {
     const onceKey = newOnceKey();
     act(async () => {
       await copyProgramWeekAction(fd({ clientId, fromWeek: weekNo(source), toWeek: weekNo(viewIdx), onceKey }));
     }, `Week ${source} copied to ${week.label}`);
   };
+  // The week line's two tools (16 Nov, Alex: B of docs/boards/training-tools-mockup.html): Copy and Apply, one capsule.
+  // Copy's list holds every way to copy. Into this week: every other week with something in it that would change it
+  // (any week, not only into Week 1), never into a done week; on an empty week a pick copies at once (nothing on it to
+  // lose), on one with something on it the confirm asks first. To a new week: + Week's Copy, wherever + Week is offered.
+  const intoChoices = weekLocked ? [] : copyFromChoices.filter((w) => w.filled > 0);
+  const copyInto = (from: number) => (weekEmpty ? copyHere(from) : setDlg({ kind: "copyWeek", from }));
+  const canNewWeek = program.status !== "past" && !program.openEnded && weeks.some((w) => w.state !== "past") && week.filled > 0;
+  // What is still waiting on the week is saved first, so the new week has it.
+  const copyToNewWeek = () => void settle(Object.keys(pendingRef.current).map(Number)).then(() => addWeek(viewIdx));
+  const copyOn = intoChoices.length > 0 || canNewWeek;
+  // Apply, greyed in place when it would change nothing; its count the changes it would carry, each once, never the weeks.
+  const applyOn = program.status !== "past" && later.length > 0 && sessions.length > 0 && forwardChanges;
+  // Only from a read that is current: while the week's changes wait or save, or a week switched to isn't read yet, the
+  // badge's room stays empty rather than claim a number it hasn't read.
+  const applyCount = applyOn && !weekSaving && applyRead?.rest.count ? (lbs ? applyRead.rest.count.lbs : applyRead.rest.count.kg) : 0;
 
   const allSessions = [...sessions, ...copySessions, ...rogueSessions];
 
@@ -1009,6 +1033,41 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
                   {/* The dot trail (dots.ts): a video or photo to review in it, or their note to read. Beside the chevron, so the name, its facts and the fold stay put when it comes and goes. */}
                   {dots?.training.days.includes(s.id) && <i className="rd-due" role="img" aria-label="needs you" />}
                 </span>
+                {/* The session's tools, before its marks (16 Nov, Alex: B of docs/boards/training-tools-mockup.html), the week
+                    line's two icons: copy (Duplicate session) and apply (into the same session of every later week, greyed
+                    when it would change none), then the chat. Shown on the row's hover; always there, so the marks and the
+                    state pills never move when they come. */}
+                {(!weekLocked || program.status === "live") && (
+                  <span className="trn-rowtools">
+                    {!weekLocked && (
+                      <>
+                        {(() => {
+                          const on = rows.length > 0 || s.cardio.length > 0;
+                          return (
+                            <button type="button" className="trn-rowtool" aria-disabled={on ? undefined : true} title={on ? "Copy session" : "Nothing to copy"} aria-label={on ? `Copy ${name}` : `Copy ${name}, nothing to copy`} onClick={on ? () => setDlg({ kind: "copySession", sessionId: s.id }) : undefined}>
+                              <CopyIcon />
+                            </button>
+                          );
+                        })()}
+                        {(() => {
+                          // This session into the same slot of every later week (12 Oct); greyed when it would change none (23 Oct).
+                          const on = (rows.length > 0 || s.cardio.length > 0) && !!laterLabel && appliesLater(s.id);
+                          return (
+                            <button type="button" className="trn-rowtool" aria-disabled={on ? undefined : true} title={on ? `Apply ${name} to ${weeksWords(later.map((w) => w.index))}` : "Nothing to apply"} aria-label={on ? `Apply ${name} to the remaining weeks` : `Apply ${name}, nothing to apply`} onClick={on ? () => setDlg({ kind: "applyLater", sessionId: s.id }) : undefined}>
+                              <ApplyIcon />
+                            </button>
+                          );
+                        })()}
+                      </>
+                    )}
+                    {/* Only once the programme is live: before that the client has nothing of it to talk about. */}
+                    {program.status === "live" && (
+                      <button type="button" className="trn-rowtool" title="Message about this session" aria-label={`Message ${firstName} about ${name}`} onClick={() => replyTo(`${name}, ${week.label}`, { kind: "session", dayId: s.id })}>
+                        <ChatIcon />
+                      </button>
+                    )}
+                  </span>
+                )}
                 {/* What wants the coach, in the exercise rows' order (24 Oct, Alex): from the right the swap, the video or photo,
                     their note, then extra sets and a personal best. */}
                 <span className="trn-row-flags">
@@ -1096,20 +1155,10 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
                           <ChatIcon /> Message about this session
                         </DropdownMenuItem>
                       )}
+                      {/* Copy and apply are the row's own icons now (16 Nov, Alex); the ⋯ keeps the message and Delete. */}
                       {!weekLocked && (
                         <>
-                          {(rows.length > 0 || s.cardio.length > 0) && (
-                            <DropdownMenuItem onSelect={() => setDlg({ kind: "copySession", sessionId: s.id })}>
-                              <CopyIcon /> Duplicate session
-                            </DropdownMenuItem>
-                          )}
-                          {/* This session into the same slot of every later week (12 Oct); not when it would change none (23 Oct). */}
-                          {(rows.length > 0 || s.cardio.length > 0) && laterLabel && appliesLater(s.id) && (
-                            <DropdownMenuItem onSelect={() => setDlg({ kind: "applyLater", sessionId: s.id })}>
-                              <CopyIcon /> Apply to remaining weeks
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuSeparator />
+                          {program.status === "live" && <DropdownMenuSeparator />}
                           <DropdownMenuItem variant="destructive" onSelect={() => setDlg({ kind: "deleteSession", sessionId: s.id })}>
                             <TrashIcon /> Delete session
                           </DropdownMenuItem>
@@ -1279,6 +1328,39 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
                             </button>
                           ))}
                           <span className="rd-row-more">
+                            {/* The exercise's tools on the row's hover, before its marks (16 Nov, Alex: B of
+                                docs/boards/training-tools-mockup.html): the video (ask for one, or theirs to watch and reply
+                                to), the swap (Substitutes) and the chat (live only). Their room is the column's always, so
+                                nothing moves when they come. A done week keeps what is about the client: their video, the chat. */}
+                            <span className="trn-rowtools">
+                              {(() => {
+                                const inert = r.id <= 0;
+                                const videoWords = (!video ? ["Ask for a video"] : video.state === "asked" ? ["Video asked for", "waiting", video.recurring && "every session"] : video.media === "photo" ? (video.state === "in" ? ["See their photo", "reply"] : ["Their photo", "replied"]) : video.state === "in" ? ["Watch their video", "reply"] : ["Their video", "replied"]).filter(Boolean).join(", ");
+                                const subsN = r.alternatives.length || (FEATURES.librarySubstitutes ? r.librarySubstitutes.filter((x) => !r.libraryHidden.includes(x.exerciseId)).length : 0);
+                                const subsWords = subsN ? `Substitutes, ${subsN}${r.alternatives.length > 0 ? " this session" : ""}` : "Substitutes";
+                                return (
+                                  <>
+                                    {!weekLocked || (!!video && video.state !== "asked") ? (
+                                      <button type="button" className="trn-rowtool" aria-disabled={inert || undefined} title={videoWords} aria-label={`${videoWords}: ${r.name}`} onClick={inert ? undefined : () => setDlg({ kind: "video", rowId: r.id })}>
+                                        {video?.media === "photo" && video.state !== "asked" ? <PhotoIcon /> : <VideoIcon />}
+                                      </button>
+                                    ) : (
+                                      <span className="trn-rowtool-slot" aria-hidden="true" />
+                                    )}
+                                    {!weekLocked && (
+                                      <button type="button" className="trn-rowtool" aria-disabled={inert || undefined} title={subsWords} aria-label={`${subsWords}: ${r.name}`} onClick={inert ? undefined : () => setDlg({ kind: "alternatives", rowId: r.id })}>
+                                        <SwapIcon />
+                                      </button>
+                                    )}
+                                    {program.status === "live" && (
+                                      <button type="button" className="trn-rowtool" aria-disabled={inert || undefined} title={`Message ${firstName} about it`} aria-label={`Message ${firstName} about ${r.name}`} onClick={inert ? undefined : () => replyTo(`${r.name} · ${name}, ${week.label}`, { kind: "exercise", dayId: s.id, assignmentId: r.id })}>
+                                        <ChatIcon />
+                                      </button>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                            </span>
                             {/* The marks packed against the right, in one order (24 Oct, Alex): from the right the swap, the
                                 video or photo, their message, then extra sets and a personal best; whatever a row has
                                 takes the places from the right, no gaps. One width a session, so they end at one edge. */}
@@ -1340,23 +1422,14 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
                                 )}
                             </span>
                             )}
-                            {/* On a done week the ⋯ keeps what is about the client, not the plan: their video (watch, reply) and the message. */}
-                            {(!weekLocked || (!!video && video.state !== "asked") || program.status === "live") && (
+                            {/* The ⋯ keeps the demo and Remove (16 Nov, Alex): the video, Substitutes and the message are the
+                                row's own icons now. A done week has none of these, so its room stays. */}
+                            {!weekLocked ? (
                             <DropdownMenu modal={false}>
                               <DropdownMenuTrigger className="trn-row-more" aria-label={`More for ${r.name}`}>
                                 <MoreIcon />
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="pb-menu">
-                                {(!weekLocked || (!!video && video.state !== "asked")) && (
-                                  <DropdownMenuItem onSelect={() => setDlg({ kind: "video", rowId: r.id })}>
-                                    {video?.media === "photo" && video.state !== "asked" ? <PhotoIcon /> : <VideoIcon />}
-                                    <span>
-                                      <SepJoin parts={!video ? ["Ask for a video"] : video.state === "asked" ? ["Video asked for", "waiting", video.recurring && "every session"] : video.media === "photo" ? (video.state === "in" ? ["See their photo", "reply"] : ["Their photo", "replied"]) : video.state === "in" ? ["Watch their video", "reply"] : ["Their video", "replied"]} />
-                                    </span>
-                                  </DropdownMenuItem>
-                                )}
-                                {!weekLocked && (
-                                <>
                                 <DropdownMenuItem onSelect={() => setDlg({ kind: "demo", rowId: r.id })}>
                                   <PlayIcon />{" "}
                                   {/* One word for what it does (25 Oct, Alex: "Demo video | change" → Change demo). */}
@@ -1372,40 +1445,15 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
                                     <PlayIcon /> Play the demo
                                   </DropdownMenuItem>
                                 )}
-                                <DropdownMenuItem onSelect={() => setDlg({ kind: "alternatives", rowId: r.id })}>
-                                  <DumbbellIcon /> {(() => {
-                                    // The Library's substitutes only while that feature is on (23 Oct, Alex: none are preset yet).
-                                    const n = r.alternatives.length || (FEATURES.librarySubstitutes ? r.librarySubstitutes.filter((s) => !r.libraryHidden.includes(s.exerciseId)).length : 0);
-                                    return n ? (
-                                      <span>
-                                        <SepJoin parts={["Substitutes", n, r.alternatives.length > 0 && "this session"]} />
-                                      </span>
-                                    ) : (
-                                      "Substitutes"
-                                    );
-                                  })()}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem variant="destructive" onSelect={() => setDlg({ kind: "removeRow", sessionId: s.id, rowId: r.id })}>
+                                  <TrashIcon /> Remove from session
                                 </DropdownMenuItem>
-                                </>
-                                )}
-                                {/* Only once the programme is live: before that the client has nothing of it to talk about. */}
-                                {program.status === "live" && (
-                                  <DropdownMenuItem onSelect={() => replyTo(`${r.name} · ${name}, ${week.label}`, { kind: "exercise", dayId: s.id, assignmentId: r.id })}>
-                                    <ChatIcon /> Message {firstName} about it
-                                  </DropdownMenuItem>
-                                )}
-                                {!weekLocked && (
-                                  <>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem variant="destructive" onSelect={() => setDlg({ kind: "removeRow", sessionId: s.id, rowId: r.id })}>
-                                      <TrashIcon /> Remove from session
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
+                            ) : (
+                              <span className="rd-more-room" aria-hidden="true" />
                             )}
-                            {/* With no ⋯ its room stays, so the marks still end at the same edge as the rows that have one. */}
-                            {!(!weekLocked || (!!video && video.state !== "asked") || program.status === "live") && <span className="rd-more-room" aria-hidden="true" />}
                           </span>
                         </div>
                         {/* What they did instead, opened from the orange circle: the
@@ -1872,36 +1920,67 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
               <TrashIcon />
             </button>
           )}
-          {/* No "Copy week 4 here" on a later week (4 Nov, Alex: a week changed on purpose was offered the week before over
-              it, one click from undoing the edit). A new week copies one through + Week; week 1 keeps Copy from… to fill a
-              programme's first week from another. */}
-          {!weekLocked && weeks.length > 1 && viewIdx === 1 && copyFromChoices.length > 0 && (
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger className="trn-btn">
-                <CopyIcon /> Copy from…
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="pb-menu">
-                {copyFromChoices.map((w) => (
-                  <DropdownMenuItem key={w.index} onSelect={() => setDlg({ kind: "copyWeek", from: w.index })}>
-                    Week {w.index}
-                    <small className="rd-menu-inuse">{w.trained.length} {w.trained.length === 1 ? "session" : "sessions"}</small>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-          {copyHereFrom && (
-            <button type="button" className="trn-btn" onClick={() => copyHere(copyHereFrom.index)}>
-              <CopyIcon /> Copy Week {copyHereFrom.index} here
-            </button>
-          )}
-          {/* Build one week, fill the rest in one go (20 Oct, Alex). */}
-          {program.status !== "past" && later.length > 0 && sessions.length > 0 && forwardChanges && (
-            // The weeks it reaches, said on the button (4 Nov, Alex: "make it a bit more self-explanatory"; it was "Apply to
-            // the rest" since 23 Oct): "Apply to weeks 6–13", only the weeks it would really change.
-            <button type="button" className="trn-btn" onClick={() => setDlg({ kind: "copyForward" })} title={`Apply ${week.label}'s changes to ${forwardLabel}`} aria-label={`Apply ${week.label}'s changes to ${forwardLabel}`}>
-              <CopyIcon /> Apply to {forwardLabel || "later weeks"}
-            </button>
+          {/* Copy | Apply, one white capsule (16 Nov, Alex: B of docs/boards/training-tools-mockup.html; was "Apply to weeks
+              3–4", "Copy Week 2 here" and Week 1's Copy from…). Both stay in place, greyed when they have nothing to do,
+              so nothing on the line moves. The weeks Apply reaches are in its tooltip and confirm, never on it. */}
+          {program.status !== "past" && (
+            <div className="trn-tools" role="group" aria-label={`${week.label}: copy and apply`}>
+              {copyOn ? (
+                <DropdownMenu modal={false}>
+                  <DropdownMenuTrigger className="trn-tools-btn" title={`Copy into or from ${week.label}`}>
+                    <CopyIcon /> Copy
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="pb-menu trn-tools-menu">
+                    {intoChoices.length > 0 && (
+                      <>
+                        <div className="trn-menu-head" role="presentation">
+                          Into {week.label}
+                        </div>
+                        {intoChoices.map((w) => (
+                          <DropdownMenuItem key={w.index} onSelect={() => copyInto(w.index)}>
+                            <IntoIcon /> From Week {w.index}
+                            <small className="trn-menu-count">
+                              {w.trained.length} {w.trained.length === 1 ? "session" : "sessions"}
+                            </small>
+                          </DropdownMenuItem>
+                        ))}
+                      </>
+                    )}
+                    {intoChoices.length > 0 && canNewWeek && <DropdownMenuSeparator />}
+                    {canNewWeek && (
+                      <>
+                        <div className="trn-menu-head" role="presentation">
+                          {week.label} to
+                        </div>
+                        <DropdownMenuItem onSelect={copyToNewWeek}>
+                          <CopyIcon /> A new week
+                          <small className="trn-menu-count">Week {weeks.length + 1}</small>
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <button type="button" className="trn-tools-btn" aria-disabled="true" title="Nothing to copy">
+                  <CopyIcon /> Copy
+                </button>
+              )}
+              <i className="trn-tools-sep" aria-hidden="true" />
+              <button
+                type="button"
+                className="trn-tools-btn"
+                aria-disabled={applyOn ? undefined : true}
+                onClick={applyOn ? () => setDlg({ kind: "copyForward" }) : undefined}
+                title={applyOn ? `Apply ${week.label} to ${forwardLabel || "the later weeks"}` : "Nothing to apply"}
+                aria-label={applyOn ? `Apply ${week.label} to ${forwardLabel || "the later weeks"}${applyCount ? `, ${applyCount} ${applyCount === 1 ? "change" : "changes"}` : ""}` : "Apply, nothing to apply"}
+              >
+                <ApplyIcon /> Apply
+                {/* Its room always kept, so the capsule is one width whether Apply counts, waits or is greyed. */}
+                <b className={`trn-tools-n${applyCount > 0 ? "" : " off"}`} aria-hidden="true">
+                  {applyCount > 0 ? applyCount : ""}
+                </b>
+              </button>
+            </div>
           )}
           {/* Which columns the week's tables show, beside KG/LBS (21 Oct, Alex: it was in the programme's ··· menu). */}
           <DropdownMenu modal={false}>
