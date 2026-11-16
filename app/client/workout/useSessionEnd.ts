@@ -17,6 +17,8 @@ function dropDrafts(dayId: number) {
       const k = window.sessionStorage.key(i);
       if (k && k.startsWith(prefix)) window.sessionStorage.removeItem(k);
     }
+    // And its place on the sheet: the next start opens at the top.
+    window.sessionStorage.removeItem("ironline.client.ws-scroll");
   } catch {}
 }
 

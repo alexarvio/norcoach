@@ -31,19 +31,21 @@ import { useSessionEnd } from "./workout/useSessionEnd";
 const SCROLL_KEY = "ironline.client.ws-scroll";
 const NO_LIBRARY: LibraryPick[] = [];
 
-function readScroll(dayId: number, editing: boolean): number | null {
+// The place is this start's alone (16 Nov, Alex: a session discarded halfway and started again opened on exercise 4):
+// a new start, a new startedAt, always opens at the top.
+function readScroll(dayId: number, startedAt: string | null, editing: boolean): number | null {
   try {
     const raw = window.sessionStorage.getItem(SCROLL_KEY);
     if (!raw) return null;
-    const v = JSON.parse(raw) as { dayId: number; top: number; editing?: boolean };
-    return v.dayId === dayId && !!v.editing === editing && typeof v.top === "number" ? v.top : null;
+    const v = JSON.parse(raw) as { dayId: number; startedAt?: string | null; top: number; editing?: boolean };
+    return v.dayId === dayId && (v.startedAt ?? null) === startedAt && !!v.editing === editing && typeof v.top === "number" ? v.top : null;
   } catch {
     return null;
   }
 }
-function writeScroll(dayId: number, editing: boolean, top: number) {
+function writeScroll(dayId: number, startedAt: string | null, editing: boolean, top: number) {
   try {
-    window.sessionStorage.setItem(SCROLL_KEY, JSON.stringify({ dayId, editing, top: Math.round(top) }));
+    window.sessionStorage.setItem(SCROLL_KEY, JSON.stringify({ dayId, startedAt, editing, top: Math.round(top) }));
   } catch {}
 }
 const stillMotion = () => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -159,7 +161,7 @@ export default function WorkoutSheet({
       frame.current = 0;
       const box = scrollRef.current;
       if (!box) return;
-      writeScroll(day.key, editing, box.scrollTop);
+      writeScroll(day.key, day.startedAt ?? null, editing, box.scrollTop);
       const keys = order ? order.split(",") : [];
       if (keys.length && box.scrollTop > 0 && box.scrollTop + box.clientHeight >= box.scrollHeight - 2) {
         latest.current = keys[keys.length - 1];
@@ -192,7 +194,7 @@ export default function WorkoutSheet({
         box.removeEventListener("scrollend", onEnd);
       };
     }
-    const kept = readScroll(day.key, editing);
+    const kept = readScroll(day.key, day.startedAt ?? null, editing);
     const t = window.setTimeout(() => {
       settleAfter(150);
       if (kept != null) {
