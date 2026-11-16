@@ -91,3 +91,16 @@ button.gy-hero-badge:disabled { cursor: default; }
 
 /* Add a meal's counts (12 Nov, Alex): how many saved meals and days, grey at the row's end. */
 .gpk-addrow .ams-count { margin-left: auto; font-size: 13px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; }
+
+/* ---- A pop-up that is a list to pick one from is flat rows (16 Nov, Alex: B of docs/boards/pick-popup-mockup.html):
+   no box round a row, space between them, the icon in the track's colour, a chevron after; forms keep their boxes. */
+.gpk-addrow.flat.flat { height: auto; min-height: 54px; padding: 4px 4px; border-radius: 12px; box-shadow: none; font-size: 16px; font-weight: 500; color: #141a24; text-align: left; }
+.gpk-addrow.flat:active { background: #F5F6F8; }
+.gpk-addrow.flat .gpk-addrow-ico { width: 22px; height: 22px; margin: 0; }
+.gpk-addrow.flat .gpk-addrow-ico svg { width: 17px; height: 17px; stroke: currentColor; stroke-width: 1.6; }
+.gpk-addrow.flat.training .gpk-addrow-ico { color: #3a3390; }
+.gpk-addrow.flat.nutrition .gpk-addrow-ico { color: #1d7a70; }
+.gpk-addrow.flat .ads-row-text > span:first-child { font-size: 16px; font-weight: 500; }
+.gpk-chev { flex: none; width: 7px; height: 7px; margin: 0 6px 0 auto; border-right: 1.5px solid #8b93a1; border-bottom: 1.5px solid #8b93a1; transform: rotate(-45deg); }
+.ams-count + .gpk-chev, .ads-row-text + .gpk-chev { margin-left: 10px; }
+.gpk-rows:has(> .gpk-addrow.flat) { gap: 2px; }

@@ -58,7 +58,7 @@ export default function AddSessionSheet({
                 <p className="ads-note">Nothing planned</p>
               ) : (
                 sessions.map((s) => (
-                  <button key={s.key} type="button" className="gpk-addrow" disabled={busy} onClick={() => onDuplicate(s.key)}>
+                  <button key={s.key} type="button" className="gpk-addrow flat training" disabled={busy} onClick={() => onDuplicate(s.key)}>
                     <span className="gpk-addrow-ico" aria-hidden="true">
                       <CopyIcon />
                     </span>
@@ -68,22 +68,25 @@ export default function AddSessionSheet({
                         <Bars parts={[s.exercises > 0 && `${s.exercises} exercise${s.exercises === 1 ? "" : "s"}`, s.cardio > 0 && `${s.cardio} cardio`]} />
                       </span>
                     </span>
+                    <span className="gpk-chev" aria-hidden="true" />
                   </button>
                 ))
               )
             ) : (
               <>
-                <button type="button" className="gpk-addrow" disabled={busy} onClick={onRogue}>
+                <button type="button" className="gpk-addrow flat training" disabled={busy} onClick={onRogue}>
                   <span className="gpk-addrow-ico" aria-hidden="true">
                     <CompassIcon size={18} />
                   </span>
                   Rogue session
+                  <span className="gpk-chev" aria-hidden="true" />
                 </button>
-                <button type="button" className="gpk-addrow" disabled={busy} onClick={() => setPicking(true)}>
+                <button type="button" className="gpk-addrow flat training" disabled={busy} onClick={() => setPicking(true)}>
                   <span className="gpk-addrow-ico" aria-hidden="true">
                     <CopyIcon />
                   </span>
                   Duplicate a session
+                  <span className="gpk-chev" aria-hidden="true" />
                 </button>
               </>
             )}
