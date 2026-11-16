@@ -12,6 +12,7 @@ import { VideoReplyBody, type VideoReplyView } from "./VideoReplySheet";
 import { dayWords } from "../lib/clientDates";
 import { pic } from "../lib/pic";
 import RingEdge from "../components/RingEdge";
+import CoachSays from "./CoachSays";
 
 // The coach asked for a video of this exercise: a camera on the exercise
 // card, with a dot until one is sent. It opens a sheet from the bottom with
@@ -276,10 +277,11 @@ export function VideoAskSheet({ ask, assignmentId, about = null, exerciseName, c
               </div>
             )}
 
+            {/* The coach's words as every coach's note (16 Nov, Alex: their face, their name, the words; it is an
+                instruction, not a question). */}
             {ask?.note && !ask.fromClient && (
               <div className="vas-asked">
-                <span className="vas-label">{coachName} asked</span>
-                <p>“{ask.note}”</p>
+                <CoachSays label={coachName}>{ask.note}</CoachSays>
               </div>
             )}
 
@@ -291,8 +293,6 @@ export function VideoAskSheet({ ask, assignmentId, about = null, exerciseName, c
                 {ask.sentAt && !finished && <p className="vas-fact">Sent {dayWords(new Date(ask.sentAt), { weekday: "short" })}</p>}
               </>
             )}
-            {/* The limit alone, and nothing with no ask (3 Nov, Alex: the words audit). */}
-            {!ask?.src && asked && <p className="vas-fact">Up to 2 min</p>}
             {problem && <p className="vas-problem">{problem}</p>}
             {/* The one ink pill while nothing is picked; once something is sent or answered it is the white one. */}
             {/* A finished session sends nothing more once something is in (14 Nov, Alex); a late one is still sent from there. */}
