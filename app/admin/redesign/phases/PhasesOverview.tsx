@@ -17,7 +17,7 @@ import type { PhaseTrack } from "../../../lib/db";
 import { TRACK_ACCENT, TRACK_LABEL } from "../../phaseChrome";
 import { gridFor, MoveDialog, PhaseDialog, phaseForm, TrackIcon, WINDOWS, type Win } from "../plan/PlanDraft";
 import { chromeOf, EV_LANE, EventDialog, KindIcon, MoveEventDialog, type Category } from "../plan/EventsCard";
-import { EventMark, eventIsPast, eventPlace, LaneLabel, MonthsRow, packLanes, PhaseBar, useSideScroll, weekSpan, weeksBetween, WeeksRow, type Grid } from "../plan/timelineParts";
+import { EventMark, eventIsPast, eventPlace, LaneLabel, MonthsRow, NowLine, packLanes, PhaseBar, useSideScroll, weekSpan, weeksBetween, WeeksRow, type Grid } from "../plan/timelineParts";
 import type { PlanPhaseRow } from "../../../lib/queries";
 import DatePick from "../DatePick";
 import { Sep } from "../Sep";
@@ -264,7 +264,7 @@ export default function PhasesOverview({ data, needs = [], now }: { data: Phases
                 <MonthsRow grid={grid} />
                 <div className="rq-tl-body">
                   {/* The Plan places the line past its 108px labels; here the label column is wider (--pov-lbl, phases.css). */}
-                  {grid.nowLeft && <span className="rq-now" style={{ left: grid.nowLeft.split("108px").join("var(--pov-lbl)") }} title="Now" />}
+                  {grid.nowLeft && <NowLine left={grid.nowLeft.split("108px").join("var(--pov-lbl)")} />}
                   <WeeksRow grid={grid} gridRef={weeksRef} />
                   {shown.map((c) => (
                     <ClientBlock

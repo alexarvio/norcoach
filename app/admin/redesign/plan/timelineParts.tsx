@@ -78,6 +78,40 @@ export function gridFor(win: number, thisWeek: string, intoWeek: number, /** Wee
   return { first, count, weeks, nowIdx, months, cols, nowLeft, shift };
 }
 
+/**
+ * The NOW line, on whole screen pixels (16 Nov, Alex: "why are the two lines for time different width"): placed at a
+ * fraction of its card's width it fell between pixels differently in each card, smeared over two pixels in one and
+ * three in the other. Its left edge is moved onto the nearest device pixel, and its width is a whole number of them,
+ * read again whenever the card resizes, so every NOW line draws the same.
+ */
+export function NowLine({ left }: { left: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    const box = el?.parentElement;
+    if (!el || !box) return;
+    const snap = () => {
+      const dpr = window.devicePixelRatio || 1;
+      el.style.translate = "0";
+      el.style.width = "10px";
+      // The timeline may be drawn smaller (the Phases screen's zoom): its scale, so whole pixels are whole on screen.
+      const scale = el.getBoundingClientRect().width / 10 || 1;
+      el.style.width = `${Math.max(1, Math.round(1.5 * dpr * scale)) / (dpr * scale)}px`;
+      const x = el.getBoundingClientRect().left;
+      el.style.translate = `${(Math.round(x * dpr) / dpr - x) / scale}px 0`;
+    };
+    snap();
+    const ro = new ResizeObserver(snap);
+    ro.observe(box);
+    window.addEventListener("resize", snap);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", snap);
+    };
+  }, [left]);
+  return <span ref={ref} className="rq-now" style={{ left }} title="Now" />;
+}
+
 export type Grid = ReturnType<typeof gridFor>;
 
 /** A lane, a phase's or an event's (21 Oct, Alex: the same size): a 38px bar with 3px above and below; plan.css's .rq-bar and .rq-evbar. */
@@ -166,7 +200,7 @@ export function Timeline({ grid, minWidth = Math.round(grid.count * 63), weeksRe
       <div className="rq-tl" style={{ minWidth }}>
         <MonthsRow grid={grid} />
         <div className="rq-tl-body">
-          {grid.nowLeft && <span className="rq-now" style={{ left: grid.nowLeft }} title="Now" />}
+          {grid.nowLeft && <NowLine left={grid.nowLeft} />}
           <WeeksRow grid={grid} gridRef={weeksRef} numbers={weekNumbers} />
           {children}
         </div>
