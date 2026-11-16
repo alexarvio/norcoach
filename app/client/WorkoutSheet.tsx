@@ -9,7 +9,7 @@ import type { GymOption } from "./GymPickerDialog";
 import GymPickerDialog, { BadgeFace } from "./GymPickerDialog";
 import { gymColor } from "../lib/gymColors";
 import RestTimerPill, { useRestTimer } from "./RestTimer";
-import FreeAddPage from "./FreeAddPage";
+import SheetAdd from "./workout/SheetAdd";
 import { SwapLibrary } from "./workout/SwapExerciseDialog";
 import { Bars } from "./Bars";
 import { MenuIcon } from "./WorkoutScreen";
@@ -443,12 +443,12 @@ export default function WorkoutSheet({
                 blockRef={refFor(`c${c.id}`)}
               />
             ))}
-            {/* A rogue session (19 Oct): Add an exercise after what it has; the new block comes in, nothing scrolls. */}
+            {/* A rogue session: the next block's place, a dashed ring and Add an exercise, typed in place (16 Nov, Alex: A
+                of docs/boards/rogue-add-mockup.html); the new block comes in above it, nothing scrolls. */}
             {free && !editing && onAddExercise && (
               <div className="ws-add">
-                <FreeAddPage
+                <SheetAdd
                   library={library ?? []}
-                  count={day.exercises.length + day.cardio.length}
                   onAdd={async (pick) => {
                     const id = await onAddExercise(pick);
                     return id != null;

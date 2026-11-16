@@ -375,5 +375,5 @@ function Poster({ url }: { url: string }) {
   return <span className="sw-poster" aria-hidden="true" />;
 }
 
-const GROUP_LABELS: Record<string, string> = { back: "Back", chest: "Chest", legs: "Legs", arms: "Arms", abs: "Abs", shoulders: "Shoulders", core: "Core", glutes: "Glutes", cardio: "Cardio", other: "Other" };
-const groupLabel = (slug: string) => GROUP_LABELS[slug] ?? (slug ? slug.slice(0, 1).toUpperCase() + slug.slice(1) : "Other");
+export const GROUP_LABELS: Record<string, string> = { back: "Back", chest: "Chest", legs: "Legs", arms: "Arms", abs: "Abs", shoulders: "Shoulders", core: "Core", glutes: "Glutes", cardio: "Cardio", other: "Other" };
+export const groupLabel = (slug: string) => GROUP_LABELS[slug] ?? (slug ? slug.slice(0, 1).toUpperCase() + slug.slice(1) : "Other");
