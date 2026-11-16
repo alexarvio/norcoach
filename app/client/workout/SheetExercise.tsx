@@ -269,15 +269,16 @@ export default function SheetExercise({
               </button>
             </>
           ) : (
+            // On the right under the ticks, Add the outermost (16 Nov, Alex: "most people are using the phone with the right hand").
             <>
-              <button type="button" className="ws-word" onClick={s.addSet}>
-                + Add a set
-              </button>
               {s.workCount > 1 && (
                 <button type="button" className="ws-word" onClick={s.tapRemove}>
                   − Remove a set
                 </button>
               )}
+              <button type="button" className="ws-word" onClick={s.addSet}>
+                + Add a set
+              </button>
             </>
           )}
         </div>
