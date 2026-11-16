@@ -13,6 +13,7 @@ import { dayWords } from "../lib/clientDates";
 import { pic } from "../lib/pic";
 import RingEdge from "../components/RingEdge";
 import CoachSays from "./CoachSays";
+import { videoFrame } from "../components/ChatMedia";
 
 // The coach asked for a video of this exercise: a camera on the exercise
 // card, with a dot until one is sent. It opens a sheet from the bottom with
@@ -44,8 +45,17 @@ function durationOf(url: string): Promise<number | null> {
   return new Promise((resolve) => {
     const v = document.createElement("video");
     v.preload = "metadata";
-    v.onloadedmetadata = () => resolve(Number.isFinite(v.duration) ? v.duration : null);
-    v.onerror = () => resolve(null);
+    // Let go of the clip once read: a hidden player left holding it kept the preview's from loading on an iPhone.
+    const done = (d: number | null) => {
+      v.removeAttribute("src");
+      try {
+        v.load();
+      } catch {}
+      resolve(d);
+    };
+    v.onloadedmetadata = () => done(Number.isFinite(v.duration) ? v.duration : null);
+    v.onerror = () => done(null);
+    setTimeout(() => done(null), 8000);
     v.src = url;
   });
 }
@@ -84,6 +94,9 @@ export function VideoAskSheet({ ask, assignmentId, about = null, exerciseName, c
   const [note, setNote] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  // A picked video's first frame as a picture (16 Nov, Alex: the preview was black), as the chat makes its thumbnail.
+  const [poster, setPoster] = useState<string | null>(null);
+  const posterUrl = useRef<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [theirsOpen, setTheirsOpen] = useState(false);
@@ -103,6 +116,7 @@ export function VideoAskSheet({ ask, assignmentId, about = null, exerciseName, c
   useEffect(
     () => () => {
       if (url.current) URL.revokeObjectURL(url.current);
+      if (posterUrl.current) URL.revokeObjectURL(posterUrl.current);
       upload.current?.abort.abort();
     },
     []
@@ -133,6 +147,16 @@ export function VideoAskSheet({ ask, assignmentId, about = null, exerciseName, c
     setPreview(u);
     setProblem(null);
     dropUpload();
+    if (posterUrl.current) URL.revokeObjectURL(posterUrl.current);
+    posterUrl.current = null;
+    setPoster(null);
+    if (f.type.startsWith("video/"))
+      void videoFrame(f).then((b) => {
+        if (!b || url.current !== u) return;
+        const p = URL.createObjectURL(b);
+        posterUrl.current = p;
+        setPoster(p);
+      });
     if (f.type.startsWith("image/")) {
       if (f.size > 20 * 1024 * 1024) return setProblem("This photo is over 20 MB. Pick a smaller one.");
       return startUpload(f);
@@ -231,7 +255,7 @@ export function VideoAskSheet({ ask, assignmentId, about = null, exerciseName, c
           </span>
         ) : file && preview ? (
           <>
-            {isPhoto(file) ? <img className="vas-media" src={preview} alt="" /> : <video className="vas-media" src={firstFrame(preview)} controls playsInline muted preload="metadata" />}
+            {isPhoto(file) ? <img className="vas-media" src={preview} alt="" /> : <video key={preview} className="vas-media" src={preview} poster={poster ?? undefined} controls playsInline muted preload="metadata" />}
             {!asked && (
               <input
                 className="vas-note"
