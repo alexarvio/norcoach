@@ -14,7 +14,7 @@ import DoneCheck from "../../components/DoneCheck";
 import { NoteIcon } from "../../components/icons";
 import { useExerciseSets, type SheetRow } from "./useExerciseSets";
 import { weightTone } from "./setRules";
-import { BlockMenu, BlockRing, BlockTitle, ChatGlyph, CheckGlyph, FoldedLine, MoreGlyph, PlayGlyph, SwapRow, TargetLine, ToolButton, UnitGlyph, WsFold, targetParts, useBlockFold, useBlockMenu } from "./sheetParts";
+import { BlockMenu, BlockRing, BlockTitle, ChatGlyph, CheckGlyph, FoldedLine, MoreGlyph, PlayGlyph, SwapRow, TargetLine, ToolButton, UnitGlyph, WsFold, targetParts, useBlockFold, useBlockMenu, useMovedOn } from "./sheetParts";
 
 // One exercise on the workout sheet (15 Nov, Alex: docs/boards/workout-sheet-a-mockup.html): its head (the number ring,
 // the name, the demo, the chat and the ⋯), the ask's line, the swap, the target line, the coach's note and your note,
@@ -64,9 +64,13 @@ export default function SheetExercise({
     own.current = el;
     blockRef(el);
   };
-  // The fold (15 Nov, Alex): a second after the tick that logs the last working set still to do, to one line. Never on a
-  // rogue session, whose sets are added one at a time (each tick would be its last, hiding + Add a set).
-  const fold = useBlockFold(s.allDone && !free, () => own.current, s.lastTicks);
+  // The fold (15 Nov, Alex): a second after the tick that logs the last working set still to do, to one line. A rogue
+  // session has no last set (they are added one at a time), so its exercise folds once the client moves on (16 Nov, Alex:
+  // "rogue session does not collapse the exercises when completed"): a set ticked in another exercise, or a new one added,
+  // folds every other one with a set logged, a second later. Never the one being worked on; it starts open.
+  const logged = s.workRows.filter((r) => r.done).length;
+  const movedOn = useMovedOn(free, dayId, exercise.id, logged);
+  const fold = useBlockFold(free ? logged > 0 : s.allDone, () => own.current, free ? movedOn : s.lastTicks, free ? false : undefined);
   const openMessages = useOpenMessages();
   const name = shownName(exercise);
   const ask = exercise.videoRequest;
@@ -144,7 +148,7 @@ export default function SheetExercise({
         <BlockTitle
           ring={<BlockRing n={index} done={done} on={inView || s.started} doneCheck={<DoneCheck size={22} />} />}
           name={name}
-          onFold={s.allDone && !free ? fold.close : undefined}
+          onFold={(free ? logged > 0 : s.allDone) ? fold.close : undefined}
         />
         <div className="ws-tools">
           {/* Swapped, a naked sheet (4 Nov, Alex): the demo is the exercise it replaced, so none. */}

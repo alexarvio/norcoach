@@ -18,7 +18,7 @@ import { clock, elapsedMs, isDone, loggedCount, shownName, useTicker, type Libra
 import SheetExercise from "./workout/SheetExercise";
 import SheetCardio from "./workout/SheetCardio";
 import FinishSheet from "./workout/FinishSheet";
-import { SheetHost } from "./workout/sheetParts";
+import { movedOnFrom, SheetHost } from "./workout/sheetParts";
 import { useSessionEnd } from "./workout/useSessionEnd";
 
 // The workout as one sheet (15 Nov, Alex: docs/boards/workout-sheet-a-mockup.html; on test behind WORKOUT_SHEET,
@@ -451,6 +451,8 @@ export default function WorkoutSheet({
                   library={library ?? []}
                   onAdd={async (pick) => {
                     const id = await onAddExercise(pick);
+                    // A new exercise is moving on (16 Nov): the ones with a set logged fold.
+                    if (id != null) movedOnFrom(day.key, -1);
                     return id != null;
                   }}
                 />
