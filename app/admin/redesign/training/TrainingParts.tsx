@@ -251,12 +251,11 @@ export function WeekRail({ weeks, viewIdx, dateOf, hrefFor, isLocal, onShow, onA
               }
             }}
           >
+            {/* The dot in the card's top right corner, always (16 Nov, Alex: A of docs/boards/week-dot-mockup.html): nothing
+                on the card reaches it, so it never moves and never meets NOW. */}
+            {owed && <i className="rd-due trn-week-due" role="img" aria-label="needs you" />}
             <span className="trn-week-top">
-              {/* The dot right after the name, taking no room (trn.css): the card and NOW stay where they are. */}
-              <span className="trn-week-name">
-                Week {w.index}
-                {owed && <i className={`rd-due${w.index >= 10 ? " trn-due-long" : ""}`} role="img" aria-label="needs you" />}
-              </span>
+              <span className="trn-week-name">Week {w.index}</span>
               {/* Black, a green pulse on its left (20 Oct, Alex). */}
               {now && (
                 <span className="trn-now" aria-hidden="true">

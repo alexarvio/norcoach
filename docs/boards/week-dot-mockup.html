@@ -1,0 +1,42 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Week dot</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600&display=swap" rel="stylesheet"><style>
+  :root { --ink:#141a24; --body:#3a4250; --faint:#8b93a1; --line:#E1E5EB; --rust:#b8471f; --green:#2f7a3f; }
+  * { box-sizing:border-box; margin:0; }
+  body { font-family:Archivo,system-ui,sans-serif; font-weight:500; color:var(--ink); background:#f4f7fc; padding:28px 24px 60px; -webkit-font-smoothing:antialiased; }
+  h1 { font-size:20px; font-weight:600; margin-bottom:4px; }
+  .sub { color:var(--faint); font-size:13px; margin-bottom:26px; max-width:900px; line-height:1.55; }
+  .opt { margin-bottom:34px; }
+  .opt h3 { font-size:14px; font-weight:600; margin-bottom:4px; }
+  .opt p { font-size:12.5px; color:var(--faint); margin-bottom:12px; max-width:760px; line-height:1.5; }
+  .rail { display:flex; gap:10px; }
+  .wk { position:relative; width:150px; display:flex; flex-direction:column; gap:10px; padding:13px 13px 12px; border:1px solid var(--line); border-radius:18px; background:#fff; }
+  .wk.on { box-shadow:0 0 0 2px var(--ink); border-color:var(--ink); }
+  .top { display:flex; align-items:center; justify-content:space-between; gap:6px; min-height:18px; }
+  .nm { position:relative; font-size:15px; font-weight:600; }
+  .now { display:inline-flex; align-items:center; gap:6px; font-size:10px; font-weight:600; letter-spacing:.12em; }
+  .now i { width:8px; height:8px; border-radius:50%; background:var(--green); box-shadow:0 0 0 3px rgba(47,122,63,.18); }
+  .bars { display:flex; gap:4px; } .bars i { flex:1; height:3px; border-radius:2px; background:#E6E9EE; } .bars i.d { background:var(--green); }
+  .foot { display:flex; justify-content:space-between; font-size:12px; color:var(--faint); }
+  .dot { width:6px; height:6px; border-radius:50%; background:var(--rust); position:absolute; }
+  /* A: the card's top right corner, always */
+  .a .dot { top:7px; right:7px; }
+  /* B: hung in the card's left margin, level with the name */
+  .b .dot { left:4px; top:19px; }
+  /* C: after the name, NOW at the card's foot instead */
+  .c .nm .dot { position:absolute; left:calc(100% + 5px); top:50%; translate:0 -50%; }
+</style></head><body>
+<h1>Week rail: where the rust dot lives</h1>
+<p class="sub">Today the dot sits after "Week 7", but on a narrow card with NOW beside it, it jumps up to the word's top right and crowds NOW's pulse. Three places where it is always the same, whatever else is on the card. Week 6 and Week 7 both owe you something; Week 7 is the current week.</p>
+<div id="o"></div>
+<script>
+  const card = (n, cls, now, dot, d, date) => `<div class="wk ${cls}">${dot === "card" ? '<i class="dot"></i>' : ""}<div class="top"><span class="nm">Week ${n}${dot === "name" ? '<i class="dot"></i>' : ""}</span>${now ? '<span class="now"><i></i>NOW</span>' : ""}</div><div class="bars">${[0,1,2,3,4].map(i => `<i class="${i < d ? "d" : ""}"></i>`).join("")}</div><div class="foot"><span>${date}</span><span>${d}/5</span></div></div>`;
+  const rail = (k, dotAt, nowFoot) => `<div class="rail ${k}">${card(6, "", false, dotAt, 4, "9 Nov")}${card(7, "on", !nowFoot, dotAt, 1, "16 Nov")}${card(8, "", false, null, 0, "23 Nov")}</div>`;
+  const cFoot = (html) => html.replace('<span>16 Nov</span>', '<span class="now"><i></i>NOW</span>');
+  const opts = [
+    ["A · The card's top right corner (my pick)", "Always 7px in from the corner of the card, on every week. Nothing on the card can reach it, so it never moves and never meets NOW.", rail("a", "card")],
+    ["B · In the card's left margin", "Hung in the padding left of the name, level with its middle. Never meets NOW, but a dot before a word reads less like 'this one needs you'.", rail("b", "card")],
+    ["C · After the name, NOW moves to the foot", "The dot stays right after Week 7 as everywhere else, and NOW takes the date's place at the foot (the date is already on the rail's other weeks).", cFoot(rail("c", "name", true))],
+  ];
+  document.getElementById("o").innerHTML = opts.map(([h, p, r]) => `<div class="opt"><h3>${h}</h3><p>${p}</p>${r}</div>`).join("");
+</script>
+</body></html>
