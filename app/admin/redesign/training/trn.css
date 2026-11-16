@@ -143,19 +143,11 @@
 .rd.trn .trn-week-foot { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; font-weight: 500; color: var(--trn-muted); }
 .rd.trn .trn-week.add { border-color: var(--trn-btnline); background: transparent; box-shadow: none; }
 .rd.trn .trn-week.add .trn-week-name { font-weight: 600; color: var(--trn-navy); }
-/* The dot trail (dots.ts, 22 Oct, Alex): a week with something owed carries the rust dot right after "Week 3", on the
-   numeral's middle. It takes no room, so the card and NOW never move when it comes or goes. Where the card is too narrow
-   for it to clear NOW (a week's top line under ~109px, ~117px for Week 10 on), it sits at the top right of the word
-   instead, as the client tabs carry theirs. */
-.rd.trn .trn-week-top { container: trn-week / inline-size; }
-.rd.trn .trn-week-name { position: relative; }
-.rd.trn .trn-week-name > .rd-due { position: absolute; top: 50%; left: calc(100% + 5px); translate: 0 -50%; }
-@container trn-week (max-width: 108px) {
-  .rd.trn .trn-week-top:has(.trn-now) .trn-week-name > .rd-due { top: -4px; left: calc(100% + 1px); translate: none; }
-}
-@container trn-week (max-width: 116px) {
-  .rd.trn .trn-week-top:has(.trn-now) .trn-week-name > .rd-due.trn-due-long { top: -4px; left: calc(100% + 1px); translate: none; }
-}
+/* The dot trail (dots.ts, 22 Oct, Alex): a week with something owed carries the rust dot in the card's top right corner,
+   7px in, always (16 Nov, Alex: A of docs/boards/week-dot-mockup.html). It takes no room and nothing on the card reaches
+   it, so it never moves and never meets NOW. */
+.rd.trn .trn-week { position: relative; }
+.rd.trn .trn-week > .trn-week-due { position: absolute; top: 7px; right: 7px; }
 
 /* ---- Week sessions */
 .rd.trn .trn-weekhead { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: -10px; }
