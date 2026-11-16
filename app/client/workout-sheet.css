@@ -194,8 +194,9 @@
 .ws-finish .wo-swipe.locked .wo-swipe-handle { color: #2f7a3f; }
 .ws-finish .wo-save-edit { background: #141a24; font-weight: 600; }
 
-/* ---- Discard, asked in the head's ⋯ as Reopen is (.so-ask, globals.css), the verb the rust pill. */
-.so-ask-go.ws-ask-rust.ws-ask-rust { background: #b8471f; }
+/* ---- Discard, asked in the head's ⋯ as Reopen is (.so-ask, globals.css): deleting asks in place, Cancel and Discard
+   in words, Discard in rust (16 Nov, Alex; docs/DESIGN-RULES.md §8). */
+.so-ask-go.ws-ask-rust.ws-ask-rust { height: auto; padding: 0; border-radius: 0; background: none; color: #b8471f; }
 
 @media (prefers-reduced-motion: reduce) {
   .ws-pb.pop { animation: none; }
