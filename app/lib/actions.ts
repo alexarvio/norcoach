@@ -10,6 +10,7 @@ import { newerCallDone, noteFocus, setFocusOnComplete } from "./focus";
 import { redirect } from "next/navigation";
 import { getData, isStepsMetric, MAX_DAY_STEPS, persist, persistNow, type CoachBusiness, type CoachInvoicing, type CoachNotify, type InvoiceEvery, type InvoiceLine, type MetricAskAt, type PhaseTrack } from "./db";
 import { ASK_AT } from "./metricAskAt";
+import { syncHealthForClient, type HealthSyncInput, type HealthSyncResult } from "./healthSync";
 import { isGymColor, isGymKind } from "./gymColors";
 import { listClientGyms } from "./queries";
 import { createCoachAccount, invoiceCheckout, onboardingLink, stripeConfigured } from "./stripe";
@@ -1328,6 +1329,10 @@ export async function logMetricPeriodAction(formData: FormData) {
     const value = Number(String(raw).replace(",", "."));
     // A step count past a day's most is a slip, not a reading (24 Oct, Alex): left as it was.
     if (isStepsMetric(def.name) && value > MAX_DAY_STEPS) return;
+    // The phone's figure sent back as it was (the check-in posts every row of the day) stays the phone's (16 Nov): only a
+    // different figure is the client typing over it, so the phone can still bring the rest of the night or a later reading.
+    const was = getMetricEntries([def.id]).find((e) => e.period === period);
+    if (was?.source === "health" && was.value === value) return;
     const stamp = entries.find((e) => e.metric_definition_id === def.id && e.period === period)?.logged_at ?? loggedAt;
     setMetricEntry(def.id, period, Number.isFinite(value) ? value : null, stamp);
   });
@@ -1339,32 +1344,24 @@ export async function logMetricPeriodAction(formData: FormData) {
   revalidatePath("/client");
 }
 
-// Steps from the phone's Apple Health / Health Connect (the native app,
-// HealthSync.tsx), as { date, steps } per day. They fill the client's daily
-// metric named like "Steps" for the days a check-in can still be changed,
-// the phone's count replacing a typed one. Says whether the coach tracks
-// steps at all, so Settings can say so.
-export async function syncHealthStepsAction(days: { date: string; steps: number }[]): Promise<{ tracked: boolean; saved: number }> {
+// What the phone's Apple Health / Health Connect read (the native app, HealthSync.tsx; 16 Nov, Alex): steps, weight,
+// sleep, resting heart rate and HRV fill the coach's own metrics of the live lifestyle phase for the periods a check-in
+// can still change, flagged as the phone's; the workouts are kept for the coach's Activity (lib/healthSync.ts). Says
+// which kinds the coach tracks and how many workouts the phone had, so Settings can say when there is nothing to send.
+export async function syncHealthAction(input: HealthSyncInput): Promise<HealthSyncResult> {
   const { clientId } = await requireClient();
-  const metric = listMetricDefinitions(clientId, "daily").find((d) => /\bsteps?\b/i.test(d.name));
-  if (!metric) return { tracked: false, saved: 0 };
-  const today = localDateStr();
-  const current = new Map(getMetricEntries([metric.id]).map((e) => [e.period, e.value]));
-  let saved = 0;
-  for (const day of Array.isArray(days) ? days.slice(0, 14) : []) {
-    const steps = Math.round(Number(day?.steps));
-    if (!checkInEditable(String(day?.date), today) || !Number.isFinite(steps) || steps <= 0 || steps > 200000) continue;
-    if (current.get(day.date) === steps) continue;
-    // Flagged as the phone's, and an older day keeps its time (13 Nov, Alex: Activity showed 8 daily check-ins at 14:55,
-    // the sync re-dating the last eight days each time their counts moved).
-    setMetricEntry(metric.id, day.date, steps, new Date().toISOString(), "health");
-    saved++;
-  }
-  if (saved) {
+  const r = syncHealthForClient(clientId, input && typeof input === "object" ? input : {});
+  if (r.saved || r.workoutsChanged) {
     revalidatePath("/admin");
     revalidatePath("/client");
   }
-  return { tracked: true, saved };
+  return { tracked: r.tracked, saved: r.saved, workouts: r.workouts };
+}
+
+// Steps alone, as the app sent them before 16 Nov ({ date, steps } a day): through the same sync.
+export async function syncHealthStepsAction(days: { date: string; steps: number }[]): Promise<{ tracked: boolean; saved: number }> {
+  const r = await syncHealthAction({ steps: Array.isArray(days) ? days : [] });
+  return { tracked: r.tracked.includes("steps"), saved: r.saved };
 }
 
 /** A change to the shape update is news to the client only once one has been asked of them: a sheet open now or photos

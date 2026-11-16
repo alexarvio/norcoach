@@ -11,7 +11,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Norcoach uses the camera for the photos and videos you send your coach.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Norcoach reads your daily step count so your steps log themselves for your coach.</string>
+	<string>Norcoach reads your steps, weight, sleep, heart rate and workouts so they log themselves for your coach.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Norcoach does not write to Apple Health.</string>
 	<key>CFBundleDevelopmentRegion</key>

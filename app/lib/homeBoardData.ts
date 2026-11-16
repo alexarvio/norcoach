@@ -411,7 +411,8 @@ function lifestyleFigure(ctx: Ctx): { value: string; suffix: string } | null {
   const soFar = daysBetween(monday, ctx.today) + 1;
   const seen = new Set<string>();
   for (const e of data.metric_entries) {
-    if (!ids.has(e.metric_definition_id) || e.value == null) continue;
+    // The phone's figure is not a check-in (16 Nov; as Activity and the Feed's Since line).
+    if (!ids.has(e.metric_definition_id) || e.value == null || e.source === "health") continue;
     const day = (e.period ?? "").slice(0, 10);
     if (day >= monday && day <= ctx.today) seen.add(day);
   }
@@ -557,7 +558,7 @@ function sinceOf(ctx: Ctx): HomeBoard["since"] {
   const defs = new Map(data.metric_definitions.filter((m) => m.client_id === ctx.clientId && !m.retired_at && !ctx.fedIds.has(m.id)).map((m) => [m.id, m] as const));
   for (const e of data.metric_entries) {
     const def = defs.get(e.metric_definition_id);
-    if (!def || e.value == null) continue;
+    if (!def || e.value == null || e.source === "health") continue;
     if (def.frequency === "daily") {
       const day = (e.period ?? "").slice(0, 10);
       if (day <= ctx.today && savedSince(e.logged_at, day)) checkInDays.add(day);
@@ -830,7 +831,7 @@ function daysOf(ctx: Ctx, dates: string[] = lastDays(ctx.today)): HomeBoard["day
     const defs = new Map(data.metric_definitions.filter((m) => m.client_id === ctx.clientId && !ctx.fedIds.has(m.id)).map((m) => [m.id, m] as const));
     for (const e of data.metric_entries) {
       const def = defs.get(e.metric_definition_id);
-      if (!def || e.value == null) continue;
+      if (!def || e.value == null || e.source === "health") continue;
       const section = def.frequency === "weekly" || def.frequency === "monthly" ? def.frequency : "daily";
       const date = section === "daily" ? e.period : e.logged_at ? localDateStr(new Date(e.logged_at)) : null;
       if (!date) continue;
@@ -845,7 +846,9 @@ function daysOf(ctx: Ctx, dates: string[] = lastDays(ctx.today)): HomeBoard["day
     // Done in part (27 Oct, Alex): trained with no session finished in full; checked in with a daily metric asked that
     // day left empty while others were filled (a weekly or monthly send alone, or a day with no daily ask, is whole).
     const askedToday = asked(date).filter((n) => !ctx.fedNames.has(n));
-    const short = askedToday.some((n) => checked.includes(n)) && askedToday.some((n) => !checked.includes(n));
+    // What the phone filled is never missing (16 Nov), nor a check-in of its own.
+    const filled = [...checked, ...(d?.auto ?? [])];
+    const short = askedToday.some((n) => checked.includes(n)) && askedToday.some((n) => !filled.includes(n));
     return {
       date,
       trained,

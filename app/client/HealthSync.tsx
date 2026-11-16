@@ -2,14 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { syncHealthStepsAction } from "../lib/actions";
+import { syncHealthAction } from "../lib/actions";
+import type { HealthSyncInput, HealthSyncResult, HealthWorkoutIn } from "../lib/healthSync";
 import { callNative, nativeApp as cap, nativePlatform as platformOf } from "../lib/native";
 import SettingsFold from "./SettingsFold";
 
-// Steps from Apple Health (iPhone) or Health Connect (Android), read by the
-// native app (mobile/, the @capgo/capacitor-health plugin) and saved into the
-// client's daily "Steps" metric by syncHealthStepsAction. In a browser none of
-// this exists: Settings shows the rows as "Soon", as before.
+// Apple Health (iPhone) or Health Connect (Android), read by the native app (mobile/, the @capgo/capacitor-health
+// plugin) and sent to syncHealthAction: steps, weight, sleep, resting heart rate and HRV fill the coach's own metrics
+// when the coach tracks them, and the workouts go to the coach's Activity (16 Nov, Alex: "aight do so!"; steps alone
+// before). In a browser none of this exists: Settings shows the rows as "Soon", as before.
 
 const noSubscribe = () => () => {};
 
@@ -32,25 +33,181 @@ const writeOn = (on: boolean) => {
   }
 };
 
+// What the phone is asked to read. A phone that turned the switch on before 16 Nov was asked for steps alone: it is
+// asked once more for the rest on its next sync (iPhone shows its sheet only for the types it hasn't asked yet).
+const READ = ["steps", "weight", "sleep", "restingHeartRate", "heartRateVariability", "workouts"];
+const ASKED_KEY = "ironline-health-asked";
+const ASKED = "2";
+// On Android a permission the installed app doesn't declare is never granted, and the site reaches phones before a new
+// app build does: the ask is kept with the build it was made in, so the next build (declaring the new types) asks again.
+// iPhone's sheet asks every type the build knows, so its mark is the version alone.
+const askedMark = async () => {
+  if (platformOf() !== "android") return ASKED;
+  try {
+    const info = await callNative<{ build?: string; version?: string }>("App", "getInfo");
+    return `${ASKED}:${info.build ?? info.version ?? ""}`;
+  } catch {
+    return `${ASKED}:`;
+  }
+};
+const readAsked = () => {
+  try {
+    return window.localStorage.getItem(ASKED_KEY);
+  } catch {
+    return BLOCKED;
+  }
+};
+// Storage blocked: never asked again by itself (it would ask on every sync); the switch still asks.
+const BLOCKED = "blocked";
+const writeAsked = (mark: string) => {
+  try {
+    window.localStorage.setItem(ASKED_KEY, mark);
+  } catch {
+    /* blocked storage */
+  }
+};
+const askToRead = async () => {
+  const auth = await callNative<{ readAuthorized?: string[] }>("Health", "requestAuthorization", { read: READ, write: [] });
+  writeAsked(await askedMark());
+  return auth;
+};
+
 const localDay = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-// The last eight days (today and the seven a check-in can still change),
-// one total per day in the phone's time.
-async function syncSteps(): Promise<{ tracked: boolean; saved: number } | null> {
+type Sample = { value: number; unit?: string; startDate: string; endDate: string; sleepState?: string; stages?: { startDate: string; endDate: string; stage: string }[] };
+type Workout = { workoutType: string; duration: number; totalEnergyBurned?: number; totalDistance?: number; startDate: string; endDate: string; sourceName?: string; platformId?: string };
+
+const HOUR = 3_600_000;
+const ASLEEP = new Set(["asleep", "rem", "deep", "light"]);
+const STAGED = new Set(["rem", "deep", "light"]);
+
+/** Hours asleep a night, one decimal, the night named by the morning it ends on (a segment ending before 18:00 is that
+ *  day's, after it the next morning's). Asleep, REM, deep and light count; in bed and awake don't. A night with stages
+ *  (a watch) reads them alone, and overlapping segments (two apps, two devices) count once. */
+function sleepNights(samples: Sample[], fromDay: string): { date: string; hours: number }[] {
+  const nights = new Map<string, { from: number; to: number; stage: string }[]>();
+  const push = (start: string, end: string, stage: string) => {
+    const from = Date.parse(start);
+    const to = Date.parse(end);
+    if (!ASLEEP.has(stage) || !Number.isFinite(from) || !Number.isFinite(to) || to <= from) return;
+    const night = localDay(new Date(to + 6 * HOUR));
+    const list = nights.get(night) ?? [];
+    list.push({ from, to, stage });
+    nights.set(night, list);
+  };
+  for (const s of samples) {
+    if (s.stages?.length) for (const st of s.stages) push(st.startDate, st.endDate, st.stage);
+    else if (s.sleepState) push(s.startDate, s.endDate, s.sleepState);
+    // A Health Connect session with no stages: asleep, start to end.
+    else push(s.startDate, s.endDate, "asleep");
+  }
+  const out: { date: string; hours: number }[] = [];
+  for (const [date, segs] of nights) {
+    if (date < fromDay) continue;
+    const staged = segs.filter((s) => STAGED.has(s.stage));
+    const use = (staged.length ? staged : segs).sort((a, b) => a.from - b.from);
+    let total = 0;
+    let at = -Infinity;
+    for (const s of use) {
+      const from = Math.max(s.from, at);
+      if (s.to > from) total += s.to - from;
+      at = Math.max(at, s.to);
+    }
+    const hours = Math.round((total / HOUR) * 10) / 10;
+    if (hours > 0) out.push({ date, hours });
+  }
+  return out;
+}
+
+/** A day's average of a kind's samples (resting heart rate, HRV), by the phone's day. */
+function dayAverages(samples: Sample[], fromDay: string): { date: string; value: number }[] {
+  const days = new Map<string, number[]>();
+  for (const s of samples) {
+    const t = Date.parse(s.startDate);
+    if (!Number.isFinite(t) || !Number.isFinite(s.value)) continue;
+    const day = localDay(new Date(t));
+    if (day < fromDay) continue;
+    days.set(day, [...(days.get(day) ?? []), s.value]);
+  }
+  return [...days].map(([date, v]) => ({ date, value: v.reduce((a, b) => a + b, 0) / v.length }));
+}
+
+/** One kind's samples, or none when it can't be read (not allowed, not on this phone): the others still go. */
+const samplesOf = async (dataType: string, from: Date, limit: number): Promise<Sample[]> => {
+  try {
+    const res = await callNative<{ samples?: Sample[] }>("Health", "readSamples", { dataType, startDate: from.toISOString(), endDate: new Date().toISOString(), limit, ascending: true });
+    return Array.isArray(res.samples) ? res.samples : [];
+  } catch {
+    return [];
+  }
+};
+
+// The last eight days (today and the seven a check-in can still change), in the phone's time; weight from the start of
+// the oldest week or month a check-in can still change, so a weekly or monthly weigh-in finds its latest.
+async function syncHealth(): Promise<HealthSyncResult | null> {
   if (!cap()) return null;
-  const start = new Date();
+  const asked = readAsked();
+  if (asked !== BLOCKED && asked !== (await askedMark())) await askToRead().catch(() => {});
+  const now = new Date();
+  const start = new Date(now);
   start.setHours(0, 0, 0, 0);
   start.setDate(start.getDate() - 7);
-  const res = await callNative<{ samples?: { startDate: string; value: number }[] }>("Health", "queryAggregated", {
-    dataType: "steps",
-    startDate: start.toISOString(),
-    endDate: new Date().toISOString(),
-    bucket: "day",
-    aggregation: "sum",
-  });
-  const days = (res.samples ?? []).map((s) => ({ date: localDay(new Date(s.startDate)), steps: s.value }));
-  return syncHealthStepsAction(days);
+  const fromDay = localDay(start);
+  const monday = new Date(start);
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  const monthFirst = new Date(start.getFullYear(), start.getMonth(), 1);
+  const weightFrom = monday < monthFirst ? monday : monthFirst;
+  const input: HealthSyncInput = { store: platformOf() === "android" ? "google" : "apple" };
+
+  try {
+    const res = await callNative<{ samples?: { startDate: string; value: number }[] }>("Health", "queryAggregated", {
+      dataType: "steps",
+      startDate: start.toISOString(),
+      endDate: now.toISOString(),
+      bucket: "day",
+      aggregation: "sum",
+    });
+    input.steps = (res.samples ?? []).map((s) => ({ date: localDay(new Date(s.startDate)), steps: s.value }));
+  } catch {
+    /* steps not allowed: the rest still go */
+  }
+
+  // Weight: each day's latest weigh-in, in kg, with when it was.
+  const weighIns = new Map<string, { date: string; kg: number; at: string }>();
+  for (const s of await samplesOf("weight", weightFrom, 500)) {
+    const t = Date.parse(s.endDate || s.startDate);
+    if (!Number.isFinite(t) || !Number.isFinite(s.value) || (s.unit && s.unit !== "kilogram")) continue;
+    const date = localDay(new Date(t));
+    const was = weighIns.get(date);
+    if (!was || Date.parse(was.at) < t) weighIns.set(date, { date, kg: s.value, at: new Date(t).toISOString() });
+  }
+  input.weight = [...weighIns.values()];
+
+  input.sleep = sleepNights(await samplesOf("sleep", new Date(start.getTime() - 18 * HOUR), 3000), fromDay);
+  input.restingHeartRate = dayAverages(await samplesOf("restingHeartRate", start, 500), fromDay).map((d) => ({ date: d.date, bpm: d.value }));
+  input.hrv = dayAverages(await samplesOf("heartRateVariability", start, 3000), fromDay).map((d) => ({ date: d.date, ms: d.value }));
+
+  try {
+    const res = await callNative<{ workouts?: Workout[] }>("Health", "queryWorkouts", { startDate: start.toISOString(), endDate: now.toISOString(), limit: 100, ascending: true });
+    input.workouts = (res.workouts ?? []).map(
+      (w): HealthWorkoutIn => ({
+        id: w.platformId,
+        type: w.workoutType,
+        start: w.startDate,
+        end: w.endDate,
+        seconds: w.duration,
+        kcal: w.totalEnergyBurned ?? null,
+        meters: w.totalDistance ?? null,
+        source: w.sourceName ?? null,
+      })
+    );
+    input.workoutsFrom = start.toISOString();
+  } catch {
+    /* workouts not allowed: none sent, none taken away */
+  }
+
+  return syncHealthAction(input);
 }
 
 // Mounted once in the client app: syncs on opening and on coming back to the
@@ -63,7 +220,7 @@ export function HealthAutoSync() {
     const run = () => {
       if (document.visibilityState !== "visible" || !readOn() || Date.now() - last.current < 10 * 60_000) return;
       last.current = Date.now();
-      syncSteps()
+      syncHealth()
         .then((r) => {
           if (r?.saved) router.refresh();
         })
@@ -88,8 +245,9 @@ export function ConnectedApps({ coachName }: { coachName: string }) {
   const [note, setNote] = useState<string | null>(null);
 
   const sync = useCallback(async () => {
-    const r = await syncSteps();
-    if (r && !r.tracked) setNote(`${coachName} isn't tracking steps yet`);
+    const r = await syncHealth();
+    // Nothing to say while anything goes (16 Nov): only when the coach tracks none of it and there are no workouts.
+    if (r && r.tracked.length === 0 && r.workouts === 0) setNote(`${coachName} isn't tracking steps, weight, sleep or heart rate yet`);
     else setNote(null);
     if (r?.saved) router.refresh();
   }, [router, coachName]);
@@ -129,10 +287,10 @@ export function ConnectedApps({ coachName }: { coachName: string }) {
         setNote(platform === "android" ? "Health Connect not installed" : "Not on this phone");
         return;
       }
-      const auth = await callNative<{ readAuthorized?: string[] }>("Health", "requestAuthorization", { read: ["steps"], write: [] });
-      // Android says whether steps were allowed; iPhone never does.
-      if (platform === "android" && !auth.readAuthorized?.includes("steps")) {
-        setNote("Steps not allowed");
+      const auth = await askToRead();
+      // Android says what was allowed; iPhone never does.
+      if (platform === "android" && !auth.readAuthorized?.length) {
+        setNote("Not allowed");
         return;
       }
       writeOn(true);
@@ -151,7 +309,7 @@ export function ConnectedApps({ coachName }: { coachName: string }) {
         <button type="button" className="settings-toggle-row" onClick={toggle} disabled={busy}>
           <div className="home-dark-row-body">
             <div className="home-dark-row-title">{name}</div>
-            <div className="home-dark-row-detail">Steps</div>
+            <div className="home-dark-row-detail">Steps, weight, sleep, heart rate, workouts</div>
           </div>
           <span className={`settings-switch${on ? " on" : ""}`} aria-hidden="true">
             <span className="settings-switch-knob" />

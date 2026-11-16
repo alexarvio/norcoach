@@ -1,0 +1,71 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Automatic metrics</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600&display=swap" rel="stylesheet"><style>
+  :root { --ink:#141a24; --body:#3a4250; --sec:#5b6474; --faint:#8b93a1; --label:#98A2B3; --line:#E1E5EB; --page:#F5F6F8; --green:#2f7a3f; --beige:#a08a5c; --blue:#2f5d8f; }
+  * { box-sizing:border-box; margin:0; }
+  body { font-family:Archivo,system-ui,sans-serif; font-weight:500; color:var(--ink); background:#fff; padding:28px 20px 72px; -webkit-font-smoothing:antialiased; }
+  h1 { font-size:20px; font-weight:600; margin-bottom:4px; }
+  .sub { color:var(--faint); font-size:13px; margin-bottom:22px; max-width:980px; line-height:1.55; }
+  .opts { display:flex; flex-wrap:wrap; gap:34px; align-items:flex-start; }
+  .opt { width:340px; }
+  .opt h3 { font-size:14px; font-weight:600; margin-bottom:4px; }
+  .opt > p { font-size:12.5px; color:var(--faint); line-height:1.5; min-height:92px; margin-bottom:12px; }
+  .phone { position:relative; overflow:hidden; border-radius:34px; background:rgba(10,14,22,.32); box-shadow:0 0 0 8px #1b1f27; height:720px; }
+  .sheet { position:absolute; left:10px; right:10px; top:90px; background:#fff; border-radius:24px; padding:18px 14px 14px; }
+  .hd { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .hd .t { flex:1; } .hd small { display:block; font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--sec); }
+  .hd b { font-size:19px; font-weight:600; } .hd i { display:block; font-style:normal; font-size:12px; color:var(--faint); margin-top:2px; }
+  .x { width:30px; height:30px; border-radius:50%; box-shadow:inset 0 0 0 1px var(--line); display:grid; place-items:center; color:var(--sec); font-size:13px; }
+  .gl { font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--sec); margin:10px 2px 6px; }
+  .row { display:flex; align-items:center; gap:12px; padding:12px; border-radius:18px; background:#fff; box-shadow:inset 0 0 0 1px var(--line); margin-top:8px; }
+  .row.filled { background:rgba(var(--c),.06); box-shadow:inset 0 0 0 1.5px rgba(var(--c),.35); }
+  .row .tx { flex:1; min-width:0; } .row .n { font-size:15.5px; font-weight:600; } .row .l { font-size:12px; color:var(--faint); margin-top:1px; display:flex; align-items:center; gap:6px; }
+  .num { width:110px; display:flex; justify-content:flex-end; align-items:baseline; gap:4px; }
+  .num b { font-size:22px; font-weight:600; font-variant-numeric:tabular-nums; } .num b.ph { color:#AEB6C2; } .num span { width:26px; font-size:12.5px; font-weight:600; color:var(--faint); }
+  .num.field b { border-bottom:1.5px solid #C9CFD8; padding:0 2px 2px; }
+  .dot { width:7px; height:7px; border-radius:50%; background:var(--green); flex:none; position:relative; }
+  .dot::after { content:""; position:absolute; inset:-4px; border-radius:50%; border:1.5px solid rgba(47,122,63,.5); animation:pulse 1.8s ease-out infinite; }
+  @keyframes pulse { 0% { transform:scale(.5); opacity:1; } 100% { transform:scale(1.4); opacity:0; } }
+  .hk { width:22px; height:22px; border-radius:50%; box-shadow:inset 0 0 0 1.5px rgba(var(--c),.5); display:grid; place-items:center; color:rgb(var(--c)); flex:none; }
+  .hk svg { width:12px; height:12px; }
+  .lock { color:var(--label); } .lock svg { width:13px; height:13px; }
+  .foot { display:flex; justify-content:flex-end; margin-top:14px; } .save { height:40px; padding:0 22px; border-radius:999px; background:var(--ink); color:#fff; font-size:14px; font-weight:600; display:grid; place-items:center; }
+  /* Entries list */
+  .ent { position:absolute; left:0; right:0; bottom:0; top:450px; background:var(--page); padding:14px 16px; }
+  .er { display:flex; align-items:center; gap:10px; height:44px; font-size:14px; }
+  .er .k { flex:1; color:var(--body); } .er b { font-weight:600; font-variant-numeric:tabular-nums; }
+  svg { fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+  .notes { margin-top:28px; max-width:980px; font-size:13px; color:var(--body); line-height:1.65; } .notes b { color:var(--ink); font-weight:600; } .notes li { margin:2px 0 2px 18px; }
+</style></head><body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="heart" viewBox="0 0 24 24"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z"/></symbol>
+  <symbol id="lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="sync" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/></symbol>
+</defs></svg>
+<h1>Check-in: metrics filled automatically</h1>
+<p class="sub">Today Steps looks like any other field, so nothing says Apple Health fills it, and you could type over it. The idea in all three: the figure stays, there is no field to type in, and one quiet mark says where it comes from. Weight and sleep stay typed (until the phone fills them too, then they look like Steps). The same mark shows in the check-in's Entries list.</p>
+<div class="opts" id="o"></div>
+<div class="notes"><b>In all three</b><ul>
+  <li>No field and no underline on Steps: a tap does nothing. It counts as filled, so the "3 of 5 still to fill" line never asks for it.</li>
+  <li>The coach sees the same mark on the reading in their check-ins table, so they know it wasn't typed.</li>
+  <li>If the phone has no figure for the day yet (Health off, no steps), the row is an ordinary field again, so nothing is ever stuck empty.</li>
+</ul></div>
+<script>
+  const rows = (auto) => `
+    <div class="gl">Body</div>
+    <div class="row filled" style="--c:47,93,143"><div class="tx"><div class="n">Weight</div><div class="l">Last logged 82.4 kg</div></div><div class="num field"><b>82.1</b><span>kg</span></div></div>
+    <div class="gl">Recovery</div>
+    <div class="row filled" style="--c:91,100,114"><div class="tx"><div class="n">Sleep</div><div class="l">Last logged 7.2 h</div></div><div class="num field"><b>6.8</b><span>h</span></div></div>
+    <div class="gl">Activity</div>
+    ${auto}`;
+  const sheet = (auto, entry) => `<div class="phone"><div class="sheet"><div class="hd"><span class="t"><small>Lifestyle | Maintenance</small><b>Daily check-in</b><i>Mon 16 Nov | All filled</i></span><span class="x">✕</span></div>${rows(auto)}<div class="foot"><span class="save">Save</span></div></div></div>`;
+  const A = `<div class="row filled" style="--c:47,122,63"><div class="tx"><div class="n">Steps</div><div class="l"><span class="dot"></span>Live from Apple Health</div></div><div class="num"><b>8,412</b><span></span></div></div>`;
+  const B = `<div class="row filled" style="--c:47,122,63"><div class="tx"><div class="n">Steps</div><div class="l">Apple Health | 14:32</div></div><div class="num"><b>8,412</b><span></span></div><span class="hk"><svg><use href="#heart"/></svg></span></div>`;
+  const C = `<div class="row" style="--c:47,122,63;background:#F5F6F8;box-shadow:none"><div class="tx"><div class="n">Steps</div><div class="l">From Apple Health</div></div><div class="num"><b style="color:#5b6474">8,412</b><span></span></div><span class="lock"><svg><use href="#lock"/></svg></span></div>`;
+  const opts = [
+    ["A · Live, with a pulsing dot (my pick)", "Under the name a small green dot that pulses, and 'Live from Apple Health'. The figure in ink, no field. Pulsing is the app's word for 'live' already (the NOW line, a session going on), and steps do change through the day.", sheet(A)],
+    ["B · The source and when it synced", "Under the name 'Apple Health | 14:32' (when the phone last sent it), and a small heart in a ring after the figure, in the row's colour. Calmer: nothing moves, the time says how fresh it is.", sheet(B)],
+    ["C · Locked", "The row greyed, the figure grey, a lock at its end and 'From Apple Health'. The clearest 'you can't type here', but it reads as blocked rather than as something working for you.", sheet(C)],
+  ];
+  document.getElementById("o").innerHTML = opts.map(([h, p, s]) => `<div class="opt"><h3>${h}</h3><p>${p}</p>${s}</div>`).join("");
+</script>
+</body></html>
