@@ -13812,12 +13812,17 @@ export function videoReplyTarget(id: number, ext: string): { dir: string; public
   return { dir, publicPath: `/uploads/videos/${row.client_id}/${filename}`, filePath: path.join(dir, filename) };
 }
 
-/** Files the reply video; returns the one it replaces, to delete. */
-export function setVideoReplyFile(id: number, publicPath: string): string | null {
+/** Files the reply video (or, 16 Nov, the photo sent back with the coach's drawing on it); returns the one it replaces, to delete. */
+export function setVideoReplyFile(id: number, publicPath: string, media: "video" | "photo" = "video"): string | null {
   const row = getData().video_requests.find((r) => r.id === id);
   if (!row) return null;
   const previous = row.reply_file_path ?? null;
   row.reply_file_path = publicPath;
+  row.reply_media = media === "photo" ? "photo" : null;
+  if (media === "photo") {
+    row.reply_duration_ms = null;
+    row.reply_annotations = null;
+  }
   persist();
   return previous;
 }
@@ -13856,13 +13861,15 @@ function exerciseLinkFor(row: VideoRequest): MessageLink | null {
   const a = getData().workout_assignments.find((w) => w.id === row.assignment_id);
   return a ? { kind: "exercise", dayId: a.program_day_id, assignmentId: a.id } : null;
 }
-/** A text reply to a client's photo or video. */
-export function replyToMedia(id: number, text: string): boolean {
+/** A text reply to a client's photo or video. `withPicture` (16 Nov, Alex): the photo sent back with the coach's
+    drawing on it is already filed as the reply's file (setVideoReplyFile, "photo"); it goes into the chat with the words. */
+export function replyToMedia(id: number, text: string, withPicture = false): boolean {
   const row = getData().video_requests.find((r) => r.id === id);
   const clean = text.trim().slice(0, 2000);
   if (!row || !clean) return false;
   if (!sendVideoReply(id, clean)) return false;
-  sendChatMessage(row.client_id, "coach", clean, undefined, exerciseLinkFor(row));
+  const picture = withPicture && row.reply_media === "photo" && row.reply_file_path ? { path: row.reply_file_path, type: "image" as const, name: "Reply.jpg" } : undefined;
+  sendChatMessage(row.client_id, "coach", clean, picture, exerciseLinkFor(row));
   return true;
 }
 /** A recorded form review: its file is already up (/api/video-reply); the message, its length and the drawing count follow. */
@@ -13888,6 +13895,7 @@ export function removeVideoReply(id: number): string | null {
   const file = row.reply_file_path ?? null;
   row.reply_note = null;
   row.reply_file_path = null;
+  row.reply_media = null;
   row.replied_at = null;
   row.reply_seen_at = null;
   persist();
@@ -13923,6 +13931,8 @@ export function listVideoReplies(clientId: number) {
         theirsPhoto: r.media === "photo",
         replyNote: r.reply_note ?? null,
         replySrc: r.reply_file_path ?? null,
+        /** The reply's file is the client's photo sent back with the coach's drawing and words (16 Nov, Alex), not a video. */
+        replyPhoto: r.reply_media === "photo",
         repliedAt: r.replied_at!,
         seen: !!r.reply_seen_at,
       };

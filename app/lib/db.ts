@@ -227,6 +227,9 @@ export type VideoRequest = {
       /api/video-reply, not a server action. */
   reply_note?: string | null;
   reply_file_path?: string | null;
+  /** What reply_file_path is (16 Nov, Alex): "photo" for a written reply on a photo, sent back as the photo with the
+      coach's drawing flattened in; absent for a recorded review (a video). */
+  reply_media?: "video" | "photo" | null;
   replied_at?: string | null;
   /** When the client first opened the reply. */
   reply_seen_at?: string | null;

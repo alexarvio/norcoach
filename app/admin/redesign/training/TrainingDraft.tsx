@@ -3349,7 +3349,14 @@ function VideoDialog({ row, video, firstName, where, onAsk, onCancel, onReply }:
               <p className="dlh-words">{video.clientNote}</p>
             </div>
           )}
-          {video.state === "replied" && video.replySrc && <video className="dlh-media" src={video.replySrc} controls playsInline preload="metadata" aria-label="Your reply video" />}
+          {/* A written reply on a photo is the photo sent back (16 Nov): a picture, never played. */}
+          {video.state === "replied" && video.replySrc &&
+            (/\.(jpe?g|png|webp|gif)(\?|$)/i.test(video.replySrc) ? (
+              // eslint-disable-next-line @next/next/no-img-element -- the reply's own upload, served by the app
+              <img className="dlh-media" src={video.replySrc} alt="Your reply" />
+            ) : (
+              <video className="dlh-media" src={video.replySrc} controls playsInline preload="metadata" aria-label="Your reply video" />
+            ))}
           {video.state === "replied" ? (
             <div className="dlh-field">
               <span className="dlh-label">Your reply</span>

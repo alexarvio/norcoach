@@ -197,7 +197,14 @@ export function VideoRequestDialog({
                 </div>
                 {replied && !writing ? (
                   <>
-                    {request!.replySrc && <video className="vr-player" src={request!.replySrc} controls playsInline preload="metadata" />}
+                    {request!.replySrc &&
+                      (/\.(jpe?g|png|webp)(\?|$)/i.test(request!.replySrc) ? (
+                        // A written reply on a photo: the photo sent back with the drawing on it (16 Nov).
+                        // eslint-disable-next-line @next/next/no-img-element -- the coach's upload, served by the app
+                        <img className="vr-player" src={request!.replySrc} alt="" />
+                      ) : (
+                        <video className="vr-player" src={request!.replySrc} controls playsInline preload="metadata" />
+                      ))}
                     {request!.replyNote && <p className="vr-asked">{request!.replyNote}</p>}
                   </>
                 ) : (

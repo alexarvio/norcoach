@@ -6,6 +6,7 @@ import { markVideoReplySeenAction } from "../lib/actions";
 import { Bars } from "./Bars";
 import CoachSays from "./CoachSays";
 import { dayWords } from "../lib/clientDates";
+import { pic } from "../lib/pic";
 
 // The coach's reply to a video the client sent: their comment and their
 // video (often a screen recording of the client's, drawn over), with the
@@ -26,9 +27,14 @@ export type VideoReplyView = {
   theirsPhoto?: boolean;
   replyNote: string | null;
   replySrc: string | null;
+  /** The reply's file is their photo sent back with the coach's drawing on it (16 Nov, Alex), drawn as a picture. */
+  replyPhoto?: boolean;
   repliedAt: string;
   seen: boolean;
 };
+
+/** A picture reply (16 Nov): by its kind, else by its file (a picture's extension). */
+export const replyIsPhoto = (reply: Pick<VideoReplyView, "replySrc" | "replyPhoto">) => reply.replyPhoto ?? /\.(jpe?g|png|webp)(\?|$)/i.test(reply.replySrc ?? "");
 
 const day = (iso: string) => dayWords(new Date(iso), { weekday: "short" });
 
@@ -46,7 +52,13 @@ export function VideoReplyBody({ reply, coachName = "Coach" }: { reply: VideoRep
       ) : (
         <span className="vr-reply-label"><Bars parts={[`${coachName} replied`, day(reply.repliedAt)]} /></span>
       )}
-      {reply.replySrc && <video className="vr-sheet-video" src={reply.replySrc} controls playsInline preload="metadata" />}
+      {reply.replySrc &&
+        (replyIsPhoto(reply) ? (
+          // eslint-disable-next-line @next/next/no-img-element -- the coach's upload, served by the app
+          <img className="vr-sheet-video vr-sheet-photo" src={pic(reply.replySrc, 1080)} alt="" />
+        ) : (
+          <video className="vr-sheet-video" src={reply.replySrc} controls playsInline preload="metadata" />
+        ))}
     </div>
   );
 }

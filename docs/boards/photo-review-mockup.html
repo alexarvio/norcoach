@@ -1,0 +1,133 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Photo review</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600&display=swap" rel="stylesheet"><style>
+  :root { --ink:#141a24; --body:#3a4250; --sec:#5b6474; --faint:#8b93a1; --label:#98A2B3; --line:#E1E5EB; --page:#F5F6F8; --rust:#b8471f; --green:#2f7a3f; --indigo:#3a3390; }
+  * { box-sizing:border-box; margin:0; }
+  body { font-family:Archivo,system-ui,sans-serif; font-weight:500; color:var(--ink); background:#f4f7fc; padding:28px 24px 72px; -webkit-font-smoothing:antialiased; }
+  h1 { font-size:20px; font-weight:600; margin-bottom:4px; }
+  .sub { color:var(--faint); font-size:13px; margin-bottom:24px; max-width:980px; line-height:1.55; }
+  .opt { margin-bottom:40px; }
+  .opt h3 { font-size:14px; font-weight:600; margin-bottom:4px; }
+  .opt > p { font-size:12.5px; color:var(--faint); margin-bottom:12px; max-width:860px; line-height:1.5; }
+  svg { fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+  .modal { display:flex; width:1080px; height:640px; border-radius:20px; overflow:hidden; box-shadow:0 30px 60px -24px rgba(16,24,40,.35), 0 0 0 1px #E1E5EB; background:#fff; }
+  .stage { position:relative; flex:1; background:#151a24; display:grid; place-items:center; }
+  .photo { width:330px; height:440px; border-radius:14px; background:
+      linear-gradient(180deg, rgba(0,0,0,.05), rgba(0,0,0,.35)),
+      repeating-linear-gradient(90deg, #3b3f46 0 22px, #2e3238 22px 44px),
+      #33373e; position:relative; overflow:hidden; }
+  .photo::after { content:"T-Bar Row machine"; position:absolute; left:0; right:0; bottom:16px; text-align:center; color:rgba(255,255,255,.55); font-size:12px; letter-spacing:.08em; }
+  .draw { position:absolute; inset:0; }
+  .tools { position:absolute; left:18px; top:50%; translate:0 -50%; display:flex; flex-direction:column; gap:6px; padding:8px; border-radius:14px; background:rgba(255,255,255,.06); }
+  .tools span { width:34px; height:34px; border-radius:10px; display:grid; place-items:center; color:rgba(255,255,255,.8); }
+  .tools span.on { background:#fff; color:var(--ink); }
+  .tools svg { width:16px; height:16px; }
+  .tools .sw { width:16px; height:16px; border-radius:50%; background:#f2c94c; }
+  .recpill { position:absolute; top:16px; right:18px; height:28px; padding:0 12px; border-radius:999px; background:rgba(255,255,255,.1); color:#fff; display:flex; align-items:center; gap:8px; font-size:11px; font-weight:600; letter-spacing:.14em; }
+  .recpill i { width:7px; height:7px; border-radius:50%; background:var(--rust); animation:pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity:.35; } }
+  .panel { width:380px; display:flex; flex-direction:column; border-left:1px solid var(--line); }
+  .ph { display:flex; align-items:center; gap:12px; padding:20px 20px 0; }
+  .face { width:40px; height:40px; border-radius:50%; background:#c7b8a6 url("https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=96&q=60&fit=crop") center/cover; flex:none; }
+  .who { flex:1; min-width:0; }
+  .who b { display:block; font-size:15px; font-weight:600; }
+  .who small { font-size:12.5px; color:var(--faint); }
+  .x { width:28px; height:28px; border-radius:50%; display:grid; place-items:center; color:var(--faint); } .x svg { width:13px; height:13px; }
+  .ex { padding:22px 20px 0; }
+  .ex h2 { font-size:22px; font-weight:600; letter-spacing:-.01em; }
+  .facts { margin-top:6px; font-size:13px; color:var(--sec); display:flex; align-items:center; gap:8px; }
+  .facts i { width:1px; height:11px; background:var(--label); }
+  .lbl { font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--sec); }
+  .sets { padding:22px 20px 0; }
+  .sr { display:flex; align-items:center; gap:14px; height:32px; font-size:14px; font-variant-numeric:tabular-nums; }
+  .sr span { width:14px; color:var(--faint); font-size:13px; }
+  .said { margin:18px 20px 0; display:grid; grid-template-columns:30px 1fr; gap:2px 10px; }
+  .said .face { width:30px; height:30px; grid-row:span 2; }
+  .said p { font-size:14px; line-height:1.4; }
+  .grow { flex:1; }
+  /* The reply, at the foot */
+  .reply { padding:16px 20px 18px; }
+  .field { min-height:42px; padding:10px 0 8px; font-size:15px; color:var(--ink); box-shadow:inset 0 -1px 0 var(--line); }
+  .field.typing { box-shadow:inset 0 -1.5px 0 var(--ink); }
+  .field.typing::after { content:""; display:inline-block; width:1.5px; height:17px; background:var(--ink); margin-left:2px; vertical-align:-3px; animation:blink 1s steps(1) infinite; }
+  .field.empty { color:transparent; }
+  @keyframes blink { 50% { opacity:0; } }
+  .acts { display:flex; align-items:center; gap:8px; margin-top:14px; }
+  .tg { width:36px; height:36px; border-radius:50%; display:grid; place-items:center; background:#fff; box-shadow:inset 0 0 0 1px #DCE1E8; color:var(--ink); }
+  .tg.on { background:var(--ink); color:#fff; box-shadow:none; }
+  .tg svg { width:16px; height:16px; }
+  .sp { flex:1; }
+  .pill { height:36px; padding:0 16px; border-radius:999px; display:inline-flex; align-items:center; gap:8px; font-size:13.5px; font-weight:600; background:#fff; box-shadow:inset 0 0 0 1px #DCE1E8; color:var(--ink); }
+  .pill.ink { background:var(--ink); color:#fff; box-shadow:none; }
+  .pill .dot { width:9px; height:9px; border-radius:50%; background:var(--rust); }
+  .pill.off { opacity:.45; }
+  .clock { font-size:15px; font-weight:600; font-variant-numeric:tabular-nums; display:flex; align-items:center; gap:8px; }
+  .clock i { width:8px; height:8px; border-radius:50%; background:var(--rust); animation:pulse 1.2s ease-in-out infinite; }
+  .stop { width:36px; height:36px; border-radius:50%; background:var(--rust); display:grid; place-items:center; } .stop b { width:12px; height:12px; border-radius:2px; background:#fff; }
+  /* The client's side */
+  .phone { width:340px; height:640px; border-radius:34px; background:var(--page); box-shadow:0 0 0 8px #1b1f27; position:relative; overflow:hidden; padding:60px 16px 0; }
+  .ctop { font-size:15px; font-weight:600; text-align:center; letter-spacing:.16em; text-transform:uppercase; margin-bottom:22px; }
+  .bub { margin-left:auto; max-width:250px; }
+  .cmsg { display:flex; gap:8px; align-items:flex-end; margin-top:10px; }
+  .cmsg .face { width:28px; height:28px; }
+  .cb { background:#fff; box-shadow:inset 0 0 0 1px var(--line); border-radius:16px 16px 16px 4px; overflow:hidden; max-width:240px; }
+  .cb .photo { width:240px; height:300px; border-radius:0; }
+  .cb .photo::after { content:none; }
+  .cb p { padding:10px 12px 12px; font-size:14px; line-height:1.4; }
+  .cb small { display:block; padding:0 12px 10px; font-size:11.5px; color:var(--faint); }
+  .row2 { display:flex; gap:34px; align-items:flex-start; }
+  .notes { margin-top:10px; max-width:980px; font-size:13px; color:var(--body); line-height:1.65; }
+  .notes b { color:var(--ink); font-weight:600; } .notes li { margin:2px 0 2px 18px; }
+</style></head><body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></symbol>
+  <symbol id="cam" viewBox="0 0 24 24"><rect x="3" y="6.5" width="13" height="11" rx="2"/><path d="m16 10.5 5-3v9l-5-3z"/></symbol>
+  <symbol id="send" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="pen" viewBox="0 0 24 24"><path d="M14.5 5.5l3 3L9 17H6v-3z"/></symbol>
+  <symbol id="arrow" viewBox="0 0 24 24"><path d="M6 18 18 6M10 6h8v8"/></symbol>
+  <symbol id="line" viewBox="0 0 24 24"><path d="M6 18 18 6"/></symbol>
+  <symbol id="circ" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5"/></symbol>
+  <symbol id="undo" viewBox="0 0 24 24"><path d="M9 7 4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 0 12"/></symbol>
+  <symbol id="bin" viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M7 7l1 13h8l1-13"/></symbol>
+</defs></svg>
+
+<h1>Reviewing a photo or video, in today's style</h1>
+<p class="sub">One panel instead of two modes. Who sent it with their face; the exercise as the title; the facts in words (Week 6, never WK 6); their sets flat. At the foot, always: write a reply, or record one with the mic and camera beside Record. No keyboard legend, no photo count, no time, no words inside the record button.</p>
+
+<div id="o"></div>
+
+<div class="notes"><b>What changes from today</b><ul>
+  <li><b>No two modes.</b> Today the panel is either "talk" (a reply box and a Record review button) or "record" (the big red button, Mic on, Camera off). Now it is one panel, the reply always at the foot.</li>
+  <li><b>A written reply</b> goes to the client as the photo sent back to them with your words under it, and with whatever you drew on it. The exercise's mark goes green, as a recorded reply does.</li>
+  <li><b>Gone</b>: the letter keys legend (P pen, A arrow…), "1 photo", the time, Sent unasked / You asked for this, the READY pill, and the sentence in the record box. The keys still work.</li>
+  <li><b>Kept</b>: the tools on the dark stage, drawing before or while recording, the client's own words on it when they wrote any.</li>
+</ul></div>
+
+<script>
+  const stage = (rec, drawn) => `<div class="stage">
+    <div class="tools"><span class="on"><svg><use href="#pen"/></svg></span><span><svg><use href="#arrow"/></svg></span><span><svg><use href="#line"/></svg></span><span><svg><use href="#circ"/></svg></span><span><i class="sw"></i></span><span><svg><use href="#undo"/></svg></span><span><svg><use href="#bin"/></svg></span></div>
+    ${rec ? '<span class="recpill"><i></i>REC</span>' : ""}
+    <div class="photo">${drawn ? '<svg class="draw" viewBox="0 0 330 440"><path d="M120 140 C 150 120, 190 120, 215 145" stroke="#f2c94c" stroke-width="4"/><path d="M150 300 L 190 250" stroke="#f2c94c" stroke-width="4"/><path d="M183 250 L 190 250 L 188 258" stroke="#f2c94c" stroke-width="4"/><circle cx="165" cy="200" r="34" stroke="#f2c94c" stroke-width="4"/></svg>' : ""}</div>
+  </div>`;
+  const panel = (foot) => `<div class="panel">
+    <div class="ph"><span class="face"></span><span class="who"><b>Alex Arvio</b></span><span class="x"><svg><use href="#x"/></svg></span></div>
+    <div class="ex"><h2>T-Bar Row</h2><div class="facts">Pull<i></i>Week 6<i></i>Day 4</div></div>
+    <div class="sets"><div class="lbl">Sets</div><div class="sr"><span>1</span>50 kg × 10</div><div class="sr"><span>2</span>50 kg × 10</div></div>
+    <div class="said"><span class="face"></span><span class="lbl">Alex</span><p>Is this the right machine for it? The seat won't go lower.</p></div>
+    <div class="grow"></div>
+    <div class="reply">${foot}</div>
+  </div>`;
+  const rest = `<div class="field empty">.</div><div class="acts"><span class="tg on" title="Microphone on"><svg><use href="#mic"/></svg></span><span class="tg" title="Camera off"><svg><use href="#cam"/></svg></span><span class="sp"></span><span class="pill"><i class="dot"></i>Record</span><span class="pill off">Send <svg width="15" height="15"><use href="#send"/></svg></span></div>`;
+  const typing = `<div class="field typing">Yes that's the one. Chest on the pad, keep your back flat like the line</div><div class="acts"><span class="tg on"><svg><use href="#mic"/></svg></span><span class="tg"><svg><use href="#cam"/></svg></span><span class="sp"></span><span class="pill"><i class="dot"></i>Record</span><span class="pill ink">Send <svg width="15" height="15"><use href="#send"/></svg></span></div>`;
+  const rec = `<div class="acts" style="margin-top:0"><span class="tg on"><svg><use href="#mic"/></svg></span><span class="tg on"><svg><use href="#cam"/></svg></span><span class="sp"></span><span class="clock"><i></i>0:24</span><span class="stop" title="Stop"><b></b></span></div>`;
+  const client = `<div class="phone"><div class="ctop">Finlay</div>
+    <div class="cmsg"><span class="face"></span><div class="cb"><div class="photo"><svg class="draw" viewBox="0 0 330 440" preserveAspectRatio="none"><path d="M120 140 C 150 120, 190 120, 215 145" stroke="#f2c94c" stroke-width="4"/><path d="M150 300 L 190 250" stroke="#f2c94c" stroke-width="4"/><circle cx="165" cy="200" r="34" stroke="#f2c94c" stroke-width="4"/></svg></div><p>Yes that's the one. Chest on the pad, keep your back flat like the line</p><small>Your photo of T-Bar Row</small></div></div></div>`;
+  const opts = [
+    ["1 · At rest", "The client's face and name, nothing under it. T-Bar Row as the title, Pull | Week 6 | Day 4 under it, their sets flat. Their words on it as a note with their face. At the foot: the reply line, then the mic and camera as round toggles (ink while on), Record and Send.", `<div class="modal">${stage(false, false)}${panel(rest)}</div>`],
+    ["2 · Writing a reply, after drawing on it", "Draw on the photo, type on the line: Send turns ink. The client gets the photo back, with your drawing on it and your words under it.", `<div class="modal">${stage(false, true)}${panel(typing)}</div>`],
+    ["3 · Recording", "Record starts it at once (the reply line steps aside); the clock and a rust stop button take the foot, the mic and camera still switchable. A small REC on the stage. Stop, and it plays back with Send and Retake, as today.", `<div class="modal">${stage(true, true)}${panel(rec)}</div>`],
+    ["4 · What the client gets for a written reply", "In their chat with Finlay, and on the exercise's photo as his reply: the photo as you left it, your words under it.", client],
+  ];
+  document.getElementById("o").innerHTML = opts.map(([h, p, m]) => `<div class="opt"><h3>${h}</h3><p>${p}</p>${m}</div>`).join("");
+</script>
+</body></html>
