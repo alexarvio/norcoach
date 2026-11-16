@@ -318,7 +318,7 @@ export default function ExerciseProgressDialog({
             {gym ?? "All gyms"}
           </span>
           <svg viewBox="0 0 24 24" width={14} height={14} fill="none" aria-hidden="true">
-            <path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+            <path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
         {menu && (
@@ -327,7 +327,7 @@ export default function ExerciseProgressDialog({
               <button key={g ?? ""} type="button" role="menuitemradio" aria-checked={g === gym} className={g === gym ? "on" : ""} title={g ?? undefined} onClick={() => pickGym(g)}>
                 <span>{g ?? "All gyms"}</span>
                 {g === gym && (
-                  <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="m5 12 5 5 9-10" />
                   </svg>
                 )}
@@ -397,7 +397,7 @@ export default function ExerciseProgressDialog({
       <div className="dlh-head">
         <DialogTitle className="dlh-title">{exerciseName}</DialogTitle>
         <button type="button" className="dlh-x" onClick={onClose} aria-label="Close">
-          <svg viewBox="0 0 24 24" width={12} height={12} fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width={12} height={12} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" aria-hidden="true">
             <path d="M6 6l12 12M18 6 6 18" />
           </svg>
         </button>

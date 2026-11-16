@@ -23,12 +23,12 @@
 
 /* The actions: words, shown on hover (or while one has the keyboard), always on a touch screen. */
 .rd.rco .rco-acts { display: flex; align-items: center; justify-content: flex-end; gap: 2px; min-width: 0; white-space: nowrap; }
-.rd.rco .rco-act { display: inline-flex; align-items: center; height: 30px; padding: 0 8px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; cursor: pointer; opacity: 0; transition: color 0.12s, background-color 0.12s, opacity 0.12s; }
-.rd.rco .rco-act:hover { color: #141a24; }
+.rd.rco .rco-act { display: inline-flex; align-items: center; height: 32px; padding: 0 10px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; cursor: pointer; opacity: 0; transition: color 0.12s, background-color 0.12s, opacity 0.12s; }
+.rd.rco .rco-act:hover { color: #141a24; background: #f5f6f8; } /* one word action, .rst-act's size and hover (16 Nov, Alex: the audit) */
 .rd.rco .rco-act.ink { color: #141a24; }
 .rd.rco .rco-act.danger { color: #b42318; }
 .rd.rco .rco-act.danger:hover { background: #f5f6f8; } /* the neutral hover, the words red (29 Oct, Alex) */
-.rd.rco .rco-act.off { color: #98a2b3; cursor: default; }
+.rd.rco .rco-act.off { color: #98a2b3; background: none; cursor: default; }
 .rd.rco .rco-act:disabled { cursor: default; }
 .rd.rco .rco-act:focus-visible { outline: none; text-decoration: underline; text-decoration-color: #c5ccd8; text-underline-offset: 4px; }
 .rd.rls.rco .rls-row:hover .rco-act, .rd.rls.rco .rls-row:focus-within .rco-act { opacity: 1; }

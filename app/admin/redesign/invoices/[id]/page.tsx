@@ -8,9 +8,6 @@ import InvoiceSheet from "../../../../components/InvoiceSheet";
 import InvoicePrintButton from "../../../../components/InvoicePrintButton";
 import { countryCodeFromName, countryOf, hasBankDetails } from "../../../../lib/countries";
 import { startTiming } from "../../../../lib/timing";
-import { Sep } from "../../Sep";
-// For the bar between the two Settings links (.rd-sep); every rule in it is scoped to its own classes.
-import "../../training/draft.css";
 
 // One invoice as it prints, for the coach: the sheet (components/InvoiceSheet)
 // with a bar above it. While it is "Not sent" it reads Settings live and
@@ -36,20 +33,26 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   const f = v.from;
   const missing = [!f.business_name && "business name", !(f.address && f.city) && "address", !hasBankDetails(f, countryOf(f.country_code || countryCodeFromName(f.country))) && "bank details"].filter(Boolean) as string[];
 
+  // The admin's own bar (16 Nov, Alex: the audit; it was the old navy boxes and a sentence on how sending works): a
+  // ghost back link, the state as its pill (Not sent grey, Sent ink), Print the ink pill; what Settings lacks a short rust
+  // fact with its fix, as the Invoices tab says it. `.ivp-admin` in components/invoice-sheet.css.
   return t.end(
-    <main className="ivp">
+    <main className="ivp ivp-admin">
       <div className="ivp-bar">
-        <Link href={`/admin/redesign/invoices?client=${v.clientId}`} className="ivp-btn">
+        <Link href={`/admin/redesign/invoices?client=${v.clientId}`} className="ivp-back">
           ‹ Invoices
         </Link>
-        <span className="ivp-state">{v.frozen ? "Sent: the details below are fixed" : "Not sent: your details come from Settings as they are now, and the client can't see it yet"}</span>
-        <InvoicePrintButton />
+        <span className="ivp-state">
+          <span className={`ivp-statepill${v.frozen ? " live" : ""}`}>{v.frozen ? "Sent" : "Not sent"}</span>
+        </span>
+        <InvoicePrintButton label="Print" />
       </div>
       {missing.length > 0 && !v.frozen && (
         <p className="ivp-missing">
-          Missing from Settings: {missing.join(", ")}. <Link href="/admin/redesign/settings#business">Business details</Link>
-          <Sep />
-          <Link href="/admin/redesign/settings#invoicing">Invoicing</Link>
+          Missing from Settings: {missing.join(", ")}.
+          <Link className="ivp-fix" href={missing.length === 1 && missing[0] === "bank details" ? "/admin/redesign/settings#invoicing" : "/admin/redesign/settings#business"}>
+            Add them
+          </Link>
         </p>
       )}
       <InvoiceSheet v={v} />

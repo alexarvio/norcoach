@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
 import { dayMonth } from "../../../lib/dayMonth";
 import { Sep, SepJoin } from "../Sep";
+import { SearchIcon } from "../../../components/icons";
 
 // The demo video on an exercise (15 Oct), in the admin hairline style (20 Oct,
 // Alex): the exercise name, one quiet fact line, the demo as clients see it,
@@ -17,7 +18,10 @@ export type DemoCurrent = { url: string; source: "library" | "row" } | null;
 export type CoachClip = { id: number; path: string; name: string; at: string; bytes: number | null };
 type Tab = "link" | "file" | "mine";
 const TAB_KEY = "norcoach:demo-tab";
-const MAX_BYTES = 200 * 1024 * 1024;
+// /api/upload's cap for a video (UPLOAD_CAPS.video, lib/streamUpload.ts, a server file), so the words and the check
+// agree with what the server takes (16 Nov, Alex: the audit; it said 200 MB and refused at 128).
+const MAX_MB = 128;
+const MAX_BYTES = MAX_MB * 1024 * 1024;
 
 const ytId = (url: string) => /(?:youtu\.be\/|[?&]v=|shorts\/|embed\/)([\w-]{11})/.exec(url)?.[1] ?? null;
 const isUpload = (url: string) => url.startsWith("/uploads/");
@@ -115,7 +119,7 @@ export default function DemoVideoDialog({
   const takeFile = (f: File) => {
     setError(null);
     if (!/^video\//.test(f.type) && !/\.(mp4|mov|m4v|webm)$/i.test(f.name)) return setUpload({ state: "error", share: 0, reason: "that isn’t a video" });
-    if (f.size > MAX_BYTES) return setUpload({ state: "error", share: 0, reason: `${mb(f.size)} is over 200 MB` });
+    if (f.size > MAX_BYTES) return setUpload({ state: "error", share: 0, reason: `${mb(f.size)} is over ${MAX_MB} MB` });
     setFile(f);
     setUpload({ state: "idle", share: 0 });
   };
@@ -297,7 +301,7 @@ export default function DemoVideoDialog({
                     <b>Drop or choose a video</b>
                     <small>
                       MP4 or MOV<Sep />
-                      up to 200 MB
+                      up to {MAX_MB} MB
                     </small>
                   </>
                 )}
@@ -308,7 +312,12 @@ export default function DemoVideoDialog({
 
           {tab === "mine" && (
             <div className="dmvh-panel mine" role="tabpanel">
-              {videos.length > 12 && <input className="dmvh-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" aria-label="Search your videos" />}
+              {videos.length > 12 && (
+                <label className="rd-search dmvh-search">
+                  <SearchIcon />
+                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" aria-label="Search your videos" />
+                </label>
+              )}
               {videos.length === 0 ? (
                 <p className="dmvh-none">None yet</p>
               ) : (
@@ -328,7 +337,7 @@ export default function DemoVideoDialog({
                         </span>
                         {on && (
                           <i className="dmvh-tick" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round">
+                            <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
                               <path d="M5 12l5 5 9-10" />
                             </svg>
                           </i>

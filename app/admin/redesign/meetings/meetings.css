@@ -52,10 +52,11 @@
 .rd.rt .rt-past { display: flex; flex-direction: column; gap: 4px; padding: 4px 14px 16px 10px; }
 .rd.rt .rt-past.bare { padding: 0; gap: 0; }
 /* A past call's summary opens a tab in, under the call's title (23 Oct, Alex: as the next call's body sits under its
-   title): the date column (150px) and its gap (24px) of pGrid past the row's own 10px. */
-.rd.rt .rn-day > .rt-past:not(.bare) { padding-left: 184px; }
-/* (6 Nov, Alex: one list row) the row starts 18px in, so the summary's tab in is 150 + 24 + 18. */
-.rd.rt .rt-log .rn-day > .rt-past:not(.bare) { padding-left: 192px; }
+   title): the date column (--rt-date, the list's logDateWidth and its chevron; 16 Nov, the audit) and its gap (24px) of
+   pGrid past the row's own 10px. */
+.rd.rt .rn-day > .rd-rowfold > .rd-rowfold-in > .rt-past:not(.bare) { padding-left: calc(var(--rt-date, 106px) + 34px); }
+/* (6 Nov, Alex: one list row) the row starts 18px in, so the summary's tab in is the date column + 24 + 18. */
+.rd.rt .rt-log .rn-day > .rd-rowfold > .rd-rowfold-in > .rt-past:not(.bare) { padding-left: calc(var(--rt-date, 106px) + 42px); }
 .rd.rt .rt-past-label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #5b6474; }
 .rd.rt .rt-recap-title { width: 100%; height: 34px; margin: 0; padding: 0; border: 0; border-bottom: 1px solid transparent; border-radius: 0; background: none; box-shadow: none; outline: none; font: inherit; font-size: 15px; font-weight: 600; color: #141a24; }
 .rd.rt .rt-recap-title:hover { border-bottom-color: #e1e5eb; }
@@ -117,7 +118,8 @@ body:has(.npd.npd) .rt-boxpick-menu { min-width: var(--radix-dropdown-menu-trigg
 .npd.npd.rt-npd .rt-moving { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; column-gap: 16px; row-gap: 8px; min-height: 62px; box-sizing: border-box; margin-top: 14px; padding: 12px 14px; border-radius: 14px; background: #f5f6f8; font-size: 13.5px; font-weight: 500; color: #141a24; font-variant-numeric: tabular-nums; }
 .npd.npd.rt-npd .rt-moving .rt-kind { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px 0 6px; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
 .npd.npd.rt-npd .rt-moving-at { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.npd.npd.rt-npd .rt-moving-at small { display: block; margin-bottom: 1px; font-size: 9.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #98a2b3; }
+/* NOW / NEW the pop-up's one small-caps label (16 Nov, Alex: the audit; was 9.5px/.14em). */
+.npd.npd.rt-npd .rt-moving-at small { display: block; margin-bottom: 1px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #5b6474; }
 .npd.npd.rt-npd .rt-moving-at.old { color: #8b93a1; }
 .npd.npd.rt-npd .rt-moving-at.old > span { text-decoration: line-through; }
 .npd.npd.rt-npd .rt-moving-at.new { color: var(--npd-c, #2f6fd6); font-weight: 600; }
@@ -153,13 +155,18 @@ body:has(.npd.npd) .rt-boxpick-menu { min-width: var(--radix-dropdown-menu-trigg
 .rt-tzp { position: relative; }
 .rt-tzp-btn { display: flex; width: 100%; height: 40px; flex: none; }
 .rt-tzp-btn small { font-size: inherit; font-weight: 500; color: #5b6474; }
-.rt-tzp-pop { position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; right: 0; display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 12px; background: #fff; box-shadow: 0 16px 32px -12px rgba(20, 26, 36, 0.25), 0 0 0 1px #e1e5eb; text-transform: none; letter-spacing: 0; }
-.rt-tzp-search { height: 34px; font-size: 13.5px; }
-.rt-tzp-list { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; scrollbar-width: thin; }
-.rt-tzp-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 7px 8px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 13.5px; font-weight: 500; color: #141a24; text-align: left; cursor: pointer; }
-/* One hover for every row and menu item (25 Oct, Alex): the exercise row's soft neutral; the chosen one keeps its grey. */
+/* The ⋯ menu's look, as every floating list (16 Nov, Alex: the audit; it had its own radius, edge and shadow): radius 10,
+   5px of padding, the shadow and no edge, items 34px at 13.5px/600 with radius 7, six then it scrolls, the search a plain
+   line, the picked one ink as TimePick's beside it. */
+.rt-tzp-pop { position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; right: 0; display: flex; flex-direction: column; gap: 4px; padding: 5px; border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(20, 30, 50, 0.16); text-transform: none; letter-spacing: 0; }
+.rt-tzp-pop .rt-tzp-search { height: 36px; padding: 0 10px; border: 0; border-bottom: 1px solid #e1e5eb; border-radius: 0; background: none; box-shadow: none; font-size: 13.5px; font-weight: 500; }
+.rt-tzp-pop .rt-tzp-search:focus { border-bottom-color: #141a24; box-shadow: none; outline: none; }
+.rt-tzp-list { max-height: calc(6 * 34px); overflow-y: auto; display: flex; flex-direction: column; scrollbar-width: thin; scrollbar-color: #dce1e8 transparent; }
+.rt-tzp-item { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 34px; padding: 0 10px; border: 0; border-radius: 7px; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: #141a24; text-align: left; cursor: pointer; }
+/* One hover for every row and menu item (25 Oct, Alex): the exercise row's soft neutral. */
 .rt-tzp-item:hover { background: #fafbfd; }
-.rt-tzp-item.on { background: #f5f6f8; font-weight: 600; }
+.rt-tzp-item.on, .rt-tzp-item.on:hover { background: #141a24; color: #fff; }
+.rt-tzp-item.on small, .rt-tzp-item.on em { color: rgba(255, 255, 255, 0.72); }
 .rt-tzp-item span { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .rt-tzp-item small { font-size: 11.5px; color: #8b93a1; font-weight: 500; }
 .rt-tzp-item em { flex: none; font-style: normal; font-size: 12.5px; font-weight: 600; color: #5b6474; font-variant-numeric: tabular-nums; }
@@ -260,8 +267,8 @@ body:has(.npd.npd) .rt-boxpick-menu { min-width: var(--radix-dropdown-menu-trigg
 .dlh .rt-goals li.empty > i { background: #c9cfd8; }
 .dlh .rt-goals input { flex: 1; min-width: 0; height: 38px; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; outline: none; font: inherit; font-size: 15px; font-weight: 500; color: #141a24; }
 .dlh .rt-goals input::placeholder { color: #98a2b3; }
-/* A past call's kind is its icon in its colour before its title (27 Oct, Alex). */
-.rt-kindicon { display: inline-flex; flex: none; align-items: center; margin-right: 10px; translate: 0 1px; }
+/* A past call's kind is its icon in its colour before its title (27 Oct, Alex): the shared KindMark (.rd-kind, home.css). */
+.rd.rt .rt-call > .rd-kind { flex: none; margin-right: 10px; }
 /* A call still to come's To focus on (2 Nov, Alex): the new lines on the left, what was set last time on the right, greyed as
    the past is (its dots faint, its words muted), dated by the call that set it. Space alone between them. */
 .rd.rt .rt-focus-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 40px; align-items: start; }

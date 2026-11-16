@@ -8,8 +8,10 @@ import { paymentsState, refreshCoachStripe, type PaymentsState } from "../../../
 import { dayMonth } from "../../../lib/dayMonth";
 import { loadSupportSection } from "../../../lib/support";
 import { startTiming } from "../../../lib/timing";
-import { loadRail } from "../loaders";
+import { loadChatDock, loadRail } from "../loaders";
 import RedesignRail from "../RedesignRail";
+import ChatDock from "../ChatDock";
+import "../messages/messages.css";
 import { AccountSettings, BusinessSettings, InvoicingSettings, LogoSettings, PrivacySettings } from "./SettingsForms";
 import SupportSection from "./SupportSection";
 import BillingSettings from "./BillingSettings";
@@ -158,6 +160,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   return t.end(
     <div className="rd-frame">
       <RedesignRail rail={t.time("rail", () => loadRail(coach))} clientId={0} />
+      {/* The chat tab and its 60px on the right, as every coach-level page (16 Nov, Alex: the audit). */}
+      <ChatDock chats={t.time("chatDock", () => loadChatDock(coach))} />
       <div className="rd-page">
         <SettingsBoard className="rd trn rls rst rpf" sections={sections} />
       </div>

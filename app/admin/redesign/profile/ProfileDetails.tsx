@@ -82,7 +82,7 @@ export default function ProfileDetails({ coachId, data, countries }: { coachId: 
         <div className="rls-card rst-card">
           <div className="rst-grid rpf-grid3">
             <label className="rst-field wide">
-              <span className="dlh-label">Street and number</span>
+              <span className="dlh-label">Address</span>
               <input className="dlh-line" value={d.address} onChange={(e) => set("address")(e.target.value)} autoComplete="street-address" placeholder="Hämeenkatu 12 B 4" maxLength={160} />
             </label>
             <label className="rst-field">

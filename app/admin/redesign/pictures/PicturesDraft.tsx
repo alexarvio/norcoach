@@ -7,8 +7,10 @@ import { toast } from "sonner";
 import { addPhotoSlotAction, remindProgressPicturesAction, removePhotoAngleAction, savePhotoSetupAction, sendChatMessageAction, setPhotoSlotPausedAction } from "../../../lib/actions";
 import type { MessageLink } from "../../../lib/messageLinks";
 import { SepJoin } from "../Sep";
+import { ConfirmChoice } from "../ConfirmParts";
 import Compare from "./Compare";
 import { Fold } from "../Fold";
+import { RowFold } from "../RowFold";
 import { TodoStrip } from "../TodoStrip";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
 import { Popover, PopoverAnchor, PopoverContent } from "../../../components/ui/popover";
@@ -411,8 +413,7 @@ function Pictures({ clientId, firstName, plan }: Props) {
                       <span className={`trn-state${st.tone === "good" ? " good" : st.tone === "open" ? " warn" : ""}`}>{st.text}</span>
                     </span>
                   </button>
-                  {isOpen && (
-                    <div className="rp-tbody">
+                  <RowFold open={isOpen} className="rp-tbody">
                       <div className="rp-grid rp-tgrid" style={{ "--rp-cols": Math.max(1, sh.cells.length), "--rp-cols-narrow": Math.min(Math.max(1, sh.cells.length), 3) } as React.CSSProperties}>
                         {sh.cells.map((c) => (
                           <div key={c.slotId} className="rp-slot">
@@ -426,8 +427,7 @@ function Pictures({ clientId, firstName, plan }: Props) {
                       </div>
                       {/* A finished sheet takes the coach's comment too, as the open one (23 Oct, Alex); none without photos. */}
                       {sh.inCount > 0 && <SheetComment firstName={firstName} said={sh.comments} draft={drafts[sh.period] ?? ""} onDraft={setDraft(sh.period)} onSend={sendComment(sh)} />}
-                    </div>
-                  )}
+                  </RowFold>
                 </div>
               );
             })}
@@ -682,14 +682,17 @@ function SetupDialog({ clientId, firstName, plan, onSaved }: { clientId: number;
         {(blank || twin) && <p className="rp-afact">{blank ? "Every angle needs a name." : `Two angles are called ${twin!.label.trim()}.`}</p>}
       </div>
 
-      {/* Removing an angle takes its photos with it: a tick first (design rules 4). */}
+      {/* Removing an angle takes its photos with it: a tick first, the one choice in its grey well, worded as what the
+          coach accepts (design rules 4; 16 Nov, Alex: the audit). */}
       {doomedCount > 0 && (
-        <button type="button" role="checkbox" aria-checked={agreed} className="dlh-ack rp-ack" onClick={() => setAgreedFor(agreed ? null : doomedKey)}>
-          <span className={`dlh-box${agreed ? " on" : ""}`} aria-hidden="true">
-            {agreed ? "✓" : ""}
-          </span>
-          Delete {firstName}&rsquo;s {plural(doomedCount, "photo")} of {doomed.map((d) => d.label).join(", ")} too
-        </button>
+        <div className="rp-ack">
+          <ConfirmChoice
+            checked={agreed}
+            onChange={(v) => setAgreedFor(v ? doomedKey : null)}
+            title={`I understand ${firstName}’s ${plural(doomedCount, "photo")} of ${doomed.map((d) => d.label).join(", ")} ${doomedCount === 1 ? "is" : "are"} deleted`}
+            sub={doomed.length > 1 ? <SepJoin parts={doomed.map((d) => `${d.label} ${plural(d.photos, "photo")}`)} /> : undefined}
+          />
+        </div>
       )}
       <div className="npd-foot">
         {error && <span className="rp-err">{error}</span>}

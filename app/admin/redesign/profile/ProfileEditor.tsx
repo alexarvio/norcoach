@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useTransition } from "react";
+import { useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import DragList from "../../../components/DragList";
 import CoachProfileScreen from "../../../client/CoachProfileScreen";
@@ -9,7 +9,6 @@ import { PlusIcon } from "../../../components/icons";
 import ProfileDetails, { type ProfileDetailsData } from "./ProfileDetails";
 import { publishCoachProfileAction, removeCoachPhotoAction, saveCoachProfileAction, uploadCoachPhotoAction } from "../../../lib/actions";
 import { COACH_PROFILE_LIMITS as LIMIT, type CoachProfileView, type CoachRole, type CoachStudy } from "../../../lib/coachProfileView";
-import { dayMonth } from "../../../lib/dayMonth";
 import Picker from "../Picker";
 import { Sep } from "../Sep";
 import { useSaveSlot } from "../settings/SaveHost";
@@ -49,16 +48,6 @@ const snapshotOf = (fields: Fields, specialties: string[], studies: StudyRow[], 
     studies: studies.map(({ title, place, year }) => ({ title, place, year })),
     experience: experience.map(({ years, role, place }) => ({ years, role, place })),
   });
-
-function ago(iso: string, now: number): string {
-  const seconds = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
-  if (seconds < 60) return "just now";
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
-  return dayMonth(iso);
-}
 
 /** A part of the profile: its small caps label (and one quiet fact) over its content in one hairline card. */
 function Section({ title, fact, children }: { title: string; fact?: React.ReactNode; children: React.ReactNode }) {
@@ -103,15 +92,9 @@ export default function ProfileEditor({ profile, coaches, details, countries }: 
   const [studies, setStudies] = useState<StudyRow[]>(() => profile.studies.map((s, i) => ({ ...s, key: i + 1 })));
   const [experience, setExperience] = useState<RoleRow[]>(() => profile.experience.map((r, i) => ({ ...r, key: i + 1 })));
   const [savedSnapshot, setSavedSnapshot] = useState(() => snapshotOf(initialFields, profile.specialties, studies, experience));
-  const [savedAt, setSavedAt] = useState<string | null>(profile.updatedAt);
   const [published, setPublished] = useState(profile.published);
   const [error, setError] = useState<string | null>(null);
   const [saving, startSave] = useTransition();
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(t);
-  }, []);
 
   const snapshot = snapshotOf(fields, specialties, studies, experience);
   const dirty = snapshot !== savedSnapshot;
@@ -146,7 +129,6 @@ export default function ProfileEditor({ profile, coaches, details, countries }: 
     await saveCoachProfileAction(fd);
     setSavedSnapshot(snapshot);
     setSavedState({ fields, specialties, studies, experience });
-    setSavedAt(new Date().toISOString());
     // A cleared name takes the profile back to unpublished on the server.
     if (!fields.displayName.trim()) setPublished(false);
   };
@@ -339,24 +321,14 @@ export default function ProfileEditor({ profile, coaches, details, countries }: 
               </div>
             </Section>
 
-            {/* The form's foot, in place (the page's bar has Cancel and Save): when it was saved while nothing waits
-                on the bar, and the Published switch. */}
+            {/* The form's foot, in place (the page's bar has Cancel and Save and says how the save went): the Published
+                switch alone, no save words of its own (16 Nov, Alex: the audit; one save status). */}
             <div className="rst-bar rpf-foot">
-              <span className="rst-bar-text rpf-saved">
-                {dirty ? null : savedAt ? (
-                  <>
-                    Saved<Sep />
-                    {ago(savedAt, now)}
-                  </>
-                ) : (
-                  "Not saved yet"
-                )}
-              </span>
               {!dirty && error && <span className="rpf-error">{error}</span>}
-              {/* On or off: the switch, ink while on. */}
+              {/* On or off: Settings' one switch (.rst-switch), white while off, ink while on (16 Nov, Alex: the audit). */}
               <button type="button" role="switch" aria-checked={published} className="rpf-pub" onClick={togglePublished} disabled={saving}>
                 Published
-                <span className="rpf-pub-sw" aria-hidden="true">
+                <span className={`rst-switch${published ? " on" : ""}`} aria-hidden="true">
                   <i />
                 </span>
               </button>
@@ -494,7 +466,7 @@ function PhotoSlot({ coachId, kind, label, fact, path }: { coachId: number; kind
         )}
       </Dialog>
       <span className={`trn-state rst-state${path && !busy ? " good" : ""}`}>{busy ? "Uploading…" : path ? "Uploaded" : "None yet"}</span>
-      <button type="button" className="trn-btn rpf-up" onClick={() => inputRef.current?.click()} disabled={busy}>
+      <button type="button" className="trn-pill rst-pill rpf-up" onClick={() => inputRef.current?.click()} disabled={busy}>
         {path ? "Replace" : "Upload"}
       </button>
       {framing && (

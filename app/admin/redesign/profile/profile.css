@@ -33,8 +33,8 @@
 .rd.rpf .rpf-photo { transition: background-color 0.15s; }
 .rd.rpf .rpf-photo.over { background: #f5f6f8; }
 .rd.rpf .rpf-photo.busy { opacity: 0.6; }
-.rd.trn.rpf .trn-btn.rpf-up { flex: none; justify-content: center; min-width: 84px; }
-.rd.trn.rpf .trn-btn.rpf-up:disabled { opacity: 0.55; cursor: default; }
+/* Upload or Replace is the Logo's own white pill (.trn-pill.rst-pill; 16 Nov, Alex: the audit), wide enough for both words. */
+.rd.trn.rpf .trn-pill.rpf-up { justify-content: center; min-width: 84px; }
 
 /* Specialties: white chips with a hairline, ✕ in each; the line to type the next one on after them. */
 .rd.rpf .rpf-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 14px 18px 16px; }
@@ -63,18 +63,15 @@
 /* + Study, + Role: words with the plus, no pill (as + Metric). */
 .rd.rls.rpf .rls-add.rpf-add { align-self: flex-start; margin: 6px 0 0 14px; }
 
-/* The form's foot, in place (the page's one bar has Cancel and Save): a white row with the hairline, when it was saved
-   while nothing waits on the bar, and the Published switch on the right, ink while on. */
+/* The form's foot, in place (the page's one bar has Cancel and Save and says how the save went): a white row with the
+   hairline and the Published switch on the right, no save words of its own (16 Nov, Alex: the audit). */
 .rd.rst.rpf .rst-bar.rpf-foot { position: static; box-shadow: 0 0 0 1px #e1e5eb; }
-.rd.rpf .rpf-saved { color: #8b93a1; }
 .rd.rpf .rpf-error { font-size: 13px; font-weight: 500; color: #b42318; }
 .rd.rpf .rpf-pub { display: inline-flex; flex: none; align-items: center; gap: 10px; height: 36px; margin-left: auto; padding: 0 8px 0 10px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: #141a24; cursor: pointer; }
 .rd.rpf .rpf-pub:focus-visible { outline: none; background: #f5f6f8; }
 .rd.rpf .rpf-pub:disabled { opacity: 0.6; cursor: default; }
-.rd.rpf .rpf-pub-sw { position: relative; flex: none; width: 36px; height: 22px; border-radius: 999px; background: #d5dae3; transition: background-color 0.2s; }
-.rd.rpf .rpf-pub-sw i { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 999px; background: #fff; box-shadow: 0 1px 3px rgba(16, 24, 40, 0.25); transition: left 0.2s; }
-.rd.rpf .rpf-pub[aria-checked="true"] .rpf-pub-sw { background: #141a24; }
-.rd.rpf .rpf-pub[aria-checked="true"] .rpf-pub-sw i { left: 17px; }
+/* Its switch is Settings' one (.rst-switch, settings.css), drawn as a span inside the worded button (16 Nov, Alex: the audit). */
+.rd.rpf .rpf-pub .rst-switch { display: inline-block; }
 
 /* ---- Your details: Account over Address, as every section's parts, across the page's width. */
 .rd.rpf .rpf-details { display: flex; flex-direction: column; gap: 22px; }
@@ -86,4 +83,4 @@
 .rd.rpf .rpf-phone .dlh-line { flex: 1; min-width: 0; height: 40px; padding-top: 0; padding-bottom: 0; font-variant-numeric: tabular-nums; }
 /* A list with nothing chosen yet reads its word faint, as a placeholder. */
 .rd.rst.rpf .rd-picker.rst-pick.empty > span { color: #98a2b3; }
-@media (prefers-reduced-motion: reduce) { .rd.rpf .rpf-photo, .rd.rpf .rpf-x, .rd.rpf .rpf-pub-sw, .rd.rpf .rpf-pub-sw i { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .rd.rpf .rpf-photo, .rd.rpf .rpf-x { transition: none; } }

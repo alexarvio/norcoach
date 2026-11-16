@@ -51,7 +51,7 @@ export function NeedGroup({ cat, count, children }: { cat: NeedCat; count: numbe
         {look.label}
         <small>{count}</small>
       </div>
-      <div className="rls-card nd-card">{children}</div>
+      <div className="rls-card ndg-card">{children}</div>
     </div>
   );
 }

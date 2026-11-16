@@ -81,10 +81,21 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
 .rd-chev svg { width: 16px; height: 16px; }
 .rd-chev.open { transform: rotate(180deg); }
 /* A row that opens: the chevron right after its title, pointing right, down once open (21 Oct, Alex: as Training's sessions). Fold.tsx. */
-.rd-fold { display: inline-flex; flex: none; align-self: center; color: #98a2b3; transition: transform 0.15s; }
+.rd-fold { display: inline-flex; flex: none; align-self: center; color: #98a2b3; transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
 .rd-fold svg { width: 16px; height: 16px; }
 .rd-fold.open { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .rd-fold { transition: none; } }
+/* The row's body under it, on the shared fold (16 Nov, Alex: the audit; RowFold.tsx, as Training's .trn-sfold): its rows
+   0fr → 1fr over 340ms on the fold's curve, what is in it fading in over 220ms and settling 4px down; shutting, the same
+   back before it leaves the page. Meetings' calls and past calls, the Support inbox; a new row body that opens takes it. */
+.rd-rowfold { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.34s cubic-bezier(0.22, 1, 0.36, 1); animation: rd-rowfold-open 0.34s cubic-bezier(0.22, 1, 0.36, 1); }
+.rd-rowfold > .rd-rowfold-in { min-height: 0; overflow: hidden; transition: opacity 0.22s ease, translate 0.34s cubic-bezier(0.22, 1, 0.36, 1); animation: rd-rowfold-in 0.34s cubic-bezier(0.22, 1, 0.36, 1); }
+.rd-rowfold.shut { grid-template-rows: 0fr; pointer-events: none; }
+.rd-rowfold.shut > .rd-rowfold-in { opacity: 0; translate: 0 -4px; }
+.rd-rowfold.still, .rd-rowfold.still > .rd-rowfold-in { animation: none; }
+@keyframes rd-rowfold-open { from { grid-template-rows: 0fr; } }
+@keyframes rd-rowfold-in { 0% { opacity: 0; translate: 0 -4px; } 65% { opacity: 1; } 100% { opacity: 1; translate: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .rd-rowfold, .rd-rowfold > .rd-rowfold-in { animation: none; transition: none; } }
 /* A feed's or a log's date (21 Oct, Alex): the first thing in every row, `Tue, 21 Oct` (logDate in lib/dayMonth.ts), then
    the thing's name. Drawn as the after-workout check's date on every tab: 13.5px, 500, body grey, tabular numerals. */
 .rd-logdate { flex: none; font-size: 13.5px; font-weight: 500; letter-spacing: 0; text-transform: none; color: #3a4250; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -137,7 +148,7 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
 /* The heading and the cell under it share the same grid track and the same
    alignment: numbers centred, the log left, so nothing sits off its heading. */
 .rd-cols span { text-align: left; }
-.rd-row { position: relative; border-top: 1px solid #eceff3; }
+.rd-row { position: relative; border-top: 1px solid #eef0f3; }
 .rd-row-main { width: 100%; padding: 10px 10px 10px 10px; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; color: #141a24; }
 .rd-row-main.static { cursor: default; }
 .rd-row-main:hover:not(.static) { background: #fafbfd; }
@@ -246,12 +257,12 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
 .rd-pending-ghost:disabled, .rd-pending-apply:disabled { opacity: 0.55; cursor: default; }
 
 .rd-col-trend { text-align: left; }
-.rd-trendcell { display: inline-flex; align-items: center; justify-content: center; height: 28px; padding: 0 9px; border-radius: 8px; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; cursor: pointer; transition: box-shadow 0.12s; }
+.rd-trendcell { display: inline-flex; align-items: center; justify-content: center; height: 28px; padding: 0 9px; border-radius: 8px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; cursor: pointer; transition: box-shadow 0.12s; }
 .rd-trendcell.up { background: #dff3ea; color: #1b7a4b; }
 .rd-trendcell.down { background: #fdf3ee; color: #b8471f; }
 .rd-trendcell.same { background: #eceff3; color: #5b6474; }
-.rd-trendcell.none { color: #c3c9d2; font-weight: 500; }
-.rd-trendcell:hover { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #c9d5e6; }
+.rd-trendcell.none { color: #98a2b3; font-weight: 500; }
+.rd-trendcell:hover { box-shadow: 0 0 0 2px #fff, 0 0 0 3px #c5ccd8; }
 
 .rd-progress { max-width: 640px; gap: 18px; font-family: var(--font-archivo), system-ui, sans-serif; }
 .rd-progress-body { display: flex; flex-direction: column; gap: 18px; }
@@ -309,8 +320,8 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
 .rd-btn.primary { background: #1e3a6e; border-color: #1e3a6e; color: #fff; }
 .rd-btn.primary:hover { background: #2f5d8f; }
 .rd-btn.primary:disabled { opacity: 0.45; cursor: default; }
-.rd-btn.danger { color: #a32d2d; }
-.rd-btn.danger-solid { background: #a32d2d; border-color: #a32d2d; color: #fff; }
+.rd-btn.danger { color: #b42318; }
+.rd-btn.danger-solid { background: #b42318; border-color: #b42318; color: #fff; }
 .rd-btn.ghost.wide { width: auto; padding: 0 10px; font-size: 12.5px; }
 .rd-grip { display: inline-flex; align-items: center; justify-content: center; width: 20px; color: #c3c9d2; font-size: 12px; letter-spacing: -2px; cursor: grab; user-select: none; }
 .rd-grip:hover { color: #5b6474; }
@@ -331,7 +342,6 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
 .rd-session-more { position: static; }
 .rd-row-main { padding-right: 4px; align-items: center; }
 .rd-row-main > * { align-self: center; }
-.rd-row.edited { background: #f8fafe; }
 .rd-cell { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; }
 .rd-cell small { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #8b93a1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* The box hangs 9px (padding + border) into the gutter on its left, so the
@@ -346,7 +356,8 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
 .rd-cell-box::placeholder { color: #b0b6c0; font-weight: 500; }
 .rd-gymcells { display: flex; gap: 6px; }
 .rd-gymcells .rd-cell-box { max-width: none; }
-.rd-trendcell { border: 0; font: inherit; }
+.rd-trendcell { border: 0; font: inherit; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.rd-trendcell.none { font-weight: 500; }
 .rd-weekrow { display: flex; align-items: flex-start; gap: 12px; }
 .rd-weekrow .rd-weeks { flex: 1; min-width: 0; }
 /* The trigger's own utilities centre its children; the chip is a left-aligned column. */
@@ -456,10 +467,10 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
 /* Exercises | Cardio as every two-way choice is (25 Oct, Alex: "old design"): the white capsule with its hairline, the
    chosen one ink. */
 .rd-coltabs { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; height: 36px; margin: 2px 2px 6px; padding: 4px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; box-sizing: border-box; }
-.rd-coltabs button { height: 28px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 500; color: #5b6474; cursor: pointer; }
+.rd-coltabs button { height: 28px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; cursor: pointer; }
 .rd-coltabs button:hover:not(.on) { color: #141a24; }
 .rd-coltabs button.on { background: #141a24; color: #fff; font-weight: 600; box-shadow: none; }
-.rd-cardio { margin-top: 14px; padding-top: 6px; border-top: 1px solid #eceff3; }
+.rd-cardio { margin-top: 14px; padding-top: 6px; border-top: 1px solid #eef0f3; }
 .rd-cardio .rd-cols { padding-top: 8px; }
 .rd-cardio .rd-row.cardio .rd-ex { font-weight: 600; }
 .rd-note-cell { font-size: 12.5px; color: #5b6474; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -471,11 +482,20 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
 .rd-addrow { padding: 8px; }
 .rd-addrow-bar { display: flex; align-items: center; gap: 4px; padding: 0 4px 0 0; border: 1px solid #2f5d8f; border-radius: 10px; box-shadow: 0 0 0 3px rgba(47, 93, 143, 0.12); background: #fff; }
 .rd-addrow-bar .rd-addrow-search { flex: 1; height: 38px; border: 0; box-shadow: none; border-radius: 10px 0 0 10px; }
-.rd-addrow-chev { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: 8px; background: none; color: #5b6474; cursor: pointer; transition: transform 0.15s; }
+.rd-addrow-chev { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: 8px; background: none; color: #5b6474; cursor: pointer; transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
 .rd-addrow-chev svg { width: 16px; height: 16px; }
 /* The neutral hover in ink, never navy (29 Oct, Alex). */
 .rd-addrow-chev:hover, .rd-addrow-chev.open { background: #f5f6f8; color: #141a24; }
 .rd-addrow-chev.open { transform: rotate(180deg); }
+/* The one search field (16 Nov, Alex: the audit; admin §6): a 36px white pill with a 1.5px ink edge, the magnifier 15px
+   grey at 1.6, the words 13.5px/500, as the rail's (.rr-search) and the Library's (.lbx-search). A label holding the
+   magnifier and the input. Unscoped and doubled, so a pop-up's own rules (portalled, outside .rd) don't tie with it.
+   The Substitutes and Demo video pop-ups; a new search takes it. */
+.rd-search.rd-search { display: flex; align-items: center; gap: 8px; height: 36px; margin: 0; padding: 0 14px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1.5px #141a24; box-sizing: border-box; color: #8b93a1; cursor: text; }
+.rd-search.rd-search > svg { flex: none; width: 15px; height: 15px; color: #8b93a1; }
+.rd-search.rd-search > svg circle, .rd-search.rd-search > svg path { stroke-width: 1.6; }
+.rd-search.rd-search input { flex: 1; min-width: 0; height: 100%; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; outline: none; box-shadow: none; font: inherit; font-size: 13.5px; font-weight: 500; color: #141a24; }
+.rd-search.rd-search input::placeholder { color: #98a2b3; font-weight: 500; }
 .rd-addrow-back { display: block; width: 100%; padding: 8px 10px; border: 0; background: none; font: inherit; font-size: 12.5px; font-weight: 700; color: #2f5d8f; text-align: left; cursor: pointer; }
 .rd-title-weeks { font-size: 15px; font-weight: 500; color: #5b6474; letter-spacing: 0; }
 .rd-week > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
@@ -483,13 +503,14 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
 .rd-week[data-state="active"] .rd-live-dot { background: #1e3a6e; box-shadow: 0 0 0 0 rgba(30, 58, 110, 0.5); }
 @keyframes rd-pulse { 0% { box-shadow: 0 0 0 0 rgba(47, 93, 143, 0.5); } 70% { box-shadow: 0 0 0 7px rgba(47, 93, 143, 0); } 100% { box-shadow: 0 0 0 0 rgba(47, 93, 143, 0); } }
 @media (prefers-reduced-motion: reduce) { .rd-live-dot { animation: none; } }
-.rd-menu-inuse { margin-left: auto; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #8b93a1; }
+/* A menu row's grey fact on its right in quiet words (16 Nov, Alex: the audit), as the add list's facts. */
+.rd-menu-inuse { margin-left: auto; font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; color: #98a2b3; }
 /* The dialog title sits on its content: no empty band under it. */
 .rd-dlg [data-slot="dialog-header"] { gap: 4px; }
 .rd-dlg [data-slot="dialog-title"] { line-height: 1.2; }
 .rd-progress.rd-dlg { gap: 12px; }
 .rd-ex-btn { padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; border-radius: 4px; }
-.rd-ex-btn:hover { color: #1e3a6e; text-decoration: underline; text-decoration-color: #c9d5e6; text-underline-offset: 3px; }
+.rd-ex-btn:hover { color: #141a24; text-decoration: underline; text-decoration-color: #e1e5eb; text-underline-offset: 4px; }
 .rd-addrow-item.create { justify-content: flex-end; gap: 6px; color: #2f5d8f; border-top: 1px solid #eceff3; border-radius: 0; margin-top: 4px; padding-top: 10px; }
 .rd-addrow-item.create svg { width: 14px; height: 14px; }
 .rd-create { display: flex; flex-direction: column; gap: 8px; padding: 10px 4px 4px; }
@@ -592,7 +613,7 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
 .rd-swaprow { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 0.3s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease; }
 .rd-swaprow.open { grid-template-rows: 1fr; opacity: 1; }
 .rd-swaprow-clip { min-height: 0; overflow: hidden; }
-.rd-swaprow-body { display: flex; align-items: center; gap: 12px; margin: 0 0 10px 30px; padding: 10px 14px; border-radius: 12px; background: #FDF6EA; border: 1px solid #F3DFBC; }
+.rd-swaprow-body { display: flex; align-items: center; gap: 12px; margin: 0 0 10px 30px; padding: 10px 14px; border-radius: 0; background: none; border: 0; }
 .rd-swaprow-body .rd-swapdot { margin-left: 0; flex: none; }
 .rd-swaprow-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .rd-swaprow-text b { font-size: 13.5px; color: #141a24; }
@@ -627,7 +648,6 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
    the ⋯ went out of sight: it stays pinned to the card's right edge, on the
    row's own colour, with a soft fade where the scrolled columns pass under it. */
 .rd-rows-scroll .rd-row-more { position: sticky; right: 0; z-index: 1; align-self: stretch; padding-left: 6px; background: #fff; box-shadow: -10px 0 8px -6px rgba(255, 255, 255, 0.9); }
-.rd-rows-scroll .rd-row.edited .rd-row-more { background: #f8fafe; box-shadow: -10px 0 8px -6px rgba(248, 250, 254, 0.9); }
 .rd-rows-scroll .rd-row-main:hover:not(.static) .rd-row-more { background: #fafbfd; }
 /* Packed against the right, the swap rightmost (24 Oct, Alex). */
 /* One gap between every mark, on the session row too (24 Oct, Alex: "the same amount of separation"). */
@@ -646,6 +666,9 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
 /* In the legend every mark one size, so they line up (25 Oct, Alex): 22px rings; the needs-you dot centred on them. */
 .rd-legend-mark > .rd-flag, .rd-legend-mark > .rd-swapdot, .rd-legend-mark > .rd-extradot, .rd-legend-mark > .rd-pbdot, .rd-legend-mark > .rd-copydot { width: 22px; min-width: 22px; height: 22px; padding: 0; box-sizing: border-box; }
 .rd-legend-mark > .rd-due { margin: 0 8px; }
+/* Their note as the session row draws it (16 Nov, Alex: the audit): the grey ring with the pen, never a tinted capsule. */
+.rd-legend-mark > .rd-tag.note { justify-content: center; width: 22px; min-width: 22px; height: 22px; padding: 0; box-sizing: border-box; border-radius: 999px; background: none; box-shadow: inset 0 0 0 1px #e1e5eb; color: #5b6474; cursor: default; }
+.rd-legend-mark > .rd-tag.note svg { width: 12px; height: 12px; }
 .rd-legend-mark .rd-legend-swatch { display: inline-block; width: 36px; height: 22px; padding: 0; box-sizing: border-box; }
 /* A personal best (24 Oct, Alex): the extra sets' green ring with PB in it, and the sets that were one ringed in green. */
 /* A session done again that week (9 Nov, Alex): a ring as every mark, in training purple; a click lands on the duplicate. */
@@ -668,11 +691,12 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
 .rd-demo-slot { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 24px; }
 /* The demo's switch for the client (25 Oct, Alex): ink and the knob right while shown, grey and left while hidden; the
    play mark on the knob. */
-.rd-demo-switch { position: relative; flex: none; display: inline-block; width: 36px; height: 20px; padding: 0; border: 0; border-radius: 999px; background: #141a24; cursor: pointer; transition: background-color 0.2s ease; }
-.rd-demo-switch.off { background: #E1E5EB; }
+/* One switch on every Training control (16 Nov, Alex: the audit; the demo, Ask every session, a substitute), Settings' .rst-switch: 36×22, a 16px knob 3px in, white with the hairline while off, ink while on, sliding 250ms on the fold curve. */
+.rd-demo-switch { position: relative; flex: none; display: inline-block; width: 36px; height: 22px; padding: 0; border: 0; border-radius: 999px; background: #141a24; cursor: pointer; transition: background-color 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
+.rd-demo-switch.off { background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; }
 .rd-demo-switch.fixed { cursor: default; }
-.rd-demo-switch > i { position: absolute; top: 2px; left: 18px; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 999px; background: #fff; color: #141a24; transition: left 0.2s ease, color 0.2s ease; }
-.rd-demo-switch.off > i { left: 2px; color: #98A2B3; }
+.rd-demo-switch > i { position: absolute; top: 3px; left: 17px; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 999px; background: #fff; color: #141a24; transition: left 0.25s cubic-bezier(0.22, 1, 0.36, 1), color 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
+.rd-demo-switch.off > i { left: 3px; background: #98a2b3; color: #fff; }
 .rd-demo-switch svg { width: 16px; height: 16px; margin-left: 1px; }
 .rd-demo-switch:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(20, 26, 36, 0.18); }
 @media (prefers-reduced-motion: reduce) { .rd-demo-switch, .rd-demo-switch > i { transition: none; } }
@@ -685,8 +709,9 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
    filled in before Apply, not dashes to read. */
 .rd-row.new .rd-row-main .rd-cell-box, .rd-row.new .rd-row-main .rd-cell-box:focus, .rd-row.new .rd-row-main .rd-cell-box:focus:hover { border-color: #dfe3e8; background: #fff; }
 /* The swap row on the exercise row's own columns (25 Sep): its sets in the
-   "did" column as orange chips, matching the swap circle; no subtitle. */
-.rd-swaprow-body { display: grid; align-items: center; margin: 0 0 8px; padding: 10px; border: 0; border-radius: 12px; background: #FDF6EA; box-shadow: inset 0 0 0 1px #F3DFBC; }
+   "did" column as orange chips, matching the swap circle; no subtitle. Flat on the row (16 Nov, Alex: the audit): the
+   amber ring and the words, no fill or edge round them. */
+.rd-swaprow-body { display: grid; align-items: center; margin: 0 0 8px; padding: 10px; border: 0; border-radius: 0; background: none; box-shadow: none; }
 .rd-swaprow-text { display: flex; flex-direction: row; align-items: center; gap: 10px; }
 .rd-swaprow-text .rd-swapdot { margin-left: 0; }
 .rd-set.swap { background: #FBE7C6; color: #9a5b0c; }
@@ -803,10 +828,12 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
    section's (12px). */
 .rpg { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; column-gap: 12px; margin: 0; padding: 0; border: 0; background: none; }
 .rpg-pages { grid-column: 2; display: flex; align-items: center; gap: 4px; }
-.rpg-page { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 32px; padding: 0 8px; border: 1px solid #dfe3e8; border-radius: 9px; background: #fff; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; text-decoration: none; cursor: pointer; }
-.rpg-page:hover { border-color: #c3c9d2; }
-.rpg-page.on { background: #141a24; border-color: #141a24; color: #fff; }
-.rpg-page.off { opacity: 0.35; cursor: default; }
+/* Each page a 32px round ghost as ‹ Today › beside it, no edge and no fill, the page on screen the ink disc (16 Nov,
+   Alex: the audit; they were boxed on a third grey at radius 9). */
+.rpg-page { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 32px; padding: 0 8px; box-sizing: border-box; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; text-decoration: none; cursor: pointer; transition: background-color 0.2s ease; }
+.rpg-page:hover { background: #fafbfd; }
+.rpg-page.on, .rpg-page.on:hover { background: #141a24; color: #fff; }
+.rpg-page.off, .rpg-page.off:hover { opacity: 0.35; background: none; cursor: default; }
 .rpg-gap { padding: 0 4px; color: #8b93a1; }
 .rpg-count { grid-column: 3; justify-self: end; font-size: 12px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rd-noprog { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
@@ -856,7 +883,6 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
    row's colour fills it, and the heading row's last column is pinned the
    same way so its "30 days" doesn't peek out either. */
 .rd-rows-scroll .rd-row-more { box-shadow: -10px 0 8px -6px rgba(255, 255, 255, 0.9), 20px 0 0 0 #fff; }
-.rd-rows-scroll .rd-row.edited .rd-row-more { box-shadow: -10px 0 8px -6px rgba(248, 250, 254, 0.9), 20px 0 0 0 #f8fafe; }
 .rd-rows-scroll .rd-row-main:hover:not(.static) .rd-row-more { box-shadow: -10px 0 8px -6px rgba(250, 251, 253, 0.9), 20px 0 0 0 #fafbfd; }
 .rd-rows-scroll .rd-cols > :last-child { position: sticky; right: 0; z-index: 1; align-self: stretch; background: #fff; box-shadow: -10px 0 8px -6px rgba(255, 255, 255, 0.9), 20px 0 0 0 #fff; }
 
@@ -865,14 +891,14 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
    pointer is on the row, the row has keyboard focus, or its menu is open —
    as the Library's bins and the chat's bubble menu do. The flags beside an
    exercise's ⋯ (chat, video, swap) stay; so does a cardio alternatives
-   button carrying a count. On touch there is no hover: they sit at 70%. */
+   button carrying a count. On touch there is no hover: they show in full (16 Nov, Alex: the audit; was 70%). */
 .rd-row-more > [data-slot="dropdown-menu-trigger"], .rd-row-more > .rd-btn, .rd-session-head [data-slot="dropdown-menu-trigger"], .rd-alt-row .rd-btn.ghost.sm, .rd-gymrow .rd-btn.ghost.sm { opacity: 0; transition: opacity 0.12s; }
 .rd-row-main:hover .rd-row-more > [data-slot="dropdown-menu-trigger"], .rd-row-main:hover .rd-row-more > .rd-btn,
 .rd-row-main:focus-within .rd-row-more > [data-slot="dropdown-menu-trigger"], .rd-row-main:focus-within .rd-row-more > .rd-btn,
 .rd-session-head:hover [data-slot="dropdown-menu-trigger"], .rd-session-head:focus-within [data-slot="dropdown-menu-trigger"],
 .rd-alt-row:hover .rd-btn.ghost.sm, .rd-alt-row:focus-within .rd-btn.ghost.sm, .rd-gymrow:hover .rd-btn.ghost.sm, .rd-gymrow:focus-within .rd-btn.ghost.sm,
 .rd-row-more > [data-state="open"], .rd-session-head [data-state="open"], .rd-row-more > .rd-btn:focus-visible, .rd-row-more > .rd-cardio-alt:has(b) { opacity: 1; }
-@media (hover: none) { .rd-row-more > [data-slot="dropdown-menu-trigger"], .rd-row-more > .rd-btn, .rd-session-head [data-slot="dropdown-menu-trigger"], .rd-alt-row .rd-btn.ghost.sm, .rd-gymrow .rd-btn.ghost.sm { opacity: 0.7; } }
+@media (hover: none) { .rd-row-more > [data-slot="dropdown-menu-trigger"], .rd-row-more > .rd-btn, .rd-session-head [data-slot="dropdown-menu-trigger"], .rd-alt-row .rd-btn.ghost.sm, .rd-gymrow .rd-btn.ghost.sm { opacity: 1; } }
 /* One ⋯ for every row and card (25 Oct, Alex): Lifestyle's round one. 30px, nothing behind it at rest, the page grey
    while the pointer is on it or its menu is open, the icon 16px in the secondary grey. Unscoped (this file is on every
    coach screen, and a pop-up's rows sit outside .rd) and doubled so a tab's own button rules don't tie with it.
@@ -880,6 +906,13 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
 .trn-row-more.trn-row-more { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 999px; background: none; box-shadow: none; color: #5b6474; cursor: pointer; }
 .trn-row-more.trn-row-more:hover, .trn-row-more.trn-row-more[data-state="open"] { background: #f5f6f8; }
 .trn-row-more.trn-row-more svg { width: 16px; height: 16px; }
+/* On a touch screen every row's ⋯ is there in full, wherever its tab hides it until hover (16 Nov, Alex: the audit;
+   Lifestyle, supplements and Invoices, Settings' Plans and the Library's cards never showed one on an iPad).
+   Each selector one class past its tab's own hiding rule, so file order never decides it. */
+@media (hover: none) {
+  .rd.rls .rls-row .trn-row-more.trn-row-more, .rd.rst .rst-plan .trn-row-more.trn-row-more,
+  .rd.lbx .lbx-tile-more.lbx-tile-more, .rd.rnt .rn-day .rd-row-more > .trn-row-more.trn-row-more { opacity: 1; }
+}
 
 /* A demo hidden from this client (6 Oct): the dot stays, greyed, so the demo is known to be there. */
 .rd-demo.off { background: none; box-shadow: inset 0 0 0 1px #E1E5EB; color: #c3c9d2; }
@@ -1155,8 +1188,8 @@ span.rd-demo { cursor: default; }
 /* A long gym name is cut, so the facts line never runs past the card. */
 .exp-gn { display: inline-block; min-width: 0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .exp-gym:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; border-radius: 6px; }
-.exp-menu { position: absolute; top: calc(100% + 8px); left: -10px; z-index: 5; display: flex; flex-direction: column; width: max-content; min-width: 180px; max-width: 300px; padding: 4px; border-radius: 12px; background: #fff; box-shadow: 0 16px 36px -14px rgba(16, 24, 40, 0.3), 0 0 0 1px #e1e5eb; }
-.exp-menu button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 13.5px; font-weight: 500; color: #3a4250; text-align: left; white-space: nowrap; cursor: pointer; }
+.exp-menu { position: absolute; top: calc(100% + 8px); left: -10px; z-index: 5; display: flex; flex-direction: column; width: max-content; min-width: 180px; max-width: 300px; padding: 5px; border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(20, 30, 50, 0.16); }
+.exp-menu button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; height: 34px; padding: 0 10px; border: 0; border-radius: 7px; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: #141a24; text-align: left; white-space: nowrap; cursor: pointer; }
 .exp-menu button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .exp-menu button svg { flex: none; }
 .exp-menu button:hover:not(.on), .exp-menu button:focus-visible:not(.on) { outline: none; background: #fafbfd; color: #141a24; }
@@ -1341,7 +1374,7 @@ span.rd-demo { cursor: default; }
    columns (NeedGroups, .nd- in feed/feed.css) with no face or name, it being one client's tab: the date it came in
    (logDate; none, the column goes), the mark, the thing and their words, the wait centred, the action as its icon alone
    in a round 30px button, the round check. */
-.rd-todo-row { display: grid; grid-template-columns: var(--todo-date, 84px) 16px minmax(0, 1fr) 96px 30px 20px; align-items: center; column-gap: 12px; min-height: 46px; padding: 0 12px 0 16px; font-size: 13.5px; font-weight: 500; color: #3a4250; }
+.rd-todo-row { display: grid; grid-template-columns: var(--todo-date, 84px) 16px minmax(0, 1fr) 96px 30px 20px; align-items: center; column-gap: 16px; min-height: 52px; padding: 0 12px 0 18px; font-size: 13.5px; font-weight: 500; color: #3a4250; }
 .rd-todo.nodate .rd-todo-row { grid-template-columns: 16px minmax(0, 1fr) 96px 30px 20px; }
 .rd-todo-row + .rd-todo-row { border-top: 1px solid rgba(184, 71, 31, 0.16); }
 .rd-todo-mark { display: inline-flex; flex: none; color: #b8471f; }
@@ -1350,9 +1383,12 @@ span.rd-demo { cursor: default; }
 .rd-todo-what { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #141a24; font-weight: 600; }
 .rd-todo-words { min-width: 0; flex: 1 1 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #8b93a1; }
 .rd-todo-wait { white-space: nowrap; color: #b8471f; font-variant-numeric: tabular-nums; text-align: center; }
-.rd-todo-act { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 999px; background: none; color: #141a24; cursor: pointer; }
+/* The owed rows' action exactly (16 Nov, Alex, the audit: the strip is the Feed's Needs you for one client): a round white
+   button with a hairline, an ink ring under the pointer, every stroke 1.1px on screen. */
+.rd-todo-act { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; color: #141a24; cursor: pointer; }
 .rd-todo-act svg { width: 16px; height: 16px; }
-.rd-todo-act:hover { background: rgba(184, 71, 31, 0.1); }
+.rd-todo-act svg *, .rd-todo-done svg * { vector-effect: non-scaling-stroke; stroke-width: 1.1px; }
+.rd-todo-act:hover { background: #fff; box-shadow: inset 0 0 0 1px #141a24; }
 .rd-todo-act:focus-visible { outline: 1px solid #141a24; outline-offset: 1px; }
 /* The round icon button centres itself: none of the words' half-pixel lifts further down. */
 .rd-todo .rd-todo-act, .rd-todo .rd-todo-act svg { translate: none; }
@@ -1360,7 +1396,7 @@ span.rd-demo { cursor: default; }
 /* Mark done without doing it (2 Nov, Alex): a round check at the row's end, quiet grey, green under the pointer as the
    Feed's; asks first. A row that can't be let go keeps the room, so every action lines up. */
 /* The check 4px from the action, as every needs-you row's icons (3 Nov, Alex: "squeeze them"). */
-.rd-todo-done, .rd-todo-done-room { flex: none; width: 28px; height: 28px; margin-left: -8px; }
+.rd-todo-done, .rd-todo-done-room { flex: none; width: 28px; height: 28px; margin-left: -12px; }
 .rd-todo-done { display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 999px; background: none; color: #8b93a1; cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease; }
 .rd-todo-done svg { width: 14px; height: 14px; }
 .rd-todo-done:hover, .rd-todo-done:focus-visible { outline: none; background: rgba(47, 122, 63, 0.12); color: #2f7a3f; }
@@ -1382,7 +1418,7 @@ span.rd-demo { cursor: default; }
    real border, so it takes its own room rather than lying over the first row's top and the last row's foot, and the line
    between rows is the row's own top edge, outside the room the row centres in. */
 .rd-todo { box-shadow: none; border: 1.5px solid #b8471f; }
-.rd-todo-row { box-sizing: content-box; min-height: 46px; }
+.rd-todo-row { box-sizing: content-box; min-height: 52px; }
 /* Measured on Archivo (2 Nov): the middle between the capitals and the small letters, which the eye reads as a line's
    middle, sat 0.4px high in the words and 0.75px in the action; the marks need no half-pixel lift here, they meet that
    middle as they are. Each brought onto the row's middle, within a quarter pixel. */

@@ -401,7 +401,7 @@ function moneyOf(ctx: Ctx): MoneyMonth[] {
     const month = byMonth.get(monthOf(day));
     if (!month) continue;
     const amount = amountOf(i);
-    const row: MonthInvoice = { invoiceId: i.id, clientId: byId.has(i.client_id) ? i.client_id : null, client: invoiceClient(i, byId), number: i.number ?? null, date: day, amount, state: st === "paid" ? "paid" : "open" };
+    const row: MonthInvoice = { invoiceId: i.id, clientId: byId.has(i.client_id) ? i.client_id : null, client: invoiceClient(i, byId), number: i.number ?? null, date: day, amount, state: st };
     month.invoices.push(row);
     if (st === "paid") month.paid += amount;
     else month.open += amount;

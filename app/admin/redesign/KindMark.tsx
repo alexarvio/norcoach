@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import type { ActivityMark } from "../../lib/activityMark";
 import type { PhaseTrack } from "../../lib/db";
 import { eventTypeOf } from "../../lib/eventTypes";
-import { meetingTypeOf } from "../../lib/meetingTypes";
+import { meetingTypeOf, type MeetingTypeId } from "../../lib/meetingTypes";
 import { NOTIFICATION_TYPES } from "../../lib/notificationTypes";
 import { TRACK_ACCENT } from "../phaseChrome";
 import { TrackIcon } from "./plan/PlanDraft";
@@ -38,14 +38,17 @@ const markOf = (mark: ActivityMark): Mark => {
   return MARKS[mark as keyof typeof MARKS] ?? MARKS.messages;
 };
 
-export default function KindMark({ mark }: { mark: ActivityMark }) {
-  const k = markOf(mark);
+/** `call`: a call drawn as its own kind (Meetings' past calls: Check-in blue, Review purple, Other grey), one drawing
+ *  with Activity's (16 Nov, Alex: the audit; Meetings kept a thinner copy). */
+export default function KindMark({ mark, call }: { mark: ActivityMark; call?: MeetingTypeId }) {
+  const t = call ? meetingTypeOf(call) : null;
+  const k: Mark = t ? { label: t.label, color: t.color, path: t.icon } : markOf(mark);
   return (
     <span className="rd-kind" style={{ "--c": k.color } as CSSProperties} title={k.label}>
       {k.track ? (
         <TrackIcon track={k.track} size={16} />
       ) : (
-        <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d={k.path} />
         </svg>
       )}

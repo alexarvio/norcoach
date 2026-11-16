@@ -59,11 +59,12 @@
 
 /* Toasts (sonner) in the app's type and corners. */
 [data-sonner-toaster] { font-family: var(--font-archivo), system-ui, sans-serif; }
-[data-sonner-toast] { border-radius: 12px !important; border: 1px solid #dfe3e8 !important; color: #141a24 !important; box-shadow: 0 12px 30px -16px rgba(8, 31, 92, 0.35) !important; }
-[data-sonner-toast] [data-title] { font-weight: 700; font-size: 13px; }
+/* The tokens (16 Nov, Alex: the audit): the hairline, the floating lists' neutral shadow, 600 at most, success green and danger red. */
+[data-sonner-toast] { border-radius: 12px !important; border: 1px solid #e1e5eb !important; color: #141a24 !important; box-shadow: 0 12px 28px rgba(20, 30, 50, 0.16) !important; }
+[data-sonner-toast] [data-title] { font-weight: 600; font-size: 13px; }
 [data-sonner-toast] [data-description] { font-size: 12.5px; color: #5b6474; }
-[data-sonner-toast][data-type="success"] [data-icon] { color: #1b7a4b; }
-[data-sonner-toast][data-type="error"] [data-icon] { color: #b3261e; }
+[data-sonner-toast][data-type="success"] [data-icon] { color: #2f7a3f; }
+[data-sonner-toast][data-type="error"] [data-icon] { color: #b42318; }
 
 /* The builder's ⋯ menus (SessionMenu, ExerciseRowMenu) on the Dropdown Menu:
    the same face the hand-built .pb-session-menu had. */
@@ -72,7 +73,7 @@
 .pb-menu [data-slot="dropdown-menu-item"] { gap: 9px; min-height: 34px; padding: 7px 10px; line-height: 20px; border-radius: 7px; font-size: 13.5px; font-weight: 600; color: #141a24; cursor: pointer; }
 .pb-menu [data-slot="dropdown-menu-item"] svg { width: 15px; height: 15px; color: #5b6474; }
 .pb-menu [data-slot="dropdown-menu-item"][data-variant="destructive"],
-.pb-menu [data-slot="dropdown-menu-item"][data-variant="destructive"] svg { color: #a32d2d; }
+.pb-menu [data-slot="dropdown-menu-item"][data-variant="destructive"] svg { color: #b42318; }
 .pb-row-more[data-state="open"] { background: #eceff3; color: #141a24; }
 
 /* globals.css gives every h2 a 28px top margin; a dialog's title is one.

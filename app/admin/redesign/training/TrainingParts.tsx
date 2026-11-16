@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import type React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import { saveProgramWorkoutQuestionsAction, savePhaseNoteAction, setPhaseGoalsAction } from "../../../lib/actions";
 import { PHASE_OBJECTIVE_CHARS, PHASE_OBJECTIVES_MAX } from "../../../lib/phaseCovers";
 import { MAX_WORKOUT_QUESTIONS, WORKOUT_QUESTION_PRESETS } from "../../../lib/workoutQuestions";
@@ -13,6 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog } from "../../../components/ui/dialog";
 import { ConfirmDialog, type DraftAnswered, type DraftProgram } from "./TrainingDraft";
 import { SepJoin } from "../Sep";
+import Pager from "../Pager";
 import { logDate } from "../../../lib/dayMonth";
 import { FEATURES } from "../../../lib/features";
 
@@ -104,11 +104,9 @@ export function GoalsNotePills({ firstName, phaseId, goals, note, area = "traini
         if (phaseId == null) return;
         const lines = rows.map((g) => g.trim().slice(0, PHASE_OBJECTIVE_CHARS)).filter(Boolean);
         await setPhaseGoalsAction(phaseId, lines);
-        toast.success("Saved", { description: lines.length ? `Phase goals · ${firstName} sees them on Home` : "Phase goals cleared" });
       } else {
         if (saveNote) await saveNote(text.trim());
         else if (phaseId != null) await savePhaseNoteAction(phaseId, text.trim());
-        toast.success("Saved", { description: text.trim() ? `Note to ${firstName} on ${area}` : "Note removed" });
       }
       router.refresh();
     });
@@ -239,7 +237,7 @@ export function WeekRail({ weeks, viewIdx, dateOf, hrefFor, isLocal, onShow, onA
             key={w.index}
             role="tab"
             aria-selected={on}
-            aria-label={`Week ${w.index}${now ? ", current week" : ""}, ${done} of ${total} sessions done${w.missed?.some(Boolean) ? `, ${w.missed.filter(Boolean).length} unfinished` : ""}${w.skipped?.some(Boolean) ? `, ${w.skipped.filter(Boolean).length} skipped` : ""}${w.state === "past" && w.trained.some((t, i) => !t && !w.skipped?.[i] && !w.missed?.[i]) ? `, ${w.trained.filter((t, i) => !t && !w.skipped?.[i] && !w.missed?.[i]).length} not completed` : ""}${owed ? ", needs you" : ""}`}
+            aria-label={`Week ${w.index}${now ? ", current week" : ""}, ${done} of ${total} sessions done${w.missed?.some(Boolean) ? `, ${w.missed.filter(Boolean).length} started, not finished` : ""}${w.skipped?.some(Boolean) ? `, ${w.skipped.filter(Boolean).length} skipped` : ""}${w.state === "past" && w.trained.some((t, i) => !t && !w.skipped?.[i] && !w.missed?.[i]) ? `, ${w.trained.filter((t, i) => !t && !w.skipped?.[i] && !w.missed?.[i]).length} not completed` : ""}${owed ? ", needs you" : ""}`}
             href={hrefFor(w.index)}
             scroll={false}
             className={`trn-week${on ? " on" : ""}`}
@@ -346,7 +344,6 @@ export function AfterWorkoutCheck({ programId, firstName, questions, answers, hr
     startTransition(async () => {
       await saveProgramWorkoutQuestionsAction(programId, next);
       router.refresh();
-      toast.success("Saved", { description: said });
     });
   };
   const full = list.length >= MAX_WORKOUT_QUESTIONS;
@@ -360,10 +357,11 @@ export function AfterWorkoutCheck({ programId, firstName, questions, answers, hr
   const answered = (label: string) => answers.some((a) => a.answers.some((x) => x.label === label && (x.value != null || !!(x.text ?? "").trim())));
   const remove = (q: Q) => save(list.filter((x) => x.id !== q.id), `${q.label} removed · past answers kept`);
 
-  // The latest three workouts always show; the rest open under them, ten at a time.
-  const PREVIEW = 3;
-  const [all, setAll] = useState(false);
-  const [limit, setLimit] = useState(10);
+  // A log as every log (16 Nov, Alex: the audit): 20 a page, the shared Pager under the card.
+  const PAGE = 20;
+  const [page, setPage] = useState(1);
+  const pages = Math.max(1, Math.ceil(answers.length / PAGE));
+  const at = Math.min(page, pages);
   // The columns: today's questions, then any asked before and since removed (their answers are kept).
   const labels = [...list.map((q) => q.label), ...answers.flatMap((a) => a.answers.map((x) => x.label))].filter((l, i, all) => all.indexOf(l) === i);
   const avg = (label: string) => {
@@ -379,7 +377,7 @@ export function AfterWorkoutCheck({ programId, firstName, questions, answers, hr
   // The question columns share the width (each wide enough for its name, its average and the ✕), so a wide screen isn't left empty.
   const grid = { gridTemplateColumns: `110px minmax(180px, 1.4fr) repeat(${labels.length}, minmax(210px, 1fr))` } as const;
   const minW = 110 + 180 + labels.length * 210;
-  const rows = all ? answers.slice(0, limit) : answers.slice(0, PREVIEW);
+  const rows = answers.slice((at - 1) * PAGE, at * PAGE);
 
   const addMenu = !locked && !full && sugs.length > 0 && (
     <DropdownMenu modal={false}>
@@ -416,12 +414,13 @@ export function AfterWorkoutCheck({ programId, firstName, questions, answers, hr
   return (
     // One table (20 Oct, Alex: the averages jumped from the head row into the table when Answers opened, and the card
     // read as three things): the questions are its columns, each with its average in its head; the latest workouts under them.
-    <section className="trn-check" aria-labelledby="trn-check-h">
-      <div className="trn-check-head">
+    // The title on the page at 20px whether or not there are questions (16 Nov, Alex: the audit; it shrank into the card).
+    <section className="rls-section" aria-labelledby="trn-check-h">
+      <div className="trn-weekhead">
         <h2 id="trn-check-h">After-workout check</h2>
-        {addMenu}
+        {addMenu && <div className="trn-weekhead-actions">{addMenu}</div>}
       </div>
-
+      <div className="trn-check">
       <div className="trn-ans-scroll">
         <div className="trn-ans-table" style={{ minWidth: minW }}>
           <div className="trn-ans-row trn-ans-cols" style={grid}>
@@ -448,7 +447,10 @@ export function AfterWorkoutCheck({ programId, firstName, questions, answers, hr
           {answers.length === 0 ? (
             <div className="trn-ans-row trn-ans-nil">No answers yet</div>
           ) : (
-            rows.map((it) => (
+            // A full page's height on every page once it pages (.rd-steady): a row is 53px with its hairline, so the
+            // Pager and what is under it never move on a short last page.
+            <div className={pages > 1 ? "rd-steady" : undefined} style={pages > 1 ? ({ "--log-rows": PAGE, "--log-row": "53px", "--log-head": "0px" } as React.CSSProperties) : undefined}>
+            {rows.map((it) => (
               <Link key={it.dayId} href={href(it)} scroll={false} className="trn-ans-row" style={grid} title={`Open ${it.name}, ${it.weekLabel}`}>
                 <span className="rd-logdate">{logDate(it.ended)}</span>
                 <span className="trn-ans-session">
@@ -460,29 +462,13 @@ export function AfterWorkoutCheck({ programId, firstName, questions, answers, hr
                   </span>
                 ))}
               </Link>
-            ))
+            ))}
+            </div>
           )}
         </div>
-        {answers.length > PREVIEW && (
-          <div className="trn-ans-foot">
-            {all && answers.length > limit && (
-              <button type="button" className="trn-ans-more" onClick={() => setLimit((n) => n + 10)}>
-                Show more
-              </button>
-            )}
-            <button
-              type="button"
-              className="trn-ans-more"
-              onClick={() => {
-                setAll((v) => !v);
-                setLimit(10);
-              }}
-            >
-              {all ? "Show fewer" : `Show all ${answers.length}`}
-            </button>
-          </div>
-        )}
       </div>
+      </div>
+      <Pager page={at} pages={pages} from={(at - 1) * PAGE} shown={rows.length} total={answers.length} label="Answered workouts pages" onPage={setPage} />
       <Dialog open={removing != null} onOpenChange={(o) => !o && setRemoving(null)}>
         {removing && (
           <ConfirmDialog

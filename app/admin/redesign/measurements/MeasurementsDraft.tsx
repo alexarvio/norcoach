@@ -137,6 +137,9 @@ const CADENCES = ["daily", "weekly", "monthly"] as const;
 const whenOf = (key: string, label: string) => (/^\d{4}-\d{2}-\d{2}$/.test(key) ? dayMonth(key) : label);
 /** A check-in's date, the first thing in its row (21 Oct, Alex: logDate, as every log): the day, or the week's Monday; a month keeps its name. */
 const logWhen = (key: string, label: string, cadence: Cadence) => (cadence === "monthly" || !/^\d{4}-\d{2}-\d{2}$/.test(key) ? label : logDate(key));
+/** A graph axis's date, as grids keep it (`12 Oct`, a week by its Monday; a month its name). */
+const axisWhen = (key: string, label: string, cadence: Cadence) =>
+  cadence === "monthly" || !/^\d{4}-\d{2}-\d{2}$/.test(key) ? label : new Date(`${key}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short" }).replace("Sept", "Sep");
 const ordinal = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? "st" : n % 10 === 2 && n !== 12 ? "nd" : n % 10 === 3 && n !== 13 ? "rd" : "th"}`;
 
 type Dlg =
@@ -155,11 +158,12 @@ export default function MeasurementsDraft({ clientId, firstName, plan }: { clien
   const router = useRouter();
   const [, startTransition] = useTransition();
   // A header action goes to the server, then the page re-reads; what is on screen follows.
+  // No Saved toast (16 Nov, Alex: the audit): the tab's status says it; `said` stays as the note of what each save is.
   const act = (fn: () => Promise<unknown>, said?: string) =>
     startTransition(async () => {
+      void said;
       await fn();
       router.refresh();
-      if (said) savedToast(said);
     });
   const phaseId = plan.id > 0 ? plan.id : null;
   const lastDay = plan.endDate ? addDays(plan.endDate, 6) : null;
@@ -668,7 +672,8 @@ export default function MeasurementsDraft({ clientId, firstName, plan }: { clien
                             <b>{m.name}</b>
                             {m.unit && <small>{m.unit}</small>}
                           </span>
-                          <span className="rls-group" style={{ background: m.tint, color: groupColour(m.groupKey).hex }}>
+                          {/* A tinted tag at 12%, as every tag (16 Nov, Alex: the audit; the group's own tint read as a filled block). */}
+                          <span className="rls-group" style={{ background: `rgba(${groupColour(m.groupKey).rgb}, 0.12)`, color: groupColour(m.groupKey).hex }}>
                             {m.groupLabel}
                           </span>
                           {m.last ? (
@@ -1347,9 +1352,9 @@ function CheckinTable({
 type GraphRange = "short" | "mid" | "long";
 
 /** A metric's readings over the periods shown, oldest first, and what they say. */
-function seriesOf(m: LoggedMetric, periods: { key: string; label: string }[], valueFor: (m: number, p: string) => number | null) {
-  const points = periods.map((p) => ({ label: p.label, value: valueFor(m.id, p.key) }));
-  const seen = points.map((p, i) => ({ ...p, i })).filter((p): p is { label: string; value: number; i: number } => p.value != null);
+function seriesOf(m: LoggedMetric, periods: { key: string; label: string; axis?: string }[], valueFor: (m: number, p: string) => number | null) {
+  const points = periods.map((p) => ({ label: p.label, axis: p.axis ?? p.label, value: valueFor(m.id, p.key) }));
+  const seen = points.map((p, i) => ({ ...p, i })).filter((p): p is { label: string; axis: string; value: number; i: number } => p.value != null);
   const first = seen[0] ?? null;
   const last = seen[seen.length - 1] ?? null;
   const delta = first && last && seen.length > 1 ? Math.round((last.value - first.value) * 10) / 10 : null;
@@ -1375,7 +1380,11 @@ function Graphs({ view, cadence, shortCount }: { view: LoggedValues; cadence: Ca
   const hasLong = view.periods.length > shortCount;
   const hasMid = view.periods.length > midCount;
   const shownRange: GraphRange = range === "mid" && !hasMid ? "long" : range === "long" && !hasLong ? "short" : range;
-  const periods = [...(shownRange === "short" ? view.periods.slice(0, shortCount) : shownRange === "mid" ? view.periods.slice(0, midCount) : view.periods)].reverse();
+  // Dated as the Table dates them (16 Nov, Alex: the audit; a week read `Week 42` here and `Mon, 12 Oct` there): the
+  // hover pill `logDate`, a week by its Monday, a month its name; the axis a grid's `12 Oct`.
+  const periods = [...(shownRange === "short" ? view.periods.slice(0, shortCount) : shownRange === "mid" ? view.periods.slice(0, midCount) : view.periods)]
+    .reverse()
+    .map((p) => ({ ...p, label: logWhen(p.key, p.label, cadence), axis: axisWhen(p.key, p.label, cadence) }));
   return (
     <div className="rm-graphs">
       <nav className="rm-graph-list" aria-label="Metric on the graph">
@@ -1592,7 +1601,7 @@ function MetricGraph({ metric: m, series, rangeSwitch = null }: { metric: Logged
       <div className="rm-graph-axis" aria-hidden="true">
         {dateAt.map((i, k) => (
           <span key={i} className={k === 0 ? "first" : k === dateAt.length - 1 ? "last" : ""} style={{ left: pct(x(i), W) }}>
-            {points[i].label}
+            {points[i].axis}
           </span>
         ))}
       </div>

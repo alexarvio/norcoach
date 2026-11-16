@@ -16,7 +16,7 @@ export default function HelpTip({ title, children, wide = false, untitled = fals
         <button
           type="button"
           data-slot="help-tip"
-          className="inline-flex size-[18px] shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-background text-[11px] font-semibold leading-none text-muted-foreground outline-none hover:border-ring hover:text-primary focus-visible:ring-[3px] focus-visible:ring-ring/30 data-[state=open]:border-ring data-[state=open]:text-primary"
+          className="inline-flex size-[18px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-white text-[11px] font-semibold leading-none tracking-normal normal-case text-[#8b93a1] shadow-[inset_0_0_0_1px_#DCE1E8] outline-none hover:text-[#141a24] hover:shadow-[inset_0_0_0_1px_#141a24] focus-visible:text-[#141a24] focus-visible:shadow-[inset_0_0_0_1px_#141a24] data-[state=open]:text-[#141a24] data-[state=open]:shadow-[inset_0_0_0_1px_#141a24]"
           aria-label={`What is this? ${title}`}
         >
           ?

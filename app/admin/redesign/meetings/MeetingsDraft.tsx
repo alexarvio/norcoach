@@ -16,10 +16,11 @@ import { ConfirmDialog, MessageDialog } from "../training/TrainingDraft";
 import { allTimezones, SERVER_TZ, tzShort, zonedToUtc } from "../../../lib/timezones";
 import TimezonePicker from "./TimezonePicker";
 import { useOpenChat } from "../ChatPanel";
-import { dayMonth, logDate } from "../../../lib/dayMonth";
+import { dayMonth, logDate, logDateWidth } from "../../../lib/dayMonth";
 import { Sep, SepJoin } from "../Sep";
 import { TimePick } from "../TimePick";
 import { Fold } from "../Fold";
+import { RowFold } from "../RowFold";
 import { landOnSoon } from "../../../lib/landOn";
 import { newOnceKey } from "../../../lib/onceKey";
 import { TodoStrip } from "../TodoStrip";
@@ -27,6 +28,7 @@ import { saveFocusAction, saveFocusDraftAction } from "../../../lib/focusActions
 import type { CoachFocus, FocusGoalView } from "../../../lib/focus";
 import { useHoldWhile, useSaveQueue } from "../useSaveQueue";
 import { SaveStatus } from "../SaveStatus";
+import KindMark from "../KindMark";
 
 // The calmer Meetings tab, as a draft on real data, in the Training draft's
 // sheet. The next call with everything to prepare it, the calls after it,
@@ -41,7 +43,7 @@ import { SaveStatus } from "../SaveStatus";
 // - Schedule: the month with this client's calls and everyone else's, the
 //   picked day's bookings under it, and the same date typed beside.
 // The words typed on a call (the topic, the notes, the summary, To focus on) save themselves (23 Oct, Alex: as the track
-// tabs), with the tab's one status after its title; the pop-ups (schedule, link, complete, delete) end in a toast.
+// tabs), with the tab's one status after its title; the pop-ups (schedule, link, complete, delete) save through it too.
 
 export type DraftGoal = { id: number; text: string; tone: "green" | "orange" | "muted"; status: string; def: string; done: boolean; meetingId: number | null };
 export type DraftNote = { id: number; text: string; createdAt: string };
@@ -110,7 +112,6 @@ const FOCUS_SAMPLES = ["10,000 steps on 5 days", "Log every meal, weekend too", 
 /** Typed words go this long after the typing stops (as Nutrition's). */
 const QUIET_MS = 800;
 
-const savedToast = (what: string) => toast.success("Saved", { description: what });
 const parse = (iso: string) => new Date(`${iso}T00:00:00`);
 const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const addDaysIso = (iso: string, n: number) => {
@@ -159,18 +160,6 @@ function CallTitle({ m, tag = true }: { m: { summaryTitle: string; topic: string
   );
 }
 
-/** The kind of call as its icon in its colour (27 Oct, Alex: a category in a log is its icon, as Activity draws it). */
-function KindMarkIcon({ kind }: { kind: MeetingTypeId }) {
-  const t = meetingTypeOf(kind);
-  return (
-    <span className="rt-kindicon" style={{ color: t.color }} title={t.label}>
-      <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d={t.icon} />
-      </svg>
-    </span>
-  );
-}
-
 /** The kind of call as a tag in its colour (21 Oct, Alex: it showed nowhere): the tint behind, the icon and word in it.
     `wide`: a column's tag, the column's width with the word centred, as every pill down a column. */
 function KindTag({ kind, wide }: { kind: MeetingTypeId; wide?: boolean }) {
@@ -212,13 +201,13 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
   // Everything on screen lives in state so the draft can show what an action would do.
   const [meetings, setMeetings] = useState<DraftMeeting[]>([...(plan.upcoming ? [plan.upcoming] : []), ...plan.alsoScheduled, ...plan.past]);
   const router = useRouter();
-  const [, startTransition] = useTransition();
-  // Every save goes to the server, then the page re-reads; what is on screen follows.
-  const act = (fn: () => Promise<unknown>, said?: string) =>
-    startTransition(async () => {
+  // Every save goes to the server through the tab's one queue, then the page re-reads; what is on screen follows. The
+  // pop-ups' saves too (16 Nov, Alex: the audit; they ended in a toast): the status after the title says Saving… and
+  // ✓ All changes saved, or Not saved | Retry, and nothing else.
+  const act = (fn: () => Promise<unknown>) =>
+    q.save(async () => {
       await fn();
-      router.refresh();
-      if (said) savedToast(said);
+      return true;
     });
   const fd = (o: Record<string, string | number | null | undefined>) => {
     const f = new FormData();
@@ -239,7 +228,7 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
       } finally {
         eventsOut.current.delete(k);
       }
-    }, `Added to ${firstName}'s events: ${line}`);
+    });
   };
   // ---- Autosave (23 Oct, Alex: as Training, Lifestyle and Nutrition): the words typed on a call go through one queue,
   // a moment after the typing stops or on leaving the field; the tab's status after its title says how it stands.
@@ -595,7 +584,7 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
           </DropdownMenu>
         </span>
       </div>
-      {isOpen && <div className="rt-rowbody">{callBody(m)}</div>}
+      <RowFold open={isOpen} className="rt-rowbody">{callBody(m)}</RowFold>
     </div>
   );
   // A link lands on its call (#call-<id>: the Feed's and the rail's Complete, 2 Nov): the row opens, comes to the middle
@@ -625,7 +614,10 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
   }, []);
   // The kind of call in a column of its own by Status (21 Oct, Alex: so it always lines up), its tag the column's width.
   // Past calls are a log (27 Oct, Alex): the kind is its icon before the call, no Type column.
-  const pGrid = { gridTemplateColumns: "150px minmax(200px, 1fr) 130px 32px", columnGap: 24 } as const;
+  // The date column is the whole list's logDateWidth and its chevron's 22px, as every log (16 Nov, Alex: the audit; was a
+  // fixed 150px); the opened summary's tab in follows it (--rt-date, meetings.css).
+  const pDateW = logDateWidth(past.map((m) => m.date)) + 22;
+  const pGrid = { gridTemplateColumns: `${pDateW}px minmax(200px, 1fr) 130px 32px`, columnGap: 24 } as const;
 
   return (
     // Built as the track tabs are (21 Oct, Alex): Training's header, each section's title on the page and its content in one hairline card.
@@ -736,7 +728,7 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
             // The shared empty word (6 Nov, Alex: admin audit; was Meetings' rt-none).
             <p className="rls-none">None yet</p>
           ) : (
-            <div className="rd-rows">
+            <div className="rd-rows" style={{ "--rt-date": `${pDateW}px` } as React.CSSProperties}>
               <div className="rd-cols" aria-hidden="true" style={pGrid}>
                 <span>Date</span>
                 <span>Call</span>
@@ -761,7 +753,8 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
                       </span>
                       <span className="rd-ex">
                         <span className="rd-ex-name rt-call">
-                          <KindMarkIcon kind={m.kind} />
+                          {/* The kind as its icon in its colour, Activity's own drawing (27 Oct, Alex; 16 Nov, the audit). */}
+                          <KindMark mark="meetings" call={m.kind} />
                           <CallTitle m={m} tag={false} />
                         </span>
                       </span>
@@ -779,7 +772,7 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
                                 <CheckIcon /> Mark completed
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuItem onSelect={() => (openChat ? openChat() : setDlg({ kind: "message", label: `${m.topic || "Check-in call"} · ${dayMonth(m.date)}` }))}>
+                            <DropdownMenuItem onSelect={() => (openChat ? openChat() : setDlg({ kind: "message", label: `${m.topic || "Check-in call"} on ${dayMonth(m.date)}` }))}>
                               <ChatIcon /> Message about this call
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
@@ -790,7 +783,7 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
                         </DropdownMenu>
                       </span>
                     </div>
-                    {isOpen && (
+                    <RowFold open={isOpen}>
                       <PastBody
                         m={m}
                         firstName={firstName}
@@ -810,7 +803,7 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
                           ) : null
                         }
                       />
-                    )}
+                    </RowFold>
                   </div>
                 );
               })}
@@ -865,23 +858,14 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
                     kind: v.meetingType,
                   });
                 });
-                const weekday = parse(v.date).toLocaleDateString("en-GB", { weekday: "long" });
-                act(
-                  () => moveMeetingSeriesAction(fd({ id: dlg.reschedule!.id, date: v.date, time: v.time, tz: v.tz, durationMinutes: v.durationMinutes, topic: v.topic, link: v.link ?? "", meetingType: v.meetingType, repeatWeeks: v.repeatWeeks })),
-                  `${ids.length} calls moved to ${weekday}s${v.time ? ` at ${v.time}` : ""} · ${firstName} sees the new times`
-                );
+                act(() => moveMeetingSeriesAction(fd({ id: dlg.reschedule!.id, date: v.date, time: v.time, tz: v.tz, durationMinutes: v.durationMinutes, topic: v.topic, link: v.link ?? "", meetingType: v.meetingType, repeatWeeks: v.repeatWeeks })));
               } else if (dlg.reschedule) {
                 // Moved: whether it is over is worked out afresh from its new day (the server's flags were for the old one).
                 patchMeeting(dlg.reschedule.id, { ...v, over: undefined, toComplete: false, kind: v.meetingType, provider: v.link ? (providerOf(v.link) ?? "Join call") : "", host: v.link ? new URL(v.link).hostname : "" });
-                act(() => updateMeetingAction(fd({ id: dlg.reschedule!.id, date: v.date, time: v.time, tz: v.tz, durationMinutes: v.durationMinutes, topic: v.topic, link: v.link ?? "", meetingType: v.meetingType })), `Moved to ${dayMonth(v.date)}${v.time ? ` at ${v.time}` : ""} · ${firstName} sees the new time`);
+                act(() => updateMeetingAction(fd({ id: dlg.reschedule!.id, date: v.date, time: v.time, tz: v.tz, durationMinutes: v.durationMinutes, topic: v.topic, link: v.link ?? "", meetingType: v.meetingType })));
               } else {
                 const onceKey = newOnceKey();
-                act(
-                  () => addMeetingAction(fd({ clientId, date: v.date, time: v.time, tz: v.tz, durationMinutes: v.durationMinutes, topic: v.topic, link: v.link ?? "", repeatWeeks: v.repeatWeeks, count: v.count, meetingType: v.meetingType, onceKey })),
-                  v.repeatWeeks
-                    ? `${v.count} calls, ${v.repeatWeeks === 1 ? "weekly" : `every ${v.repeatWeeks} weeks`} from ${dayMonth(v.date)}${v.time ? ` at ${v.time}` : ""} · ${firstName} sees them on Home`
-                    : `${v.topic || "Check-in call"} on ${dayMonth(v.date)}${v.time ? ` at ${v.time}` : ""} · ${firstName} sees it on Home`
-                );
+                act(() => addMeetingAction(fd({ clientId, date: v.date, time: v.time, tz: v.tz, durationMinutes: v.durationMinutes, topic: v.topic, link: v.link ?? "", repeatWeeks: v.repeatWeeks, count: v.count, meetingType: v.meetingType, onceKey })));
               }
               setSelectedDay(v.date);
               close();
@@ -895,7 +879,7 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
               patchMeeting(dlg.meetingId, { link: link || null, provider: link ? (providerOf(link) ?? "Join call") : "", host: link ? new URL(link).hostname : "" });
               const id = dlg.meetingId;
               close();
-              act(() => updateMeetingAction(fd({ id, link })), link ? `Link: ${firstName} gets a Join button` : "Link removed");
+              act(() => updateMeetingAction(fd({ id, link })));
             }}
           />
         )}
@@ -914,7 +898,7 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
                 patchMeeting(id, { status: "completed", summary, summaryTitle, focusDraft: [] });
                 setOpenPast(id);
                 close();
-                act(() => completeMeetingAction(fd({ id, summary, summaryTitle, withFocus: 1 })), summary || summaryTitle ? `Completed, recap sent to ${firstName}'s Home` : "Completed");
+                act(() => completeMeetingAction(fd({ id, summary, summaryTitle, withFocus: 1 })));
                 return;
               }
               // To focus on goes with the call, at once (23 Oct, Alex: "every time this is set on a new call the old ones
@@ -926,13 +910,10 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
               setFocusFrom(id);
               setOpenPast(id);
               close();
-              act(
-                async () => {
-                  await completeMeetingAction(fd({ id, summary, summaryTitle, withFocus: 1 }));
-                  await saveFocusAction(fd({ clientId, meetingId: id, fromCall: 1, goals: JSON.stringify(lines) }));
-                },
-                summary || summaryTitle ? `Completed, recap${lines.length ? " and To focus on" : ""} sent to ${firstName}'s Home` : lines.length ? `Completed, To focus on sent to ${firstName}'s Home` : "Completed"
-              );
+              act(async () => {
+                await completeMeetingAction(fd({ id, summary, summaryTitle, withFocus: 1 }));
+                await saveFocusAction(fd({ clientId, meetingId: id, fromCall: 1, goals: JSON.stringify(lines) }));
+              });
             }}
           />
         )}
@@ -946,7 +927,7 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
               setMeetings((prev) => prev.filter((m) => !gone.has(m.id)));
               const id = dlg.meetingId;
               close();
-              act(() => removeMeetingAction(fd({ id, following: also ? "1" : "" })), gone.size > 1 ? `${gone.size} calls deleted` : "Call deleted");
+              act(() => removeMeetingAction(fd({ id, following: also ? "1" : "" })));
             }}
           />
         )}
@@ -1579,17 +1560,18 @@ function LinkDialog({ value, onSave }: { value: string; onSave: (link: string) =
       <DialogDescription className="sr-only">The link the client joins the call with</DialogDescription>
       <input className="dlh-line" type="url" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://meet.google.com/abc-defg-hij" aria-label="Link" autoFocus onKeyDown={(e) => e.key === "Enter" && ok && onSave(link.trim())} />
       {link.trim() && !provider && <p className="dlh-error">Not a meeting link yet.</p>}
+      {/* Remove of the link there already as red words on the footer's left, the ink Save always on the right (16 Nov,
+          Alex: the audit; clearing the field swapped Save for Remove). */}
       <div className="dlh-foot">
-        <DialogClose className="dlh-cancel">Cancel</DialogClose>
-        {value && !link.trim() ? (
-          <button type="button" className="dlh-delete" onClick={() => onSave("")}>
+        {value && (
+          <button type="button" className="dlh-delete dlh-start" onClick={() => onSave("")}>
             Remove
           </button>
-        ) : (
-          <button type="button" className="dlh-go" disabled={!ok || !link.trim()} onClick={() => onSave(link.trim())}>
-            {value ? "Save" : "Add"}
-          </button>
         )}
+        <DialogClose className="dlh-cancel">Cancel</DialogClose>
+        <button type="button" className="dlh-go" disabled={!ok || !link.trim() || link.trim() === value.trim()} onClick={() => onSave(link.trim())}>
+          {value ? "Save" : "Add"}
+        </button>
       </div>
     </DialogContent>
   );
@@ -1647,11 +1629,10 @@ function CompleteDialog({ firstName, value, title: initialTitle, goals, focus = 
       </div>
       )}
       <div className="dlh-foot">
-        {/* Without a summary: the goals typed still go with it. */}
-        <button type="button" className="dlh-cancel" onClick={() => onComplete("", "", lines)}>
-          Complete without one
-        </button>
-        <button type="button" className="dlh-go" disabled={!recap.trim()} onClick={() => onComplete(recap.trim(), title.trim(), lines)}>
+        {/* Cancel and Complete, as every .dlh card (16 Nov, Alex: the audit; was `Complete without one`): Complete runs with
+            an empty summary too, the goals typed still going with it. */}
+        <DialogClose className="dlh-cancel">Cancel</DialogClose>
+        <button type="button" className="dlh-go" onClick={() => onComplete(recap.trim(), title.trim(), lines)}>
           Complete
         </button>
       </div>

@@ -158,8 +158,16 @@ export default function BusinessDraft({ board }: { board: BusinessBoard }) {
         <RosterCard roster={board.roster} />
       </div>
 
-      <OwedLog owed={owed} today={board.today} money={money} />
-      <BillingLog rows={board.billing} money={money} />
+      {/* One date column for both logs, so their faces and names line up (16 Nov, Alex: the audit). */}
+      {(() => {
+        const dateW = logDateWidth([...owed.rows.map((r) => r.due ?? r.issued), ...board.billing.map((r) => r.lastInvoice)].filter((d): d is string => !!d));
+        return (
+          <>
+            <OwedLog owed={owed} today={board.today} money={money} dateW={dateW} />
+            <BillingLog rows={board.billing} money={money} dateW={dateW} />
+          </>
+        );
+      })()}
     </div>
   );
 }
@@ -439,7 +447,8 @@ function MoneyMonthPop({ month: m, money, style, label, title }: { month: MoneyM
                   {r.number && <small>{r.number}</small>}
                 </span>
                 <span className="rbz-pop-amt">{money.exact(r.amount)}</span>
-                <span className={`trn-state rbz-state ${r.state === "paid" ? "good" : "warn"}`}>{r.state === "paid" ? "Paid" : "Open"}</span>
+                {/* The invoice's own state, as Owed draws it (16 Nov, Alex: the audit; was `Open` in rust for every unpaid one). */}
+                <span className={`trn-state rbz-state ${r.state === "paid" ? "good" : r.state === "overdue" ? "warn" : "live"}`}>{r.state === "paid" ? "Paid" : r.state === "overdue" ? "Overdue" : "Sent"}</span>
               </a>
             ))}
           </div>
@@ -632,8 +641,7 @@ function Log<T>({ id, title, sub, empty, rows, label, row }: { id?: string; titl
 // ---- Owed: overdue first (most days late), then sent (soonest due), then drafts (faded, not counted). The due day
 // leads, then the client and the number, how late or how soon, the amount and the state. The row opens the invoice as
 // it prints (a new tab); the name opens their Invoices tab.
-function OwedLog({ owed, today, money }: { owed: BusinessBoard["owed"]; today: string; money: Money }) {
-  const dateW = logDateWidth(owed.rows.map((r) => r.due ?? r.issued).filter((d): d is string => !!d));
+function OwedLog({ owed, today, money, dateW }: { owed: BusinessBoard["owed"]; today: string; money: Money; /** The date column, shared with Not billed automatically. */ dateW: number }) {
   const grid = { gridTemplateColumns: `${dateW}px minmax(0, 1fr) 112px 96px 84px` } as const;
   const open = (e: MouseEvent, id: number) => {
     if (!(e.currentTarget as Element).contains(e.target as Node)) return;
@@ -702,8 +710,9 @@ const Who = ({ id, name }: { id: number; name: string }) => (
 );
 
 // ---- Not billed automatically: a paused repeat (Resume) or none at all (Set up); both open their Invoices tab.
-function BillingLog({ rows, money }: { rows: BillingRow[]; money: Money }) {
-  const grid = { gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.4fr) 88px 116px" } as const;
+// Led by the last invoice's day (none, blank) and the face before the name, as Owed (16 Nov, Alex: the audit).
+function BillingLog({ rows, money, dateW }: { rows: BillingRow[]; money: Money; dateW: number }) {
+  const grid = { gridTemplateColumns: `${dateW}px minmax(0, 1fr) minmax(0, 1.4fr) 88px 116px` } as const;
   return (
     <Log
       title="Not billed automatically"
@@ -713,9 +722,15 @@ function BillingLog({ rows, money }: { rows: BillingRow[]; money: Money }) {
       row={(r) => (
         <div key={r.clientId} className="rls-row rbz-row">
           <div className="rls-row-main" style={grid}>
-            <Who id={r.clientId} name={r.client} />
+            <span className="rd-logdate" title={r.lastInvoice ? "Last invoice" : undefined}>
+              {r.lastInvoice ? logDate(r.lastInvoice) : ""}
+            </span>
+            <span className="rbz-whoface">
+              <NeedFace name={r.client} src={r.avatarPath} />
+              <Who id={r.clientId} name={r.client} />
+            </span>
             <span className="rbz-facts">
-              <SepJoin parts={[r.reason === "paused" ? "Repeat paused" : "No repeat invoice", r.lastInvoice && `last invoice ${dayMonth(r.lastInvoice)}`]} />
+              {r.reason === "paused" ? "Repeat paused" : "No repeat invoice"}
             </span>
             <PerMonth n={r.perMonth} money={money} />
             <span className="rbz-act">

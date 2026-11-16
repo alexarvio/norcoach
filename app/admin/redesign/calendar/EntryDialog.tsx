@@ -154,8 +154,10 @@ export default function EntryDialog({ open, cats, clients, dayEntries, onDone }:
     return hit ? `Overlaps “${hit.topic || hit.clientName || "an entry"}” ${hit.time}–${hhmm(toMin(hit.time) + hit.durationMinutes)}` : null;
   }, [allDay, date, open.date, time, length, dayEntries, e?.id]);
 
-  // A client picked with no title yet: the title suggests itself, as a placeholder the coach can keep.
-  const suggested = client && !topic.trim() ? `${current?.label ?? "Call"} · ${first(client.name)}` : null;
+  // A client picked with no title yet: the title suggests itself, as a placeholder the coach can keep. Words alone, never
+  // a typed middle dot (16 Nov, Alex: the audit; it read `Client call · Anna` on the chips): `Call with Anna`,
+  // `Training with Anna`.
+  const suggested = client && !topic.trim() ? `${!current || isClientCall(current.id) ? "Call" : current.label} with ${first(client.name)}` : null;
 
   const pickCat = (id: string) => {
     setCat(id);

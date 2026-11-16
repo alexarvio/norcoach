@@ -33,7 +33,8 @@ export type MonthInvoice = {
   /** The day it counts on: paid ones by paid_at (else issue date), open ones by issue date (else created). */
   date: string;
   amount: number;
-  state: "paid" | "open";
+  /** Its own state, the words Owed and Invoices use (16 Nov, Alex: the audit; was "open" for both unpaid ones). */
+  state: "paid" | "sent" | "overdue";
 };
 
 /** A month of money. Paid: invoices paid that month. Open: billed that month (sent or overdue) and not paid. To come:

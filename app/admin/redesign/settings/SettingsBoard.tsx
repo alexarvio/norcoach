@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { SETTINGS } from "../settingsNav";
 import { SaveHost, useUnsaved } from "./SaveHost";
 import { onGoToSetting, sayOpen } from "./settingsScroll";
+import { Toaster } from "../../../components/ui/toast";
 
 // The Settings page (27 Oct, Alex: mockup B, "go for b"; before, one page of folding sections): Training's bare
 // header, then the sections as a list on the left, each its name over one quiet fact ("EUR | 21% VAT"), and the one
@@ -49,6 +50,8 @@ export default function SettingsBoard({ className, sections }: { className: stri
         </div>
       </header>
       <Sections sections={sections.filter((s) => s.body != null && s.body !== false)} />
+      {/* Its toasts (Saved, Couldn't save, a login's errors) need a host: the page has no RedesignShell (16 Nov, Alex: the audit). */}
+      <Toaster />
     </SaveHost>
   );
 }

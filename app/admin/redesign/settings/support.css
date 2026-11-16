@@ -28,7 +28,7 @@
 .sup-where { min-width: 0; overflow: hidden; font-size: 12.5px; font-weight: 500; color: #8b93a1; text-overflow: ellipsis; white-space: nowrap; }
 .rd.trn .trn-state.sup-done { flex: none; margin-left: auto; }
 .sup-doneact { flex: none; height: 24px; margin: 0 -6px 0 auto; padding: 0 8px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 12.5px; font-weight: 600; color: #141a24; cursor: pointer; }
-.sup-doneact:hover { background: rgba(20, 26, 36, 0.06); }
+.sup-doneact:hover { background: #f5f6f8; } /* the neutral hover (16 Nov, Alex: the audit) */
 .sup-doneact:focus-visible { outline: 2px solid #141a24; outline-offset: 1px; }
 /* The screenshot: a thumbnail on a hairline, its top (where a screen's trouble usually is); a click opens it big. */
 .sup-shot { display: block; width: 220px; max-width: 100%; padding: 0; border: 1px solid #e1e5eb; border-radius: 10px; overflow: hidden; background: #f5f6f8; cursor: zoom-in; }
@@ -51,8 +51,9 @@ textarea.dlh-line.sup-line { resize: none; }
 .sup-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sup-foot { display: flex; align-items: center; gap: 12px; min-height: 36px; }
 .sup-foot-end { display: flex; align-items: center; gap: 4px; margin-left: auto; }
-.sup-textact { flex: none; height: 30px; padding: 0; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; cursor: pointer; }
-.sup-textact:hover { color: #141a24; }
+/* The one word action (16 Nov, Alex: the audit; .rst-act's 32px, 0 10px and its #f5f6f8 hover), its words where they were. */
+.sup-textact { flex: none; height: 32px; margin: 0 -10px; padding: 0 10px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; cursor: pointer; }
+.sup-textact:hover { color: #141a24; background: #f5f6f8; }
 .sup-textact:focus-visible { outline: none; text-decoration: underline; text-underline-offset: 4px; }
 .sup-file { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .sup-file img { flex: none; width: 32px; height: 32px; border: 1px solid #e1e5eb; border-radius: 6px; object-fit: cover; object-position: top; }

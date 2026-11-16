@@ -106,14 +106,15 @@
 .rd.rp .rp-trow:focus-visible { outline: 2px solid #141a24; outline-offset: -2px; }
 .rd.rp .rp-tdate { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .rd.rp .rp-tsheet { display: flex; align-items: baseline; gap: 8px; min-width: 0; white-space: nowrap; }
-.rd.rp .rp-tsheet b { font-size: 14px; font-weight: 500; }
+/* The thing semi-bold after the light date, as Training's sessions (16 Nov, Alex: the audit; design rules §9b). */
+.rd.rp .rp-tsheet b { font-size: 15px; font-weight: 600; }
 /* A bar an angle, on one line: past five they share the column's width. */
 .rd.rp .rp-bars { display: flex; align-items: center; flex-wrap: nowrap; gap: 3px; min-width: 0; }
 .rd.rp .rp-bars i { display: block; flex: 0 1 18px; min-width: 6px; height: 3px; border-radius: 3px; background: #e1e5eb; }
 .rd.rp .rp-bars i.in { background: #b8471f; }
 .rd.rp .rp-bars.done i.in { background: #2f7a3f; }
-.rd.rp .rp-tweight { font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.rd.rp .rp-trow .none { font-size: 13px; color: #98a2b3; }
+.rd.rp .rp-tweight { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rd.rp .rp-trow .none { font-size: 13px; font-weight: 500; color: #98a2b3; }
 /* The state is Training's .trn-state pill, every one the column's width, the word centred (21 Oct, Alex). */
 .rd.rp .rp-tstate { display: flex; }
 .rd.rp .rp-tstate .trn-state { flex: 1; justify-content: center; box-sizing: border-box; }
@@ -242,8 +243,9 @@
 /* A row of All sheets open on its photos: under the row, from the sheet's column, smaller tiles. */
 /* Every row's line over it, the first's too: the only line under the heads (6 Nov, Alex: one list row). */
 .rd.rp .rp-tgroup { border-top: 1px solid #eef0f3; }
-.rd.rp .rp-tgroup.open .rp-trow { background: #fafbfc; }
-.rd.rp .rp-tbody { padding: 4px 18px 16px; background: #fafbfc; }
+/* Opened, no tint on the row or under it (16 Nov, Alex: the audit): one open state for every log, as Lifestyle's
+   check-ins; the row hover #fafbfd alone. */
+.rd.rp .rp-tbody { padding: 4px 18px 16px; }
 .rd.rp .rp-tgrid { grid-template-columns: repeat(var(--rp-cols, 4), minmax(0, 170px)); }
 
 /* An empty place on the top sheet can go (21 Oct, Alex): a round × in its corner, on hover or focus, as row actions. */
