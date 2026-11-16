@@ -366,7 +366,8 @@ export function VideoAskRow({ ask, coachName, onOpen, tabIndex }: { ask: VideoAs
         <b>{ask.reply ? (ask.carried ? `${coachName} replied to your ${ask.reply.theirsPhoto ? "photo" : "video"}${ask.reply.theirsAt ? ` of ${dayWords(new Date(ask.reply.theirsAt))}` : ""}` :`${coachName} replied to your ${ask.media === "photo" ? "photo" : "video"}`) : ask.src ? (ask.media === "photo" ? "Photo sent" : "Video sent") : `${coachName} asked for a video`}</b>
         {/* A reply needs no second line (17 Oct, Alex): the title says it and Open opens it. */}
         {!ask.reply && <small>{/* Sent and its day alone (25 Oct, Alex: "waiting for Finlay is not necessary"). */}
-        {ask.src ? (ask.sentAt ? `Sent ${dayWords(new Date(ask.sentAt))}` : "Sent") : ask.note || "Of this exercise, this session"}</small>}
+        {/* The coach's words are never shown bare (16 Nov, Alex): the sheet it opens has them with their face. */}
+        {ask.src ? (ask.sentAt ? `Sent ${dayWords(new Date(ask.sentAt))}` : "Sent") : "Of this exercise, this session"}</small>}
       </span>
       <span className="wo-video-action">{ask.reply ? "Open" : ask.src ? "View" : "Record"}</span>
     </button>
@@ -395,7 +396,7 @@ export function VideoAskTool({ ask, coachName, onOpen }: { ask: VideoAsk; coachN
 
 /** The ask's line under the exercise's name (12 Nov, Alex: A2 and "the pill" of docs/boards/workout-a2-mockup.html), only
  *  while there is something to do or see: a dot and the words in the state's colour, the action on the right as a pill
- *  (Record the ink one, View the white one), the coach's ask note grey under it in quotes. A reply once seen says nothing
+ *  (Record the ink one, View the white one), the coach's ask note under it as their note, face and name (16 Nov). A reply once seen says nothing
  *  here; its green ring on the eyebrow line stays. The one pill in a row, by choice (docs/DESIGN-RULES.md §6). */
 export function VideoAskLine({ ask, coachName, onOpen }: { ask: VideoAsk; coachName: string; onOpen: () => void }) {
   const state = askState(ask);
@@ -412,7 +413,12 @@ export function VideoAskLine({ ask, coachName, onOpen }: { ask: VideoAsk; coachN
         </span>
         <span className={`wo-askline-pill${state === "asked" ? " ink" : ""}`}>{state === "asked" ? "Record" : "View"}</span>
       </button>
-      {note && <p className="wo-askline-note">“{note}”</p>}
+      {/* The coach's words with their face and name (16 Nov, Alex: always, whatever the coach says). */}
+      {note && (
+        <div className="wo-askline-says">
+          <CoachSays label={coachName}>{note}</CoachSays>
+        </div>
+      )}
     </div>
   );
 }

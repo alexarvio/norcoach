@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { markVideoReplySeenAction } from "../lib/actions";
 import { Bars } from "./Bars";
+import CoachSays from "./CoachSays";
 import { dayWords } from "../lib/clientDates";
 
 // The coach's reply to a video the client sent: their comment and their
@@ -39,9 +40,13 @@ export function VideoReplyBody({ reply, coachName = "Coach" }: { reply: VideoRep
   }, [reply.id, reply.seen]);
   return (
     <div className="vr-reply">
-      <span className="vr-reply-label"><Bars parts={[`${coachName} replied`, day(reply.repliedAt)]} /></span>
+      {/* The coach's words with their face and name over them (16 Nov, Alex: always, whatever the coach says). */}
+      {reply.replyNote ? (
+        <CoachSays label={<Bars parts={[`${coachName} replied`, day(reply.repliedAt)]} />}>{reply.replyNote}</CoachSays>
+      ) : (
+        <span className="vr-reply-label"><Bars parts={[`${coachName} replied`, day(reply.repliedAt)]} /></span>
+      )}
       {reply.replySrc && <video className="vr-sheet-video" src={reply.replySrc} controls playsInline preload="metadata" />}
-      {reply.replyNote && <p className="vr-reply-note">{reply.replyNote}</p>}
     </div>
   );
 }
