@@ -8,7 +8,7 @@ import { MenuIcon } from "../WorkoutScreen";
 import { useOpenMessages } from "../CheckInContext";
 import SwapExerciseDialog from "./SwapExerciseDialog";
 import DoneCheck from "../../components/DoneCheck";
-import { BlockMenu, BlockRing, ChatGlyph, FoldedLine, MoreGlyph, SwapRow, TargetLine, ToolButton, WsFold, targetParts, useBlockFold, useBlockMenu } from "./sheetParts";
+import { BlockMenu, BlockRing, BlockTitle, ChatGlyph, FoldedLine, MoreGlyph, SwapRow, TargetLine, ToolButton, WsFold, targetParts, useBlockFold, useBlockMenu } from "./sheetParts";
 
 // One cardio on the workout sheet (15 Nov, Alex: docs/boards/workout-sheet-a-mockup.html): the block's head, the swap,
 // the target line, the coach's note, and Mark as done. As the pager's CardioCard (workoutShared.tsx) with the same saves
@@ -70,8 +70,7 @@ export default function SheetCardio({
       </WsFold>
       <WsFold open={!fold.folded} easing={fold.easing}>
       <div className="ws-bh">
-        <BlockRing n={index} done={done} on={inView} doneCheck={<DoneCheck size={22} />} />
-        <h2 className="ws-bname">{name}</h2>
+        <BlockTitle ring={<BlockRing n={index} done={done} on={inView} doneCheck={<DoneCheck size={22} />} />} name={name} onFold={done && !free ? fold.close : undefined} />
         <div className="ws-tools">
           {openMessages && (
             <ToolButton label={`Message ${coachName} about ${dayTitle}`} onClick={() => openMessages({ link: { kind: "session", dayId }, label: dayTitle })}>

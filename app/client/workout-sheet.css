@@ -17,6 +17,12 @@
 .ws-block.ws-block { display: block; padding: 14px 0 12px; border-radius: 16px; }
 .ws-block + .ws-block { margin-top: 12px; }
 .ws-bh { display: flex; align-items: center; gap: 10px; min-height: 30px; }
+/* A done block opened again: its ring and name fold it back (16 Nov, Alex), the chevron pointing down. */
+.ws-bfold { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.ws-bfold-chev { flex: none; width: 7px; height: 7px; margin: -4px 4px 0 2px; border-right: 1.5px solid #8b93a1; border-bottom: 1.5px solid #8b93a1; transform: rotate(45deg); }
+.ws-bfold:active { opacity: 0.7; }
+/* The block's own fold, slower than a row's (16 Nov, Alex: "really sudden"): a tall block eases over 560ms. */
+.ws-block > .so-fold.ws-fold.so-fold { transition: grid-template-rows 0.56s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.4s ease; }
 .ws-bn { position: relative; flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; --ring: #E1E5EB; font-size: 11px; font-weight: 600; line-height: 1; color: #8b93a1; font-variant-numeric: tabular-nums; transition: color 0.2s; }
 .ws-bn.on { --ring: #141a24; color: #141a24; }
 .ws-bn.done { --ring: none; }
@@ -99,7 +105,7 @@
 .ws-gr { height: 44px; }
 .ws-sn { font-size: 13px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; }
 .ws-gr.warm .ws-sn { font-weight: 600; color: #a8761f; }
-.ws-sn-w { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 28px; padding: 0; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #a8761f; cursor: pointer; }
+.ws-sn-w { display: inline-flex; align-items: center; justify-content: flex-start; min-width: 22px; height: 28px; padding: 0; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #a8761f; cursor: pointer; }
 .ws-last { min-width: 0; font-size: 12.5px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* A figure's slot (15 Nov, Alex): no box and no fill, a 1.5px underline in #C9CFD8, ink while typing, 16px so the
@@ -193,5 +199,5 @@
 
 @media (prefers-reduced-motion: reduce) {
   .ws-pb.pop { animation: none; }
-  .ws-bn, .ws-tool, .ws-tick, .ws-num.ws-num, .ws-yn-field, .ws-block.ws-block { transition: none; }
+  .ws-bn, .ws-tool, .ws-tick, .ws-num.ws-num, .ws-yn-field, .ws-block.ws-block, .ws-block > .so-fold.ws-fold.so-fold { transition: none; }
 }

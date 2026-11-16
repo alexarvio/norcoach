@@ -103,7 +103,7 @@ export function useBlockFold(complete: boolean, blockEl: () => HTMLElement | nul
   }, [armed, complete]);
   useEffect(() => {
     if (!easing) return;
-    const t = window.setTimeout(() => setEasing(false), 380);
+    const t = window.setTimeout(() => setEasing(false), 620);
     return () => window.clearTimeout(t);
   }, [easing]);
   return {
@@ -115,7 +115,36 @@ export function useBlockFold(complete: boolean, blockEl: () => HTMLElement | nul
       setFolded(false);
       setEasing(true);
     },
+    /** Folded again by hand (16 Nov, Alex: opened to check the sets, "I cannot collapse it again"). */
+    close: () => {
+      setArmed(false);
+      setFolded(true);
+      setEasing(true);
+    },
   };
+}
+
+/**
+ * A block's ring and name. On a done block opened again, they are one button that folds it back (16 Nov, Alex), the
+ * chevron after the name pointing down, as the folded line's points right.
+ */
+export function BlockTitle({ ring, name, onFold }: { ring: ReactNode; name: string; onFold?: () => void }) {
+  if (!onFold)
+    return (
+      <>
+        {ring}
+        <h2 className="ws-bname">{name}</h2>
+      </>
+    );
+  return (
+    <button type="button" className="ws-bfold" onClick={onFold} aria-label={`${name}, done. Fold`}>
+      {ring}
+      <span className="ws-bname" role="heading" aria-level={2}>
+        {name}
+      </span>
+      <span className="ws-bfold-chev" aria-hidden="true" />
+    </button>
+  );
 }
 
 /** The shared fold (the end of globals.css: rows 0fr → 1fr over 340ms), its inside clipped only while it eases. */

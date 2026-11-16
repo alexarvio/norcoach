@@ -46,6 +46,10 @@ export type SheetRow = {
   /** Shown in the weight slot: typed or saved, else "" (15 Nov, Alex: an empty slot, no grey figure in it). */
   weightText: string;
   repsText: string;
+  /** A warm-up: last time's warm-up in its place, the Last column's figures. */
+  warmLast: { weight: number | null; reps: number | null } | null;
+  /** A warm-up left untouched once every set is in (16 Nov, Alex): it folds away. */
+  gone: boolean;
 };
 
 export type Doubt = { n: number; weight: boolean; reps: boolean; v: Vals };
@@ -274,7 +278,7 @@ export function useExerciseSets(exercise: SessionExercise, { gymId, session, fre
 
   // ---- The rows.
   const weightText = (kg: number | null) => (kg == null ? "" : fmtWeight(kgToDisplay(kg, unit)));
-  const buildRow = (o: { id: string; kind: "warm" | "work"; n: number; extra: boolean; logged: Vals | null; plan: Vals; refused: string | null; since: number | null }): SheetRow => {
+  const buildRow = (o: { id: string; kind: "warm" | "work"; n: number; extra: boolean; logged: Vals | null; plan: Vals; refused: string | null; since: number | null; warmLast?: SheetRow["warmLast"]; gone?: boolean }): SheetRow => {
     const isUnlocked = unlocked.has(o.id);
     const warmRow = o.kind === "warm";
     const asksWeight = askWeight || warmRow;
@@ -324,6 +328,8 @@ export function useExerciseSets(exercise: SessionExercise, { gymId, session, fre
       delta,
       weightText: draft.w !== undefined ? draft.w : asksWeight ? weightText(base?.weightKg ?? null) : "",
       repsText: draft.r !== undefined ? draft.r : base?.reps != null ? String(base.reps) : "",
+      warmLast: o.warmLast ?? null,
+      gone: !!o.gone,
     };
   };
   const workRows = Array.from({ length: workCount }, (_, i) => i + 1).map((n) =>
@@ -331,17 +337,13 @@ export function useExerciseSets(exercise: SessionExercise, { gymId, session, fre
   );
   const allDone = workRows.length > 0 && workRows.every((r) => r.done);
   const started = exercise.logs.length > 0;
-  // A warm-up left untouched goes once every set is in (28 Oct, Alex); one logged stays, done in amber. On the sheet it
-  // goes the next time the exercise opens, never under the finger as the last set is ticked (nothing moves by itself).
-  const [warmGoneAtOpen] = useState(() => {
-    const count = Math.max(exercise.sets + extraAdded, maxLogged);
-    return count > 0 && Array.from({ length: count }, (_, i) => i + 1).every((n) => !!logOf(n));
-  });
-  const warmShown = (w: Warm) => !warmGoneAtOpen || w.saved || w.own || (drafts[w.key]?.w ?? "") !== "" || (drafts[w.key]?.r ?? "") !== "";
-  const warmRows = warm
-    .map((w, i) => ({ w, i }))
-    .filter(({ w }) => warmShown(w))
-    .map(({ w, i }) => buildRow({ id: w.key, kind: "warm", n: i + 1, extra: true, logged: w.saved ? w.entered : null, plan: w.plan, refused: null, since: null }));
+  // A warm-up left untouched goes once every set is in (28 Oct, Alex; 16 Nov, Alex: "there's nothing to show"), folding
+  // away on the shared fold as the last set is ticked, so nothing under it jumps; one logged stays, done in amber. A set
+  // opened again brings it back. Its Last is last time's warm-up in its place.
+  const untouched = (w: Warm) => !w.saved && (drafts[w.key]?.w ?? "") === "" && (drafts[w.key]?.r ?? "") === "";
+  const warmRows = warm.map((w, i) =>
+    buildRow({ id: w.key, kind: "warm", n: i + 1, extra: true, logged: w.saved ? w.entered : null, plan: w.plan, refused: null, since: null, warmLast: exercise.lastWarmups[i] ?? null, gone: allDone && untouched(w) })
+  );
   const rows = [...warmRows, ...workRows];
   const warmAddable = !allDone && warm.length < MAX_WARMUPS;
   const same = (a: Vals, b: Vals) => a.weightKg === b.weightKg && a.reps === b.reps;
@@ -568,7 +570,7 @@ export function useExerciseSets(exercise: SessionExercise, { gymId, session, fre
     lastTicks,
     started,
     warmAddable,
-    hasWarm: warmRows.length > 0,
+    hasWarm: warmRows.some((r) => !r.gone),
     addWarm,
     removeWarm,
     type,
