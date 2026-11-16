@@ -176,27 +176,30 @@ export default function AddMealSheet({
             </button>
           </div>
           <div className="gpk-rows">
-            <button type="button" className="gpk-addrow" disabled={busy} onClick={onNew}>
+            <button type="button" className="gpk-addrow flat nutrition" disabled={busy} onClick={onNew}>
               <span className="gpk-addrow-ico" aria-hidden="true">
                 <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round">
                   <path d="M12 5v14M5 12h14" />
                 </svg>
               </span>
               New meal
+              <span className="gpk-chev" aria-hidden="true" />
             </button>
-            <button type="button" className="gpk-addrow" disabled={busy} onClick={onMeals}>
+            <button type="button" className="gpk-addrow flat nutrition" disabled={busy} onClick={onMeals}>
               <span className="gpk-addrow-ico" aria-hidden="true">
                 <CopyIcon />
               </span>
               Copy a meal
               {meals > 0 && <span className="ams-count">{meals}</span>}
+              <span className="gpk-chev" aria-hidden="true" />
             </button>
-            <button type="button" className="gpk-addrow" disabled={busy} onClick={onDays}>
+            <button type="button" className="gpk-addrow flat nutrition" disabled={busy} onClick={onDays}>
               <span className="gpk-addrow-ico" aria-hidden="true">
                 <BookmarkIcon />
               </span>
               Use a saved day
               {days > 0 && <span className="ams-count">{days}</span>}
+              <span className="gpk-chev" aria-hidden="true" />
             </button>
           </div>
         </div>

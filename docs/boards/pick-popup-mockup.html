@@ -1,0 +1,67 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Pick pop-up</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600&display=swap" rel="stylesheet"><style>
+  :root { --ink:#141a24; --body:#3a4250; --sec:#5b6474; --faint:#8b93a1; --label:#98A2B3; --line:#E1E5EB; --page:#F5F6F8; --indigo:#3a3390; --green:#2f7a3f; }
+  * { box-sizing:border-box; margin:0; }
+  body { font-family:Archivo,system-ui,sans-serif; font-weight:500; color:var(--ink); background:#fff; padding:28px 20px 72px; -webkit-font-smoothing:antialiased; }
+  h1 { font-size:20px; font-weight:600; margin-bottom:4px; }
+  .sub { color:var(--faint); font-size:13px; margin-bottom:22px; max-width:960px; line-height:1.55; }
+  .opts { display:flex; flex-wrap:wrap; gap:34px; align-items:flex-start; }
+  .opt { width:360px; }
+  .opt h3 { font-size:14px; font-weight:600; margin-bottom:4px; }
+  .opt > p { font-size:12.5px; color:var(--faint); line-height:1.5; min-height:76px; margin-bottom:12px; }
+  .phone { position:relative; overflow:hidden; border-radius:34px; background:var(--page); box-shadow:0 0 0 8px #1b1f27, 0 30px 60px -30px rgba(0,0,0,.4); height:700px; }
+  .behind { position:absolute; inset:0; padding:70px 24px; filter:blur(5px); }
+  .behind i { display:block; height:14px; border-radius:7px; background:#d9dde4; margin:18px 0; }
+  .dim { position:absolute; inset:0; background:rgba(10,14,22,.36); }
+  svg { fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+  .pop { position:absolute; left:14px; right:14px; top:150px; background:#fff; border-radius:24px; padding:18px 16px 14px; }
+  .ph { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+  .rb { flex:none; width:32px; height:32px; border-radius:50%; box-shadow:inset 0 0 0 1px var(--line); display:grid; place-items:center; } .rb svg { width:14px; height:14px; }
+  .ph h4 { flex:1; font-size:19px; font-weight:600; }
+  /* A: today */
+  .tile { display:flex; align-items:center; gap:16px; height:58px; padding:0 18px; border-radius:16px; box-shadow:inset 0 0 0 1px var(--line); margin-top:8px; }
+  .tile svg { width:15px; height:15px; }
+  .nm { font-size:15px; font-weight:600; } .fc { font-size:12px; color:var(--faint); margin-top:2px; }
+  /* B / C: flat rows */
+  .row { display:flex; align-items:center; gap:12px; min-height:54px; padding:0 4px; }
+  .row .tx { flex:1; min-width:0; }
+  .row .nm { font-size:16px; font-weight:500; }
+  .ico { flex:none; width:22px; display:grid; place-items:center; color:var(--indigo); } .ico svg { width:17px; height:17px; }
+  .chev { flex:none; width:7px; height:7px; border-right:1.5px solid var(--faint); border-bottom:1.5px solid var(--faint); transform:rotate(-45deg); margin-right:6px; }
+  .bars { display:inline-flex; align-items:center; gap:7px; } .bars i { width:1px; height:10px; background:var(--label); }
+  .ring { flex:none; width:22px; height:22px; border-radius:50%; box-shadow:inset 0 0 0 1.5px var(--line); display:grid; place-items:center; font-size:10.5px; color:var(--faint); font-weight:600; }
+  .ring.d { box-shadow:inset 0 0 0 1.5px var(--green); color:var(--green); } .ring.d svg { width:12px; height:12px; }
+  .lbl { font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--sec); padding:0 4px; margin:6px 0 2px; }
+  .notes { margin-top:26px; max-width:960px; font-size:13px; color:var(--body); line-height:1.65; }
+  .notes b { color:var(--ink); font-weight:600; } .notes li { margin:2px 0 2px 18px; }
+</style></head><body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8"/></symbol>
+  <symbol id="back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+  <symbol id="x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="chk" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+</defs></svg>
+
+<h1>Pick pop-ups: Duplicate which?</h1>
+<p class="sub">What the rules say now (§1, 17 Oct): a pop-up where you enter or pick things keeps its fields and tiles, white with a hairline, the chosen one ink, one ink pill to save. So today's tiles are inside the rules. But since then the gym drop-down and the swap's library went flat: rows on the page, no boxes. A pop-up that is only a list to pick from could read the same.</p>
+<div class="opts" id="o"></div>
+<div class="notes"><b>If you pick B or C</b><ul>
+  <li>The rule would split pop-ups in two: <b>forms</b> (fields to type, choices to set) keep their white hairline boxes; <b>a list to pick one from</b> is flat rows, space between them, a chevron after each, no boxes. The same for Add a session's first step, the gym picker's list and Copy a meal.</li>
+  <li>Nothing else in the pop-up changes: the title at 600, the round ‹ and ✕, white, centred.</li>
+</ul></div>
+<script>
+  const sessions = [["Upper", 7, "Thu 12 Nov", 1], ["Lower", 5, "Sat 14 Nov", 1], ["Push", 6, null, 0], ["Pull", 6, null, 0], ["Legs", 6, null, 0]];
+  const copy = `<svg><use href="#copy"/></svg>`;
+  const head = `<div class="ph"><span class="rb"><svg><use href="#back"/></svg></span><h4>Duplicate which?</h4><span class="rb"><svg><use href="#x"/></svg></span></div>`;
+  const shell = (inner) => `<div class="phone"><div class="behind">${"<i></i>".repeat(14)}</div><div class="dim"></div><div class="pop">${head}${inner}</div></div>`;
+  const A = shell(sessions.map(([n, c]) => `<div class="tile">${copy}<span><div class="nm">${n}</div><div class="fc">${c} exercises</div></span></div>`).join(""));
+  const B = shell(sessions.map(([n, c]) => `<div class="row"><span class="ico">${copy}</span><span class="tx"><div class="nm">${n}</div><div class="fc">${c} exercises</div></span><span class="chev"></span></div>`).join(""));
+  const C = shell(`<div class="lbl">This week</div>` + sessions.map(([n, c, when, done], i) => `<div class="row"><span class="ring${done ? " d" : ""}">${done ? `<svg><use href="#chk"/></svg>` : i + 1}</span><span class="tx"><div class="nm">${n}</div><div class="fc"><span class="bars">${done ? `Done ${when}<i></i>` : ""}${c} exercises</span></div></span><span class="chev"></span></div>`).join(""));
+  const opts = [
+    ["A · Now", "Each session a white tile with a hairline and the copy icon. Inside today's rules, but a box per row on a white card reads heavy.", A],
+    ["B · Flat rows (my pick)", "The same list as rows on the card: the copy icon in training purple, the name, its count grey, a chevron. No boxes, space between rows. As the gym drop-down and the swap's library.", B],
+    ["C · Flat rows as Training reads them", "B with the rows as the week reads on Training: the done check on the ones done this week, else its number, and when it was done. Tells you which one you're doing again.", C],
+  ];
+  document.getElementById("o").innerHTML = opts.map(([h, p, ph]) => `<div class="opt"><h3>${h}</h3><p>${p}</p>${ph}</div>`).join("");
+</script>
+</body></html>
