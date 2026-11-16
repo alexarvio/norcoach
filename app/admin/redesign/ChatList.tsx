@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeftIcon } from "../../components/icons";
+import { ChevronLeftIcon, SearchIcon } from "../../components/icons";
 import ChatLastLine from "../../components/ChatLastLine";
 import { dayMonth } from "../../lib/dayMonth";
 import { pic } from "../../lib/pic";
@@ -41,7 +41,11 @@ export default function ChatList({ chats, title, here = null, isUnread, onPick, 
           <h1 className="rd-title">{title}</h1>
         </div>
       </header>
-      <input ref={search} className="rd-dock-search" type="search" value={q} placeholder="Search clients" aria-label="Search clients" onChange={(e) => setQ(e.target.value)} />
+      {/* The one search shape (16 Nov, Alex, the audit: §6), the rail's and the Library's: the magnifier, then the words. */}
+      <label className="rd-dock-search">
+        <SearchIcon />
+        <input ref={search} type="search" value={q} placeholder="Search clients" aria-label="Search clients" onChange={(e) => setQ(e.target.value)} />
+      </label>
       <div className="rd-dock-rows">
         {chats == null ? null : shown.length === 0 ? (
           <p className="rd-dock-empty">{needle ? "No match" : "None yet"}</p>

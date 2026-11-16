@@ -138,7 +138,8 @@ export default function EntrySheet({
   const linkBad = withLink && !!link.trim() && callLink(link) == null;
   const ok = !!date && (allDay || !!time) && !linkBad;
   // A client picked with no title yet: the laptop's suggestion, kept when nothing is typed.
-  const suggested = client && !topic.trim() ? `${current?.label ?? "Call"} · ${first(client.name)}` : null;
+  // Words alone, as the laptop's (16 Nov, Alex: the audit): `Call with Anna`, `Training with Anna`.
+  const suggested = client && !topic.trim() ? `${!current || isClientCall(current.id) ? "Call" : current.label} with ${first(client.name)}` : null;
   const title = topic.trim() || suggested || "";
 
   // Overlaps with the day's other entries, as a warning only (the laptop's line).

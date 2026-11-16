@@ -5,8 +5,11 @@
    shared menu and toggle styles. */
 /* The ⋯ menu's look (6 Nov, Alex: A of docs/boards/admin-choices-mockup.html). */
 .rd-switch-menu.rd-switch-menu { min-width: 300px; padding: 5px; border: 0; border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(20, 30, 50, 0.16); font-family: var(--font-archivo), system-ui, sans-serif; color: #141a24; }
-.rd-switch-menu .rd-switch-states.rd-switch-states { display: flex; gap: 2px; height: 34px; margin: 2px 2px 6px; padding: 4px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; box-sizing: border-box; }
-.rd-switch-states.rd-switch-states > button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 26px; padding: 0 8px; border: 0; border-radius: 999px; background: none; box-shadow: none; font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #5b6474; }
+/* The one capsule's measure (16 Nov, Alex: the audit; docs/DESIGN-RULES-ADMIN.md §5, .rd-btn-group): 36px, 28px
+   options, 13px words at 600 in their own case. It stays a ToggleGroup for the menu's keys and SlidePills. */
+.rd-switch-menu .rd-switch-states.rd-switch-states { display: flex; gap: 2px; height: 36px; margin: 2px 2px 6px; padding: 4px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; box-sizing: border-box; }
+.rd-switch-states.rd-switch-states > button { flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 28px; min-width: 0; padding: 0 12px; border: 0; border-radius: 999px; background: none; box-shadow: none; font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; color: #5b6474; white-space: nowrap; }
+.rd-switch-states.rd-switch-states > button:hover:not([data-state="on"]):not(:disabled) { color: #141a24; }
 .rd-switch-states.rd-switch-states > button[data-state="on"] { background: #141a24; color: #fff; }
 .rd-switch-states.rd-switch-states > button:disabled { opacity: 0.35; }
 .rd-switch-states .rd-switch-count.rd-switch-count { font-weight: 600; opacity: 0.6; }

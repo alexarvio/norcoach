@@ -58,7 +58,7 @@
 .rd.pov .pov-client-head { display: flex; align-items: center; height: 64px; cursor: pointer; }
 /* Kept in sight when the timeline scrolls sideways, on white so the now line passes behind the words. */
 .rd.pov .pov-client-id { position: sticky; left: 0; z-index: 4; display: inline-flex; align-items: center; min-width: 0; max-width: 100%; height: 52px; padding: 0 12px 0 10px; background: #fff; white-space: nowrap; }
-.rd.pov .pov-avatar { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; margin-right: 10px; border-radius: 999px; overflow: hidden; background: #fff; box-shadow: inset 0 0 0 1px #e1e5eb; font-size: 18px; font-weight: 600; color: #3a4250; }
+.rd.pov .pov-avatar { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; margin-right: 10px; border-radius: 999px; overflow: hidden; background: #fff; box-shadow: inset 0 0 0 1px #e1e5eb; font-size: 21.5px; font-weight: 600; color: #141a24; }
 .rd.pov .pov-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .rd.pov .pov-client-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 15px; font-weight: 600; color: #141a24; text-decoration: none; }
 .rd.pov .pov-client-name:hover { text-decoration: underline; text-decoration-color: #c9cfd8; text-underline-offset: 3px; }
@@ -75,7 +75,6 @@
 .rd.pov .pov-add { grid-column: 2; justify-self: end; position: sticky; right: 12px; display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; font: inherit; font-size: 12.5px; font-weight: 600; color: #5b6474; cursor: pointer; }
 .rd.pov .pov-add svg { width: 13px; height: 13px; translate: 0 -0.5px; }
 .rd.pov .pov-add:hover { color: #141a24; }
-.rd.pov .pov-empty { margin: 0; padding: 18px 24px; font-size: 13px; font-weight: 500; color: #8b93a1; }
 
 /* Nothing here drags (the Plan's bars do): a bar, a pin and its dot only open. */
 .rd.pov .rq-evbar, .rd.pov .rq-pin, .rd.pov .rq-pin i { cursor: pointer; touch-action: auto; }
@@ -118,7 +117,7 @@
 .dlh .dsp-track { display: block; height: 6px; margin: 4px 0 2px; border-radius: 999px; background: #eef0f3; overflow: hidden; }
 .dlh .dsp-track i { display: block; height: 100%; border-radius: 999px; background: var(--mv); }
 .dlh .dsp-track.past i { background: #c5ccd8; }
-.evd .evd-face { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 999px; overflow: hidden; background: #eef0f3; font-size: 11px; font-weight: 600; color: #5b6474; }
+.evd .evd-face { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 999px; overflow: hidden; background: #fff; box-shadow: inset 0 0 0 1px #e1e5eb; font-size: 10px; font-weight: 600; color: #141a24; }
 .evd .evd-face img { width: 100%; height: 100%; object-fit: cover; }
 .dlh .dlh-go[href] { display: inline-flex; align-items: center; text-decoration: none; }
 /* A phase: the weeks as a strip, those behind in the track's colour. */
@@ -138,7 +137,10 @@
 @media (prefers-reduced-motion: reduce) {
   .rd.pov .pov-soon-row.leaving { animation: none; opacity: 0; }
 }
-.pov .pov-needs { margin: 0 0 28px; }
+/* Sections parted by one space, 22px, as the Feed and Business (16 Nov, Alex: the audit; was 46px then 28px). */
+.rd.pln.pov { gap: 22px; }
+.rd.pln.pov > .pln-section + .pln-section { margin-top: 0; }
+.pov .pov-needs { margin: 0; }
 
 /* + Add under a client's Phases and Events on the client's hover only (3 Nov, Alex: two on every client read as a column
    of buttons; an empty week's + does the same). Always there on a touch screen. */

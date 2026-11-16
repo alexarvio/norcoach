@@ -5,7 +5,8 @@ import Link from "next/link";
 import { dayMonth } from "../../lib/dayMonth";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import RailTour from "./RailTour";
-import { AccountIcon, BusinessIcon, CalendarIcon, ChevronDownIcon, DumbbellIcon, FeedIcon, PhasesIcon, PlusIcon, SearchIcon } from "../../components/icons";
+import { AccountIcon, BusinessIcon, CalendarIcon, ChevronDownIcon, FeedIcon, PhasesIcon, PlusIcon, SearchIcon } from "../../components/icons";
+import { TRAINING_ICON } from "../../lib/eventTypes";
 import { settingsFor } from "./settingsNav";
 import { goToSetting, useOpenSetting } from "./settings/settingsScroll";
 import { logoutAction } from "../../lib/auth-actions";
@@ -29,8 +30,18 @@ const VIEWS = [
   { key: "phases", label: "Phases", Icon: PhasesIcon },
   { key: "business", label: "Business", Icon: BusinessIcon },
   // Exercises, their demos and default cues, and cardio movements (5 Oct).
-  { key: "library", label: "Library", Icon: DumbbellIcon },
+  { key: "library", label: "Library", Icon: LibraryIcon },
 ] as const;
+
+// The app's own dumbbell, square like its neighbours (16 Nov, Alex: the audit; the wide 24×16 one sat squashed in the
+// 16px box), its stroke the rail's one weight (rail.css).
+function LibraryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={TRAINING_ICON} />
+    </svg>
+  );
+}
 // Views already redrawn here open in the redesign; the rest where they always were.
 const REDRAWN: Partial<Record<string, string>> = { feed: "/admin/redesign/feed", calendar: "/admin/redesign/calendar", phases: "/admin/redesign/phases", business: "/admin/redesign/business", library: "/admin/redesign/library" };
 const COACHES = "/admin/redesign/coaches";
@@ -179,10 +190,12 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
       {/* The Norcoach logo over the coach's business (24 Oct, Alex), as on the sign-in card. */}
       <div className="rr-brand">
         <NorCoachLogo className="rr-logo" />
-        <span className="rr-brand-text">
-          <b>Full Potential</b>
-          <small>Coach workstation</small>
-        </span>
+        {/* The coach's own business (Settings, Business details), one line, nothing when none is set (16 Nov, the audit). */}
+        {rail.coach.business && (
+          <span className="rr-brand-text">
+            <b>{rail.coach.business}</b>
+          </span>
+        )}
       </div>
       {/* What they pay Norcoach (28 Oct, Alex; lib/billing.ts): a payment that failed, then read-only, as a fact and its
           way to the fix (Settings, Billing). Nothing while it is paid. */}

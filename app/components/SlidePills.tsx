@@ -47,6 +47,8 @@ export const SLIDE_ROWS = [
   // Details' and New client's Gender (29 Oct, Alex: it jumped). Only the hairline capsule: the old admin's are chips.
   ".nc-hl .nc-pills",
   ".cc-hl .nc-pills",
+  // New client's Member info | App access (16 Nov, Alex: the audit; it jumped).
+  ".nc-hl .nc-steps",
 ].join(", ");
 
 /** What marks the picked option, whichever way the row says it. */

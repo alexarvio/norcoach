@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Fold } from "../Fold";
+import { RowFold } from "../RowFold";
 import { pic } from "../../../lib/pic";
 import { newOnceKey } from "../../../lib/onceKey";
 import type { SupportInboxRow, SupportLine } from "../../../lib/support";
@@ -162,17 +163,15 @@ export default function SupportInbox({ initial }: { initial: SupportInboxRow[] }
                   )}
                   <span className="sup-iwhen">{r.when}</span>
                 </button>
-                {isOpen && (
-                  <div className="sup-ibody">
-                    {lines && <SupportThread lines={lines} pending={pending} onDone={(id) => done(r.coachId, id)} />}
-                    <SupportLineBox value={text} onChange={setText} onSend={() => reply(r.coachId)} placeholder={`Reply to ${r.name}`} label={`Reply to ${r.name}`} busy={busy} />
-                    {error && (
-                      <p className="sup-err" role="alert">
-                        {error}
-                      </p>
-                    )}
-                  </div>
-                )}
+                <RowFold open={isOpen} className="sup-ibody">
+                  {lines && <SupportThread lines={lines} pending={pending} onDone={(id) => done(r.coachId, id)} />}
+                  <SupportLineBox value={text} onChange={setText} onSend={() => reply(r.coachId)} placeholder={`Reply to ${r.name}`} label={`Reply to ${r.name}`} busy={busy} />
+                  {error && (
+                    <p className="sup-err" role="alert">
+                      {error}
+                    </p>
+                  )}
+                </RowFold>
               </div>
             );
           })

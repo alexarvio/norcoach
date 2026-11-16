@@ -248,7 +248,7 @@ export function LogoSettings({ mark }: { mark: string | null }) {
             <input type="file" accept="image/*" hidden disabled={busy} onChange={(e) => (pick(e.target.files?.[0]), (e.target.value = ""))} />
           </label>
           {mark && (
-            <button type="button" className="rst-remove" onClick={() => setAsking(true)} disabled={busy}>
+            <button type="button" className="rst-danger" onClick={() => setAsking(true)} disabled={busy}>
               Remove
             </button>
           )}
@@ -329,10 +329,12 @@ export function BusinessSettings({ initial }: { initial: CoachBusiness }) {
       <Section title="Address">
         <div className="rls-card rst-card">
           <div className="rst-grid">
-            {text("address", "Street and number", { wide: true })}
+            {/* One order and one name for an address everywhere (16 Nov, Alex: the audit; AddressFields): Address
+                across, then the postcode and the city, the region after them; the country leads the section above. */}
+            {text("address", "Address", { wide: true, placeholder: "Street and number" })}
+            {text("postcode", country.postcode)}
             {text("city", "City")}
             {country.region && text("region", country.region)}
-            {text("postcode", country.postcode)}
           </div>
         </div>
       </Section>

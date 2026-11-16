@@ -213,7 +213,7 @@ export default function SessionSubstitutesDialog({
         )}
         {list.length < MAX && (
           <div className="sbh-search-wrap">
-            <label className={`sbh-search${open ? " open" : ""}`}>
+            <label className={`rd-search sbh-search${open ? " open" : ""}`}>
               <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
                 <circle cx="11" cy="11" r="7" />
                 <path d="M20 20l-3.5-3.5" />

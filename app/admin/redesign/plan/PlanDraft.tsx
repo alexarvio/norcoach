@@ -128,7 +128,7 @@ const TRACK_ICON: Record<PhaseTrack, string> = {
 };
 export function TrackIcon({ track, size = 20 }: { track: PhaseTrack; size?: number }) {
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d={TRACK_ICON[track]} />
     </svg>
   );
@@ -158,8 +158,9 @@ export default function PlanDraft({ clientId, firstName, plan }: { clientId: num
   const q = useSaveQueue(() => startRefresh(() => router.refresh()));
   const act = (fn: () => Promise<unknown>, said?: string) =>
     q.save(async () => {
+      // No Saved toast (16 Nov, Alex: the audit): the status after the title says it.
+      void said;
       await fn();
-      if (said) savedToast(said);
       return true;
     });
   // The Main goal card went from this tab (10 Oct): it was not used. The goal itself stays on the client (Home shows it) and in the data.
@@ -994,7 +995,7 @@ export function PhaseDialog({ clientId, firstName, today, thisWeek, phase, track
               <DateText value={from} min={startLocked ? undefined : earliest} onChange={(d) => setStart(d)} label="Start date" disabled={startLocked} onFocus={() => setPicking("start")} />
             </div>
             <span className="npd-arrow" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14M13 6l6 6-6 6" />
               </svg>
             </span>

@@ -6,7 +6,8 @@ import { toast } from "sonner";
 import { disconnectLoginAction, signOutDeviceAction, signOutOtherDevicesAction } from "../../../lib/accountActions";
 import { logoutAction } from "../../../lib/auth-actions";
 import type { AccountSecurity, SignedInDevice } from "../../../lib/accountSecurity";
-import { dayMonth } from "../../../lib/dayMonth";
+import { lastActiveWords } from "../../../lib/lastActive";
+import { SepJoin } from "../Sep";
 import { AccountEmail, Section } from "./SettingsForms";
 
 // Settings, Account & security with the sign-in through Clerk (27 Oct, Alex: mockup B; "only email, and that's it"):
@@ -18,16 +19,9 @@ import { AccountEmail, Section } from "./SettingsForms";
 const APPLE_ON = process.env.NEXT_PUBLIC_APPLE_SIGNIN !== "off";
 const RETURN = "/admin/redesign/settings#account";
 
-/** "Active now", "2 h ago", "3 days ago", else 9/10. */
-function lastSeen(at: number): string {
-  const min = Math.round((Date.now() - at) / 60000);
-  if (min < 5) return "Active now";
-  if (min < 60) return `${min} min ago`;
-  const h = Math.round(min / 60);
-  if (h < 24) return `${h} h ago`;
-  const d = Math.round(h / 24);
-  return d < 7 ? `${d} day${d === 1 ? "" : "s"} ago` : dayMonth(new Date(at));
-}
+/** When a device was last used, in the chat's words (`Active now`, `Active 2 h ago`, `Active 3/11`; lastActiveWords,
+ *  16 Nov, Alex: the audit, no copy of its own). */
+const lastSeen = (at: number) => lastActiveWords(new Date(at).toISOString());
 
 export default function ClerkAccount({ email, security }: { email: string; security: AccountSecurity | null }) {
   const [busy, start] = useTransition();
@@ -66,12 +60,13 @@ export default function ClerkAccount({ email, security }: { email: string; secur
         <b>{name}</b>
         {linked?.email && <small>{linked.email}</small>}
       </span>
+      {/* Every Settings row one order (16 Nov, Alex: the audit): the hover words, then the state pill, then the resting action. */}
       {linked ? (
         <>
-          <span className="trn-state good rst-state">Connected</span>
           <button type="button" className="rst-danger rst-hover" disabled={busy} onClick={() => act(() => disconnectLoginAction(linked.id), `${name} disconnected`)}>
             Disconnect
           </button>
+          <span className="trn-state good rst-state">Connected</span>
         </>
       ) : can ? (
         <button type="button" className="rst-act" disabled={busy || !user} onClick={() => connect(strategy)}>
@@ -87,14 +82,16 @@ export default function ClerkAccount({ email, security }: { email: string; secur
     <div className="rst-row" key={d.id}>
       <span className="rst-row-main">
         <b>{d.device}</b>
-        <small>{[d.browser, d.place, d.current ? null : lastSeen(d.lastActive)].filter(Boolean).join(" | ")}</small>
+        <small>
+          <SepJoin parts={[d.browser, d.place, d.current ? null : lastSeen(d.lastActive)]} />
+        </small>
       </span>
       {d.current ? (
         <>
-          <span className="trn-state good rst-state">This device</span>
           <button type="button" className="rst-act rst-hover" onClick={() => logoutAction()}>
             Sign out
           </button>
+          <span className="trn-state good rst-state">This device</span>
         </>
       ) : (
         <button type="button" className="rst-act rst-hover" disabled={busy} onClick={() => act(() => signOutDeviceAction(d.id), "Signed out", () => setGone((g) => [...g, d.id]))}>

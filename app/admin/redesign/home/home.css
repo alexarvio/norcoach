@@ -11,7 +11,7 @@
 /* The eyebrow starts over the name, so the bigger face sits clear beside both lines (face 48 + gap 12). */
 .rd.rh .trn-head-main > .trn-eyebrow { padding-left: 60px; }
 .rd.rh .trn-name.rh-name { display: block; line-height: 31.2px; white-space: normal; overflow-wrap: break-word; }
-.rd.rh .rh-avatar { flex: none; display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; margin-block: -8.4px; padding: 0; border: 0; border-radius: 999px; overflow: hidden; background: #fff; box-shadow: inset 0 0 0 1px #e1e5eb; font: inherit; font-size: 18px; font-weight: 600; color: #141a24; cursor: pointer; }
+.rd.rh .rh-avatar { flex: none; display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; margin-block: -8.4px; padding: 0; border: 0; border-radius: 999px; overflow: hidden; background: #fff; box-shadow: inset 0 0 0 1px #e1e5eb; font: inherit; font-size: 21.5px; font-weight: 600; color: #141a24; cursor: pointer; }
 .rd.rh .rh-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .rd.rh .rh-avatar:disabled { cursor: default; }
 .rd.rh .rh-avatar:not(:disabled):hover { box-shadow: 0 0 0 1px #141a24; }
@@ -273,9 +273,9 @@
 .rd.rh .rh-what-title { display: block; flex: 0 1 auto; min-width: 0; overflow: hidden; font-size: 15px; font-weight: 600; color: #141a24; text-overflow: ellipsis; white-space: nowrap; }
 .rd.rh .rh-what-note { flex: 1 1 7em; min-width: 0; overflow: hidden; font-size: 13px; font-weight: 500; color: #8b93a1; text-overflow: ellipsis; white-space: nowrap; }
 /* A row's kind as its icon in its colour, 16px, the icon alone (KindMark; 23 Oct, Alex). The Feed's root is rh too, so
-   its Activity wears the same. */
-.rd.rh .rd-kind { display: inline-flex; align-items: center; justify-content: center; width: 16px; color: var(--c, #5b6474); }
-.rd.rh .rd-kind svg { flex: none; width: 16px; height: 16px; }
+   its Activity wears the same, and Meetings' past calls (16 Nov, Alex: the audit; they drew their own copy). */
+.rd.rh .rd-kind, .rd.rt .rd-kind { display: inline-flex; align-items: center; justify-content: center; width: 16px; color: var(--c, #5b6474); }
+.rd.rh .rd-kind svg, .rd.rt .rd-kind svg { flex: none; width: 16px; height: 16px; }
 
 /* ---- Pop-ups (portaled, so never under .rd): the .dlh card (training/trn.css). */
 .rh-field { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
@@ -287,7 +287,7 @@
 /* Doubled with .dlh-head (trn.css), so the dev server's CSS order can't put the face back at the top. */
 .dlh-head.rh-details-head { align-items: center; justify-content: flex-start; }
 .rh-details-head > .dlh-x { align-self: flex-start; }
-.rh-details-face { flex: none; display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 999px; overflow: hidden; background: #eef0f3; font-size: 18px; font-weight: 600; color: #5b6474; }
+.rh-details-face { flex: none; display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 999px; overflow: hidden; background: #fff; box-shadow: inset 0 0 0 1px #e1e5eb; font-size: 21.5px; font-weight: 600; color: #141a24; }
 .rh-details-face img { width: 100%; height: 100%; object-fit: cover; }
 .rh-details-who { flex: 1; min-width: 0; }
 /* As tall as the screen allows round the card (its head and padding), so Save is in sight on a laptop as it opens. */
@@ -317,7 +317,7 @@
 .cc-hl .nc-suffixed em { font-weight: 500; color: #8b93a1; }
 /* Gender: the capsule (design rules 5), the chosen one ink. */
 .cc-hl .nc-pills { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 2px; height: 36px; padding: 4px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; box-sizing: border-box; }
-.cc-hl .nc-pills .pl-chip { height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: none; box-shadow: none; font-size: 13px; font-weight: 500; color: #5b6474; }
+.cc-hl .nc-pills .pl-chip { height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: none; box-shadow: none; font-size: 13px; font-weight: 600; color: #5b6474; }
 .cc-hl .nc-pills .pl-chip:hover:not(.on) { color: #141a24; }
 .cc-hl .nc-pills .pl-chip.on { background: #141a24; font-weight: 600; color: #fff; }
 
@@ -346,9 +346,9 @@
 /* Details' Plan (23 Oct, Alex): the plan's name with a chevron, opening the floating list (design rules 6): the coach's
    plans and None, + New plan pinned at the foot, which becomes a name line with Cancel and an ink Add in the same panel.
    The list is portalled, so it is styled by its own classes, over the popover's defaults. */
-[data-slot="popover-content"].cc-plan-pop { width: 300px; padding: 6px; border: 0; border-radius: 14px; background: #fff; box-shadow: 0 16px 40px -12px rgba(16, 24, 40, 0.25), 0 0 0 1px #e1e5eb; font-family: var(--font-archivo), Archivo, system-ui, sans-serif; color: #141a24; }
-.cc-plan-list { display: flex; flex-direction: column; max-height: 216px; overflow-y: auto; }
-.cc-plan-row { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 14px; font-weight: 500; color: #141a24; text-align: left; cursor: pointer; }
+[data-slot="popover-content"].cc-plan-pop { width: 300px; padding: 5px; border: 0; border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(20, 30, 50, 0.16); font-family: var(--font-archivo), Archivo, system-ui, sans-serif; color: #141a24; }
+.cc-plan-list { display: flex; flex-direction: column; max-height: 204px; overflow-y: auto; }
+.cc-plan-row { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; height: 34px; padding: 0 10px; border: 0; border-radius: 7px; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: #141a24; text-align: left; cursor: pointer; }
 .cc-plan-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* One hover for every row and menu item (25 Oct, Alex): the exercise row's soft neutral. */
 .cc-plan-row:hover, .cc-plan-row:focus-visible { outline: none; background: #fafbfd; }
@@ -358,7 +358,7 @@
 .cc-plan-row small { flex: none; font-size: 12.5px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; }
 .cc-plan-row.on { background: #f5f6f8; }
 .cc-plan-empty { margin: 0; padding: 8px 10px; font-size: 13.5px; font-weight: 500; color: #98a2b3; }
-.cc-plan-make { display: block; width: 100%; height: 36px; margin-top: 4px; padding: 0 10px; border: 0; border-top: 1px solid #eef0f3; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: #141a24; text-align: left; cursor: pointer; }
+.cc-plan-make { display: block; width: 100%; height: 34px; margin-top: 4px; padding: 0 10px; border: 0; border-top: 1px solid #eef0f3; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: #141a24; text-align: left; cursor: pointer; }
 .cc-plan-make:hover, .cc-plan-make:focus-visible { outline: none; background: #fafbfd; }
 .cc-plan-new { display: flex; flex-direction: column; gap: 8px; padding: 6px 6px 4px; }
 .cc-plan-new input { height: 32px; padding: 0; border: 0; border-bottom: 1px solid #e1e5eb; border-radius: 0; outline: none; background: transparent; font: inherit; font-size: 15px; font-weight: 500; color: #141a24; }
@@ -412,7 +412,7 @@
 .rd.rh .trn-head > .trn-head-main { display: grid; grid-template-columns: 56px auto; grid-template-rows: auto auto; column-gap: 14px; row-gap: 2px; align-items: center; }
 .rd.rh .trn-head-main > .trn-eyebrow { grid-column: 2; grid-row: 1; padding-left: 0; }
 .rd.rh .trn-name-row.rh-name-row { display: contents; }
-.rd.rh .trn-name-row.rh-name-row > .rh-avatar { grid-column: 1; grid-row: 1 / span 2; width: 56px; height: 56px; margin-block: 0; font-size: 20px; }
+.rd.rh .trn-name-row.rh-name-row > .rh-avatar { grid-column: 1; grid-row: 1 / span 2; width: 56px; height: 56px; margin-block: 0; font-size: 25px; }
 .rd.rh .trn-name-row.rh-name-row > .rh-name { grid-column: 2; grid-row: 2; }
 /* One height on every client (2 Nov, Alex: "whenever I browse from plan to plan, the spaces don't really change"): a
    tile's full room (the track, the phase, the week and its bar, the figure and its note line) even with no phase. */

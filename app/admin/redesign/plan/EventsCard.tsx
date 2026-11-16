@@ -31,7 +31,7 @@ const iconOf = (id: string | null) => (isEventTypeId(id) ? eventTypeOf(id) : nul
 /** The arrow between two dates: the pop-up's Starts → Ends, and the log's 14/10 → 5/11 (21 Oct, Alex). */
 function RangeArrow() {
   return (
-    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
       <path d="M5 12h14M13 6l6 6-6 6" />
     </svg>
   );
@@ -39,7 +39,7 @@ function RangeArrow() {
 export function KindIcon({ id, size = 20 }: { id: string | null; size?: number }) {
   const t = iconOf(id);
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {t?.fill && <path d={t.fill} fill="currentColor" stroke="none" opacity={0.35} />}
       <path d={t ? t.icon : CUSTOM_ICON} />
     </svg>
@@ -624,7 +624,12 @@ export function EventDialog({ today, event, cats, firstName, faces, initialStart
           <KindIcon id={kind} size={12} />
           {k.label}
         </span>
-        {readOnly && <span className="npd-from">Past</span>}
+        {/* An existing event wears its state as a phase does (16 Nov, Alex, the audit: §10.2, STATE_TAG): Live, Scheduled, Past. */}
+        {event && (
+          <span className="npd-state" style={stateTagStyle(eventState(event, today))}>
+            {STATE_LABEL[eventState(event, today)]}
+          </span>
+        )}
       </DialogDescription>
 
       {/* A past event is shown as it was and can't be changed (20 Oct, Alex): every field below is disabled. */}

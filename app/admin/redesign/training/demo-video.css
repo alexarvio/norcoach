@@ -69,9 +69,8 @@
 .dmvh-progress { position: absolute; left: 0; bottom: 0; height: 3px; background: #141a24; transition: width 0.2s; }
 
 /* Your videos: rows with hairlines between. */
-.dmvh-search { width: 100%; height: 36px; margin: 0; padding: 0 14px; border: 0; border-radius: 999px; outline: none; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; font: inherit; font-size: 13.5px; font-weight: 500; color: #141a24; }
-.dmvh-search::placeholder { color: #98a2b3; }
-.dmvh-search:focus { box-shadow: inset 0 0 0 1px #141a24; }
+/* Its search is the one search field (.rd-search, draft.css; 16 Nov, Alex: the audit). */
+.dmvh-search { flex: none; width: 100%; }
 .dmvh-list { display: flex; flex-direction: column; }
 .dmvh-row { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 7px 8px; border: 0; border-radius: 10px; background: none; font: inherit; color: #141a24; text-align: left; cursor: pointer; }
 .dmvh-row + .dmvh-row::before { content: ""; position: absolute; left: 8px; right: 8px; top: 0; height: 1px; background: #eef0f3; }

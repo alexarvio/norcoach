@@ -252,12 +252,13 @@ export default function PhasesOverview({ data, needs = [], now }: { data: Phases
             </div>
           </div>
         </div>
-        <div className="pln-card">
+        {/* Nothing to show: the one empty box (16 Nov, Alex: the audit), `.rls-none` alone in a `.rls-card`. */}
+        <div className={`pln-card${shown.length === 0 ? " rls-card" : ""}`}>
           {clients.length === 0 ? (
-            <p className="pov-empty">No clients yet</p>
+            <p className="rls-none">No clients yet</p>
           ) : shown.length === 0 ? (
             // The one empty word (6 Nov, Alex: admin audit; was "Nobody").
-            <p className="pov-empty">None</p>
+            <p className="rls-none">None</p>
           ) : (
             <div className="rq-tl-scroll" ref={sideScroll}>
               <div className="rq-tl" style={{ minWidth: Math.round(grid.count * 63) }}>

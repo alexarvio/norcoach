@@ -5,6 +5,7 @@ import type React from "react";
 import { MUSCLES, type MuscleGroup, type MuscleMapData } from "../../../lib/muscles";
 import { anatomy, type AnatomyBody, type AnatomyView } from "./muscleAnatomy";
 import { Fold } from "../Fold";
+import { RowFold } from "../RowFold";
 import { SepJoin } from "../Sep";
 
 // The muscle map on Training (2 Nov, Alex: docs/boards/muscle-map-v2.html): one hairline card row under the weeks,
@@ -86,7 +87,10 @@ export default function MuscleMap({ data }: { data: MuscleMapData }) {
         <span className="mm-title">Muscle map</span>
         <Fold open={open} />
       </button>
-      {open && <MuscleMapBody data={data} />}
+      {/* On the shared fold, as a session opens on the same screen (16 Nov, Alex: the audit). */}
+      <RowFold open={open}>
+        <MuscleMapBody data={data} />
+      </RowFold>
     </section>
   );
 }

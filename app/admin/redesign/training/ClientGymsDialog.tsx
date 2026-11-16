@@ -164,7 +164,7 @@ export default function ClientGymsDialog({
                       </button>
                     )}
                     {!g.deleted && <button type="button" className={`cgh-remove${asking ? " on" : ""}`} onClick={() => setConfirm(asking ? null : g.id)} aria-label={`Remove ${g.name}`} aria-expanded={asking}>
-                      <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
                       </svg>
                     </button>}

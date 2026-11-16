@@ -29,6 +29,7 @@ import { Sep } from "../Sep";
 // The tab's status, Training's, shared with every tab that saves itself (3 Nov, Alex).
 import { SaveStatus } from "../SaveStatus";
 import { Fold } from "../Fold";
+import { RowFold } from "../RowFold";
 import { landOn } from "../../../lib/landOn";
 
 // The Nutrition tab, built as Training and Lifestyle are (21 Oct, Alex): the
@@ -168,11 +169,12 @@ export default function NutritionDraft({
   const router = useRouter();
   const [, startTransition] = useTransition();
   // A header action goes to the server, then the page re-reads; what is on screen follows.
+  // No Saved toast (16 Nov, Alex: the audit): the tab's status says it; `said` stays as the note of what each save is.
   const act = (fn: () => Promise<unknown>, said?: string) =>
     startTransition(async () => {
+      void said;
       await fn();
       router.refresh();
-      if (said) savedToast(said);
     });
   const phaseId = plan.id > 0 ? plan.id : null;
   // An ended phase is look-only (6 Nov, Alex: an ended phase look-only): what would change it isn't drawn, its figures
@@ -434,24 +436,24 @@ export default function NutritionDraft({
     },
     {
       label: "Avg intake",
-      value: avg.kcal != null ? n(avg.kcal) : "–",
+      value: avg.kcal != null ? n(avg.kcal) : "—",
       unit: "kcal",
     },
     // The three macros' averages, not On target (21 Oct, Alex).
     {
       label: "Avg protein",
-      value: avg.protein != null ? String(avg.protein) : "–",
+      value: avg.protein != null ? String(avg.protein) : "—",
       unit: "g",
       warn: proteinTarget != null && avg.protein != null && avg.protein < proteinTarget - 20,
     },
     {
       label: "Avg carbs",
-      value: avg.carbs != null ? String(avg.carbs) : "–",
+      value: avg.carbs != null ? String(avg.carbs) : "—",
       unit: "g",
     },
     {
       label: "Avg fat",
-      value: avg.fat != null ? String(avg.fat) : "–",
+      value: avg.fat != null ? String(avg.fat) : "—",
       unit: "g",
     },
   ];
@@ -744,6 +746,7 @@ export default function NutritionDraft({
               <span />
             </div>
           )}
+          {supps.length > 0 && (
           <SortableList ids={supps.map((s) => s.id)} label="supplement" onMove={moveSupps}>
             {supps.map((s) => (
               <SortableItem key={s.id} id={s.id} className={`rls-row${incoming(s) ? " trn-incoming" : ""}`}>
@@ -792,10 +795,23 @@ export default function NutritionDraft({
               </SortableItem>
             ))}
           </SortableList>
+          )}
           {/* + Item opens a dropdown with the search at its top, as + Metric (21 Oct, Alex): presets by group, or your own. */}
           {/* Ended: no + Item, and with no items the card says None (6 Nov, Alex: an ended phase look-only). */}
           {ended ? (
             supps.length === 0 && <p className="rls-none">None</p>
+          ) : supps.length === 0 ? (
+            // No items yet: the one empty box, + Item on its right, as Lifestyle's None yet and + Metric (16 Nov, Alex: the audit; rls-empty).
+            <div className="rls-empty">
+              <span>None yet</span>
+              {adding ? (
+                <AddSuppRow have={[]} onAdd={addSupp} onClose={() => setAdding(false)} alignEnd />
+              ) : (
+                <button type="button" className="rls-add" onClick={() => setAdding(true)}>
+                  <PlusIcon /> Item
+                </button>
+              )}
+            </div>
           ) : adding ? (
             <AddSuppRow have={supps.map((s) => s.name.trim().toLowerCase())} onAdd={addSupp} onClose={() => setAdding(false)} />
           ) : (
@@ -831,9 +847,10 @@ export default function NutritionDraft({
           {stats.map((s) => (
             <div key={s.label} className="rls-fig">
               <span className="rls-fig-label">{s.label}</span>
-              <b className={s.warn ? "warn" : ""}>
+              {/* Nothing to average: the one empty value, `—` in the faint grey every table has (16 Nov, Alex: the audit). */}
+              <b className={s.value === "—" ? "none" : s.warn ? "warn" : ""}>
                 {s.value}
-                {s.unit && s.value !== "–" && <em>{s.unit}</em>}
+                {s.unit && s.value !== "—" && <em>{s.unit}</em>}
               </b>
             </div>
           ))}
@@ -858,6 +875,7 @@ export default function NutritionDraft({
               {days.map((d) => (
                 <DayRow
                   key={d.date}
+                  firstName={firstName}
                   day={d}
                   open={open === d.date}
                   due={!!dueFood?.[d.date]?.length}
@@ -1071,7 +1089,7 @@ export default function NutritionDraft({
 type Preset = SupplementPreset & { group: string; taken: boolean };
 
 /** + Item's dropdown (21 Oct, Alex), as Lifestyle's + Metric: the search at its top, the chevron to browse the groups, and Create your own. */
-function AddSuppRow({ have, onAdd, onClose }: { have: string[]; onAdd: (x: SupplementPreset) => void; onClose: () => void }) {
+function AddSuppRow({ have, onAdd, onClose, alignEnd = false }: { have: string[]; onAdd: (x: SupplementPreset) => void; onClose: () => void; /** The list opens from the button's right end, for the + Item on the empty box's right. */ alignEnd?: boolean }) {
   const [q, setQ] = useState("");
   const [browse, setBrowse] = useState(false);
   const [pack, setPack] = useState<string | null>(null);
@@ -1118,7 +1136,7 @@ function AddSuppRow({ have, onAdd, onClose }: { have: string[]; onAdd: (x: Suppl
         <PopoverContent
           ref={pop}
           className="rd-addpop rls-findpop"
-          align="start"
+          align={alignEnd ? "end" : "start"}
           sideOffset={6}
           onOpenAutoFocus={(e) => {
             e.preventDefault();
@@ -1368,7 +1386,7 @@ function Split({ p, c, f }: { p: number; c: number; f: number }) {
 }
 
 
-function DayRow({ day, open, due, grid, mealGrid, commentsOn, onToggle, onShot, onMessage }: { day: LoggedDay; open: boolean; due: boolean; grid: React.CSSProperties; mealGrid: React.CSSProperties; commentsOn: (d: string, m: LoggedMeal) => MealComment[]; onToggle: () => void; onShot: (meal: string) => void; onMessage: () => void }) {
+function DayRow({ firstName, day, open, due, grid, mealGrid, commentsOn, onToggle, onShot, onMessage }: { firstName: string; day: LoggedDay; open: boolean; due: boolean; grid: React.CSSProperties; mealGrid: React.CSSProperties; commentsOn: (d: string, m: LoggedMeal) => MealComment[]; onToggle: () => void; onShot: (meal: string) => void; onMessage: () => void }) {
   return (
     <div id={`day-${day.date}`} className={`rd-row rn-day${open ? " open" : ""}`}>
       {/* The row opens on a click anywhere; for the keyboard the date is the button (no controls nested in a button). */}
@@ -1404,11 +1422,20 @@ function DayRow({ day, open, due, grid, mealGrid, commentsOn, onToggle, onShot, 
         </span>
       </div>
 
-      {open && (
-        <div className="rn-meals">
+      <RowFold open={open} className="rn-meals">
           {/* The client's note on the day, inside the opened row (21 Oct, Alex): in the row it made that row taller than
               the rest, and the log keeps one height. */}
-          {day.note && <p className="rn-daynote">{day.note}</p>}
+          {/* One client note everywhere (16 Nov, Alex: the audit): Lifestyle's check-in parts, `{First} wrote` grey over
+              their words in quotes, and Reply to the chat linked to this day. */}
+          {day.note && (
+            <div className="rn-daynote">
+              <p className="rm-cn-wrote">{firstName} wrote</p>
+              <p className="rm-cn-said">&ldquo;{day.note}&rdquo;</p>
+              <button type="button" className="rm-cn-reply" onClick={onMessage}>
+                Reply
+              </button>
+            </div>
+          )}
           <div className="rd-cols rn-mcols" aria-hidden="true" style={mealGrid}>
             <span>Meal</span>
             <span>Kcal</span>
@@ -1450,17 +1477,13 @@ function DayRow({ day, open, due, grid, mealGrid, commentsOn, onToggle, onShot, 
               ))}
               {commentsOn(day.date, m).map((c) => (
                 <p key={c.id} className="rn-said">
-                  <b>
-                    You<Sep />
-                    {c.when}
-                  </b>
-                  {c.text}
+                  <b>{c.when}</b>
+                  <span>{c.text}</span>
                 </p>
               ))}
             </div>
           ))}
-        </div>
-      )}
+      </RowFold>
     </div>
   );
 }

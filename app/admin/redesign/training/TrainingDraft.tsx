@@ -184,7 +184,6 @@ export type DraftProgram = {
 };
 
 // ---- Draft-only bits ---------------------------------------------------------
-const draftOnly = (what: string) => toast(what, { description: "Not wired yet: the old Training tab still does this." });
 const savedToast = (what: string) => toast.success("Saved", { description: what });
 const fd = (o: Record<string, string | number | null | undefined>) => {
   const f = new FormData();
@@ -275,13 +274,15 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
   // follows the server's answer (derived-state resets below).
   // A demo turned on or off for the client on its play button, shown at once (25 Oct, Alex).
   const [demoOff, setDemoOff] = useState<Record<number, boolean>>({});
+  // No Saved toast (16 Nov, Alex: the audit): the tab's own status says All changes saved; only a failure pops up.
+  // `said` stays on the calls as their note of what each save is.
   const act = (fn: () => Promise<unknown>, said?: string) =>
     startTransition(async () => {
+      void said;
       const r = await fn();
       router.refresh();
       if (r && typeof r === "object" && "ok" in r && (r as { ok: boolean }).ok === false) toast.error((r as { error?: string }).error ?? "Something went wrong");
       else if (typeof r === "string" && r) toast.error(r);
-      else if (said) savedToast(said);
     });
   // Compared by content: every refresh hands in new objects with the same
   // values, and resetting on those collapsed panels and threw work away.
@@ -968,8 +969,9 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
           // The states worth a word: done, skipped, or begun and left with
           // sets or cardio still to log (ended early, or partly logged), as
           // the client's app calls it too.
-          // In progress while the client is in it (sets logged, not ended); Unfinished once ended short.
-          const status = s.skip ? { text: "Skipped", cls: "warn" } : complete ? { text: "Completed", cls: "good" } : s.ended ? { text: "Unfinished", cls: "warn" } : s.setsLogged > 0 || s.extra ? { text: "In progress", cls: "live" } : { text: "Not started", cls: "idle" };
+          // In progress while the client is in it (sets logged, not ended); Started once ended short, the ink pill, as the week
+          // card's soft green bar and its legend say it (16 Nov, Alex: the audit; was a rust Unfinished).
+          const status = s.skip ? { text: "Skipped", cls: "warn" } : complete ? { text: "Completed", cls: "good" } : s.ended ? { text: "Started", cls: "live" } : s.setsLogged > 0 || s.extra ? { text: "In progress", cls: "live" } : { text: "Not started", cls: "idle" };
           const rows = orderOf(s)
             .map((id) => s.rows.find((r) => r.id === id)!)
             .filter((r) => r && !p.removed.includes(r.id));
@@ -1174,7 +1176,8 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
                 <div className={`trn-sfold${isOpen ? "" : " shut"}`}>
                 <div className="trn-sfold-in">
                 <div className="rd-rows rd-rows-scroll" style={{ "--rd-minw": `${tableMinW}px` } as React.CSSProperties}>
-                  {s.skip && <p className="rd-skip">{firstName} couldn&rsquo;t train: &ldquo;{s.skip}&rdquo;</p>}
+                  {/* Their reason as their other words, flat (16 Nov, Alex: the audit; was a rust block). */}
+                  {s.skip && <ClientNote who={`${firstName} couldn’t train`}>&ldquo;{s.skip}&rdquo;</ClientNote>}
                   {/* Answers in words only: the numbers are the head row's pills already. */}
                   {/* Their words in the hairline voice (23 Oct, Alex: the blue band and navy Reply were the old way): ClientNote. */}
                   {!!s.answers?.some((a) => a.text != null) && (
@@ -1526,9 +1529,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
                         <span />
                         <span />
                         <span className="rd-row-more">
-                          <button type="button" className="rd-btn ghost sm" onClick={() => patch(s.id, (q) => ({ ...q, added: q.added.filter((x) => x.key !== r.key) }))} aria-label={`Take ${r.name} off`} title="Take it off">
-                            <TrashIcon />
-                          </button>
+                          <AddedRowMore name={r.name} onRemove={() => patch(s.id, (q) => ({ ...q, added: q.added.filter((x) => x.key !== r.key) }))} />
                         </span>
                       </div>
                     </div>
@@ -1621,17 +1622,33 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
                                     </>
                                   </span>
                                 )}
-                                {!weekLocked && (
-                                  <>
-                                    {/* What the client can do instead when the machine is taken. */}
-                                    <button type="button" className="rd-btn ghost sm rd-cardio-alt" onClick={() => setDlg({ kind: "cardioAlternatives", sessionId: s.id, cardioId: c.id })} title={c.alternatives?.length ? `Alternatives · ${c.alternatives.length}` : "Add alternative"} aria-label={`Alternatives for ${c.name}`}>
-                                      <DumbbellIcon />
-                                      {c.alternatives?.length ? <b>{c.alternatives.length}</b> : null}
-                                    </button>
-                                    <button type="button" className="rd-btn ghost sm" onClick={() => setDlg({ kind: "removeCardio", sessionId: s.id, cardioId: c.id })} aria-label={`Remove ${c.name}`} title="Remove from session">
-                                      <TrashIcon />
-                                    </button>
-                                  </>
+                                {/* A cardio with alternatives keeps its count at rest, a mark that something is there (admin rules §8). */}
+                                {!weekLocked && c.alternatives?.length ? (
+                                  <button type="button" className="rd-btn ghost sm rd-cardio-alt" onClick={() => setDlg({ kind: "cardioAlternatives", sessionId: s.id, cardioId: c.id })} title={`Alternatives | ${c.alternatives.length}`} aria-label={`Alternatives for ${c.name}`}>
+                                    <DumbbellIcon />
+                                    <b>{c.alternatives.length}</b>
+                                  </button>
+                                ) : null}
+                                {/* The one round ⋯ every row ends in (16 Nov, Alex: the audit; was a dumbbell and a bin). */}
+                                {!weekLocked ? (
+                                  <DropdownMenu modal={false}>
+                                    <DropdownMenuTrigger className="trn-row-more" aria-label={`More for ${c.name}`}>
+                                      <MoreIcon />
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="pb-menu">
+                                      {/* What the client can do instead when the machine is taken. */}
+                                      <DropdownMenuItem onSelect={() => setDlg({ kind: "cardioAlternatives", sessionId: s.id, cardioId: c.id })}>
+                                        <DumbbellIcon /> {c.alternatives?.length ? "Alternatives" : "Add alternative"}
+                                        {c.alternatives?.length ? <small className="rd-menu-inuse">{c.alternatives.length}</small> : null}
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem variant="destructive" onSelect={() => setDlg({ kind: "removeCardio", sessionId: s.id, cardioId: c.id })}>
+                                        <TrashIcon /> Remove from session
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                ) : (
+                                  <span className="rd-more-room" aria-hidden="true" />
                                 )}
                               </span>
                             </div>
@@ -1674,9 +1691,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
                               <span />
                               <span />
                               <span className="rd-row-more">
-                                <button type="button" className="rd-btn ghost sm" onClick={() => patch(s.id, (q) => ({ ...q, added: q.added.filter((x) => x.key !== r.key) }))} aria-label={`Take ${r.name} off`} title="Take it off">
-                                  <TrashIcon />
-                                </button>
+                                <AddedRowMore name={r.name} onRemove={() => patch(s.id, (q) => ({ ...q, added: q.added.filter((x) => x.key !== r.key) }))} />
                               </span>
                             </div>
                           </div>
@@ -2021,10 +2036,6 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
                           {label}
                         </DropdownMenuCheckboxItem>
                       ))}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onSelect={() => draftOnly("Custom column")}>
-                        <PlusIcon /> Custom column
-                      </DropdownMenuItem>
                     </>
                   ) : (
                     <>
@@ -3621,6 +3632,22 @@ function NoteDialog({ firstName, note, onSeen }: { firstName: string; note: { te
 }
 
 
+/** A row just added ends in the same round ⋯ as every row (16 Nov, Alex: the audit; was a bare bin): Remove takes it off. */
+function AddedRowMore({ name, onRemove }: { name: string; onRemove: () => void }) {
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger className="trn-row-more" aria-label={`More for ${name}`}>
+        <MoreIcon />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="pb-menu">
+        <DropdownMenuItem variant="destructive" onSelect={onRemove}>
+          <TrashIcon /> Remove
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 /** Sets the client logged beyond the prescription ("Add a set", 12 Oct). A swapped row's sets are the swap's. */
 const extraOf = (r: { sets: number; swap: string | null; logged: { set: number }[] }) => (r.swap ? 0 : r.logged.filter((l) => l.set > r.sets).length);
 /** Sets of the prescription the client took off this session (`− Remove a set`, 10 Nov, Alex). A swapped row is the swap's. */
@@ -3688,7 +3715,7 @@ function TrainingLegend() {
 // Two arrows passing each other: a swap.
 function SwapIcon() {
   return (
-    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M7 4 3 8l4 4" />
       <path d="M3 8h13" />
       <path d="m17 20 4-4-4-4" />

@@ -79,8 +79,6 @@ export type DraftHome = {
   board: HomeBoard;
 };
 
-const savedToast = (what: string) => toast.success("Saved", { description: what });
-
 // The tabs' ids, as the shell names them.
 const DRAFT_TAB: Record<string, string> = {
   plan: "plan",
@@ -194,11 +192,12 @@ export default function HomeDraft({
   const router = useRouter();
   const [, startTransition] = useTransition();
   // Every save goes to the server, then the page re-reads; what is on screen follows.
+  // No Saved toast (16 Nov, Alex: the audit); `said` stays on the calls as their note of what each save is.
   const act = (fn: () => Promise<unknown>, said?: string) =>
     startTransition(async () => {
+      void said;
       await fn();
       router.refresh();
-      if (said) savedToast(said);
     });
   const fd = (o: Record<string, string | number | null | undefined>) => {
     const f = new FormData();

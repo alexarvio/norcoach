@@ -64,7 +64,8 @@
 
 /* One row a day; the row itself opens the day. */
 .rn-day .rd-row-main { border-radius: 10px; }
-.rn-day.open > .rd-row-main { background: #fafbfd; }
+/* An opened day keeps no tint (16 Nov, Alex: the audit): one open state for every log, as Lifestyle's check-ins; the
+   row hover #fafbfd alone. */
 /* A day with their note still to read: the rust dot (.rd-due) right after the date, chevron and note mark, centred on
    the line as the chevron is, a little closer than the row's gap so the 150px date column still holds it. */
 .rn-day .rd-ex-name > .rd-due { align-self: center; margin-left: -3px; }
@@ -76,10 +77,9 @@
 /* The day open: its meals, each with its foods under it. */
 /* The same side padding as the day row over it, so the meal grid's edges are the row's. */
 .rn-meals { display: flex; flex-direction: column; padding: 2px 4px 12px 10px; }
-/* The client's note on the day, first in the opened row (21 Oct, Alex): their words in quotes, body grey, a line of air under it. */
-.rn-daynote { margin: 4px 0 10px; font-size: 14px; font-weight: 500; line-height: 1.45; color: #3a4250; white-space: pre-wrap; overflow-wrap: anywhere; }
-.rn-daynote::before { content: "\201C"; }
-.rn-daynote::after { content: "\201D"; }
+/* The client's note on the day, first in the opened row (21 Oct, Alex), drawn with Lifestyle's parts (16 Nov, Alex: the
+   audit; `.rm-cn-wrote`, `.rm-cn-said`, `.rm-cn-reply`, measurements.css): a line of air under it. */
+.rn-daynote { margin: 4px 0 12px; }
 .rn-mcols { padding-left: 0; padding-right: 0; }
 .rn-mcols .p { color: var(--macro-protein); }
 .rn-mcols .c { color: var(--macro-carbs); }
@@ -95,10 +95,10 @@
 .rn-shot { color: #2f5d8f; }
 .rn-shot.said::after { content: ""; position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 999px; background: #1b7a4b; box-shadow: 0 0 0 2px #fff; }
 .rd-row-more .rn-shot { position: relative; }
-/* Its text starts where the meal's name does and ends where the fat figure
-   does: the box's own padding hangs into the gutters on both sides. */
-.rn-said { margin: 6px 32px 0 20px; padding: 8px 12px; border-radius: 10px; background: #f1f6fd; font-size: 12.5px; line-height: 1.5; color: #313851; white-space: pre-wrap; }
-.rn-said b { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #1e3a6e; margin-bottom: 2px; }
+/* The coach's comment under a meal, flat as the photo pop-up's (`.rn-shotsaid`) and Shape update's (16 Nov, Alex: the
+   audit; was a grey box): when grey, then the words in body grey, no box. */
+.rn-said { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; align-items: baseline; margin: 6px 0 0; font-size: 14px; font-weight: 500; line-height: 1.45; color: #3a4250; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rn-said b { font-size: 12.5px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* The picture of one meal, with the coach's comment under it: the .dlh card (22 Oct, Alex). Wider than the usual card
    so the picture is large; a stage of one height holds it in its own shape (no dark block round it), so nothing moves
@@ -144,12 +144,14 @@
    Training's done week (.rd-cell-ro, trn.css): no line on hover, the unit right after the figure, a grey dash for none. */
 .rd.rnt .rn-box .rd-cell-box.rd-cell-ro { display: block; min-width: 0; overflow: hidden; line-height: 30px; text-overflow: ellipsis; white-space: nowrap; cursor: default; }
 .rd.rnt .rn-box .rd-cell-box.rd-cell-ro:hover { border-bottom-color: transparent; }
-.rd.rnt .rn-box .rd-cell-box.rd-cell-ro.none { font-weight: 500; color: #b0b6c0; }
+.rd.rnt .rn-box .rd-cell-box.rd-cell-ro.none { font-weight: 500; color: #98a2b3; }
 /* No tint behind a row being typed in (21 Oct, Alex): the words and their line alone, as the title's rename. */
 .rd.rnt .rls-row:hover { background: none; }
 /* The log's five figures are the shared figures card (`.rls-figs`, measurements.css; 3 Nov, Alex): low protein rust, as `b.warn`
    there. The unit grey right after the figure. With no day logged the log card is None yet alone, the shared empty box (draft.css). */
 .rd.rnt .rn-figs .rls-fig b em { margin-left: 5px; font-size: 13px; font-style: normal; font-weight: 500; letter-spacing: 0; color: #8b93a1; }
+/* Nothing to average: `—` in the one empty-value grey (16 Nov, Alex: the audit). */
+.rd.rnt .rn-figs .rls-fig b.none { font-weight: 500; color: #98a2b3; }
 .rd.rnt .rls-log .rd-cols { font-weight: 600; letter-spacing: 0.16em; color: #5b6474; }
 /* The logs drawn as the supplements over them and every list (6 Nov, Alex: one list row): the card's own padding, the
    line between days edge to edge in #eef0f3, a day 52px with its content on the row's middle, the date and the heads
@@ -159,7 +161,7 @@
 .rd.rnt .rls-log .rd-rows > .rd-cols { min-height: 36px; padding: 4px 18px 0; }
 .rd.rnt .rls-log .rd-rows > .rd-row { border-top-color: #eef0f3; }
 .rd.rnt .rls-log .rd-rows > .rn-day > .rd-row-main { min-height: 52px; padding: 0 18px; border-radius: 0; }
-.rd.rnt .rls-log .rn-day > .rn-meals { padding-left: 18px; padding-right: 18px; }
+.rd.rnt .rls-log .rn-day > .rd-rowfold > .rd-rowfold-in > .rn-meals { padding-left: 18px; padding-right: 18px; }
 /* A day's row. Training or Rest: the one state pill (29 Oct, Alex: .trn-state, Training ink, Rest grey), one width down the column,
    the word centred, the head over it centred too (21 Oct, Alex). */
 .rd.rnt .rn-day .rnt-daypill { display: inline-flex; align-items: center; justify-content: center; justify-self: stretch; box-sizing: border-box; padding-left: 0; padding-right: 0; }
@@ -173,11 +175,9 @@
    (6 Nov, Alex: admin audit; was a 28px ghost .rd-btn). */
 .rd.rnt .rn-day .rd-row-more > .trn-row-more { opacity: 0; transition: opacity 0.12s; }
 .rd.rnt .rn-day .rd-row-main:hover .rd-row-more > .trn-row-more, .rd.rnt .rn-day .rd-row-main:focus-within .rd-row-more > .trn-row-more { opacity: 1; }
-@media (hover: none) { .rd.rnt .rn-day .rd-row-more > .trn-row-more { opacity: 0.7; } }
+@media (hover: none) { .rd.rnt .rn-day .rd-row-more > .trn-row-more { opacity: 1; } }
 .rd.rnt .rn-shot { color: #5b6474; }
 .rd.rnt .rn-meal-name { font-weight: 600; }
-.rd.rnt .rn-said { background: #f5f6f8; }
-.rd.rnt .rn-said b { font-weight: 600; color: #5b6474; }
 /* The targets' figures as clean lines too (21 Oct, Alex): the unit right after the figure (235 g), no box. */
 .rd.rnt .rn-targets .rn-box { gap: 4px; }
 .rd.rnt .rn-targets .rn-box em { margin-left: 0; }

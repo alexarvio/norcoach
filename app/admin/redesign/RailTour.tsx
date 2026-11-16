@@ -2,7 +2,6 @@
 
 import { useEffect, useLayoutEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Button } from "../../components/ui/basics";
 
 // "Take a tour", from the welcome steps (?tour=1): the rail explained one
 // part at a time. The part is lit (the rest of the screen dims) and a card
@@ -10,11 +9,13 @@ import { Button } from "../../components/ui/basics";
 // ?tour from the address so a reload doesn't start it again.
 
 const STEPS: { find: string; title: string; text: string }[] = [
-  { find: '.rr-nav a[href="/admin/redesign/feed"]', title: "Feed", text: "Everything your clients log, newest first, one kind at a time. The number shows how many clients need you." },
+  // The rail as it is now (16 Nov, Alex: the audit): the Feed's number counts things owed, a client's is a rust number.
+  { find: '.rr-nav a[href="/admin/redesign/feed"]', title: "Feed", text: "Everything your clients log, newest first, one kind at a time. The number is how many things need you." },
   { find: '.rr-nav a[href="/admin/redesign/calendar"]', title: "Calendar", text: "Your calls with clients and your own time, a month at a time." },
   { find: '.rr-nav a[href="/admin/redesign/phases"]', title: "Phases", text: "Every client's plan side by side: training, nutrition and lifestyle phases." },
   { find: '.rr-nav a[href="/admin/redesign/business"]', title: "Business", text: "How the business is doing: clients, revenue, and what's still outstanding." },
-  { find: ".rr-clients-head", title: "Your clients", text: "Everyone you coach. A word by a name says what needs you, New for someone still to set up; Needs you shows just those." },
+  { find: '.rr-nav a[href="/admin/redesign/library"]', title: "Library", text: "Your exercises and their demo videos, in your own groups." },
+  { find: ".rr-clients-head", title: "Your clients", text: "Everyone you coach. A rust number by a name is how many things need you; Needs you shows just those." },
   { find: ".rr-new", title: "New client", text: "Add a client here. They get an email with a link to join the app." },
   { find: ".rr-coach", title: "You", text: "Your profile, business details and invoicing, whenever you want to change them." },
 ];
@@ -54,19 +55,20 @@ export default function RailTour() {
         </span>
         <b className="rtour-title">{step.title}</b>
         <p className="rtour-text">{step.text}</p>
+        {/* The pop-up card's footer (16 Nov, Alex: the audit): Skip and Back in words, the action the ink 36px pill. */}
         <div className="rtour-actions">
-          <Button type="button" variant="ghost" size="sm" onClick={end}>
+          <button type="button" className="rtour-word" onClick={end}>
             Skip
-          </Button>
+          </button>
           <span className="rtour-go">
             {at > 0 && (
-              <Button type="button" variant="outline" size="sm" onClick={() => setAt(at - 1)}>
+              <button type="button" className="rtour-word" onClick={() => setAt(at - 1)}>
                 Back
-              </Button>
+              </button>
             )}
-            <Button type="button" size="sm" onClick={() => (at < STEPS.length - 1 ? setAt(at + 1) : end())}>
+            <button type="button" className="rtour-next" onClick={() => (at < STEPS.length - 1 ? setAt(at + 1) : end())}>
               {at < STEPS.length - 1 ? "Next" : "Done"}
-            </Button>
+            </button>
           </span>
         </div>
       </div>

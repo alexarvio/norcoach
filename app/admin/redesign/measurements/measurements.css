@@ -8,7 +8,7 @@
 .rm-cadence button.on.changed { background: #1e3a6e; color: #fff; }
 .rm-last { display: flex; flex-direction: column; gap: 1px; min-width: 0; font-size: 13.5px; font-weight: 600; color: #141a24; font-variant-numeric: tabular-nums; }
 .rm-last small { font-size: 11px; font-weight: 500; color: #8b93a1; }
-.rm-last.none { font-size: 12.5px; font-weight: 500; color: #b0b6c0; }
+.rm-last.none { font-size: 12.5px; font-weight: 500; color: #98a2b3; }
 .rd-row.going { opacity: 0.45; }
 .rd-row.going .rd-ex-name { text-decoration: line-through; }
 .rm-additem { display: block; width: 100%; margin: 8px 0 10px; padding: 12px; border-radius: 12px; }
@@ -75,7 +75,7 @@
 .rm-cn-reply:focus-visible { outline: none; text-decoration: underline; text-decoration-color: #c5ccd8; text-underline-offset: 4px; }
 @media (prefers-reduced-motion: reduce) { .rm-cn, .rm-cn-in { transition: none; } }
 .rm-td.now { color: #141a24; }
-.rm-td.none { color: #c3c9d2; font-weight: 500; }
+.rm-td.none { color: #98a2b3; font-weight: 500; }
 /* Each column's summary in its head (21 Oct, Alex): "WEIGHT  CHANGE +1.2 (+2%)", "HOURS OF SLEEP  AVG 7.4"; the figure in ink,
    a change green or red when the metric says which way is good. */
 .rm-th-top { display: flex; align-items: baseline; gap: 10px; }
@@ -225,6 +225,10 @@
 /* + Metric as the box's action: the white pill the other boxes' actions are (9 Nov, Alex). */
 .rd.rls .rls-empty .rls-add { height: 32px; margin: 0; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; }
 .rd.rls .rls-empty .rls-add:hover, .rd.rls .rls-empty .rls-add.on { background: #fff; box-shadow: inset 0 0 0 1px #141a24; }
+/* New phase, New programme, Add client in their empty box: that same white 32px pill, never the ink one (16 Nov, Alex:
+   the audit; one empty box, one action look). Doubled up to win over `.trn-btn.primary` (trn.css) whatever loads first. */
+.rd.rd .rls-empty .trn-btn, .rd.rd .rls-empty .trn-btn.primary { height: 32px; padding: 0 12px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; color: #141a24; }
+.rd.rd .rls-empty .trn-btn:hover, .rd.rd .rls-empty .trn-btn.primary:hover { background: #fff; box-shadow: inset 0 0 0 1px #141a24; }
 .rd.rls .rls-none { margin: 0; padding: 14px 18px 6px; font-size: 13px; font-weight: 500; color: #8b93a1; }
 
 /* Adding a metric: + Metric opens a dropdown with the search bar at its top (21 Oct, Alex), its edge in ink;
@@ -232,8 +236,8 @@
 .rd.rls .rls-addrow.rd-addrow { display: inline-flex; flex: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
 .rd.rls .rls-add.on { background: #f5f6f8; }
 .rd-addpop.rd-addpop.rls-findpop { width: 380px; }
-.rls-findpop .rd-addrow-bar { display: flex; align-items: center; gap: 4px; flex: none; margin: 0 0 4px; padding: 0 4px 0 0; border: 1px solid #141a24; border-radius: 10px; background: #fff; box-shadow: none; }
-.rls-findpop .rd-addrow-search { flex: 1; min-width: 0; height: 38px; padding: 0 12px; border: 0; border-radius: 10px 0 0 10px; outline: none; box-shadow: none; font: inherit; font-size: 14px; font-weight: 500; color: #141a24; }
+.rls-findpop .rd-addrow-bar { display: flex; align-items: center; gap: 4px; flex: none; margin: 0 0 4px; padding: 0 4px 0 0; border: 1px solid #141a24; border-radius: 12px; background: #fff; box-shadow: none; }
+.rls-findpop .rd-addrow-search { flex: 1; min-width: 0; height: 38px; padding: 0 12px; border: 0; border-radius: 12px 0 0 12px; outline: none; box-shadow: none; font: inherit; font-size: 14px; font-weight: 500; color: #141a24; }
 .rls-findpop .rd-addrow-search::placeholder { color: #98a2b3; }
 .rls-findpop .rd-addrow-chev:hover, .rls-findpop .rd-addrow-chev.open { background: #f5f6f8; color: #141a24; }
 .rd-addpop .rd-addrow-item.taken, .rd-addpop .rd-addrow-item.taken:hover { background: none; color: #b0b6c0; }

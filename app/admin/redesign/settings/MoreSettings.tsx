@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { saveCoachNotifyAction, saveCoachPreferencesAction } from "../../../lib/actions";
 import type { CoachNotify } from "../../../lib/db";
 import Picker from "../Picker";
+import { SepJoin } from "../Sep";
 import { useSaveSlot } from "./SaveHost";
 import { Field, Section, useDraft } from "./SettingsForms";
 
@@ -121,7 +122,7 @@ export function DataSettings({ clients }: { clients: number }) {
             <span className="rst-row-main">
               <b>Everything</b>
               <small>
-                {clients} {clients === 1 ? "client" : "clients"} | programmes, logs, check-ins, food, calls, invoices | one file
+                <SepJoin parts={[`${clients} ${clients === 1 ? "client" : "clients"}`, "programmes, logs, check-ins, food, calls, invoices", "one file"]} />
               </small>
             </span>
             <a className="rst-act" href="/api/export" download>

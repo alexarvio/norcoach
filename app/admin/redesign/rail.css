@@ -10,7 +10,9 @@
 
 .rr { position: sticky; top: 0; display: flex; flex-direction: column; height: 100vh; background: #fff; border-right: 1px solid #e1e5eb; }
 
-.rr-brand { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 18px 16px 14px; container-type: inline-size; }
+/* Everything in the rail starts on one left line, 22px in (16 Nov, Alex: the audit): the logo, the view icons, Clients,
+   the search glass, the faces, the coach. */
+.rr-brand { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 18px 22px 14px; container-type: inline-size; }
 /* The logo spans the rail's whole width inside its padding (24 Oct, Alex): it is 7.23em wide (the star 1.04em, as tall
    as the letters since 4 Nov, the gap 0.5em, the word 5.68em), so its size is the rail's width over that. */
 .rr-logo { font-size: calc(100cqw / 7.23); color: #141a24; }
@@ -22,6 +24,9 @@
 .rr-nav { flex: none; display: flex; flex-direction: column; gap: 2px; padding: 4px 10px 12px; }
 .rr-navrow { display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box; height: 34px; padding: 0 12px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13.5px; font-weight: 500; color: #3a4250; text-align: left; text-decoration: none; cursor: pointer; transition: background 0.2s ease, color 0.2s ease; }
 .rr-navrow svg { width: 16px; height: 16px; flex: none; color: #5b6474; transition: color 0.2s ease; }
+/* One weight down the rail (16 Nov, Alex: the audit): its icons come from the 18 and the 24 grid, so every stroke is
+   1.2px on screen, whatever it was drawn at. */
+.rr-navrow svg * { vector-effect: non-scaling-stroke; stroke-width: 1.2px; }
 .rr-navrow span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Every hover in the rail is the one row hover, #fafbfd (6 Nov, Alex: docs/boards/admin-choices-mockup.html). */
 .rr-navrow:hover { background: #fafbfd; color: #141a24; }
@@ -62,7 +67,7 @@
 
 /* Search: one shape with the Library's (6 Nov, Alex: docs/boards/admin-choices-mockup.html): a 36px white pill with a
    1.5px ink edge, the magnifier 15px grey at stroke 1.6, the words 13.5px/500. */
-.rr-search { flex: none; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1.5px #141a24; box-sizing: border-box; cursor: text; }
+.rr-search { flex: none; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1.5px #141a24; box-sizing: border-box; cursor: text; }
 .rr-search svg { width: 15px; height: 15px; flex: none; color: #8b93a1; }
 .rr-search svg circle, .rr-search svg path { stroke-width: 1.6; }
 .rr-search input { flex: 1; min-width: 0; height: 100%; border: 0; padding: 0; background: none; outline: none; font: inherit; font-size: 13.5px; font-weight: 500; color: #141a24; }
@@ -81,7 +86,7 @@
 
 /* The one part that scrolls; a thin bar rather than none, so the length shows. */
 .rr-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; margin: 0 -4px; padding: 0 4px; scrollbar-width: thin; scrollbar-color: #dce1e8 transparent; }
-.rr-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 12px; text-decoration: none; color: inherit; transition: background 0.2s ease; }
+.rr-row { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 12px; text-decoration: none; color: inherit; transition: background 0.2s ease; }
 .rr-row:hover { background: #fafbfd; }
 .rr-row:focus-visible { outline: 2px solid #141a24; outline-offset: -2px; }
 /* Clicked, page on its way: the row is marked at once and its avatar pulses until it lands. */
@@ -94,7 +99,7 @@
 .rd-frame:has(> .rr.going) > .rd-page { pointer-events: none; }
 .rd-frame:has(> .rr.going) > .rd-page > * { opacity: 0.6; transition: opacity 0.12s ease; }
 @media (prefers-reduced-motion: reduce) { .rd-frame:has(> .rr.going) > .rd-page > * { transition: none; } }
-.rr-avatar { flex: none; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; box-sizing: border-box; overflow: hidden; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #e1e5eb; color: #5b6474; font-size: 12px; font-weight: 500; transition: box-shadow 0.2s ease; }
+.rr-avatar { flex: none; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; box-sizing: border-box; overflow: hidden; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #e1e5eb; color: #141a24; font-size: 12.5px; font-weight: 600; transition: box-shadow 0.2s ease; } /* a face drawn one way everywhere: white, the hairline, the initial ink at 600, ~45% of its size (16 Nov, the audit) */
 .rr-avatar img { width: 100%; height: 100%; object-fit: cover; }
 /* The open client: their row on a soft grey, a step stronger than hover, the name ink at 600 (22 Oct, Alex: as the old
    rail's selected row, in today's greys; the ring alone didn't say which client you are in, ink fill hid the name). */
@@ -116,7 +121,7 @@
 .rr-need:focus-visible { outline: 2px solid #141a24; outline-offset: 1px; }
 .rr-spots { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.24s ease; }
 .rr-item.open .rr-spots { grid-template-rows: 1fr; }
-.rr-spots-in { display: flex; flex-direction: column; gap: 1px; min-height: 0; overflow: hidden; margin-left: 22px; padding-left: 15px; border-left: 1px solid #e1e5eb; opacity: 0; transition: opacity 0.2s ease; }
+.rr-spots-in { display: flex; flex-direction: column; gap: 1px; min-height: 0; overflow: hidden; margin-left: 26px; padding-left: 15px; border-left: 1px solid #e1e5eb; opacity: 0; transition: opacity 0.2s ease; }
 .rr-item.open .rr-spots-in { opacity: 1; }
 .rr-spot { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 10px; height: 30px; padding: 0 12px 0 9px; border-radius: 8px; font-size: 13px; font-weight: 500; color: #3a4250; text-decoration: none; transition: background-color 0.15s ease; }
 .rr-spot:first-child { margin-top: 2px; }
@@ -126,7 +131,7 @@
 .rr-spot i { flex: none; width: 6px; height: 6px; border-radius: 999px; background: #b8471f; }
 .rr-spot small { flex: none; font-size: 12px; font-weight: 600; color: #b8471f; font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .rr-need, .rr-spots, .rr-spots-in, .rr-spot { transition: none; } }
-.rr-empty { margin: 8px 8px; font-size: 13px; font-weight: 500; color: #8b93a1; }
+.rr-empty { margin: 8px 12px; font-size: 13px; font-weight: 500; color: #8b93a1; }
 /* New client: a white pill with its icon and a hairline (the admin's own actions, trn-pill), ink on hover. */
 .rr-new { flex: none; display: flex; align-items: center; justify-content: center; gap: 7px; height: 36px; margin-top: 8px; padding: 0 14px 0 12px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; cursor: pointer; transition: box-shadow 0.2s ease; }
 .rr-new svg { width: 15px; height: 15px; flex: none; translate: 0 -0.5px; }
@@ -135,14 +140,14 @@
 
 /* The coach at the foot: a quiet row, the face on a hairline, a click opens Settings. Space over it, no line (6 Nov,
    Alex: docs/boards/admin-choices-mockup.html; the line's 1px is room, so the row keeps its height). */
-.rr-coach { flex: none; display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 14px 10px 16px; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; transition: background 0.2s ease; }
+.rr-coach { flex: none; display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 14px 10px 22px; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; transition: background 0.2s ease; }
 .rr-coach:hover { background: #fafbfd; }
 .rr-coach:focus-visible { outline: 2px solid #141a24; outline-offset: -2px; }
 .rr-coach-chev { flex: none; display: inline-flex; color: #8b93a1; }
 .rr-coach:hover .rr-coach-chev { color: #141a24; }
 .rr-coach-chev svg { width: 16px; height: 16px; transform: rotate(180deg); transition: transform 0.2s ease; }
 .rr-coach.open .rr-coach-chev svg { transform: none; }
-.rr-coach-avatar { flex: none; display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; overflow: hidden; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #e1e5eb; color: #5b6474; font-size: 12px; font-weight: 500; }
+.rr-coach-avatar { flex: none; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; overflow: hidden; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #e1e5eb; color: #141a24; font-size: 12.5px; font-weight: 600; }
 .rr-coach-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .rr-coach-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; line-height: 1.25; }
 .rr-coach-text b { font-size: 13px; font-weight: 600; color: #141a24; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -154,12 +159,17 @@
 /* The tour of the rail (RailTour.tsx, 26 Sep): the part lit, the rest dimmed, a card beside it. */
 .rtour { position: fixed; inset: 0; z-index: 200; }
 .rtour-lit { position: fixed; border-radius: 12px; box-shadow: 0 0 0 9999px rgba(20, 26, 36, 0.45); outline: 2px solid #fff; transition: top 0.25s ease, left 0.25s ease, width 0.25s ease, height 0.25s ease; pointer-events: none; }
-.rtour-card { position: fixed; display: flex; flex-direction: column; gap: 6px; width: 300px; padding: 16px 16px 12px; border-radius: 14px; background: #fff; box-shadow: 0 30px 60px -24px rgba(16, 24, 40, 0.35), 0 0 0 1px #e1e5eb; transition: top 0.25s ease; }
+/* The pop-up card (16 Nov, Alex: the audit): radius 20, padding 20/20/16, Skip and Back words, Next the ink 36px pill. */
+.rtour-card { position: fixed; display: flex; flex-direction: column; gap: 6px; width: 300px; padding: 20px 20px 16px; border-radius: 20px; background: #fff; box-shadow: 0 30px 60px -24px rgba(16, 24, 40, 0.35), 0 0 0 1px #e1e5eb; transition: top 0.25s ease; }
 .rtour-count { font-size: 11.5px; font-weight: 600; color: #8b93a1; font-variant-numeric: tabular-nums; }
 .rtour-title { font-size: 15px; font-weight: 600; color: #141a24; }
 .rtour-text { margin: 0 0 6px; font-size: 13.5px; font-weight: 500; line-height: 1.5; color: #5b6474; }
 .rtour-actions { display: flex; align-items: center; justify-content: space-between; }
-.rtour-go { display: flex; gap: 6px; }
+.rtour-go { display: flex; align-items: center; gap: 14px; }
+.rtour-word { padding: 0; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; cursor: pointer; }
+.rtour-word:hover { color: #141a24; }
+.rtour-next { height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: #141a24; font: inherit; font-size: 13px; font-weight: 600; color: #fff; cursor: pointer; }
+.rtour-word:focus-visible, .rtour-next:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .rtour-lit, .rtour-card { transition: none; } }
 /* Every admin screen on paper, as Home and the chats (27 Oct, Alex: "the logo in the background on every screen"): the
    star huge and very faint (4.5%), whole, toward the top right of the window and still while the page scrolls, behind
