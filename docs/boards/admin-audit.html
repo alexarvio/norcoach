@@ -1,0 +1,1317 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Admin audit</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600&display=swap" rel="stylesheet"><style>
+:root { --ink:#141a24; --body:#3a4250; --sec:#5b6474; --faint:#8b93a1; --line:#E1E5EB; --rust:#b8471f; --red:#b42318; --page:#f4f7fc; }
+* { box-sizing:border-box; margin:0; }
+body { font-family:Archivo,system-ui,sans-serif; font-weight:500; color:var(--ink); background:var(--page); padding:28px 24px 80px; -webkit-font-smoothing:antialiased; }
+.wrap { max-width:1000px; margin:0 auto; }
+h1 { font-size:22px; font-weight:600; }
+.sub { color:var(--sec); font-size:13.5px; line-height:1.55; margin:6px 0 18px; max-width:820px; }
+.figs { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
+.fig { background:#fff; border:1px solid var(--line); border-radius:14px; padding:12px 16px; min-width:140px; }
+.fig b { display:block; font-size:24px; font-weight:600; } .fig span { font-size:12px; color:var(--sec); }
+.fig.h b { color:var(--red); } .fig.m b { color:var(--rust); }
+.bar { position:sticky; top:0; z-index:2; background:var(--page); padding:10px 0; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.bar button { height:32px; padding:0 14px; border-radius:999px; border:0; background:#fff; box-shadow:inset 0 0 0 1px #DCE1E8; font:inherit; font-size:12.5px; font-weight:600; color:var(--ink); cursor:pointer; }
+.bar button.on { background:var(--ink); color:#fff; box-shadow:none; }
+.bar a { font-size:12.5px; color:var(--sec); text-decoration:none; margin-left:6px; }
+section { margin-top:28px; }
+h2 { font-size:18px; font-weight:600; margin-bottom:4px; } h2 small { font-size:12.5px; color:var(--faint); font-weight:500; margin-left:8px; display:inline-flex; gap:6px; align-items:center; } h2 small i { width:1px; height:10px; background:#C9CFD8; }
+.note { font-size:12.5px; color:var(--sec); margin-bottom:8px; }
+.f { background:#fff; border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-top:8px; }
+.fh { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.sev { height:22px; padding:0 9px; border-radius:999px; font-size:10.5px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; display:inline-flex; align-items:center; box-shadow:inset 0 0 0 1px var(--line); color:var(--faint); }
+.high .sev { color:var(--red); box-shadow:inset 0 0 0 1px rgba(180,35,24,.4); } .medium .sev { color:var(--rust); box-shadow:inset 0 0 0 1px rgba(184,71,31,.4); }
+.kind { font-size:11px; font-weight:600; color:var(--sec); letter-spacing:.08em; text-transform:uppercase; }
+.where { font-size:13.5px; font-weight:600; }
+.what { font-size:14px; line-height:1.5; margin-top:8px; color:var(--ink); }
+.rule { font-size:12.5px; line-height:1.5; margin-top:6px; color:var(--faint); }
+.fix { font-size:13.5px; line-height:1.5; margin-top:8px; color:var(--body); } .fix b { font-weight:600; color:var(--ink); margin-right:4px; }
+code { display:inline-block; margin-top:8px; font-size:11.5px; color:var(--faint); }
+body.only-high .f:not(.high) { display:none; } body.only-hm .f.low { display:none; }
+</style></head><body><div class="wrap">
+<h1>Admin audit: design harmony</h1>
+<p class="sub">Every screen of the coach admin checked against the two rule files, then every finding re-checked by a second agent trying to prove it wrong (28 were thrown out), then the screens compared with each other. 213 stand. Nothing has been changed. Each one says what is off, the rule or the other screen it disagrees with, and the smallest fix.</p>
+<div class="figs"><div class="fig h"><b>13</b><span>High: shows clearly</span></div><div class="fig m"><b>78</b><span>Medium: a trained eye sees it</span></div><div class="fig"><b>122</b><span>Low: polish</span></div><div class="fig"><b>213</b><span>In all</span></div></div>
+<div class="bar"><button class="on" data-f="">All</button><button data-f="only-hm">High + medium</button><button data-f="only-high">High only</button><a href="#cross">Across screens</a><a href="#rail-feed">Rail</a><a href="#client-home-plan">A client's Home and Plan</a><a href="#training">Training</a><a href="#lifestyle-nutrition-shape">Lifestyle</a><a href="#meetings-invoices">Meetings</a><a href="#settings-library-coaches">Settings</a></div>
+<section id="cross"><h2>Across screens <small>17 <i></i> 1 high <i></i> 3 medium <i></i> 13 low</small></h2><p class="note">The same kind of thing drawn differently from tab to tab: the root of most of the disharmony.</p><article class="f high" data-sev="high">
+  <div class="fh"><span class="sev">high</span><span class="kind">Breaks a rule</span><span class="where">Any row's ⋯ or hover action on a touch screen (iPad): Lifestyle metrics, Nutrition supplements, Invoices, Settings › Plans, Library cards vs Training, Meetings, Feed, Business, Coaches</span></div>
+  <p class="what">Rows hide their actions until hover in three different ways, and only some come back on touch. Lifestyle, Nutrition supplements and Invoices hide `.rls-row .trn-row-more` at opacity 0 (measurements.css:217), Settings Plans does the same (settings.css:156), and so does Library's `.lbx-tile-more` (library.css:85). None of these has a `@media (hover: none)` rule, so on a touch screen the ⋯ never shows and Rename/Delete/Archive can't be reached. Training and Meetings (`.rd-row-more`, draft.css:875) and Nutrition's day ⋯ (nutrition.css:176) come back at opacity 0.7. Feed's nd-act, Coaches' rco-act, Business' rbz-act and Settings' rst-hover come back at 1.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §8: "Row actions in general show on hover only (… always on a touch screen)"</p>
+  <p class="fix"><b>Fix</b> Add one shared `@media (hover: none) { … opacity: 1 }` that covers `.rls-row .trn-row-more`, `.rst-plan .trn-row-more` and `.lbx-tile-more`, and use 1, not 0.7, for `.rd-row-more` and Nutrition so every row shows its actions the same way.</p>
+  <code>app/admin/redesign/measurements/measurements.css:217</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Training / Lifestyle / Nutrition header: ▾ after the phase name opens the switcher, with Live | Scheduled | Draft | Past across its top</span></div>
+  <p class="what">The switcher's state capsule is a shadcn ToggleGroup restyled by hand. It is 34px tall with 26px buttons, and the words are 10.5px/600 uppercase at .1em. Every other admin capsule (`.rd-btn-group`, measurements.css:156–160; `.npd-seg`; `.dlh-seg`) is 36px with 28px buttons and 13px/600 words in normal case. The rule names this capsule as one that must share the one rule.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §5: "a capsule (36px … 13px words at 600) … KG/LBS, the time window, the phase switcher's Live/Scheduled/Draft/Past. One rule for every tab: .rd-btn-group … no per-tab copies"</p>
+  <p class="fix"><b>Fix</b> Render the states as a `.rd-btn-group` (buttons with `on`/aria-pressed) and delete the `.rd-switch-states` sizing. Keep the count as the shared count style.</p>
+  <code>app/admin/redesign/phase-switcher.css:8</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Meetings: opening the next call, an Also scheduled call or a past call; Coaches: opening a coach's thread in the Support inbox</span></div>
+  <p class="what">These rows mount their body in a single frame and remove it the same way. Meetings uses `{isOpen &amp;&amp; &lt;div className="rt-rowbody"&gt;…}` at line 598 for call rows and line 793 for past calls, and Coaches does the same in SupportInbox.tsx:165. Rows of the same kind on other screens ease open over 0.34s on cubic-bezier(.22,1,.36,1): Training sessions (`.trn-sfold`, trn.css:194), Lifestyle check-ins (`.rm-cn`, measurements.css:66) and the Plan's Events log (`.rq-evlog-fold`, plan.css:304). The area audits found the same problem on Nutrition and Shape update only.</p>
+  <p class="rule">DESIGN-RULES §7: "Every fold opens as Home's Meeting summary … rows 0fr → 1fr over 340ms"; one way across the admin</p>
+  <p class="fix"><b>Fix</b> Wrap every row body that opens in the shared fold (the `.trn-sfold` / `.rm-cn` pattern: grid rows 0fr→1fr over 340ms, content fading over 220ms and settling 4px). Use it for Meetings' call rows and past calls, the Support inbox, Nutrition's days and Shape update's rows.</p>
+  <code>app/admin/redesign/meetings/MeetingsDraft.tsx:598</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Search and add fields: rail and Library vs Training's + Exercise bar, Lifestyle's + Metric, the Substitutes and Demo video pop-ups, the chat list, the timezone list</span></div>
+  <p class="what">One kind of field is drawn six ways. The rail and Library are a 36px pill with a 1.5px ink edge and 13.5px/500 text (rail.css:65, library.css:13). Training's add bar is 38px with a 1px ink edge, radius 12 and 14px text at no set weight, so it inherits 400 on the page (trn.css:484, draft.css:212). Lifestyle's + Metric bar is 38px, 1px ink, radius 10 and 14px/500 (measurements.css:235). Substitutes' search is a 40px pill with a 1px #dce1e8 edge and 14px text (substitutes.css:63). The demo video's Your videos search is a 36px pill with a 1px #dce1e8 edge (demo-video.css:72). The chat list's is a 38px pill with a 1px #e1e5eb edge (messages.css:295), and the timezone search is 34px (meetings.css:157).</p>
+  <p class="rule">DESIGN-RULES-ADMIN §6: "A search field … is one shape: a 36px white pill (radius 999) with a 1.5px ink edge, the magnifier 15px grey at 1.6, the words 13.5px/500"; §9b "one bar with an ink edge"</p>
+  <p class="fix"><b>Fix</b> Make one search class for the 36px pill (1.5px ink, 13.5/500, 15px magnifier at 1.6) and use it in Substitutes, Demo video, ChatList and Timezone. Give the two add bars one radius and set font-weight 500 on `.rd-addrow-search` on the page.</p>
+  <code>app/admin/redesign/training/substitutes.css:63</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">A section head's white pill with an icon: Training's week line (Copy, Apply) vs Lifestyle's and Nutrition's section heads (the weekly check-in day, etc.)</span></div>
+  <p class="what">On every `.rls` tab, `.rd.rls .trn-weekhead-actions .trn-btn svg` makes the icon in a section head's trn-btn 14px and grey #8b93a1. The same trn-btn on Training (`.rd.trn` without `.rls`) draws its icon at 15px in ink (trn.css:29). The header pills (trn-pill) are 15px ink on every tab, so section pills on Lifestyle, Nutrition, Home and Feed carry a smaller, greyer icon than the same pill on Training.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §11 / cross-tab detail: one pill drawn one way</p>
+  <p class="fix"><b>Fix</b> Delete measurements.css:198 so every trn-btn icon is 15px in the text's ink.</p>
+  <code>app/admin/redesign/measurements/measurements.css:198</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Pop-up and Settings fields: the small-caps label over its clean line</span></div>
+  <p class="what">The gap between a label and its line differs by component. It is 4px in `.dlh-field` (trn.css:336) and New invoice's `.riv-field` (invoices.css:45). It is 2px in `.npd-field` (phase, event, Schedule a meeting and Calendar entry pop-ups), in Settings' `.rst-field` (settings.css:41) and in Meetings' `.rt-field`. A coach going from New invoice to Schedule a meeting, or from Details to Settings, sees the label sit 2px closer to its field.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §4: one pop-up pattern; a field is `.dlh-line` under a `.dlh-label`</p>
+  <p class="fix"><b>Fix</b> Pick one gap (4px, as `.dlh-field`) and set it on `.npd-field`, `.rst-field` and `.rt-field`.</p>
+  <code>app/admin/redesign/plan/phase-dialog.css:23</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">The grey fact or count after a section title: Training, Feed, Calendar date vs Library count, Calendar count, Settings parts, Shape update</span></div>
+  <p class="what">The quiet fact after a 20px section title has two greys and two sizes. It is 13px/500 #5b6474 in `.trn-weekhead &gt; div &gt; span` (trn.css:156; Training, Lifestyle, Nutrition, Feed, Home) and in the Calendar's date `.rcl-titled &gt; span`. It is 13px #8b93a1 in Library's group count `.lbx-gbtn small` and the Calendar's count `.rcl-count`. It is 12.5px #8b93a1 in Settings' part facts (settings.css:35) and in Shape update's `.rp-selmeta`.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §1: "At most one quiet fact line under a title", drawn one way; §2 secondary #5b6474</p>
+  <p class="fix"><b>Fix</b> Use one token for a section title's fact, 13px/500 #5b6474 as trn-weekhead has it, for Library's count, the Calendar's count, Settings' part facts and Shape update's meta.</p>
+  <code>app/admin/redesign/library/library.css:27</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Business: the Since line under the header, vs the fact line in Training's, Lifestyle's and Nutrition's header</span></div>
+  <p class="what">A header's one fact line is drawn two ways. On the track tabs it is `.trn-meta` inside `.trn-head`: 13.5px/500 #5b6474 in the head's 76px room, parted by the drawn bar. Business uses a `.trn-head bare`, then a separate `&lt;p class="rh-sinceline"&gt;` outside the header (BusinessDraft.tsx:173). That line is 13px/500 #8b93a1 with its numbers in ink, pulled up by margin -6px. So the line under the title is a different size and grey, and sits at a different distance from the title, on Business.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §9b / §1: headers built as Training's, "one fact line"</p>
+  <p class="fix"><b>Fix</b> Render Business's Since line as the header's own `.trn-meta` (13.5/500 #5b6474) inside `.trn-head-main`. Drop `rh-sinceline` and its -6px margin.</p>
+  <code>app/admin/redesign/home/home.css:27</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Phases screen header, compared with Feed, Business, Calendar, Library, Coaches and Settings</span></div>
+  <p class="what">Every coach-level page builds its title as `trn-head bare` with `h1.trn-name` (26px/600, line-height 1.2). Phases alone uses `rd-head bare` with `h1.rd-title`, a 32px flex box with nowrap, and its root is `rd pln`. Its page gap is therefore 18 (draft.css:24) where Feed and Business have 22, and its sections follow the Plan's rhythm. The area audit flagged this only for the client Plan tab.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §9b: "Training's header" on every screen</p>
+  <p class="fix"><b>Fix</b> Make Phases' header `trn-head bare` with `h1.trn-name`, as Feed's (FeedDraft.tsx:63–66), and put the page on the `.rd.trn` gap.</p>
+  <code>app/admin/redesign/phases/PhasesOverview.tsx:157</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Off the line</span><span class="where">Calendar: the space from the title to the first card (the double-bookings or the month)</span></div>
+  <p class="what">The rule that sets the header-to-first-card gap gives the Calendar a different result. `.rd.trn &gt; .trn-head { margin-bottom: -2px }` is tuned for Training, whose week rail pulls itself up another 2px. `.rd.trn.rls &gt; .trn-head { -4px }` covers the rls tabs. Both give 18px. The Calendar's root is `rd trn rcl`, with no `.rls` and no rail, so its first card starts 22 − 2 = 20px under the title. Every other screen has 18px.</p>
+  <p class="rule">draft.css:32 comment: "18px from the header to a tab's first card on every tab"</p>
+  <p class="fix"><b>Fix</b> Add `.rd.trn.rcl &gt; .trn-head { margin-bottom: -4px; }`, or add `rls` to the Calendar root.</p>
+  <code>app/admin/redesign/training/draft.css:33</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Off the line</span><span class="where">Plan tab: the gap between Phases and Events, compared with Training, Lifestyle and Home</span></div>
+  <p class="what">`.rd.pln &gt; .pln-section + .pln-section { margin-top: 10px }` sits on top of `.rd`'s 18px gap, so the Plan's sections are 28px apart. Sections on Training, Lifestyle, Nutrition, Home, Feed and Business are 22px apart (`.rd.trn` gap). The Plan's section head is also centred (`.rn-card-head`, align-items center, min-height 36), while `.trn-weekhead` sits on its bottom edge (align-items flex-end). A 20px title therefore sits a few px higher next to its 36px controls on the Plan than on Training.</p>
+  <p class="rule">Cross-tab detail: one section rhythm; DESIGN-RULES-ADMIN §9b "Each section's title (20px/600) and its status on the page"</p>
+  <p class="fix"><b>Fix</b> Give `.rd.pln` the 22px gap and drop the extra 10px. Align `.pln-section &gt; .rn-card-head` as trn-weekhead does (flex-end), or build the head on trn-weekhead.</p>
+  <code>app/admin/redesign/plan/plan.css:93</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Off the line</span><span class="where">The right end of list rows: Meetings Past calls, Nutrition logs, Shape update's All shape updates vs Feed, Home Activity, Business, Invoices, Coaches</span></div>
+  <p class="what">The "one list row" pads 0 12px 0 18px on Feed (feed.css:15, 81), Home (home.css:269), Business (business.css:60), Invoices (invoices.css:19) and Coaches (coaches.css:10). Nutrition's log rows (`padding: 0 18px`), Shape update's `.rp-trow` (pictures.css:104) and Meetings' past calls (meetings.css:212) pad 18px on the right. Their last column (the day's Message ⋯, the state pill, the call's ⋯) therefore ends 6px further in than on every other log. The area audit flagged this only for Meetings.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §8: "One list row everywhere … every row 52px, its first column 18px in"</p>
+  <p class="fix"><b>Fix</b> Set `padding: 0 12px 0 18px` on `.rn-day &gt; .rd-row-main`, `.rp-trow` and `.rt-log .rd-row-main`, and on their column heads.</p>
+  <code>app/admin/redesign/nutrition/nutrition.css:161</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Hover tooltips: a header pill's tip (Training), a message's link dot (chat), a phase's warning sign (Plan)</span></div>
+  <p class="what">Three tooltips use three cards. `.trn-tip` (trn.css:96) is ink with white text, radius 10, padding 8/11, 12px/500. `.rm-linkdot-tip` (messages.css:165) is ink, radius 8, padding 6/10, 12px/600. `.rq-gap-tip` (plan.css:109) is white, radius 12, padding 9/12, 12.5px/500, with a drop shadow and a #e1e5eb ring.</p>
+  <p class="rule">Cross-tab detail: the same kind of thing drawn one way</p>
+  <p class="fix"><b>Fix</b> Make one tooltip class (ink, radius 10, padding 8/11, 12px/500) and use it for the link dot and the Plan's gap sign.</p>
+  <code>app/admin/redesign/plan/plan.css:109</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Dashed add places: Training's + Add session, Library's + Exercise tile and Add video stage, Shape update's + Add angle tile</span></div>
+  <p class="what">Every dashed add place uses a different grey or shape. Training's `.trn-add` is 48px, 1px dashed #c9cfd8, radius 18, ink on hover (trn.css:217). Library's `.lbx-addtile` is 1px dashed #dce1e8, radius 14, #c5ccd8 on hover. Its Add video stage is dashed #dce1e8 at radius 8 (library.css:73). Shape update's add tile is dashed #c5ccd8. Hover goes to ink on Training but only to #c5ccd8 in Library.</p>
+  <p class="rule">Cross-tab detail: one add tile; DESIGN-RULES-ADMIN §2 hairline tokens</p>
+  <p class="fix"><b>Fix</b> Give dashed add places one edge (1px dashed #c9cfd8) and one hover (ink edge), keeping each one's radius.</p>
+  <code>app/admin/redesign/library/library.css:107</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Every pop-up calendar (MonthRange: phase, event, Schedule a meeting, DatePick) vs the Calendar page and the week strips</span></div>
+  <p class="what">MonthRange draws today as an ink ring: `.rdd-cell.today { border-radius: 10px; box-shadow: inset 0 0 0 1px #141a24 }`. On the Calendar page today's numeral sits on an ink disc (`.rcl-cell.today .rcl-date`, calendar.css:74), and there an ink ring means the open day. A coach reads today one way in the pop-up and another on the page. The weekday heads differ too: MonthRange's `.rdd-dow` is 10.5px at .08em (month-range.css:18), the Calendar's `.rcl-weekday` is .16em (calendar.css:62).</p>
+  <p class="rule">DESIGN-RULES-ADMIN §9 Calendar: "today's numeral on an ink disc, the open day ringed in ink"; §2 small caps .16em</p>
+  <p class="fix"><b>Fix</b> Draw MonthRange's today as the Calendar does, the numeral on an ink disc, and set `.rdd-dow` letter-spacing to .16em in both month-range.css and phase-dialog.css:96.</p>
+  <code>app/admin/redesign/month-range.css:23</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Chat: a message's ⋯ → Link to… → Nutrition, the 'FOOD DIARY | last two weeks' head in the list</span></div>
+  <p class="what">`.rd-menu-head` is 10.5px/700 at .12em in #8b93a1. It is the only list head in a pop-up at weight 700, and its spacing and grey differ from the small caps used everywhere else (600, .16em, #5b6474). Its rows' `small` words ('the whole session', 'calories and macros', MessagesDraft.tsx:826, 843) are `.rd-addrow-item small`: 11px/600 uppercase at .06em (draft.css:224).</p>
+  <p class="rule">DESIGN-RULES-ADMIN §2: "Archivo, weights 500 and 600 only. Small caps labels: 10.5px, 600, letter-spacing .16em … #5b6474"</p>
+  <p class="fix"><b>Fix</b> Set `.rd-menu-head` to 600 / .16em / #5b6474, and make the row hints 12px/500 grey in normal case, as `.rd-switch-menu small` is.</p>
+  <code>app/admin/redesign/training/draft.css:306</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">A Picker's coloured options (a phase's track in Same dates as / Built from) vs every track tag</span></div>
+  <p class="what">`.rd-picker-tone` tints the track's capsule with `color-mix(… var(--tone) 14%, transparent)`. Every other track tag is 12%: `.npd-track` (phase-dialog.css:115), `.mvd-track` (:179) and the Plan and Business tags. The same track reads stronger in the list than on the tag beside it.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §3: "a tinted tag (background rgba(accent, .12)…)"</p>
+  <p class="fix"><b>Fix</b> Set the tint to 12%.</p>
+  <code>app/admin/redesign/picker.css:2</code>
+</article></section><section id="rail-feed"><h2>Rail, Feed, Phases, Business <small>32 <i></i> 2 high <i></i> 14 medium <i></i> 16 low</small></h2><article class="f high" data-sev="high">
+  <div class="fh"><span class="sev">high</span><span class="kind">Breaks a rule</span><span class="where">Rail, top: the line under the Norcoach logo</span></div>
+  <p class="what">The business under the logo is typed into the code as `&lt;b&gt;Full Potential&lt;/b&gt;` with `&lt;small&gt;Coach workstation&lt;/small&gt;` under it. Every coach sees Finlay's business name, plus a tagline that isn't a fact. RailData (loaders.ts:688) doesn't carry the business name at all.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §9 (rail): "the Norcoach logo … the coach's business under it (24 Oct, Alex)"; §1 facts, no explanations</p>
+  <p class="fix"><b>Fix</b> Add the coach's business_name (Settings, Business details) to loadRail and show it as the one line under the logo. Drop "Coach workstation". If no name is set, show nothing.</p>
+  <code>app/admin/redesign/RedesignRail.tsx:183</code>
+</article><article class="f high" data-sev="high">
+  <div class="fh"><span class="sev">high</span><span class="kind">Drawn two ways</span><span class="where">Phases, Ending soon: the card round each track's rows</span></div>
+  <p class="what">Ending soon renders `.rls-card nd-card` inside `.rd.pln.pov`, which has no `.rls`/`.trn` ancestor. So none of the admin card rules apply (measurements.css:197 needs `.rd.rls`). Its only edge comes from the client app's Nutrition rule `.nd-card { border: 1px solid #E0E0E0; border-radius: 18px }` (globals.css:4124). The result is a #E0E0E0 edge where the hairline should be #E1E5EB, and the look depends on a class-name collision. The Needs you cards on the same screen get the real card.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §2 tokens: hairline #E1E5EB; §8 every needs-you list is one anatomy, its own hairline card</p>
+  <p class="fix"><b>Fix</b> Give the Ending soon section the `rls` scope (e.g. wrap it like pov-needs in `rd rls`), or style `.rd .nd-card` explicitly with border 1px #e1e5eb, radius 18, white. Rename `.nd-` in NeedGroups so it stops colliding with the client's `.nd-card`.</p>
+  <code>app/admin/redesign/NeedGroups.tsx:54</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Phases: the small-caps group heads (Training, Nutrition…) over Needs you vs over Ending soon</span></div>
+  <p class="what">Needs you on Phases sits in a nested `rd trn rls rh rfd` wrapper, so `.rd.trn svg { stroke-width: 1.6 }` (trn.css:25) forces TrackIcon to 1.6, about 0.93px at 14px. Ending soon right under it has no `.trn` ancestor, so the same TrackIcon keeps its own strokeWidth 2, about 1.17px. The same head icon draws about 25% heavier one section down. The Extend icon (line 435, strokeWidth 2) and Plan next's PlusIcon (1.4 on a 16 grid) also differ from the Feed's forced 1.6.</p>
+  <p class="rule">DESIGN-RULES.md §5: "Icons from different sets in one list draw at one weight"; ADMIN §8 every needs-you list one anatomy</p>
+  <p class="fix"><b>Fix</b> Put both sections under one scope (the Phases root, or both wrappers) that sets svg stroke-width 1.6, or move the 1.6 rule onto `.nd-head svg, .nd-act svg` in feed.css.</p>
+  <code>app/admin/redesign/phases/PhasesOverview.tsx:167</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Feed, Needs you: the round action buttons down the right of the rows</span></div>
+  <p class="what">The action icons in one column draw at different real weights at 16px. CheckIcon's path has strokeWidth 2.2 on a 24 grid (≈1.47px). PlusIcon is 1.4 on a 16 grid (1.4px). PencilIcon is 1.1 on a 16 grid (1.1px). ChatIcon and CalendarIcon are 1.3 on an 18 grid (≈1.16px). PlayIcon, LockIcon, PhaseFlagIcon and EyeIcon are forced to 1.6 on a 24 grid (≈1.07px). The ✓ Done (rfd-done) and the + read visibly bolder than the play or lock beside them.</p>
+  <p class="rule">DESIGN-RULES.md §5: "stroke 1.6 … Icons from different sets in one list draw at one weight"; ADMIN §8 needs-you rows</p>
+  <p class="fix"><b>Fix</b> In `.rd .nd-act svg, .rd .nd-row .rfd-done svg` set `vector-effect: non-scaling-stroke` with one stroke-width, or draw every icon in this list on the 24 grid at 1.6 (a new Check and Plus path at 1.6).</p>
+  <code>app/admin/redesign/feed/FeedDraft.tsx:91</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Rail: the view rows (Feed, Calendar, Phases, Business, Library, Coaches)</span></div>
+  <p class="what">`.rr-navrow svg` forces every icon into a 16×16 box. Feed, Calendar, Phases and Business are on an 18 grid at 1.3 (≈1.16px). Coaches' AccountIcon is on a 24 grid at 1.6 (≈1.07px). Library's DumbbellIcon has viewBox 0 0 24 16, so it scales to 16×10.7 with 1.0–1.2px strokes: visibly smaller and lower than its neighbours.</p>
+  <p class="rule">DESIGN-RULES.md §5: icons in one list draw at one weight; ADMIN §8 icons centred on whole pixels, the drawing centred in its own viewBox</p>
+  <p class="fix"><b>Fix</b> Use a square-grid dumbbell for the rail (24×24, the stroke matching the others). Give `.rr-navrow svg` one effective stroke, either `vector-effect: non-scaling-stroke` with stroke-width 1.3, or redraw AccountIcon on the 18 grid at 1.3.</p>
+  <code>app/admin/redesign/rail.css:24</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Off the line</span><span class="where">Rail: the left edge from the logo down to the coach row</span></div>
+  <p class="what">Nothing in the rail starts on one left line. The logo is at 16px (`.rr-brand` padding 16) and so is the coach's face (`.rr-coach` padding-left 16). Client faces are at 18px (`.rr-clients` 10 + `.rr-row` 8). The view icons are at 22px (`.rr-nav` 10 + `.rr-navrow` 12), and so is the CLIENTS label (padding-left 22). The search magnifier is at 24px (10 + 14).</p>
+  <p class="rule">ADMIN §8: everything in a row sits on the row's true middle, the same in every row; the brief's left edges lining up</p>
+  <p class="fix"><b>Fix</b> Pick one inner edge for the icons and faces, e.g. 22px. Set rr-row padding to 7px 12px (faces at 22), rr-coach padding-left 22, rr-brand padding-left 22 and rr-search padding 0 12px (magnifier at 22).</p>
+  <code>app/admin/redesign/rail.css:84</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Rail, Feed, Business, Phases: a client's face with no photo</span></div>
+  <p class="what">The initial-on-a-ring face is drawn several ways. Rail `.rr-avatar`: 28px, 12px/500, #5b6474. The coach row: 30px. Feed `.nd-face` and in-page `.rfd-face`: 24px, 11px/600 ink. The portalled client filter `.rfd-face`: 11px/600 #5b6474. Phases `.pov-avatar`: 18px/600 #3a4250, where Home's 48px `.rh-avatar` is ink. Phases' event pop-up `.evd-face` (phases.css:121) is a filled #eef0f3 disc with no hairline, the only filled face.</p>
+  <p class="rule">ADMIN §8: "the round picture (24px, the initial when there is none)" drawn one way; §2 tokens</p>
+  <p class="fix"><b>Fix</b> Make one face part (NeedFace) with one look: white, inset 1px #e1e5eb, initial 600 ink at about 45% of the size. Use it in the rail, the filter, `.pov-avatar` and `.evd-face`, and drop the grey fill.</p>
+  <code>app/admin/redesign/feed/feed.css:133</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Rail tour (?tour=1): the card beside the lit part</span></div>
+  <p class="what">The tour text describes a rail that no longer exists. It says Feed's "number shows how many clients need you", but it counts things owed. It says "A word by a name says what needs you, New for someone still to set up", but it is a rust number now. Library has no step. The card is radius 14 with padding 16/16/12 (rail.css:157) and uses the shadcn Button sizes, not the pop-up card (radius 20, padding 20/20/16) with the ink 36px pill and Cancel/Skip in words.</p>
+  <p class="rule">ADMIN §4: pop-up card radius 20, padding 20/20/16, Cancel a text button, the action a black 36px pill; §9 the rail: Needs you is a number</p>
+  <p class="fix"><b>Fix</b> Rewrite steps 1 and 5 to match ("how many things need you", "a rust number by a name") and add a Library step. Give .rtour-card radius 20 and padding 20px 20px 16px, with Skip and Back as words and Next as the .dlh-go pill.</p>
+  <code>app/admin/redesign/RailTour.tsx:17</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Off the line</span><span class="where">Phases: the gaps between Needs you, Ending soon and the clients timeline</span></div>
+  <p class="what">`.pov .pov-needs { margin: 0 0 28px }` adds to the page gap of 18px, so Needs you to Ending soon is 46px. Ending soon to the timeline is 18 + 10 = 28px (`.pln-section + .pln-section` margin-top 10, plan.css:93). Feed and Business put every section 22px apart (`.rd.trn` gap). The same screen family has three different section rhythms.</p>
+  <p class="rule">Admin harmony: sections parted by one space (ADMIN §9b each section's title on the page over one card; Feed/Business 22px)</p>
+  <p class="fix"><b>Fix</b> Drop the 28px margin on .pov-needs and the +10px on .pln-section + .pln-section. Give the Phases root `gap: 22px`, as .rd.trn has.</p>
+  <code>app/admin/redesign/phases/phases.css:141</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Phases: the timeline card with no clients, or none under Needs attention</span></div>
+  <p class="what">`.pov-empty` ("No clients yet" / "None") is a `&lt;p&gt;` with padding 18px 24px inside `.pln-card`. The words sit 25px from the card's outer edge, and the box's height comes from that padding rather than the one 53.5px empty box.</p>
+  <p class="rule">ADMIN §1: "Every empty box … one box: … 53.5px tall, the words 13px/500 grey 19px from the card's outer edge and midway down … `.rls-none` alone in a `.rls-card` … no padding of its own"</p>
+  <p class="fix"><b>Fix</b> Render `&lt;div className="rls-card"&gt;&lt;p className="rls-none"&gt;None&lt;/p&gt;&lt;/div&gt;` (or put rls-none in pln-card under the .rd.rd.rd rule) and delete .pov-empty.</p>
+  <code>app/admin/redesign/phases/phases.css:78</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Feed, Activity: the All clients pill beside the kinds capsule</span></div>
+  <p class="what">`.rfd-pick` is 13px/500 #5b6474 until a client is picked, then 600 ink with padding-left 6. Its width changes, and since it is right-aligned it pushes the capsule beside it. Hover is a #fafbfd fill, where the white pills (trn-pill) take an ink edge. margin-left 10px on top of trn-weekhead-actions' 8px gap puts 18px between it and the capsule, against 8px between other head controls.</p>
+  <p class="rule">ADMIN §5: words "at 600 picked or not, so a switch never moves what sits beside it"; §9b white pills are `trn-pill` (13/600 ink, ink edge on hover)</p>
+  <p class="fix"><b>Fix</b> Make it 13px/600 ink in both states ("All clients" ink), hover `box-shadow: inset 0 0 0 1px #141a24`, and remove margin-left so the 8px gap applies.</p>
+  <code>app/admin/redesign/feed/feed.css:129</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Feed Needs you, Feed Activity, Phases Ending soon, Business Owed / Not billed: the client's name in a row</span></div>
+  <p class="what">The client's name in a list row has three sizes across these four screens. Needs you and Ending soon (`.nd-name`, line 93) are 14.5px/600. Activity (`.rfd-log .rfd-name`) is 14px/600. Business (`.rbz-name`, business.css:72) is 15px/600, and so is Phases' client row (`.pov-client-name`).</p>
+  <p class="rule">ADMIN §9b: "In a log … the thing itself semi-bold (15px/600)"; one list row everywhere (§8)</p>
+  <p class="fix"><b>Fix</b> Use one name size for row names, e.g. 14.5px/600, everywhere. Set .rfd-log .rfd-name and .rbz-name to it, or move all to 15px with the rule.</p>
+  <code>app/admin/redesign/feed/feed.css:49</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Feed Activity and Business logs: the ‹ 1 2 3 › pager under the card</span></div>
+  <p class="what">`.rpg-page` draws each page as a 32px box with `border: 1px solid #dfe3e8`, radius 9, on white. #dfe3e8 is a third hairline grey beside #E1E5EB and #DCE1E8, and radius 9 appears nowhere else. On the same screens, ‹ Today › and its arrows are 32px round ghost buttons with no edge and a #fafbfd hover (plan.css:81–83).</p>
+  <p class="rule">ADMIN §8: "‹ 1 2 3 › centred on the page, no background, box or line"; §2 hairline tokens</p>
+  <p class="fix"><b>Fix</b> Make .rpg-page a 32px round ghost (no border, no background, hover #fafbfd), the current page the ink disc, as ‹ Today ›.</p>
+  <code>app/admin/redesign/training/draft.css:806</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Business: the change under Money by month vs the Clients figure</span></div>
+  <p class="what">A drop is two colours on one screen. `.rbz-under b.down` (Money's `−12% on May–Jul`) is danger red #b42318. `.rbz-fig small .down` (Clients `−1 in Oct`, line 17) is rust #b8471f.</p>
+  <p class="rule">ADMIN §2: rust #b8471f for what is behind; DESIGN-RULES.md §4 one rust</p>
+  <p class="fix"><b>Fix</b> Set .rbz-under b.down to #b8471f.</p>
+  <code>app/admin/redesign/business/business.css:27</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Business: an unpaid invoice in a month's pop-up vs the same invoice in Owed</span></div>
+  <p class="what">The month pop-up labels every unpaid invoice `Open` in a rust pill (`warn`). Owed (line 661) labels the same sent invoice `Sent` in an ink pill and `Overdue` in rust. One invoice reads two states in two colours on one page.</p>
+  <p class="rule">ADMIN §9b Invoices: "the state pill … Not sent grey, Sent ink, Overdue rust, Paid green"; one thing one word</p>
+  <p class="fix"><b>Fix</b> Use the invoice's own state in the pop-up (Paid good, Sent live, Overdue warn), from the same map as Owed.</p>
+  <code>app/admin/redesign/business/BusinessDraft.tsx:442</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Business: Not billed automatically rows</span></div>
+  <p class="what">Not billed rows show the name alone (`Who`, `.rbz-who`) with no face. Owed, right above, puts the 24px NeedFace before each name. The rows also don't lead with a date column; `last invoice 4/9` sits inside the grey facts instead.</p>
+  <p class="rule">ADMIN §8: "A feed or log with more than one person in it shows each one's face (24px)"; "every row of a log starts with its date"</p>
+  <p class="fix"><b>Fix</b> Put NeedFace in `.rbz-whoface` before the name, as Owed does. Lead with the last invoice's logDate in a date column (blank when none), shared via logDateWidth.</p>
+  <code>app/admin/redesign/business/BusinessDraft.tsx:716</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Rail with Settings open: the section rows</span></div>
+  <p class="what">At 16px, Plans' BookmarkIcon (16 grid, stroke 1.4) draws at 1.4px. Building, Receipt, Shield, Lock and Gear are 1.7 on a 24 grid (≈1.13px), BellIcon 1.5 on a 24 grid (1.0px) and ReportIcon 1.3 on an 18 grid (≈1.16px). Plans reads heavier. Invoicing &amp; payments and Billing also share the same ReceiptIcon, so two rows of one list carry one mark.</p>
+  <p class="rule">DESIGN-RULES.md §5: icons from different sets in one list draw at one weight</p>
+  <p class="fix"><b>Fix</b> Draw Bookmark on the 24 grid at 1.7 (or set one non-scaling stroke for `.rr-settings-list svg`). Give Billing its own mark, e.g. a card.</p>
+  <code>app/admin/redesign/settingsNav.ts:12</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Rail: the Needs you drop-down under a client (the screens they are on)</span></div>
+  <p class="what">`.rr-spots` opens over `grid-template-rows 0.24s ease` with its contents fading in over 0.2s. Every other admin fold uses 0.34s `cubic-bezier(0.22, 1, 0.36, 1)` (trn-sfold trn.css:194, rq-evlog-fold plan.css:304, rm-cn measurements.css:66). The rail's Clients/Settings swap is 0.32s ease.</p>
+  <p class="rule">DESIGN-RULES.md §7: every fold opens as the Meeting summary, 0fr→1fr over 340ms on cubic-bezier(.22,1,.36,1)</p>
+  <p class="fix"><b>Fix</b> Use `transition: grid-template-rows 0.34s cubic-bezier(0.22, 1, 0.36, 1)` on .rr-spots and `opacity 0.22s ease` on .rr-spots-in.</p>
+  <code>app/admin/redesign/rail.css:117</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Rail's All | Needs you capsule vs Phases' All clients | Needs attention capsule</span></div>
+  <p class="what">A count inside a capsule option is drawn two ways. The rail uses `Needs you &lt;small&gt;3&lt;/small&gt;`: a space, then 12px/500 grey (#8b93a1, 65% white when picked). Phases uses `All clients &lt;Sep/&gt; 12`: the drawn bar, then the count at the option's own 13px/600 (PhasesOverview.tsx:224, 229). The rail also re-declares the whole capsule in `.rr .rr-filter` (rail.css:74–80) instead of relying on `.rd-btn-group`.</p>
+  <p class="rule">ADMIN §5: "One rule for every tab: .rd-btn-group in measurements.css; no per-tab copies"</p>
+  <p class="fix"><b>Fix</b> Pick one way (the drawn bar or the small grey count) for both capsules. Load measurements.css on every rail page (or move .rd-btn-group into ui.css) and delete the .rr-filter copy, keeping only width:100% and margin.</p>
+  <code>app/admin/redesign/RedesignRail.tsx:246</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Polish</span><span class="where">Rail: Clients head chevron (Settings open) and the coach row chevron</span></div>
+  <p class="what">The same ChevronDownIcon is 14px in `.rr-clients-head svg` (line 47) and 16px in `.rr-coach-chev svg`. Both turn over 0.2s ease, while the admin `Fold` chevron turns over 0.15s (draft.css:84). The rail's faces also differ: 28px clients, 30px coach (line 145).</p>
+  <p class="rule">DESIGN-RULES.md §7: every chevron turns over 280ms on the fold's curve</p>
+  <p class="fix"><b>Fix</b> Use one chevron size (14px) in the rail, with one turn of 0.28s cubic-bezier(0.22,1,0.36,1) shared with .rd-fold. Make the coach face 28px.</p>
+  <code>app/admin/redesign/rail.css:143</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Phases: a client's PHASES / EVENTS heads and their empty lanes</span></div>
+  <p class="what">One client block has two different "+ Add" drawings. The heads' `.pov-add` is a PlusIcon svg at 13px with Add at 12.5px/600 #5b6474, ink on hover. An empty lane's `.rq-empty` (plan.css:36–37) is `None yet` grey, then a typed "+ Add" in ink 600.</p>
+  <p class="rule">Admin harmony: one way to draw an action; ADMIN §10 `None yet + Add`</p>
+  <p class="fix"><b>Fix</b> Draw the head's Add as the lane's does (a typed "+ Add" in ink 600 at 12.5px), or give .rq-empty b the same PlusIcon and grey→ink look as .pov-add.</p>
+  <code>app/admin/redesign/phases/phases.css:75</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Phases: the PHASES and EVENTS small caps under each client's name</span></div>
+  <p class="what">`.pov-sub-label` is 10.5px/600 .16em in #98a2b3. Every other small-caps label in the admin is #5b6474: the nd-head small caps, rls-fig-label, dlh-label and the rail's CLIENTS label.</p>
+  <p class="rule">ADMIN §2: "Small caps labels: 10.5px, 600, letter-spacing .16em, uppercase, #5b6474"</p>
+  <p class="fix"><b>Fix</b> Set color #5b6474 (or, if Alex wants these quieter, add that to the rule).</p>
+  <code>app/admin/redesign/phases/phases.css:74</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Phases, Ending soon: the days left on every row</span></div>
+  <p class="what">The days left is always `nd-wait late` (600, rust #b8471f), so `14 days left` reads as late as `Ends today`. Ending soon is the list that only informs.</p>
+  <p class="rule">ADMIN §8: "the wait (rust past a day)"; "a list that only informs (Ending soon) stays plain white"; §2 rust for what is behind or late</p>
+  <p class="fix"><b>Fix</b> Use plain `nd-wait` (grey 500) and add `late` only for `Ends today`, or for 3 days or fewer if Alex wants a threshold.</p>
+  <code>app/admin/redesign/phases/PhasesOverview.tsx:200</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Phases: Ending soon rows vs the status after a client's name on the timeline</span></div>
+  <p class="what">The same fact is worded two ways on one screen. Ending soon says `3 days left` / `Ends today` (leftLabel, timeline.ts:85). The client's name row says `Training ends in 3 days` / `Training ends today` in rust 12.5px/500 (.pov-status).</p>
+  <p class="rule">DESIGN-RULES.md §8: "one thing one word"; ADMIN §1 say a thing once</p>
+  <p class="fix"><b>Fix</b> Build both from leftLabel, e.g. `Training | 3 days left` with the drawn bar.</p>
+  <code>app/admin/redesign/phases/PhasesOverview.tsx:521</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Phases: a phase's or an event's pop-up, the big day tiles</span></div>
+  <p class="what">DateSpan is meant to be "each day as the Meetings tile", but it differs from `.rt-tile`. The month is 10.5px .14em #8b93a1 against .16em #5b6474 (meetings.css:22). The numeral is 28px/600 against Meetings' light 17px (itself at weight 300, outside 500/600). The weekday is 12px #8b93a1.</p>
+  <p class="rule">ADMIN §10: "each day as the Meetings tile, the month over the day, its weekday under"; §2 small caps .16em #5b6474</p>
+  <p class="fix"><b>Fix</b> Give .dsp-day small letter-spacing .16em and #5b6474. Settle one numeral weight for both tiles (500, since 300 breaks §2) and use it in both.</p>
+  <code>app/admin/redesign/phases/phases.css:107</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Polish</span><span class="where">Feed, Activity: the client filter's search line</span></div>
+  <p class="what">The magnifier is an inline svg at strokeWidth 1.8. The rail's and Library's search use 1.6. The line under the field is always `1px solid #141a24` (feed.css:139), never the resting #E1E5EB.</p>
+  <p class="rule">ADMIN §6: "the magnifier 15px grey at 1.6"; §4 text inputs a clean line #E1E5EB, ink on focus</p>
+  <p class="fix"><b>Fix</b> Use SearchIcon with stroke-width 1.6 (as `.rr-search svg path`). Set the line to #e1e5eb with `:focus-within` ink.</p>
+  <code>app/admin/redesign/feed/FeedDraft.tsx:249</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Off the line</span><span class="where">Feed and Phases: the small-caps group heads (MESSAGES 2, TRAINING 1…) over each card</span></div>
+  <p class="what">`.nd-head` has margin `0 0 8px 4px`. The head sits 4px in from the card's left edge and from the `Needs you` title above it, with 8px under it. Settings' small caps over a card (`.rst-sub &gt; .trn-weekhead h3`, settings.css:34) sit flush with a 10px gap.</p>
+  <p class="rule">Admin harmony: a small caps label over one hairline card drawn one way (ADMIN §9, Settings' parts)</p>
+  <p class="fix"><b>Fix</b> Set margin to 0 0 10px (flush left), or move Settings to the same values. One rule for both.</p>
+  <code>app/admin/redesign/feed/feed.css:77</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Polish</span><span class="where">Business: Money by month and Clients by month charts' axis text</span></div>
+  <p class="what">The y figures (`.rbz-ytick`) are 11px/500 #98a2b3. The month names under the columns (`.rbz-col`, line 38) are 11.5px/500 #8b93a1. One chart's axis text uses two sizes and two greys.</p>
+  <p class="rule">ADMIN §2: one grey per job; every line chart's grid values one way (§8)</p>
+  <p class="fix"><b>Fix</b> Use one size and grey for both, e.g. 11.5px #8b93a1.</p>
+  <code>app/admin/redesign/business/business.css:36</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Business: hovering a month column vs hovering a figure</span></div>
+  <p class="what">`button.rbz-col:hover` is #f5f6f8 with radius 8, while `.rbz-fig:hover` on the same page is #fafbfd. Two hover greys on one screen.</p>
+  <p class="rule">ADMIN §8: "One hover for every row and menu item … #fafbfd"</p>
+  <p class="fix"><b>Fix</b> Set the .rbz-col hover and open state to #fafbfd.</p>
+  <code>app/admin/redesign/business/business.css:39</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Polish</span><span class="where">No visible screen: stale styles behind Feed Needs you and Phases Ending soon</span></div>
+  <p class="what">Ending soon moved to the shared nd- rows, but `.pov-soon-row`, `.pov-tag`, `.pov-who`, `.pov-left`, `.pov-prog` and `.pov-actions` (lines 22–54) are still here, unused. The pill `.rd-btn` look in them is the old one. feed.css keeps `.rfd-need` (declared three times: lines 32, 61/65, 157/163–164), `.rfd-act`, `.rfd-actword`, `.rfd-group`, `.rfd-who`, `.rfd-thing`, `.rfd-wait` and `.rfd-more`, all unused and with conflicting columns. They make the next change likely to restyle the wrong thing.</p>
+  <p class="rule">ADMIN §11: search for an existing pattern first (one source per pattern)</p>
+  <p class="fix"><b>Fix</b> Delete the unused pov-soon-* and rfd-need/act/actword/group/who/thing/wait/more rules.</p>
+  <code>app/admin/redesign/phases/phases.css:22</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Polish</span><span class="where">Feed and Phases: keyboard focus on a round action button</span></div>
+  <p class="what">`.nd-act:focus-visible` is `outline: 1px solid #141a24; outline-offset: 1px`. The rail and the other admin controls use a 2px ink outline (rail.css:29, 116, 134).</p>
+  <p class="rule">Admin harmony: one focus ring</p>
+  <p class="fix"><b>Fix</b> Use `outline: 2px solid #141a24; outline-offset: 1px`.</p>
+  <code>app/admin/redesign/feed/feed.css:107</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Polish</span><span class="where">Phases, Ending soon: Extend → Pick date… row</span></div>
+  <p class="what">The typed-date row that replaces Pick date… is drawn `background: #f5f6f8` and commented "held (hover grey)". The menu's hover two lines up (line 89) is #fafbfd, so the held row is a different grey from the hover it claims to be.</p>
+  <p class="rule">ADMIN §6: every floating list in the ⋯ menu's look, the one row hover #fafbfd</p>
+  <p class="fix"><b>Fix</b> Use #fafbfd, or call it the picked grey (#f5f6f8, as `.pb-menu … .on`) and fix the comment.</p>
+  <code>app/admin/redesign/phases/phases.css:94</code>
+</article></section><section id="client-home-plan"><h2>A client's Home and Plan <small>27 <i></i> 1 high <i></i> 10 medium <i></i> 16 low</small></h2><p class="note">Plus the client tabs bar, the to-do strip, the chat and phone tabs.</p><article class="f high" data-sev="high">
+  <div class="fh"><span class="sev">high</span><span class="kind">Drawn two ways</span><span class="where">Plan tab: lane icons, event category icons, the to-do strip's mark, and the phase/event pop-up tiles</span></div>
+  <p class="what">TrackIcon draws at strokeWidth 2, and so does KindIcon (EventsCard.tsx:42). Home's root is .rd.trn, and trn.css:25 forces `svg { stroke-width: 1.6 }` there, so the same heart, dumbbell and apple are 1.6 on Home but 2 on the Plan (.rd.pln has no override) and in the .npd tiles, which are portalled and sit outside .rd. RangeArrow is 2.4 (EventsCard.tsx:34, PlanDraft.tsx:997) and GapSign is 1.8 (timelineParts.tsx:291).</p>
+  <p class="rule">Shared rules §5: icons at stroke 1.6; icons from different sets in one list draw at one weight</p>
+  <p class="fix"><b>Fix</b> Set strokeWidth 1.6 on TrackIcon, KindIcon, RangeArrow and GapSign, or add `.rd.pln svg, .npd svg { stroke-width: 1.6 }`</p>
+  <code>app/admin/redesign/plan/PlanDraft.tsx:131</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Plan tab header, compared with Home's header (switching tabs)</span></div>
+  <p class="what">The Plan header is built on rd-head, rd-eyebrow and rd-title rather than trn-head. Its eyebrow 'PLAN' has letter-spacing .16em (draft.css:28). Home's 'HOME' eyebrow is trn-eyebrow at .18em (trn.css:60). The eyebrow's tracking changes as the coach moves between Home and Plan. The Home eyebrow also breaks the .16em small-caps token.</p>
+  <p class="rule">Admin rules §9b: a track tab is built as Training; §2: small caps labels at 10.5px, 600, .16em</p>
+  <p class="fix"><b>Fix</b> Use one eyebrow letter-spacing (.16em) in trn.css:60, and move the Plan header onto trn-head, trn-eyebrow and trn-name</p>
+  <code>app/admin/redesign/plan/PlanDraft.tsx:302</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Home → Details → Plan field's floating list</span></div>
+  <p class="what">The .cc-plan-pop list has radius 14, padding 6px, shadow `0 16px 40px -12px rgba(16,24,40,.25)` and a 1px #e1e5eb ring. Its rows (.cc-plan-row, :351) are 36px at 14px/500 with radius 8. The ⋯ menu (.pb-menu) is radius 10, padding 5, shadow `0 12px 28px rgba(20,30,50,.16)` with no edge, and its items are 34px at 13.5px/600 with radius 7.</p>
+  <p class="rule">Admin rules §6: every floating list wears the ⋯ menu's look</p>
+  <p class="fix"><b>Fix</b> Restyle .cc-plan-pop and .cc-plan-row to .pb-menu's values (radius 10, padding 5, that shadow, items 34px 13.5px/600 radius 7)</p>
+  <code>app/admin/redesign/home/home.css:349</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Home → Details pop-up, Gender capsule</span></div>
+  <p class="what">`.cc-hl .nc-pills .pl-chip` is 13px/500 when not picked and 600 when picked (:322), so the options change width as the pick slides. It is also its own copy of the capsule rather than .rd-btn-group.</p>
+  <p class="rule">Admin rules §5: 13px words at 600 picked or not, so a switch never moves; one rule, .rd-btn-group, no per-tab copies</p>
+  <p class="fix"><b>Fix</b> Set font-weight 600 on .pl-chip in .cc-hl, or render Gender as .rd-btn-group</p>
+  <code>app/admin/redesign/home/home.css:320</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">The client's face: Home header, Details pop-up, Events log, event pop-up 'Added by', chat list, chat thread head</span></div>
+  <p class="what">The initial-only face is drawn six ways. Home header .rh-avatar: white, 1px #e1e5eb inset, ink initial at 600. Details .rh-details-face: #eef0f3 fill, #5b6474 initial at 18px/600. Events log .rq-evrow-face (plan.css:314): white with hairline, #5b6474 at 10px/600. Event pop-up .npd-face (phase-dialog.css:228): #eef0f3 fill, #5b6474 at 10.5px/600. Chat list .rd-dock-avatar (messages.css:306): white with hairline, #5b6474 at 11px/500. Chat head .rm-avatar: white with hairline, ink at 15px/500.</p>
+  <p class="rule">Draw the same thing one way (§11: reuse an existing pattern)</p>
+  <p class="fix"><b>Fix</b> Pick one face style (white, #e1e5eb inset, initial #5b6474 at 600, sized to the face) and apply it to all six classes</p>
+  <code>app/admin/redesign/home/home.css:290</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Plan: the Move pop-up after dragging a phase or an event</span></div>
+  <p class="what">MoveDialog and MoveEventDialog (EventsCard.tsx) use `.dlh mvd` with no width of its own, so they are the base .dlh at 400px (trn.css:283). The Phases screen's view pop-ups are 480px (phases.css:98).</p>
+  <p class="rule">Admin rules §10, event and phase pop-ups 1: the .dlh card, 480px wide (Move included, 8)</p>
+  <p class="fix"><b>Fix</b> Add `.dlh.dlh.mvd { width: min(480px, 100vw - 32px); }`</p>
+  <code>app/admin/redesign/plan/PlanDraft.tsx:1097</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Plan → open an event (New/Edit event pop-up)</span></div>
+  <p class="what">The tag row has the category tag and, only on a past event, a grey hairline 'Past' (.npd-from: 11.5px/600, inset #e1e5eb, no fill). Live and Scheduled events get no state tag. The Move pop-up for the same event shows STATE_TAG (`mvd-state`, stateTagStyle).</p>
+  <p class="rule">Admin rules §10, 2: one tag row, the category tag then the state tag from STATE_TAG (Live, Scheduled, Draft, Past); an event gets its state too</p>
+  <p class="fix"><b>Fix</b> Render `&lt;span className="npd-state" style={stateTagStyle(eventState(event, today))}&gt;` for any existing event in place of npd-from</p>
+  <code>app/admin/redesign/plan/EventsCard.tsx:627</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Plan → event/phase pop-up: the Starts / Ends / Date boxes</span></div>
+  <p class="what">.npd-date-head is 10px/600 at .14em in #98a2b3. The 'When' and 'Note' labels beside it in the same pop-up (.npd-label, :24) are 10.5px/600 at .16em in #5b6474, so the pop-up has two small-caps label styles.</p>
+  <p class="rule">Admin rules §2: small caps labels at 10.5px, 600, .16em, #5b6474</p>
+  <p class="fix"><b>Fix</b> Set .npd-date-head to 10.5px, .16em, #5b6474</p>
+  <code>app/admin/redesign/plan/phase-dialog.css:63</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">To-do strip at the top of Home and Plan (and every client tab)</span></div>
+  <p class="what">The strip's rows are 46px with padding-left 16px and column-gap 12. Its action .rd-todo-act (:1353) has no fill and a rust-tint hover, and the check is 28px. The Feed's owed Needs-you rows, which feed.css:170 says are 'exactly the strip's look', are 52px with padding-left 18px and column-gap 16, and their action is a white round button with an inset #dce1e8 hairline (feed.css:176) that turns to an ink ring on hover.</p>
+  <p class="rule">Admin rules §8: every list of things to do is one anatomy; the rust strip has the needs-you rows' columns; each action is a round white button with a hairline</p>
+  <p class="fix"><b>Fix</b> Match the strip to .nd-row: min-height 52px, padding 0 12px 0 18px, column-gap 16, and .rd-todo-act with background #fff, inset 0 0 0 1px #dce1e8, ink ring on hover</p>
+  <code>app/admin/redesign/training/draft.css:1344</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Home header ⋯ → Delete {First} (and every .pb-menu destructive item)</span></div>
+  <p class="what">The destructive menu item is #a32d2d. The same Delete {First} on Details' footer (.dlh-delete) and the confirm's pill (.dlh-danger) are #b42318. That is a third red for one action.</p>
+  <p class="rule">Admin rules §2: danger red #b42318</p>
+  <p class="fix"><b>Fix</b> Set the destructive item and its svg to #b42318</p>
+  <code>app/components/ui/ui.css:75</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Chat panel → All chats → 'Search clients'</span></div>
+  <p class="what">.rd-dock-search is 38px with a 1px #e1e5eb inset edge, 14px text and no magnifier.</p>
+  <p class="rule">Admin rules §6: a search field on a page is one shape, a 36px white pill with a 1.5px ink edge, the magnifier at 15px grey and stroke 1.6, words at 13.5px/500 (the rail's and the Library's)</p>
+  <p class="fix"><b>Fix</b> Reuse the rail/Library search component: 36px, inset 0 0 0 1.5px #141a24, magnifier, 13.5px</p>
+  <code>app/admin/redesign/messages/messages.css:295</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Plan → event pop-up → Repeats: the line under the weekday letters</span></div>
+  <p class="what">The repeatWords sentence ('Every Tue, Thu') is set in .npd-repeat-says at 12px/600, uppercase, .12em, #5b6474. That is small caps at a size and tracking used nowhere else, applied to a sentence. The 'No end' action next to it resets to 12.5px in normal case.</p>
+  <p class="rule">Admin rules §2 small caps token (10.5/.16em); a fact line is 12.5–13px/500 grey</p>
+  <p class="fix"><b>Fix</b> Make it a fact line: 12.5px/500 #8b93a1, no text-transform, letter-spacing 0</p>
+  <code>app/admin/redesign/plan/phase-dialog.css:234</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Plan → phase pop-up → Indefinite switch</span></div>
+  <p class="what">.npd-switch and its knob ease over 0.2s `ease` (:244–245). Settings' .rst-switch, the same 34×20 switch, moves over 0.25s cubic-bezier(.22,1,.36,1) (settings.css:129).</p>
+  <p class="rule">Admin rules §5 and shared rules §7: a switch's knob moves in 250ms on cubic-bezier(.22,1,.36,1)</p>
+  <p class="fix"><b>Fix</b> Use `transition: left .25s cubic-bezier(.22,1,.36,1), background .25s cubic-bezier(.22,1,.36,1)` on the knob and track</p>
+  <code>app/admin/redesign/plan/phase-dialog.css:245</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Plan → Events card → Log</span></div>
+  <p class="what">The Events log pages at 10 rows (PAGE = 10). Home's Activity and the other logs page at 20.</p>
+  <p class="rule">Admin rules §8: a full page is as many rows as the fullest filter shows, up to 20; one Pager for every log, the Events log included</p>
+  <p class="fix"><b>Fix</b> Set PAGE = 20</p>
+  <code>app/admin/redesign/plan/EventsCard.tsx:257</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Plan → Events card → Log rows</span></div>
+  <p class="what">The event title (.rq-evrow-main b) is 14px/600 and its note (.rq-evrow-note, :268) is 12.5px. Home's Activity log right next to it uses 15px/600 for the thing (.rh-what-title) and 13px for the client's words.</p>
+  <p class="rule">Admin rules §9b: in a log, the thing itself at 15px/600, as Training's sessions</p>
+  <p class="fix"><b>Fix</b> Set .rq-evrow-main b to 15px and .rq-evrow-note to 13px</p>
+  <code>app/admin/redesign/plan/plan.css:265</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Off the line</span><span class="where">Plan → Events card: lane labels, the 'LOG' toggle, 'None yet' and the log rows</span></div>
+  <p class="what">Inside one card the left edges differ. Log rows start at 18px (1px plus 17px, :325/:330). The 'LOG' word sits about 28px in (1px plus .rq-evlog-head's 23px plus the toggle's 4px). 'None yet' (.rq-evlog-empty) is at 24px. The lane labels are at 25px (.rq-tl-scroll's 14px plus .rq-tl-label's 10px plus the 1px border). Home's Activity rows start at 18px.</p>
+  <p class="rule">One list row: its first column 18px in (Admin rules §8); left edges line up</p>
+  <p class="fix"><b>Fix</b> Bring the log head, its empty word and the lane labels to the rows' 18px (padding-left 17px plus the 1px)</p>
+  <code>app/admin/redesign/plan/plan.css:326</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Plan → Events card → Log with nothing over yet ('None yet')</span></div>
+  <p class="what">.rq-evlog-empty sets no font-weight, and body sets none either (globals.css:87), so 'None yet' renders at 400. Every other empty word (.rls-none) is 13px/500.</p>
+  <p class="rule">Admin rules §2: Archivo at weights 500 and 600 only</p>
+  <p class="fix"><b>Fix</b> Add font-weight: 500 to .rq-evlog-empty</p>
+  <code>app/admin/redesign/plan/plan.css:254</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Plan → Events log date column, for a repeat with no end</span></div>
+  <p class="what">The log's end column reads 'no end' in lower case. The phase pop-up, the event pop-up's 'No end' action and DateSpan all say 'No end'.</p>
+  <p class="rule">Say one thing one way (Admin rules §10, 4: `No end` for an open repeat)</p>
+  <p class="fix"><b>Fix</b> Write 'No end'</p>
+  <code>app/admin/redesign/plan/EventsCard.tsx:388</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Plan timeline: past event bars and pins, and settled weight goals on the Weight lane</span></div>
+  <p class="what">`.rq-evbar.past, .rq-pin.past { opacity: .55 }` keeps the kind's colour, and a settled goal keeps its beige. Home's Weight chart draws a settled goal grey (`.rh-wgoal.settled { border-color: #c9cfd8 }`, home.css:165), so the same settled goal is beige on the Plan and grey on Home.</p>
+  <p class="rule">Admin rules §10: once over a pin goes still, greyed as the past is</p>
+  <p class="fix"><b>Fix</b> Add `filter: grayscale(1)` (or the grey chrome) to .rq-evbar.past and .rq-pin.past</p>
+  <code>app/admin/redesign/plan/plan.css:217</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Home → Strength card figures</span></div>
+  <p class="what">pctOf keeps one decimal only under 10% and rounds above it, and pctText prints `+5%` (not +5.0%) and `0%`. The figures down one column mix '+12%', '+5%' and '+5.3%'.</p>
+  <p class="rule">Admin rules §9b Home: Strength, each group's mean change … to one decimal; no change reads 0.0% (§8)</p>
+  <p class="fix"><b>Fix</b> Always use toFixed(1): `${sign}${Math.abs(r).toFixed(1)}%`, with 0.0% for no change</p>
+  <code>app/admin/redesign/home/HomeDraft.tsx:153</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Home: Weight chart axis and grid, Muscle balance names and key</span></div>
+  <p class="what">The charts' secondary words come in three sizes and two greys on one board. The Weight grid kg (.rh-wgrid) and the dates (.rh-waxis, :142) are 11px #98a2b3. The hexagon names (.rh-radar-name, :93) are 11.5px #8b93a1. The key (.rh-key, :95) is 12px #8b93a1.</p>
+  <p class="rule">Two greys for the same job (task brief); Admin rules §8 charts: one way</p>
+  <p class="fix"><b>Fix</b> Give axis, grid, names and key one size and one grey (11px #8b93a1, or 11.5px)</p>
+  <code>app/admin/redesign/home/home.css:135</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Home → App access pop-up → 'Email it to {First}' tick</span></div>
+  <p class="what">The tick box shows a typed '✓' character, and .dlh-box draws it at font-weight 700 (trn.css:293).</p>
+  <p class="rule">Admin rules §2: weights 500 and 600 only; shared rules §6: one done check, never a typed ✓</p>
+  <p class="fix"><b>Fix</b> Draw the check as the CheckIcon svg (stroke 1.6) and drop font-weight 700 from .dlh-box</p>
+  <code>app/admin/redesign/home/AppAccessButton.tsx:159</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Home → App access → the dice at the end of Temporary password</span></div>
+  <p class="what">The icon is 17px inside the 32px round .rh-access-roll button (:338), which leaves 7.5px either side. One size is odd and the other even.</p>
+  <p class="rule">Admin rules §8: an icon centred in a ring or round button sits on whole pixels, both sizes even or both odd</p>
+  <p class="fix"><b>Fix</b> Make the icon 16px (or the button 33px)</p>
+  <code>app/admin/redesign/home/home.css:340</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Polish</span><span class="where">Home → App access pop-up footer</span></div>
+  <p class="what">The primary pills read 'Set password', 'Give access' and 'New password' (:189), two words each where the rest of the admin says the action in one: Save, Add, Delete.</p>
+  <p class="rule">Admin rules §1: buttons say the action, one word when it can</p>
+  <p class="fix"><b>Fix</b> Use 'Save' for setting the password, and keep the rest as short as they can be</p>
+  <code>app/admin/redesign/home/AppAccessButton.tsx:179</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Chat panel: switching from the chat to the phone preview</span></div>
+  <p class="what">The phone panel head (.rd-phone-head) is the title alone with margin-bottom 14px. The chat head and the chats list put the 'CHAT' eyebrow over a 32px title (margin-bottom 10px), and the thread adds the 18px 'Active…' line. Switching tabs moves the title up and down. The phone's screen picker (.rd-phone-pick, :371) is a 34px pill, where every other white pill is 36px (trn-pill, Media).</p>
+  <p class="rule">Admin rules §9b: header built as Training's; one height for white pills (36px)</p>
+  <p class="fix"><b>Fix</b> Give the phone head the same eyebrow and title block, and make .rd-phone-pick 36px</p>
+  <code>app/admin/redesign/messages/messages.css:367</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Plan → Events card: the line between the timeline and the Log</span></div>
+  <p class="what">.rq-evlog's border-top is #eceff3, and so are .rq-pct i and NONE.tint (timelineParts). The divider token used by the log's own rows (:329) is #eef0f3.</p>
+  <p class="rule">Admin rules §2: divider #EEF0F3</p>
+  <p class="fix"><b>Fix</b> Use #eef0f3</p>
+  <code>app/admin/redesign/plan/plan.css:252</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Plan → Phases and Events section heads: the '+ Add' pill</span></div>
+  <p class="what">The section-head action is .rd-btn restyled under .rd.pln, with padding 0 14px and a hover ring of #c5ccd8. Home's header pills (trn-pill) are padded 0 14px 0 12px with a 7px icon gap and an ink ring on hover (trn.css:95), so the same white pill hovers two ways.</p>
+  <p class="rule">Admin rules §9b: a tab's own actions in its header or a section head are Training's white pills with an icon (trn-pill)</p>
+  <p class="fix"><b>Fix</b> Use className trn-pill (or copy its hover, inset 0 0 0 1px #141a24, and its padding)</p>
+  <code>app/admin/redesign/plan/plan.css:75</code>
+</article></section><section id="training"><h2>Training <small>38 <i></i> 4 high <i></i> 17 medium <i></i> 17 low</small></h2><article class="f high" data-sev="high">
+  <div class="fh"><span class="sev">high</span><span class="kind">Breaks a rule</span><span class="where">Training week line: the ? to the right of KG | LBS, and the ? at the week rail's top right</span></div>
+  <p class="what">Nothing on Training restyles the HelpTip trigger. Home (home.css:406) and Settings (settings.css:166) do. So on Training it keeps the shadcn tokens from ui.css: a #dfe3e8 border, #5b6474 text, and on hover `hover:border-ring` (#2f5d8f) with `hover:text-primary` (#1e3a6e). The ? turns navy under the pointer, and it is drawn differently from the ? on Home and Settings (a #DCE1E8 inset hairline, #8b93a1 at rest, ink on hover).</p>
+  <p class="rule">DESIGN-RULES-ADMIN §2 "Never navy for an action, a selection or a toggle"; the same ? is drawn another way in home.css:406 and settings.css:166</p>
+  <p class="fix"><b>Fix</b> Add `.rd.trn [data-slot="help-tip"]` with the Home/Settings rule (18px, inset 0 0 0 1px #DCE1E8, #8b93a1, 11px/600, ink on hover and when open). Better still, move that look into HelpTip itself so every tab gets it.</p>
+  <code>app/admin/redesign/HelpTip.tsx:19</code>
+</article><article class="f high" data-sev="high">
+  <div class="fh"><span class="sev">high</span><span class="kind">Drawn two ways</span><span class="where">Training: the ? by KG | LBS opens the legend, and its 'Their note' row</span></div>
+  <p class="what">The legend opens in a portal outside .rd.trn, so `&lt;span class="rd-tag note"&gt;` picks up the old base rule (draft.css:613/616): a #e3ecf8 fill, navy #1e3a6e icon, 0 9px 0 7px padding and cursor:help. The mark it explains on the session row is a 22px ring with a #e1e5eb hairline and a #5b6474 icon (trn.css:185). Also, `.rd-legend-mark &gt; …` (draft.css:647) sizes .rd-flag, .rd-swapdot, .rd-extradot, .rd-pbdot and .rd-copydot, but not .rd-tag.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §8 "Every mark on a session or exercise row is a ring, never a filled disc… the note grey"; §2 never navy</p>
+  <p class="fix"><b>Fix</b> Give the legend the row's ring: add `.rd-legend-mark &gt; .rd-tag.note { width:22px; height:22px; padding:0; background:none; box-shadow: inset 0 0 0 1px #e1e5eb; color:#5b6474 }`. Or move trn.css:185 out of the .rd.trn scope.</p>
+  <code>app/admin/redesign/training/TrainingDraft.tsx:3584</code>
+</article><article class="f high" data-sev="high">
+  <div class="fh"><span class="sev">high</span><span class="kind">Breaks a rule</span><span class="where">Opened session table: hovering an exercise's name</span></div>
+  <p class="what">`.rd-ex-btn:hover` sets the name to navy #1e3a6e with a blue-grey #c9d5e6 underline. Nothing in trn.css overrides it. Hovering a session name (trn.css:176) gives ink with a #e1e5eb underline instead.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §2 "Never navy… for an action"; the session name's hover in trn.css:176</p>
+  <p class="fix"><b>Fix</b> `.rd.trn .rd-ex-btn:hover { color:#141a24; text-decoration-color:#e1e5eb; text-underline-offset:4px }`</p>
+  <code>app/admin/redesign/training/draft.css:492</code>
+</article><article class="f high" data-sev="high">
+  <div class="fh"><span class="sev">high</span><span class="kind">Breaks a rule</span><span class="where">Week line → Columns menu → '+ Custom column'</span></div>
+  <p class="what">The item calls draftOnly(), which only shows a toast reading "Not wired yet: the old Training tab still does this." It is an action that changes nothing, and the toast is an explanation sentence.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §1 "Don't offer an action that would change nothing" and "No sentences explaining"</p>
+  <p class="fix"><b>Fix</b> Remove the Custom column item and the DropdownMenuSeparator above it until it is built.</p>
+  <code>app/admin/redesign/training/TrainingDraft.tsx:1946</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">The Training legends (the ? popovers), and every Training pop-up's small icons</span></div>
+  <p class="what">Several icons declare a stroke wider than 1.6: PhotoIcon and VideoIcon (VideoRequestButton.tsx:330/339) at 2, SwapIcon (TrainingDraft.tsx:3605) at 2.2, the gyms pop-up's bin (ClientGymsDialog.tsx:167) at 1.8, the demo list's tick (DemoVideoDialog.tsx:331) at 2.6, the progress pop-up's gym chevron at 1.8, its check at 2 and its ✕ at 2.6 (ExerciseProgressDialog.tsx:321/330/400), and ApplyChanges' range arrow (ApplyChanges.tsx:23) at 2.4. On the page, `.rd.trn svg { stroke-width:1.6 }` covers them, but in portals (legends, pop-ups) they draw at those widths. The legend therefore shows the video, photo and swap marks heavier than the marks on the rows it explains.</p>
+  <p class="rule">DESIGN-RULES §5 "drawn at stroke 1.6"; trn.css:25 sets 1.6 for the page only</p>
+  <p class="fix"><b>Fix</b> Set strokeWidth="1.6" in each of these SVGs, or add `.dlh svg, [data-slot=popover-content] svg { stroke-width:1.6 }` next to the .rd.trn rule.</p>
+  <code>app/admin/VideoRequestButton.tsx:330</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Exercise progress pop-up: the gym picker in the facts line (when there are two gyms)</span></div>
+  <p class="what">`.exp-menu` uses radius 12, padding 4 and the shadow `0 16px 36px -14px rgba(16,24,40,.3), 0 0 0 1px #e1e5eb` (an edge). Its items are 36px at 13.5px/500 in #3a4250 with radius 8. The ⋯ look is radius 10, padding 5, `0 12px 28px rgba(20,30,50,.16)` with no edge, and items 34px at 13.5/600 ink with radius 7.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §6 "Every floating list wears the ⋯ menu's look… radius 10, 5px of padding, the shadow 0 12px 28px rgba(20,30,50,.16) and no edge, items 34px at 13.5px/600 with radius 7"</p>
+  <p class="fix"><b>Fix</b> Build it from DropdownMenu + `pb-menu`, or set .exp-menu to padding 5, radius 10, that shadow with no ring, and buttons to height 34, radius 7, weight 600, colour #141a24.</p>
+  <code>app/admin/redesign/training/draft.css:1158</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Training: reordering sessions, adding a session, a phase note, After-workout check add/remove</span></div>
+  <p class="what">`act(fn, said)` ends in `savedToast(said)`, a toast saying "Saved" (line 188), for example "Session order changed" (line 1992) and "Session N added". The tab also shows SaveStatus "✓ All changes saved" after its title. AfterWorkoutCheck (TrainingParts.tsx:341) and GoalsNotePills (TrainingParts.tsx:111) also raise "Saved" toasts, so each save is reported twice.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §9 "One save status, drawn by one part… no toast for a save"; "one status per tab"</p>
+  <p class="fix"><b>Fix</b> Remove the `said` → savedToast branch in act (keep only the error toasts), and remove the "Saved" toasts in AfterWorkoutCheck.save and GoalsNotePills.save.</p>
+  <code>app/admin/redesign/training/TrainingDraft.tsx:284</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Session table's demo switch; Ask for a video's 'Ask every session'; Substitutes' offered switch</span></div>
+  <p class="what">Three switches on one tab are drawn three ways. .rd-demo-switch is 36×20 with a 16px knob at top 2, off #E1E5EB and no knob shadow. .avh-switch (ask-video.css:23-24) and .sbh-switch (substitutes.css) are 36×22 with a 16px knob at top 3, off #d5dae3 and the knob shadow 0 1px 3px. All three move the knob over `0.2s` / `0.2s ease`.</p>
+  <p class="rule">DESIGN-RULES §7 "Every switch's knob moves in 250ms on that curve" (globals.css:21272 does it for Settings); DESIGN-RULES-ADMIN §5 "a switch's knob eases the same"</p>
+  <p class="fix"><b>Fix</b> Use one switch: 36×22, a 16px knob 3px in, off #E1E5EB, on #141a24, `transition: left .25s cubic-bezier(.22,1,.36,1)` and background .25s, applied to .rd-demo-switch &gt; i, .avh-switch i and .sbh-switch i.</p>
+  <code>app/admin/redesign/training/draft.css:671</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Week line → Columns menu → Exercises | Cardio capsule</span></div>
+  <p class="what">.rd-coltabs is a per-tab copy of the capsule. Its unpicked option is 13px/500 and the picked one 600 (line 461), so the words change weight when switched. .rd-btn-group (measurements.css:160) keeps 600 for both.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §5 "13px words at 600 picked or not… One rule for every tab: .rd-btn-group… no per-tab copies"</p>
+  <p class="fix"><b>Fix</b> Set `.rd-coltabs button { font-weight:600 }`. Better, render it as `.rd-btn-group` with `grid-template-columns:1fr 1fr`.</p>
+  <code>app/admin/redesign/training/draft.css:459</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Opened session table, After-workout check, exercise progress log</span></div>
+  <p class="what">Each table draws the line between its rows in a different grey. Session table rows (.rd-row border-top) and the cardio block's top (.rd-cardio, line 462) use #eceff3, which is not a token. The After-workout check (.trn-ans-row, trn.css:457) uses #e1e5eb. The progress pop-up log (.exp-lr) and the gyms pop-up use #eef0f3.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §2 tokens: hairline #E1E5EB, divider #EEF0F3; §8 "the hairline #eef0f3" for list rows</p>
+  <p class="fix"><b>Fix</b> Use #eef0f3 for every between-rows line: .rd-row, .rd-cardio and .rd.trn .trn-ans-row.</p>
+  <code>app/admin/redesign/training/draft.css:140</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Opened session table: an exercise row with a changed figure</span></div>
+  <p class="what">`.rd-row.edited { background:#f8fafe }` is a blue-tinted row. The sticky ⋯ cell repeats it (lines 630 and 859). It is a leftover from the pending-bar days: the tab autosaves, so the tint only flashes while the save is on its way.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §8 "never a blue-grey or tinted highlight"</p>
+  <p class="fix"><b>Fix</b> Delete the .rd-row.edited background and the two `.rd-row.edited .rd-row-more` rules.</p>
+  <code>app/admin/redesign/training/draft.css:334</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Opened session: the Last session / 30 days cells on hover</span></div>
+  <p class="what">Hovering a cell draws a blue-grey ring, `0 0 0 2px #fff, 0 0 0 4px #c9d5e6`.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §8 one hover for every row, "never a blue-grey or tinted highlight"</p>
+  <p class="fix"><b>Fix</b> Change the hover ring to the neutral `0 0 0 2px #fff, 0 0 0 3px #c5ccd8`, or to ink as the gym face does (trn.css:548).</p>
+  <code>app/admin/redesign/training/draft.css:254</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Opened session: Last session / 30 days cells</span></div>
+  <p class="what">Line 249 sets .rd-trendcell to 13px/700. The later `.rd-trendcell { border:0; font: inherit }` at the same specificity resets both, so the cell takes the row's inherited font. .rd-row-main itself uses `font: inherit` and nothing above it sizes type, which leaves the body's 16px/400 with no tabular numerals. Even the declared 700 would break the 500/600 rule.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §2 "Archivo, weights 500 and 600 only"</p>
+  <p class="fix"><b>Fix</b> Add `.rd.trn .rd-trendcell { font-size:13px; font-weight:600; font-variant-numeric:tabular-nums }` after line 349, and keep `.none` at 500.</p>
+  <code>app/admin/redesign/training/draft.css:349</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Muscle map row's chevron vs a session row's chevron</span></div>
+  <p class="what">The shared `Fold` (.rd-fold), which the Muscle map uses, turns over `transform 0.15s` with the default ease. The session rows' .trn-chev (trn.css:42) turns over 0.28s on cubic-bezier(.22,1,.36,1). The exercise search's chevron (.rd-addrow-chev, line 474) also uses 0.15s.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §8 "A row that opens has its chevron… as Training's sessions"; DESIGN-RULES §7 chevron "over 280ms on the fold's curve"</p>
+  <p class="fix"><b>Fix</b> `.rd-fold { transition: transform .28s cubic-bezier(.22,1,.36,1) }`, and the same for .rd-addrow-chev.</p>
+  <code>app/admin/redesign/training/draft.css:84</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Muscle map: opening and closing the row</span></div>
+  <p class="what">`{open &amp;&amp; &lt;MuscleMapBody/&gt;}` mounts the plates in a single frame and removes them the same way. Since 16 Nov the session cards on the same screen open on the shared fold (.trn-sfold: grid rows 0fr→1fr over 340ms, content fading 220ms and settling 4px).</p>
+  <p class="rule">DESIGN-RULES §7 "Every fold opens as Home's Meeting summary… 0fr → 1fr over 340ms"; trn.css:191 applies it to sessions</p>
+  <p class="fix"><b>Fix</b> Wrap the body in `.trn-sfold` / `.trn-sfold-in` (or the .so-fold block) and keep it mounted until the close transition ends, as sessionCard's `shut` does.</p>
+  <code>app/admin/redesign/training/MuscleMap.tsx:88</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">After-workout check section title: with no questions vs with questions</span></div>
+  <p class="what">With no questions, the title is `.trn-weekhead h2` on the page at 20px/600, above the empty box. Once a question is added it moves inside the card as `.trn-check-head h2` at 15px/600 (trn.css:412). The section's title changes size and place when its state changes.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §9b "Each section's title (20px/600) … on the page… the content in one white card"; §1 empty box "its title on the page over it as every section's"</p>
+  <p class="fix"><b>Fix</b> Pick one place for the title. Either always on the page at 20px with the table in an .rls-card under it, or keep the title in the card head in the empty state too.</p>
+  <code>app/admin/redesign/training/TrainingParts.tsx:398</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Opened session: a cardio row's end, and a newly added exercise row's end</span></div>
+  <p class="what">Exercise rows end in the shared round ⋯ (.trn-row-more, 30px, radius 999). A cardio row ends in two `.rd-btn ghost sm` buttons instead (draft.css:53): a dumbbell for alternatives with its count in a &lt;b&gt; that inherits .rd-btn's 700, and a bin. Both are 28px with radius 10 (not round). Added rows (lines 1481 and 1629) also show a bare bin.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §8 "One ⋯ for every row and card… trn-row-more"</p>
+  <p class="fix"><b>Fix</b> Put Alternatives and Remove into a `trn-row-more` DropdownMenu (pb-menu) on cardio rows, as exercise rows have. Show the alternatives count as a mark ring if it must stay visible.</p>
+  <code>app/admin/redesign/training/TrainingDraft.tsx:1579</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Session row state pill vs the week rail's bar and its legend</span></div>
+  <p class="what">A session begun and ended short reads 'Unfinished' in a rust `.trn-state.warn` pill on its row. The week card draws the same session as a green bar at 38% (`part`), and the rail's legend (line 3559) calls it 'Started, not finished'. The state gets two names and two colours.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §1 the week legend's words (Completed, Started, Skipped, Not completed, To do); one thing one word</p>
+  <p class="fix"><b>Fix</b> Use one name and tone for the state. For example, the row says 'Started' in the neutral/ink pill to match the green-part bar, or the bar and legend change to match the pill.</p>
+  <code>app/admin/redesign/training/TrainingDraft.tsx:948</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Opened session: 'couldn't train' line, and the swap row under a swapped exercise or cardio</span></div>
+  <p class="what">.rd-skip is a rust-tinted block (#fdf3ee fill, radius 10, rust 12.5px text) holding the client's own words. .rd-swaprow-body (line 689) is an amber block (#FDF6EA fill, inset #F3DFBC edge, radius 12). The other client words in the same session use ClientNote (the pen, '{First} wrote' grey, the words in quotes, no tint).</p>
+  <p class="rule">DESIGN-RULES-ADMIN §8 "Training's logged sets and its Last session / 30 days cells keep their tinted fills… the one place a tinted block stays"; §3 "Never a big filled block"</p>
+  <p class="fix"><b>Fix</b> Render the skip as &lt;ClientNote who={`${firstName} couldn't train`}&gt;“…”&lt;/ClientNote&gt;. Draw the swap row flat: the amber swap ring and the words with no fill or edge.</p>
+  <code>app/admin/redesign/training/draft.css:132</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">+ Week menu ('3 sessions'), Copy from… menu, After-workout '+ Add' menu ('1–10')</span></div>
+  <p class="what">`.rd-menu-inuse` is 10px/700, uppercase, with .06em spacing. That is a weight outside 500/600 and a small-caps spacing unlike the .16em label used everywhere else.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §2 "Archivo, weights 500 and 600 only. Small caps labels: 10.5px, 600, letter-spacing .16em"</p>
+  <p class="fix"><b>Fix</b> `.rd-menu-inuse { font-size:12px; font-weight:500; letter-spacing:0; text-transform:none; color:#98a2b3 }`, as the add-pop's and sugs' grey right-hand facts are.</p>
+  <code>app/admin/redesign/training/draft.css:486</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">After-workout check: the rows of answered workouts</span></div>
+  <p class="what">The log of answered workouts is date-led (rd-logdate). It pages with 'Show all N' / 'Show more' / 'Show fewer' text buttons under a border-top line (.trn-ans-foot) instead of the shared Pager. Its rows are 44px (trn.css:452) where list rows are 52px.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §8 "One Pager… for every log" and "One list row everywhere… every row 52px"</p>
+  <p class="fix"><b>Fix</b> Show 20 a page with &lt;Pager/&gt; under the card, give .trn-ans-row min-height 52px, and remove .trn-ans-foot's line and buttons.</p>
+  <code>app/admin/redesign/training/TrainingParts.tsx:481</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Demo video pop-up: Paste a link | Upload a file | Your videos</span></div>
+  <p class="what">.dmvh-seg leaves 3px of air with 30px buttons. .rd-btn-group and .dlh-seg leave 4px with 28px buttons, so the picked pill sits 1px closer to the edge than in every other admin capsule.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §5 "4px of air between the chosen one and the edge"</p>
+  <p class="fix"><b>Fix</b> `.dmvh-seg { padding:4px; gap:2px }` and `.dmvh-seg button { height:28px }`.</p>
+  <code>app/admin/redesign/training/demo-video.css:38</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Opened session: the client's logged sets (heavier) and trend cells (up)</span></div>
+  <p class="what">.rd-set.up and .rd-trendcell.up (line 250) are #1b7a4b on #dff3ea, and .rd-set text is #313851. In the same row the PB ring around that set (.rd-set-pb), the +2 ring and the Completed pill are the success green #2f7a3f, and other figures are ink #141a24.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §2 "Success green #2f7a3f"; DESIGN-RULES §4 "Numbers down a list are ink, never navy"</p>
+  <p class="fix"><b>Fix</b> Change #1b7a4b to #2f7a3f (fill rgba(47,122,63,.12)) and the .rd-set text from #313851 to #141a24.</p>
+  <code>app/admin/redesign/training/draft.css:156</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Week rail '+ Week' card vs the '+ Add session' tile under the sessions</span></div>
+  <p class="what">There are two 'add' tiles on one screen. + Week (.trn-week.add) has a solid 1px #dce1e8 edge and radius 18. + Add session (.trn-add, line 217) has a 1px dashed #c9cfd8 edge and radius 18 at 13.5/600. Both use a typed '+', while + Exercise, + Cardio and the menus use the PlusIcon SVG.</p>
+  <p class="rule">Library's "+ Exercise is the grid's last tile, dashed" (DESIGN-RULES-ADMIN §9b); one way per thing</p>
+  <p class="fix"><b>Fix</b> Give `.trn-week.add` the dashed #c9cfd8 edge of .trn-add, and use &lt;PlusIcon/&gt; (14px, lifted .5px) in both instead of a typed '+'.</p>
+  <code>app/admin/redesign/training/trn.css:144</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Session row grip vs exercise row grip</span></div>
+  <p class="what">The session row drags by &lt;GripIcon/&gt;, a 10×16 SVG of six dots in #c5ccd8 (trn.css:169). The exercise rows under it drag by the typed text '⋮⋮' (12px, letter-spacing -2px, #c3c9d2, draft.css:315).</p>
+  <p class="rule">one thing drawn one way (DESIGN-RULES §9 "Reuse an existing pattern")</p>
+  <p class="fix"><b>Fix</b> Render &lt;GripIcon/&gt; in the exercise row's `.rd-grip` and give .rd-grip the trn-grip colour #c5ccd8.</p>
+  <code>app/admin/redesign/training/TrainingDraft.tsx:1193</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Session and exercise rows: the note mark, the chat mark, the asked-for video mark, the video-in mark</span></div>
+  <p class="what">The note ring is #e1e5eb with a #5b6474 icon. .rd-flag (the chat mark) is a #dce1e8 ring with a #5b6474 icon. The asked video is a #dce1e8 ring with a #8b93a1 icon. The rule says 'asked, a quiet grey ring… as the client's note', but they differ. .rd-flag.video.in (draft.css:662) is the only mark ring at 1.5px; every other ring, including replied, PB, +2 and copy, is 1px at .45.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §8 "asked, a quiet grey ring… every mark 22px"</p>
+  <p class="fix"><b>Fix</b> Use one quiet ring for note, chat and asked: inset 1px #dce1e8 with a #8b93a1 icon (or #5b6474, but the same on all three). Draw video-in at 1px rgba(184,71,31,.45) like its siblings, or note the 1.5px as a deliberate exception.</p>
+  <code>app/admin/redesign/training/trn.css:185</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Session and exercise row marks: PB beside +2 / −1</span></div>
+  <p class="what">.rd-pbdot text is 10px/600 with .04em spacing. The sibling .rd-extradot (+2, −1, line 895) and the swap count are 11px/600. The words in neighbouring 22px rings are different sizes.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §8 marks "the same" (24 Oct: "the same amount of separation", one size)</p>
+  <p class="fix"><b>Fix</b> `.rd-pbdot { font-size:11px; letter-spacing:0 }`, or set both to 10.5px.</p>
+  <code>app/admin/redesign/training/draft.css:655</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Exercise progress pop-up: hovering a session on the chart</span></div>
+  <p class="what">.exp-tip has radius 10, padding 6/10, 12.5px/500 and a drop shadow `0 10px 24px -10px …` plus a ring. Home's Weight hover pill (.rh-wtip, home.css:140) is 24px tall, radius 999, 12px/600, with an inset #e1e5eb hairline and no shadow.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §8 "Every line chart one way… an ink ring and a white hairline pill"</p>
+  <p class="fix"><b>Fix</b> Copy .rh-wtip: `height:24px; padding:0 9px; border-radius:999px; box-shadow: inset 0 0 0 1px #e1e5eb; font-size:12px; font-weight:600`.</p>
+  <code>app/admin/redesign/training/draft.css:1181</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Exercise progress pop-up headline change vs the session table's 30 days cell</span></div>
+  <p class="what">A fall in estimated 1RM is danger red #b42318 in the pop-up (.exp-chg.down) but rust #b8471f in the cell that opens it (.rd-trendcell.down, line 251). The same figure appears in two colours.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §2 "rust #b8471f for… what is behind"; one colour per job</p>
+  <p class="fix"><b>Fix</b> Use one colour for the drop figure in both places (rust, keeping red for the 'Dropping' state pill), or change the cell to red.</p>
+  <code>app/admin/redesign/training/draft.css:1174</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Training: the Note to {First} pop-over, the muscle pop-over, the ? legends</span></div>
+  <p class="what">Three pop-overs on one tab, three cards. .trn-pop (trn.css:98) has radius 20, padding 18 and the .dlh shadow. .mm-pop has radius 12, padding 14/16/10 and `inset 0 0 0 1px #e1e5eb, 0 12px 32px -12px …`. The HelpTip legend (popover.tsx:41, unstyled) is rounded-md 10px with a #dfe3e8 border, Tailwind shadow-md and p-4.</p>
+  <p class="rule">one thing drawn one way (DESIGN-RULES-ADMIN §11 "Search for an existing pattern first")</p>
+  <p class="fix"><b>Fix</b> Pick one pop-over card: radius 14, padding 14/16, `0 12px 28px rgba(20,30,50,.16)` with an inset hairline. Apply it to .mm-pop, .trn-pop and `[data-slot=popover-content]` under the admin.</p>
+  <code>app/admin/redesign/training/draft.css:1473</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Training header: 'TRAINING' over the programme name</span></div>
+  <p class="what">.trn-eyebrow is 10.5px/600 at .18em in #8b93a1. The admin's small caps (.rd-eyebrow draft.css:28, .dlh-label, .exp-lab, .mm-side-head) are .16em in #5b6474.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §2 "Small caps labels: 10.5px, 600, letter-spacing .16em, uppercase, #5b6474"</p>
+  <p class="fix"><b>Fix</b> `.rd.trn .trn-eyebrow { letter-spacing:.16em; color:#5b6474 }`. This file is shared by every tab header, so all tabs change together.</p>
+  <code>app/admin/redesign/training/trn.css:60</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Polish</span><span class="where">Week rail: NOW on the current week</span></div>
+  <p class="what">NOW is 10px/600 at .12em. Its pulse (.trn-pulse, line 133) is #3fbf5f, a green that is neither the success green #2f7a3f nor the live-tag green.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §2 small caps 10.5px .16em; "Success green #2f7a3f"</p>
+  <p class="fix"><b>Fix</b> `.trn-now { font-size:10.5px; letter-spacing:.16em }` and change .trn-pulse and ::after to #2f7a3f.</p>
+  <code>app/admin/redesign/training/trn.css:132</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Opened session table: an empty Reps cell</span></div>
+  <p class="what">An empty Reps cell shows the sample '8-10', in #b0b6c0 (draft.css:346). The other empty cells show '—', and the Note cell shows 'Add a note' in #c3c9d2 (line 521). Cardio's cells have no sample figures, and the pop-ups' lines use the faint token #98a2b3. The placeholders use three greys.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §8 cardio "typed in place… with no sample figures"; §7 TimePick "empty with no sample in it"; token faint #98A2B3</p>
+  <p class="fix"><b>Fix</b> Drop placeholder="8-10" (use '—' as the other cells do) and set both placeholder colours to #98a2b3.</p>
+  <code>app/admin/redesign/training/TrainingDraft.tsx:1254</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Client gyms pop-up: removing a gym; Demo video pop-up: Remove</span></div>
+  <p class="what">The in-place asks are labelled 'Keep' (cgh-keep; DemoVideoDialog.tsx:357 dmvh-cancel) beside a red-words Remove. Every other Training confirm (DeleteSessionDialog, ConfirmDialog) uses 'Cancel' with the verb as a red pill.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §4 confirm anatomy "Cancel in words and the verb alone as a pill… Something taken away is the red pill"</p>
+  <p class="fix"><b>Fix</b> Change 'Keep' to 'Cancel' in both places, and make Remove the `.dlh-danger` pill or the same red words in both.</p>
+  <code>app/admin/redesign/training/ClientGymsDialog.tsx:186</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Client gyms pop-up rows: Make home and the bin</span></div>
+  <p class="what">.cgh-makehome and .cgh-remove show on every row at rest, with no hover-only rule. The rows in the substitutes pop-up and the cardio alternatives (.dlh-alt-x, trn.css:345) hide their actions until hover.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §8 "Row actions in general show on hover only (… always on a touch screen)"</p>
+  <p class="fix"><b>Fix</b> Add `.cgh-actions { opacity:0 }` and `.cgh-row:hover .cgh-actions, .cgh-row:focus-within .cgh-actions, .cgh-row.asking .cgh-actions { opacity:1 }` inside `@media (hover:hover)`.</p>
+  <code>app/admin/redesign/training/client-gyms.css:30</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Demo video pop-up primary; Ask for a video footer</span></div>
+  <p class="what">Several labels use two words where one will do: the primary 'Add demo' (also line 1366 in TrainingDraft), 'Withdraw request' (AskVideoDialog.tsx:112), and 'See all N' here against 'Show all N' in the After-workout check.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §1 "Buttons say the action, one word when it can: Save, Delete, Remove, Add"</p>
+  <p class="fix"><b>Fix</b> Change to 'Add' and 'Withdraw', and use one wording ('Show all N') for both lists.</p>
+  <code>app/admin/redesign/training/DemoVideoDialog.tsx:376</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Polish</span><span class="where">Header: 'Note to {First}' pill opens a pop-over labelled 'A NOTE TO {FIRST}'</span></div>
+  <p class="what">The pill reads 'Note to Paula' and the pop-over's label 'A note to Paula'. The pop-over's footer is .trn-btn (34px) where every pop-up footer is 36px (.dlh-cancel / .dlh-go).</p>
+  <p class="rule">DESIGN-RULES-ADMIN §1 say a thing once, one way; §4 footer 36px pills</p>
+  <p class="fix"><b>Fix</b> Label it `Note to ${firstName}` and set `.trn-pop-foot .trn-btn { height:36px }`.</p>
+  <code>app/admin/redesign/training/TrainingParts.tsx:144</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Ask for a video, Client gyms, Demo video and Substitutes pop-ups</span></div>
+  <p class="what">Each of these pop-ups has its own stylesheet copying .dlh: .avh, .cgh, .dmvh and .sbh, each restating the card, head, ✕, Cancel and pill. The copies already drift: card widths 440/460/440/480 against .dlh's 400/520, Withdraw's margin, the focus styles. The progress pop-up's ✕ is an SVG (ExerciseProgressDialog.tsx:400) while all the others use a typed ✕ glyph.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §11 "Don't add a CSS file for a pop-up that fits .dlh"; §4 one pattern</p>
+  <p class="fix"><b>Fix</b> Move these four onto .dlh / .dlh-head / .dlh-x / .dlh-foot / .dlh-cancel / .dlh-go (with .dlh-wide where needed), keep only their unique bits, and use the same ✕ in every pop-up.</p>
+  <code>app/admin/redesign/training/ask-video.css:4</code>
+</article></section><section id="lifestyle-nutrition-shape"><h2>Lifestyle, Nutrition, Shape update <small>37 <i></i> 1 high <i></i> 11 medium <i></i> 25 low</small></h2><article class="f high" data-sev="high">
+  <div class="fh"><span class="sev">high</span><span class="kind">Breaks a rule</span><span class="where">Nutrition tab, a logged day opened that holds the client's note</span></div>
+  <p class="what">An opened day shows the note as `.rn-daynote`: the words in quotes added by CSS ::before/::after, with no `{First} wrote` label and no Reply. Lifestyle's opened check-in has `.rm-cn-wrote` ("Anna wrote", 12px/500 #8b93a1), the quoted words and a `Reply` text action (13px/600 ink). The same client note is drawn two ways, and Nutrition has no way to reply from the row.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §8: a client's note on a log's row: "its words only once the row is opened, with Reply there (Lifestyle check-ins, the Nutrition log)"; §9b Lifestyle: "`{First} wrote` grey over their words in quotes and Reply in words"</p>
+  <p class="fix"><b>Fix</b> Draw the day note with Lifestyle's parts (`rm-cn-wrote`, `rm-cn-said`, `rm-cn-reply`, or one shared ClientNote) and wire Reply to `message({ link: { kind: 'food', date } })`.</p>
+  <code>app/admin/redesign/nutrition/NutritionDraft.tsx:1411</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Nutrition tab, opening a logged day</span></div>
+  <p class="what">`{open &amp;&amp; &lt;div className="rn-meals"&gt;…}` mounts the meals all at once, so the day jumps open and shut with no easing while its Fold chevron turns. Lifestyle's check-in rows on the same kind of log ease open.</p>
+  <p class="rule">DESIGN-RULES.md §7: every fold opens on the shared fold (0fr to 1fr over 340ms on cubic-bezier(.22,1,.36,1), the contents fading in over 220ms); Lifestyle's check-in row already does this (`.rm-cn`, measurements.css:69)</p>
+  <p class="fix"><b>Fix</b> Keep `.rn-meals` mounted inside a `.rm-cn`-style grid wrapper (grid-template-rows 0fr/1fr, inner clip and fade, `inert` while closed), as CheckinTable does.</p>
+  <code>app/admin/redesign/nutrition/NutritionDraft.tsx:1407</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Shape update tab, All shape updates, opening a row</span></div>
+  <p class="what">`{isOpen &amp;&amp; &lt;div className="rp-tbody"&gt;…}` mounts the photos at once, so the row snaps open and shut with no 340ms ease, unlike Lifestyle's check-in rows.</p>
+  <p class="rule">DESIGN-RULES.md §7 shared fold; Lifestyle's `.rm-cn` is the admin log's working version</p>
+  <p class="fix"><b>Fix</b> Wrap `.rp-tbody` in the same 0fr to 1fr grid fold with the fade, kept mounted and `inert` while closed.</p>
+  <code>app/admin/redesign/pictures/PicturesDraft.tsx:414</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Opened rows on the Lifestyle, Nutrition and Shape update logs</span></div>
+  <p class="what">Each log draws an open row its own way. Shape update tints the row and its whole opened body #fafbfc (`.rp-tgroup.open .rp-trow`, `.rp-tbody`). Nutrition tints only the row head #fafbfd (`.rn-day.open &gt; .rd-row-main`, nutrition.css:66). Lifestyle's open check-in has no tint at all. #fafbfc is also a third near-white beside the hover token #fafbfd.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §8: one hover for every row, #fafbfd; one list row everywhere</p>
+  <p class="fix"><b>Fix</b> Pick one open state for every log (Lifestyle's: no tint, hover #fafbfd only) and remove the #fafbfc backgrounds from `.rp-tgroup.open .rp-trow` and `.rp-tbody`, and the open background from `.rn-day.open`.</p>
+  <code>app/admin/redesign/pictures/pictures.css:245</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Nutrition tab, Supplements with no items (a phase still running)</span></div>
+  <p class="what">With no supplements the card holds only the `+ Item` text button (`.rls-add`, 36px, margin 6px 0 0 8px) inside the card's 2px/8px padding: no `None yet` word, and a different height from Lifestyle's empty `None yet` + Metric box, which uses `.rls-empty` with its white 32px pill.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §1: every empty box is one box: the word and its one action (`a rhythm's None yet and + Metric`), `.rls-empty`, 53.5px</p>
+  <p class="fix"><b>Fix</b> When `supps.length === 0` and the phase isn't ended, render `&lt;div className="rls-empty"&gt;&lt;span&gt;None yet&lt;/span&gt;&lt;button className="rls-add"&gt;+ Item&lt;/button&gt;&lt;/div&gt;`, as Tracked metrics does.</p>
+  <code>app/admin/redesign/nutrition/NutritionDraft.tsx:797</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Lifestyle tab, Tracked metrics empty boxes (No phase yet vs None yet)</span></div>
+  <p class="what">In one card, `No phase yet` takes `trn-btn primary`, an ink pill 34px high (trn.css:40). `None yet` takes `.rls-add` as a white hairline pill 32px high (measurements.css:226). The same slot shows two different pills, 2px apart in height, one ink and one white.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §1: every empty box is one box, its action on the right in the card's middle</p>
+  <p class="fix"><b>Fix</b> Give both empty boxes one action style and one height. Since `.rls-empty .rls-add` is the white pill, make New phase the same 32px white hairline pill, or settle both on one class.</p>
+  <code>app/admin/redesign/measurements/MeasurementsDraft.tsx:623</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Empty values across Lifestyle, Nutrition and Shape update tables</span></div>
+  <p class="what">The 'nothing here' grey is a different colour in each table. Lifestyle's table dash is #c3c9d2 (`.rm-td.none`), Lifestyle's Last column `None yet` is #98a2b3 13px (`.rls-last.none`, :215), Nutrition's ended field dash is #b0b6c0 (`.rd-cell-ro.none`, nutrition.css:147), and Shape update's weight dash is #98a2b3 13px (`.rp-trow .none`, pictures.css:116). #c3c9d2 and #b0b6c0 are not tokens. The glyph varies too: the Nutrition figures card writes `–` (en dash, NutritionDraft.tsx:443) while every table writes `—`.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §2 tokens: muted #8b93a1, faint #98A2B3; one grey per job</p>
+  <p class="fix"><b>Fix</b> Use one class for an empty value (faint #98a2b3, 500) and one glyph (`—`) in all three tabs, including Nutrition's stats.</p>
+  <code>app/admin/redesign/measurements/measurements.css:78</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Nutrition tab, an opened day, the coach's comment under a meal</span></div>
+  <p class="what">`.rn-said` puts the coach's comment in a #f5f6f8 box (radius 10, padding 8px 12px, 12.5px text in #313851). Its label `b` is 10.5px at letter-spacing .08em, not .16em. The same comments in the meal's photo pop-up (`.rn-shotsaid`) and on Shape update (`.rp-said`) are flat rows: the time grey 12.5px, then the words in 14px body grey. The same thing is drawn two ways on one tab.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §3/§8: no tinted blocks (one place keeps them: Training's logged sets); small caps 10.5px/600/.16em; §8 ClientNote voice: 'no band, no tint'</p>
+  <p class="fix"><b>Fix</b> Draw the meal's comments as `.rn-shotsaid` / `.rp-said` do: flat, the time grey then the words, no box.</p>
+  <code>app/admin/redesign/nutrition/nutrition.css:100</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Lifestyle tab, Tracked metrics, the Group column's pills</span></div>
+  <p class="what">The group pill's background is `m.tint` from categoryColors.ts: solid pastels like #cfe0f2 (body), #f3cfcf (stress), #f4dcc0 (fatigue) and #d5d2f3 (training). These are about 20–25% strength, roughly twice the 12% tint every other tag in the admin uses, so a column of them reads as filled blocks.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §3: a colour appears as 'a tinted tag (background rgba(accent, .12), text and icon in the accent)… Never a big filled block'</p>
+  <p class="fix"><b>Fix</b> Use `rgba(${groupColour(key).rgb}, .12)` as the pill's background, keeping the text in `hex`.</p>
+  <code>app/admin/redesign/measurements/MeasurementsDraft.tsx:671</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Lifestyle tab, Check-ins Graph's axis and hover pill vs the Table</span></div>
+  <p class="what">The Table dates rows with `logDate` (`Fri, 9 Oct`; a week as its Monday). The Graph reads `p.label` from queries.ts, which is built with toLocaleDateString (`Fri 9 Oct`, no comma, :14372) and `Week 42` for weekly (:14382). So the same weekly check-in is `Mon, 12 Oct` in Table and `Week 42` in Graph, including in the hover pill.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §7/§8: a log's date via `logDate` (`Tue, 21 Oct`), a weekly check-in dated by its Monday; one helper writes them</p>
+  <p class="fix"><b>Fix</b> In MetricGraph, build the axis and pill dates from the period key with logDate/dayMonth (the Monday for weekly), as `logWhen` does for the Table.</p>
+  <code>app/lib/queries.ts:14382</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Shape update tab, All shape updates rows</span></div>
+  <p class="what">`.rp-tsheet b` draws `Shape update 3` at 14px/500, the same weight as the date before it. The weigh-in `.rp-tweight` is 14px/500 too, while figures in Lifestyle's and Nutrition's logs are 14px/600.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §9b: in a log, the date leads as its light part 'and the thing itself semi-bold (15px/600), as Training's sessions'</p>
+  <p class="fix"><b>Fix</b> Set `.rp-tsheet b` to 15px/600, and `.rp-tweight` to 600 like the other logs' figures.</p>
+  <code>app/admin/redesign/pictures/pictures.css:109</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Shape update Setup pop-up, removing an angle that has photos</span></div>
+  <p class="what">Setup uses the bare `dlh-ack` row with a `dlh-box` that renders a typed `✓` at font-weight 700 (trn.css:293), worded `Delete Anna's 3 photos of Back too`. Lifestyle's Remove metric pop-up on the next tab uses `ConfirmChoice` in its grey well.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §4: the optional choice in its own soft grey well (`ConfirmChoice`); a tick the client's data hangs on is worded as what the coach accepts (`I understand Alex's logged sets are deleted`); weights 500/600 only</p>
+  <p class="fix"><b>Fix</b> Use `ConfirmChoice` (title `I understand Anna's 3 photos of Back are deleted`, the angles as its grey sub-line).</p>
+  <code>app/admin/redesign/pictures/PicturesDraft.tsx:687</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Nutrition tab, Daily targets rows and an opened day's meals</span></div>
+  <p class="what">`.rn-meal { border-top: 1px solid #eceff3 }` and the targets' `.rd-row` (draft.css:140, #eceff3, not overridden under .rnt) draw lines between rows in #eceff3. The Supplements and log rows on the same tab use #eef0f3. The ring track and split bar (`.rn-ring-track`, `.rn-split`) also use #eceff3.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §2: divider #EEF0F3; §8 one list row, hairline #eef0f3</p>
+  <p class="fix"><b>Fix</b> Set `.rd.rnt .rd-row` and `.rn-meal` borders to #eef0f3, and use the token for the ring track and split background too.</p>
+  <code>app/admin/redesign/nutrition/nutrition.css:87</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Nutrition tab, an opened day, a meal's camera button beside the day's message button</span></div>
+  <p class="what">The meal's camera is `rd-btn ghost sm`: a 28px rounded square (radius 10px, draft.css:48-53) with a transparent 1px border. The day's Message button a few pixels above it is the 30px round `.trn-row-more`. Its 'commented' mark is a filled 7px dot in an off-palette green #1b7a4b (`.rn-shot.said::after`, nutrition.css:96), where the admin's green is #2f7a3f and a mark is a ring.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §8: one ⋯ / round row button for every row, `trn-row-more` (30px, round, #F5F6F8 on hover)</p>
+  <p class="fix"><b>Fix</b> Make the camera a `trn-row-more` button, and show 'has comments' with the palette green #2f7a3f (or drop it, since the comments show under the meal).</p>
+  <code>app/admin/redesign/nutrition/NutritionDraft.tsx:1431</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Off the line</span><span class="where">Nutrition log vs Lifestyle check-ins, the note pen after the date's chevron</span></div>
+  <p class="what">Lifestyle zeroes the pen's margin (`.rm-td.date .rd-notemark { margin-left: 0 }`), so the pen sits 8px after the chevron (the cell's gap). Nutrition keeps the default `margin-left: 8px` (draft.css:101) on top of `.rd-ex-name`'s 8px gap, so the pen sits 16px after the chevron. The notemark title also differs: `A note from the client` (NutritionDraft.tsx:1385) vs `A note from {firstName}`.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §8: the note pen right after the date and chevron, the same on every log</p>
+  <p class="fix"><b>Fix</b> Move the margin-left: 0 to a shared rule for `.rd-row-hit + .rd-notemark` (or `.rd-ex-name &gt; .rd-notemark`), and title Nutrition's `A note from ${firstName}`.</p>
+  <code>app/admin/redesign/measurements/measurements.css:53</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Off the line</span><span class="where">Nutrition tab, an opened day: the meals' Kcal column under the day's Logged column</span></div>
+  <p class="what">The day row's grid is `150px 84px 84px …` (kcal at x=150+gap), but the meals' grid is `minmax(160px, 1fr) 84px 72px…`. The meal Kcal column therefore floats with the card width and never sits under the day's `Logged` figure, and each meal's Protein/Carbs/Fat columns don't line up with the day's macro column either.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §8: every column lines up; the opened day's meals 'keep those edges'</p>
+  <p class="fix"><b>Fix</b> Start the meal grid with the day's fixed 150px column so Kcal lands under Logged, or give the meal heads their own fixed first column the same as the day's.</p>
+  <code>app/admin/redesign/nutrition/NutritionDraft.tsx:490</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Nutrition tab, Supplements: a new row's empty fields</span></div>
+  <p class="what">A supplement's fields show sample words as placeholders: `Creatine`, `5 g`, `With breakfast`. Shape update's Setup does the same with `Morning, before breakfast. Same spot and light each time…` (PicturesDraft.tsx:627).</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §1 'Nothing pre-written'; §7 TimePick 'empty with no sample in it ("why is there the 15:30? Useless")'; §8 cardio 'typed in place with no sample figures'</p>
+  <p class="fix"><b>Fix</b> Drop the sample placeholders (leave the fields empty, or use `—` as Notes already does), and drop the Setup instructions sample.</p>
+  <code>app/admin/redesign/nutrition/NutritionDraft.tsx:770</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Off the line</span><span class="where">Nutrition Supplements rows vs Lifestyle Tracked metrics rows</span></div>
+  <p class="what">Both cards use `.rls-cols`/`.rls-row-main` with a 20px grip column, but Lifestyle's grid adds `columnGap: 20` (MeasurementsDraft.tsx:421) and Nutrition's `sGrid` sets no gap. The supplement name starts 30px in and its columns have no gutter, while the metric name starts 50px in. The `+ Metric`/`+ Item` button (margin 8px + padding 12px) puts its + at 20px, so it lines up with neither the grip (10px) nor the names.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §8: one list row everywhere; cross-tab details applied on every tab</p>
+  <p class="fix"><b>Fix</b> Give sGrid `columnGap: 20` like the metrics grid, and set `.rls-add`'s left edge to the name column (or the grip's 10px).</p>
+  <code>app/admin/redesign/nutrition/NutritionDraft.tsx:485</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Nutrition tab, Daily targets</span></div>
+  <p class="what">The day type shows three times in one card: the Training | Rest capsule, the ring's label `Training days` (`.rn-ring-label`, 13px/600) under the dial, and the row name `Training days` in the table beside it.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §1: 'Say a thing once'</p>
+  <p class="fix"><b>Fix</b> Drop the ring's label (the capsule and the row say it), or drop the row name.</p>
+  <code>app/admin/redesign/nutrition/NutritionDraft.tsx:685</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Nutrition tab, Daily targets ring, `KCAL` under the figure</span></div>
+  <p class="what">`.rn-ring-kcal small` is 11px, letter-spacing .1em, #8b93a1 (its weight was 700, and is overridden to 600 at :135). Every other small caps label on the tab (`.rls-fig-label`, `.rls-cols`) is 10.5px/.16em/#5b6474.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §2: small caps labels 10.5px, 600, letter-spacing .16em, #5b6474</p>
+  <p class="fix"><b>Fix</b> Set `.rn-ring-kcal small` to 10.5px, letter-spacing .16em, #5b6474.</p>
+  <code>app/admin/redesign/nutrition/nutrition.css:31</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Nutrition tab, an opened day's food names</span></div>
+  <p class="what">`.rn-food-name` is #313851 and `.rn-food` is #5b6474 at 12.5px, while the day note right above is body #3a4250 at 14px. #313851 isn't a token. The same grey appears in `.rd-tick` (draft.css:445), which the targets' 'Same on…' label overrides back to #3a4250.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §2 tokens: ink #141a24, body #3a4250, secondary #5b6474</p>
+  <p class="fix"><b>Fix</b> Set food names to body #3a4250.</p>
+  <code>app/admin/redesign/nutrition/nutrition.css:93</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Lifestyle tab, Check-ins table column heads (second line `BODY | KG`)</span></div>
+  <p class="what">Each head is two small caps lines at different sizes and spacing: the metric name at 10.5px/.16em (`.rm-th`), then the group and unit `em` at 10px with letter-spacing .06em, in the group colour.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §2: small caps 10.5px, 600, .16em</p>
+  <p class="fix"><b>Fix</b> Set `.rm-th em` to 10.5px and .16em (keep the colour), or drop it to plain 12px/500 text if it should read as a fact rather than a label.</p>
+  <code>app/admin/redesign/measurements/measurements.css:47</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Lifestyle tab, Tracked metrics head</span></div>
+  <p class="what">The section's fact line says `3 daily metrics`, and the Daily | Weekly | Monthly capsule beside it already carries each rhythm's count (`Daily 3`, `.rm-cad-count`). The count shows twice on one line.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §1: 'Say a thing once'</p>
+  <p class="fix"><b>Fix</b> Drop the count from the fact line (keep the `opened Monday` fact on an ended phase), or drop the counts from the capsule.</p>
+  <code>app/admin/redesign/measurements/MeasurementsDraft.tsx:568</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Lifestyle tab, Check-ins Graph: reading a day, the axis and the strip</span></div>
+  <p class="what">The Graph is drawn a little differently from Home's Weight. Its hover ring has a 2px ink border vs Home's 1.6px (`.rh-wring`). Its pill sets the value and day both at 600 ink, where Home's day is 500 #8b93a1 (`.rh-wtip-day`). Its y and x axis labels are #8b93a1, where Home's are #98a2b3 (`.rh-wgrid`, `.rh-waxis`). Its strip's 'missed' marks are neutral #EEF0F3, where Home's are a pale of the line's colour (#dbe5f0). The pill sits at top −30px vs −32px.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §8: every line chart one way (Home's Weight is the model): 'an ink ring and a white hairline pill'</p>
+  <p class="fix"><b>Fix</b> Match Home: ring border 1.6px, the day part of the pill in its own 500 grey span, axis labels #98a2b3, missed marks a pale of the metric colour (e.g. its rgb at .18).</p>
+  <code>app/admin/redesign/measurements/measurements.css:139</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Lifestyle tab, Graph, a metric with nothing logged</span></div>
+  <p class="what">`.rm-graph-empty` centres `Nothing logged` horizontally (text-align: center), unlike every other empty word in the admin.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §1: a card or list holding nothing but its empty word says it on the left, midway down</p>
+  <p class="fix"><b>Fix</b> Set text-align: left (keeping margin auto 0 for the vertical middle).</p>
+  <code>app/admin/redesign/measurements/measurements.css:153</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Lifestyle tab, when a save fails</span></div>
+  <p class="what">Lifestyle runs its own copy of the save queue (lines 185-214) and on a failure also fires `toast.error("Not saved")` on top of the header's `Not saved | Retry`. Nutrition and Shape update use `useSaveQueue`, which shows the status alone.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §9: one save status, drawn by one part (`SaveStatus`)…no toast for a save; the queue is `useSaveQueue`</p>
+  <p class="fix"><b>Fix</b> Remove the toast (or move Lifestyle onto `useSaveQueue`), so a failure shows only in the SaveStatus.</p>
+  <code>app/admin/redesign/measurements/MeasurementsDraft.tsx:207</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Shape update tab, All shape updates rows with the keyboard</span></div>
+  <p class="what">`.rp-trow:focus-visible { outline: 2px solid #141a24; outline-offset: -2px }` draws an ink ring round the whole row. Lifestyle's and Nutrition's rows underline the date (`.rd-row-hit`).</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §9b Meetings: 'A row that opens shows keyboard focus as a quiet underline on its title, never a ring round the row' (`.rd-row-hit:focus-visible`, draft.css:107)</p>
+  <p class="fix"><b>Fix</b> Remove the outline and underline `.rd-logdate` (or the title) on `.rp-trow:focus-visible`, as `.rd-row-hit:focus-visible` does.</p>
+  <code>app/admin/redesign/pictures/pictures.css:106</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Shape update tab, the update on top vs Compare vs All shape updates</span></div>
+  <p class="what">The top section uses its own `.rp-selhead`: the title with the date beside it on the baseline in #8b93a1 (`.rp-selmeta`, :32). Compare and All shape updates use `.trn-weekhead`, where a fact sits under the title in #5b6474. One tab draws its section heads two ways, with two greys for the fact.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §9b: each section's title (20px/600) and its status on the page (Training's `.trn-weekhead`, its fact 13px/500 #5b6474 under the title)</p>
+  <p class="fix"><b>Fix</b> Build the top section's head as `trn-weekhead` (h2 with the date as its fact span under it).</p>
+  <code>app/admin/redesign/pictures/PicturesDraft.tsx:269</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Off the line</span><span class="where">Shape update tab, the open update's card vs the Compare card vs the log card</span></div>
+  <p class="what">The open update's card has `padding: 14px` all round, the Compare card has `16px 18px 18px` (:165), and the log rows sit 18px in. The photos start 4px left of everything else on the tab and sit closer to the top edge.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §8 one list row: the first column 18px in; cards share their inner edge</p>
+  <p class="fix"><b>Fix</b> Give `.rp-sheet` 16px 18px 18px padding like Compare, so all three cards share the 18px left edge.</p>
+  <code>app/admin/redesign/pictures/pictures.css:37</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Shape update tab, photos on the open update vs in Compare</span></div>
+  <p class="what">A sheet photo `.rp-tile` is radius 12 with no edge. A Compare photo `.cmp-photo` is radius 16 with an inset #e1e5eb hairline. An empty place is a solid inset hairline on the sheet (`.rp-hole`, 11px/500 #98a2b3 words) but a 1.5px dashed #c9cfd8 edge in Compare (`.cmp-photo.none`, 13px/500 #8b93a1). The + Add tile is dashed in yet another grey, #c5ccd8.</p>
+  <p class="rule">Same thing drawn the same way across one screen</p>
+  <p class="fix"><b>Fix</b> Use one radius (12) for every photo, and one empty-place drawing (the dashed edge the rule names for `Not taken`) with one size and grey for its words.</p>
+  <code>app/admin/redesign/pictures/pictures.css:191</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Shape update tab, an empty place on the open update (and on an opened past one)</span></div>
+  <p class="what">An empty tile shows the camera and `Waiting` inside it (`emptyText`), and the caption right under it says `Waiting` again in rust (`.rp-cap-state`). Past rows do the same with `Missing` (line 425/428).</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §1: 'Say a thing once'</p>
+  <p class="fix"><b>Fix</b> Pass `emptyText=""` (camera alone in the tile) and keep the caption's state word.</p>
+  <code>app/admin/redesign/pictures/PicturesDraft.tsx:280</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Shape update tab header, the Setup pill and the Remind pill</span></div>
+  <p class="what">`.rp-setup-btn` re-declares the whole pill on top of `trn-pill`: left padding 10px vs trn-pill's 12px, and hover #c5ccd8 vs trn-pill's ink edge. The two rules have equal specificity, so which one wins depends on stylesheet order. `.rp-pill` (Remind, :73) is another hand copy, also with the #c5ccd8 hover, and so is `.rp-full` (Open full size).</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §9b: a tab's own actions are Training's white pills (`trn-pill`), 'Shape update's Setup the same pill'</p>
+  <p class="fix"><b>Fix</b> Delete the copied declarations and let `trn-pill` draw Setup and Remind (keep only the `small` facts styling).</p>
+  <code>app/admin/redesign/pictures/pictures.css:14</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Shape update tab, a photo opened big</span></div>
+  <p class="what">`.rp-photodlg` copies the whole .dlh card by hand (radius 20, padding, shadow, font-family). Its photo sits letterboxed on a near-black #0b0f16 block (`.rp-big img`), while Nutrition's meal photo pop-up shows the picture in its own shape with no dark block. Its foot button says `Open full size` (three words where the rule asks for one, e.g. `Open`).</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §11: 'Don't add a CSS file for a pop-up that fits .dlh'; Nutrition's photo pop-up: 'a stage of one height holds it in its own shape (no dark block round it)'</p>
+  <p class="fix"><b>Fix</b> Use `className="dlh rp-photodlg"` with width only, drop the #0b0f16 background (a fixed-height stage as `.rn-shotstage`), and shorten the button to `Open`.</p>
+  <code>app/admin/redesign/pictures/pictures.css:217</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Setup's angle rows vs Lifestyle and Nutrition rows</span></div>
+  <p class="what">The drag grip is drawn at 10x14px in a 14px column (#c5ccd8) in Setup (`.rp-agrip svg`). Metric and supplement rows draw it at 14x14px in a 16–20px column (`.rls-row-main .trn-grip svg`, measurements.css:207).</p>
+  <p class="rule">Same control drawn the same everywhere</p>
+  <p class="fix"><b>Fix</b> Use the rows' grip size (14x14 in a 16px column) in Setup.</p>
+  <code>app/admin/redesign/pictures/pictures.css:134</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Shape update tab, Compare's two update pickers</span></div>
+  <p class="what">`.cmp-week` is 42px tall, a rounded rectangle (radius 12) at 14px/600 with an 11px chevron, sitting directly over the 36px angle capsule in the same card. Every other picker trigger in the admin is a 36px pill (radius 999) at 13px.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §6: a floating-list trigger is the 36px white pill (the Feed's client filter); §5 capsules 36px</p>
+  <p class="fix"><b>Fix</b> Make `.cmp-week` 36px with radius 999 and 13px/600 words.</p>
+  <code>app/admin/redesign/pictures/pictures.css:179</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Shape update tab, the line above Weight and Remind on the open update</span></div>
+  <p class="what">`.rp-foot` puts a 1px #eef0f3 border-top above the weigh-in and the Remind pill, inside a card that already parts things with its 12px gap.</p>
+  <p class="rule">DESIGN-RULES-ADMIN.md §2: a line is only for what space can't part (rows in a table, a card's edge); DESIGN-RULES.md §2: no lines above buttons</p>
+  <p class="fix"><b>Fix</b> Remove the border-top (keep the padding-top as space).</p>
+  <code>app/admin/redesign/pictures/pictures.css:68</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Polish</span><span class="where">Shape update tab, the pager's count under All shape updates</span></div>
+  <p class="what">Lifestyle passes noun `days`/`weeks` and Nutrition passes `days`, so their counts read `1–20 of 84 days`. Shape update passes no noun, so its count reads `1–20 of 23`.</p>
+  <p class="rule">Pager drawn one way on every log</p>
+  <p class="fix"><b>Fix</b> Pass `noun="shape updates"` (or drop the noun on all three).</p>
+  <code>app/admin/redesign/pictures/PicturesDraft.tsx:439</code>
+</article></section><section id="meetings-invoices"><h2>Meetings, Invoices, Calendar <small>31 <i></i> 2 high <i></i> 10 medium <i></i> 19 low</small></h2><article class="f high" data-sev="high">
+  <div class="fh"><span class="sev">high</span><span class="kind">Breaks a rule</span><span class="where">Meetings: Mark completed opens 'How did the call go?'</span></div>
+  <p class="what">The footer has no Cancel. In Cancel's text-button place (.dlh-cancel) it puts 'Complete without one', a three-word sentence, then the ink Complete. Every other .dlh card ends in Cancel and a one-word verb.</p>
+  <p class="rule">ADMIN §4 Footer: 'Cancel is a text button… The action is a black pill'; §1 'Buttons say the action, one word when it can'</p>
+  <p class="fix"><b>Fix</b> Put Cancel (.dlh-cancel) back on the footer. Let Complete run with an empty summary, so the second button is no longer needed.</p>
+  <code>app/admin/redesign/meetings/MeetingsDraft.tsx:1649</code>
+</article><article class="f high" data-sev="high">
+  <div class="fh"><span class="sev">high</span><span class="kind">Breaks a rule</span><span class="where">Invoices: a row opened as it prints (/admin/redesign/invoices/[id])</span></div>
+  <p class="what">The coach's bar over the sheet is the old style. '‹ Invoices' and 'Print or save as PDF' are .ivp-btn: radius-10 boxes with a 1px border, 13px/700, navy #1e3a6e words, and the print button is a navy fill. The Missing line (.ivp-missing) is a tinted rust block with 700 links. The page is #eef1f5, not the admin's #f4f7fc.</p>
+  <p class="rule">ADMIN §2: 'Never navy… for an action… Actions and selections are ink', 'weights 500 and 600 only'; §4 pills radius 999</p>
+  <p class="fix"><b>Fix</b> Draw the bar with the admin's parts: a ghost back link, the print action as the ink pill (or a white .trn-pill), 600 weights, and Missing as a short rust fact with its fix pill, on #f4f7fc.</p>
+  <code>app/components/invoice-sheet.css:7</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Meetings: a call's ⋯ → Edit link pop-up</span></div>
+  <p class="what">Clearing the field swaps the ink Save pill for red 'Remove' words (.dlh-delete) on the right, after Cancel. There is then no ink action, and the destructive word sits where Save sits.</p>
+  <p class="rule">ADMIN §4: 'In an edit pop-up, Delete of an existing thing sits on the footer's left as red words, no pill (dlh-delete)'</p>
+  <p class="fix"><b>Fix</b> Always draw Remove on the footer's left while a link exists, and keep the ink Save on the right (disabled until something changes).</p>
+  <code>app/admin/redesign/meetings/MeetingsDraft.tsx:1584</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Schedule a meeting / Reschedule: the Timezone list</span></div>
+  <p class="what">The .rt-tzp-pop list is drawn its own way: radius 12, padding 8, shadow '0 16px 32px -12px rgba(20,26,36,.25)' plus a 1px #e1e5eb edge. Its items are 'padding 7px 8px', radius 8, 13.5px/500.</p>
+  <p class="rule">ADMIN §6: every floating list wears the ⋯ menu's look: 'radius 10, 5px of padding, the shadow 0 12px 28px rgba(20,30,50,.16) and no edge, items 34px at 13.5px/600 with radius 7'</p>
+  <p class="fix"><b>Fix</b> Restyle .rt-tzp-pop and .rt-tzp-item with the .pb-menu values, or rebuild the list on Picker or the shared floating list.</p>
+  <code>app/admin/redesign/meetings/meetings.css:156</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Schedule a meeting's Time / At, and the Calendar entry's Starts / Ends lists</span></div>
+  <p class="what">.tpk-time rows are 36px at 13.5px/500 with radius 8. In the same pop-up, the BoxPick lists (Repeat, On, Apply to) are 34px at 13.5px/600 with radius 7, and their picked row is grey #f5f6f8, while TimePick's picked row is an ink fill. The Timezone list's picked row is grey again. One pop-up has three floating lists in three looks.</p>
+  <p class="rule">ADMIN §6 'items 34px at 13.5px/600 with radius 7'; §7 TimePick 'the picked one ink'</p>
+  <p class="fix"><b>Fix</b> Make .tpk-time 34px, 600 and radius 7. Choose one picked-row look for every floating list (ink as TimePick, or the grey the menus use) and apply it to BoxPick and Timezone too.</p>
+  <code>app/admin/redesign/time-pick.css:15</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Schedule a meeting / Reschedule pop-up (and the Calendar entry pop-up)</span></div>
+  <p class="what">The small-caps labels in one card come in three sizes. Field labels (.npd-label: KIND OF CALL, TOPIC, TIMEZONE, LENGTH) are 10.5px/.16em in #5b6474. Box heads (.npd-date-head: REPEAT, ON, DATE, TIME) are 10px/.14em in #98a2b3. The reschedule well's NOW / NEW (.rt-moving-at small, meetings.css:120) is 9.5px/.14em in #98a2b3.</p>
+  <p class="rule">ADMIN §2: 'Small caps labels: 10.5px, 600, letter-spacing .16em, uppercase, #5b6474'</p>
+  <p class="fix"><b>Fix</b> Set .npd-date-head and .rt-moving-at small to 10.5px/.16em. If box heads stay quieter than field labels, say so as a rule; otherwise use #5b6474.</p>
+  <code>app/admin/redesign/plan/phase-dialog.css:63</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Meetings: Past calls, the kind icon before each title</span></div>
+  <p class="what">KindMarkIcon is a local copy at 16px with strokeWidth 1.8 and its own spacing (.rt-kindicon: margin-right 10px, translate 0 1px). Activity and the Feed draw the same call icon through KindMark at 16px with strokeWidth 2 (.rd-kind).</p>
+  <p class="rule">ADMIN §8: 'A category in a feed or a log is its icon in its colour, right before the thing, as Activity draws it (27 Oct, Alex: one way everywhere)'</p>
+  <p class="fix"><b>Fix</b> Use &lt;KindMark&gt; (or its drawing and stroke) for past calls and delete KindMarkIcon and .rt-kindicon.</p>
+  <code>app/admin/redesign/meetings/MeetingsDraft.tsx:163</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Meetings: after Schedule, Reschedule, Edit link, Complete and Delete</span></div>
+  <p class="what">The pop-ups end in toast.success('Saved', …), with descriptions such as 'Moved to 9/11 at 09:00 · Anna sees the new time', even though the tab has the shared SaveStatus after its title. The Calendar's equivalent pop-up saves through the header status and shows no toast.</p>
+  <p class="rule">ADMIN §9: 'One save status, drawn by one part… no toast for a save'</p>
+  <p class="fix"><b>Fix</b> Send the pop-up saves through useSaveQueue (or runCalendarSave's pattern) so the header says Saving… and saved, and drop savedToast.</p>
+  <code>app/admin/redesign/meetings/MeetingsDraft.tsx:113</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Meetings toasts; Calendar: a new entry's suggested title</span></div>
+  <p class="what">Picking a client with no title fills the title as `${label} · ${first}`, e.g. 'Client call · Anna'. It is saved as the entry's topic, so a typed middle dot then shows on the month chips, the day bars and Meetings. Meetings' toasts also join facts with ' · ' (MeetingsDraft.tsx:871, 876, 882–883), and the fallback message label does too (line 782).</p>
+  <p class="rule">ADMIN §1: 'Two facts on one line are parted by a short drawn upright bar, never a middle dot'</p>
+  <p class="fix"><b>Fix</b> Make the suggested title words only (e.g. 'Call with Anna'). Write the toasts as plain sentences with no middle dot.</p>
+  <code>app/admin/redesign/calendar/EntryDialog.tsx:158</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Every ⋯ menu in the area: Meetings Delete, Invoices Remove and Stop</span></div>
+  <p class="what">A destructive menu item is #a32d2d, while the pop-up footers' Delete and Remove words (.npd-delete, .dlh-delete) and the red pill (.dlh-danger) are #b42318. The same 'Delete' shows in two reds a click apart.</p>
+  <p class="rule">ADMIN §2: 'danger red #b42318'</p>
+  <p class="fix"><b>Fix</b> Set the .pb-menu destructive item and its icon to #b42318.</p>
+  <code>app/components/ui/ui.css:74</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Meetings: Past calls</span></div>
+  <p class="what">The date column is a fixed 150px (pGrid) for a logDate such as 'Tue, 21 Oct', about 85px wide, so the call title sits about 65px further right than on other logs. The opened summary's 192px indent (meetings.css:52) is hard-coded from the same 150.</p>
+  <p class="rule">ADMIN §8 a client's log: 'the date column logDateWidth of the whole list's dates'</p>
+  <p class="fix"><b>Fix</b> Size the column with logDateWidth(past.map(m =&gt; m.date)) and derive the summary's indent from it.</p>
+  <code>app/admin/redesign/meetings/MeetingsDraft.tsx:628</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Invoices: the invoice page's bar</span></div>
+  <p class="what">The bar explains the feature in a sentence: 'Not sent: your details come from Settings as they are now, and the client can't see it yet' / 'Sent: the details below are fixed'. The print button reads 'Print or save as PDF' (InvoicePrintButton.tsx).</p>
+  <p class="rule">ADMIN §1: 'No sentences explaining what a feature is or how it works… Buttons say the action, one word when it can'</p>
+  <p class="fix"><b>Fix</b> Show the state as the state pill (Not sent grey, Sent ink) and name the button 'Print'.</p>
+  <code>app/admin/redesign/invoices/[id]/page.tsx:46</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Meetings: the call row's facts vs the Reschedule well vs the Calendar entry tag</span></div>
+  <p class="what">The same kind or category tag is drawn three ways. In a call row (.rt-kind) it is 20px tall, 11px words, padding 0 8 0 6, an 11px icon at 1.8. In the Reschedule well (meetings.css:118) it is 22px with 11.5px words. The pop-up tag (.npd-track / .mvd-track, which the Calendar entry uses) is 22px, 11.5px words, padding 0 9, gap 5, a 12px icon at 1.6.</p>
+  <p class="rule">ADMIN §10.2: one tag row, 'the category or track tag in its colour (.mvd-track)'; DESIGN-RULES §5 icons at stroke 1.6</p>
+  <p class="fix"><b>Fix</b> Give KindTag the .npd-track metrics (22px, 11.5px, padding 0 9, gap 5, a 12px icon at 1.6) everywhere, and drop the local strokeWidth 1.8.</p>
+  <code>app/admin/redesign/meetings/meetings.css:215</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Schedule a meeting's Length vs the Calendar entry's Length</span></div>
+  <p class="what">The same choice for the same call reads two ways. Meetings shows '15 min | 30 min | 45 min | 60 min' with no Custom. The Calendar shows '15 min | 30 min | 45 min | 1 h | Custom'. The Calendar also has two length helpers: EntryDialog.tsx:60 writes '1 h 30', CalendarDay.tsx:46 writes '1 h 30 min'.</p>
+  <p class="rule">ADMIN §1 'Say a thing once'; the Calendar pop-up 'is the meeting scheduler's .npd'</p>
+  <p class="fix"><b>Fix</b> One lengthLabel helper shared by both pop-ups and the day bar ('1 h', '1 h 30 min'), the same options in both, Custom in both or in neither.</p>
+  <code>app/admin/redesign/calendar/EntryDialog.tsx:60</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Calendar entry pop-up: Starts → Ends; Reschedule: Now → New</span></div>
+  <p class="what">The Starts → Ends arrow is a 12px icon at strokeWidth 2.4 in #98a2b3. The Reschedule well's arrow (MeetingsDraft.tsx:1376) is 18px at 1.6 in #8b93a1. Both are the faint arrow between two times.</p>
+  <p class="rule">ADMIN §8: 'Two dates in a row get air: a faint grey arrow'; DESIGN-RULES §5 icons at stroke 1.6</p>
+  <p class="fix"><b>Fix</b> One arrow component at stroke 1.6 in one grey, sized 14px in both places.</p>
+  <code>app/admin/redesign/calendar/EntryDialog.tsx:82</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Calendar entry pop-up on a client's call vs Meetings Reschedule</span></div>
+  <p class="what">On a client's call, the entry pop-up's footer says 'Remove' in red words, but the confirm it opens asks 'Delete the call “…”?' with a 'Delete' pill. Meetings' Reschedule footer says 'Delete' for the same call. One action carries two verbs in one flow and across the two screens.</p>
+  <p class="rule">ADMIN §4 confirm anatomy: 'the verb alone… the same whether the choice is ticked or not'; §1 one word</p>
+  <p class="fix"><b>Fix</b> Make the footer word match the confirm: 'Delete' on a client's call, 'Remove' on the coach's own entries.</p>
+  <code>app/admin/redesign/calendar/EntryDialog.tsx:505</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Off the line</span><span class="where">Meetings Past calls vs Invoices All invoices and Recurring</span></div>
+  <p class="what">Past call rows are 'padding: 0 18px' and their column heads 'padding: 4px 18px 0'. Invoices rows are '0 12px 0 18px' and their heads '6px 12px 0 18px' (invoices.css:16, 19), as the Feed and Business rows are. Meetings' ⋯ therefore sits 6px further in than on Invoices, Feed and Business, and the heads start 2px higher.</p>
+  <p class="rule">ADMIN §8 'One list row everywhere… Meetings' past calls … alike'</p>
+  <p class="fix"><b>Fix</b> Use one set of numbers: rows '0 12px 0 18px', heads '4px 12px 0 18px'. Better, draw past calls with .rls-row / .rls-cols instead of overriding .rd-row.</p>
+  <code>app/admin/redesign/meetings/meetings.css:212</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Invoices cards vs Meetings Past calls card</span></div>
+  <p class="what">The list card's foot room differs. .riv-card is 'padding: 0 0 6px', .rt-log is '2px 0 8px' (meetings.css:208, the rls-card default), and Feed and Business cards are 'padding: 0'. The last row ends 6px, 8px or 0px above the card's edge depending on the tab.</p>
+  <p class="rule">ADMIN §8 one list row: 'the hairline from the card's edge to its edge… every row 52px'</p>
+  <p class="fix"><b>Fix</b> Use one padding for a list card (e.g. 0) on Invoices, Meetings, Feed and Business.</p>
+  <code>app/admin/redesign/invoices/invoices.css:14</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Invoices: All invoices Issued / Due, Recurring Next</span></div>
+  <p class="what">.riv-date is 13.5px/500 in #5b6474, though its comment says 'the row's light part, as every log's'. Every log's date (.rd-logdate) is 13.5px/500 in body grey #3a4250. Two greys do one job.</p>
+  <p class="rule">ADMIN §8: '.rd-logdate… 13.5px, 500, body grey #3a4250'</p>
+  <p class="fix"><b>Fix</b> Set .riv-date to color #3a4250 (late stays rust).</p>
+  <code>app/admin/redesign/invoices/invoices.css:27</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Invoices: Recurring 'Every' column vs All invoices 'Number' column</span></div>
+  <p class="what">The semi-bold first column is 14.5px/600 on Recurring (.riv-every) but 15px/600 on All invoices (.riv-number) and on Meetings past calls (.rt-call). Two cards one above the other use two sizes.</p>
+  <p class="rule">ADMIN §9b: 'the thing itself semi-bold (15px/600)'</p>
+  <p class="fix"><b>Fix</b> Set .riv-every to 15px.</p>
+  <code>app/admin/redesign/invoices/invoices.css:38</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Invoices: a recurring row's ⋯</span></div>
+  <p class="what">In this ⋯, Pause / Resume has no icon while Stop wears the TrashIcon, a bin for something that deletes nothing. Every other ⋯ in the area (Meetings, All invoices) gives each item an icon, and the bin means delete or remove.</p>
+  <p class="rule">ADMIN §8 'One ⋯ for every row and card'; DESIGN-RULES §5 one icon, one meaning</p>
+  <p class="fix"><b>Fix</b> Give Pause / Resume an icon (pause and play), and give Stop a stop mark instead of the bin.</p>
+  <code>app/admin/redesign/invoices/InvoicesDraft.tsx:237</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Polish</span><span class="where">Invoices: New invoice, the LINES label</span></div>
+  <p class="what">`d.taxLabel.toLowerCase()` turns 'VAT' into 'vat', so the label reads 'LINES | Prices include vat' (the small part is not uppercased). The figures card and the totals say 'VAT 21%'.</p>
+  
+  <p class="fix"><b>Fix</b> Keep the tax label as the coach set it: drop .toLowerCase().</p>
+  <code>app/admin/redesign/invoices/InvoicesDraft.tsx:460</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Invoices 'Missing from Settings' / 'not billed' rows vs Calendar double-booking rows</span></div>
+  <p class="what">The fact-and-fix row is drawn two ways. Invoices' .riv-fix is a radius-18 card with padding 9/11/9/17, rust words, and the fix as the 36px .trn-pill, so the row is about 56px. The Calendar's .rcl-clash is 48px tall with the fix as a 28px .rcl-fix capsule at 12.5px, which is also short of the 52px list row.</p>
+  <p class="rule">ADMIN §1 'A real problem is a short fact plus its fix button'; §8 'every row 52px'</p>
+  <p class="fix"><b>Fix</b> Make clash rows 52px, and give both screens the same fix-button size (the 36px trn-pill, or 28px in both).</p>
+  <code>app/admin/redesign/calendar/calendar.css:25</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Invoices: New invoice → Template list</span></div>
+  <p class="what">The template list overrides .pb-menu's padding to 6px (.riv-tpl-pop) and its rows to radius 10 (.riv-tpl-row), against 5px padding and radius 7 on every other floating list. The pinned 'Save as template' foot is radius '0 0 10px 10px'.</p>
+  <p class="rule">ADMIN §6 the ⋯ menu's look: 'radius 10, 5px of padding… items… with radius 7'</p>
+  <p class="fix"><b>Fix</b> Use 5px padding on .riv-tpl-pop, radius 7 on .riv-tpl-row and .riv-tpl-pick's focus ring, and radius 7 on the foot row.</p>
+  <code>app/admin/redesign/invoices/invoices.css:90</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Calendar: the month's weekdays and the day's ALL DAY label</span></div>
+  <p class="what">.rcl-weekday is 10.5px/.16em in #98a2b3 and .cdg-allday-label (line 96) is 10.5px/.12em in #98a2b3. Small-caps labels are #5b6474 at .16em elsewhere, so this page uses two spacings and the faint grey.</p>
+  <p class="rule">ADMIN §2: 'Small caps labels: 10.5px, 600, letter-spacing .16em, uppercase, #5b6474'</p>
+  <p class="fix"><b>Fix</b> Set both to .16em in #5b6474, or settle a rule for the quieter grid heads.</p>
+  <code>app/admin/redesign/calendar/calendar.css:62</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Calendar: hovering a day in the month</span></div>
+  <p class="what">A day's hover is #fafbfc and a day outside the month is #fbfbfc, near-misses of the one row hover #fafbfd. A day outside the month on hover then reads almost the same as one inside it.</p>
+  <p class="rule">ADMIN §8: 'One hover for every row and menu item… #fafbfd'</p>
+  <p class="fix"><b>Fix</b> Set .rcl-cell:hover to #fafbfd. Mark outside days by their faint numeral (already #c5ccd8) rather than a second near-white.</p>
+  <code>app/admin/redesign/calendar/calendar.css:67</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Calendar: the day's head ('Thursday 12/11 … 3 entries')</span></div>
+  <p class="what">In one head, the date after the title is 13px in #5b6474 (.rcl-titled &gt; span) and the count on the right is 13px in #8b93a1 (.rcl-count, line 41). Two greys are used for facts in the same line.</p>
+  <p class="rule">ADMIN §2 tokens: secondary #5b6474, muted #8b93a1 (one job, one grey)</p>
+  <p class="fix"><b>Fix</b> Use one grey for both, #8b93a1 as other section facts, or #5b6474 as trn-weekhead's span.</p>
+  <code>app/admin/redesign/calendar/calendar.css:40</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Meetings Link pop-up, Schedule pop-up, Calendar entry pop-up</span></div>
+  <p class="what">One message, 'Not a meeting link yet.', is drawn two ways: 13px/600 in the Link pop-up (.dlh-error, trn.css:297) and 13px/500 in the Schedule footer (.rt-bad). The Calendar footer adds a third wording, 'Not saved. Try again.' (.cal-error 13px/500), while the header's SaveStatus says 'Not saved | Retry' for the same failure.</p>
+  <p class="rule">ADMIN §9: 'One save status, drawn by one part'; §1 say a thing once</p>
+  <p class="fix"><b>Fix</b> Draw every pop-up's inline error in one style (13px/500 #b42318), and have the Calendar footer use SaveStatus's words.</p>
+  <code>app/admin/redesign/meetings/meetings.css:97</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Schedule a meeting: the month's key under the day list</span></div>
+  <p class="what">Meetings draws its own key, .rt-legend: 11px in #8b93a1 with 5px dots and lowercase 'this client' / 'others'. MonthRange's own key (.rdd-legend) is 11.5px in #5b6474 with 14×10 swatches. The day list also says 'no time' and 'done' in lowercase, and 'None' for an empty day while the Calendar says 'Nothing booked'.</p>
+  <p class="rule">ADMIN §7: 'One calendar… MonthRange'; §1 empty states one word, said once</p>
+  <p class="fix"><b>Fix</b> Use MonthRange's legend slot with its styles and capitalised words ('This client', 'Others'). Choose one empty word for a day with nothing on it.</p>
+  <code>app/admin/redesign/meetings/MeetingsDraft.tsx:1270</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Meetings: How did the call go? vs Invoices New invoice</span></div>
+  <p class="what">.dlh .rt-field has 'gap: 2px; margin-top: 6px' between label and line. The shared .dlh-field and Invoices' .riv-field have gap 4px. A label sits 2px closer to its field in one .dlh card than in the next.</p>
+  <p class="rule">ADMIN §4: 'A field in a .dlh card is .dlh-line under a .dlh-label' (one pattern)</p>
+  <p class="fix"><b>Fix</b> Replace .rt-field with the shared .dlh-field.</p>
+  <code>app/admin/redesign/meetings/meetings.css:149</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Polish</span><span class="where">Not seen: dead rules carrying old looks</span></div>
+  <p class="what">Unused selectors still define old drawings: .rt-ask (an inset-shadow card), .rt-band, .rt-band-right .trn-btn (36px), .rt-notes-tabs, .rt-kind.wide, and the Calendar's .pb-autosave status rules (calendar.css:15–17, replaced by SaveStatus). None is referenced in the JSX, so they can revive an old look on reuse.</p>
+  
+  <p class="fix"><b>Fix</b> Delete the unused rules.</p>
+  <code>app/admin/redesign/meetings/meetings.css:9</code>
+</article></section><section id="settings-library-coaches"><h2>Settings, Library, Coaches <small>31 <i></i> 2 high <i></i> 13 medium <i></i> 16 low</small></h2><p class="note">Plus New client and the subscribe screen.</p><article class="f high" data-sev="high">
+  <div class="fh"><span class="sev">high</span><span class="kind">Drawn two ways</span><span class="where">Settings, every section (Save bar, Plans, Logo, Account &amp; security, Online payments)</span></div>
+  <p class="what">The Settings page mounts no &lt;Toaster/&gt;: there's no RedesignShell and no ChatDock, and SettingsBoard has none. Library (LibraryDraft.tsx:503), Coaches (CoachesDraft.tsx:260) and Feed each mount their own. Every toast.success/toast.error Settings fires therefore never shows: SaveHost's 'Saved' and 'Couldn't save', Plans' 'Not saved. Try again.', ClerkAccount's Disconnect and Sign-out errors, 'Logo saved', 'Email changed'. The coach gets no word when a save fails.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §9: "a failure always says so"</p>
+  <p class="fix"><b>Fix</b> Mount &lt;Toaster /&gt; once in SettingsBoard (or SaveHost), as LibraryDraft and CoachesDraft do. Better still, mount it once in RedesignRail so no page can miss it.</p>
+  <code>app/admin/redesign/settings/page.tsx:158</code>
+</article><article class="f high" data-sev="high">
+  <div class="fh"><span class="sev">high</span><span class="kind">Breaks a rule</span><span class="where">Settings &gt; Profile &gt; Public profile, the Published switch at the form's foot</span></div>
+  <p class="what">.rpf-pub-sw is 36×22 with a 16px white knob and a 0 1px 3px shadow. Off, it is filled grey #d5dae3. It moves on a plain 0.2s ease. Settings' own .rst-switch (settings.css:128-131) is 34×20 with a 14px knob, white with a #dce1e8 hairline while off, ink while on, and moves over 250ms on cubic-bezier(.22,1,.36,1). These are two switches in one Settings page.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §5 / DESIGN-RULES §6: "Anything on/off: white while off, ink while on"; "a switch's knob eases the same" 250ms; settings.css:126 "34×20 with a 14px knob, as the Indefinite switch (6 Nov, Alex: admin audit)"</p>
+  <p class="fix"><b>Fix</b> Draw Published with the .rst-switch markup (MoreSettings' Switch) and delete .rpf-pub-sw and its knob shadow.</p>
+  <code>app/admin/redesign/profile/profile.css:74</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Settings &gt; Account &amp; security &gt; Devices, each device's fact line</span></div>
+  <p class="what">The device facts are joined with a typed ' | ' (`[d.browser, d.place, lastSeen].filter(Boolean).join(" | ")`), not the drawn bar.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §1: "parted by a short drawn upright bar… A typed '|' is too faint" (Sep / SepJoin)</p>
+  <p class="fix"><b>Fix</b> Use &lt;SepJoin parts={[d.browser, d.place, d.current ? null : lastSeen(d.lastActive)]} /&gt;.</p>
+  <code>app/admin/redesign/settings/ClerkAccount.tsx:90</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Settings &gt; Your data &gt; Export row</span></div>
+  <p class="what">The Export row's fact is typed as `{clients} clients | programmes, logs, check-ins, food, calls, invoices | one file`, with literal '|' characters.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §1: drawn bar, never a typed "|"</p>
+  <p class="fix"><b>Fix</b> Use &lt;SepJoin parts={[`${clients} clients`, 'programmes, logs, check-ins, food, calls, invoices', 'one file']} /&gt;.</p>
+  <code>app/admin/redesign/settings/MoreSettings.tsx:124</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Settings &gt; Account &amp; security &gt; Devices (when another device was last used)</span></div>
+  <p class="what">lastSeen() is a local copy of the 'last active' words, and it disagrees with app/lib/lastActive.ts. It says 'Active now' under 5 min (the shared rule is 2), '12 min ago' and '2 h ago' without 'Active', and '3 days ago', where the chat panel says 'Active yesterday' / 'Active 3/11'.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §8 chat panel: `Active now` (the last 2 minutes), `Active 12 min ago`, `Active 2 h ago`, `Active yesterday`, else `Active 3/11` (lastActiveWords)</p>
+  <p class="fix"><b>Fix</b> Replace lastSeen with lastActiveWords(new Date(d.lastActive).toISOString()).</p>
+  <code>app/admin/redesign/settings/ClerkAccount.tsx:22</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Settings &gt; Profile &gt; Photos (Upload/Replace) vs Settings &gt; Business details &gt; Logo (Upload/Replace)</span></div>
+  <p class="what">The photo rows' Upload/Replace is .trn-btn.rpf-up: 34px tall, padding 0 14px, a #c5ccd8 ring on hover, min-width 84px. The Logo's Upload/Replace (SettingsForms.tsx:246) is .trn-pill.rst-pill: 36px tall, an ink ring on hover. The same action, two pills on one page.</p>
+  <p class="rule">Same control drawn differently elsewhere (Logo's white pill, DESIGN-RULES-ADMIN §9b white pills `trn-pill`)</p>
+  <p class="fix"><b>Fix</b> Make PhotoSlot's button `trn-pill rst-pill` (keep min-width 84px if the column needs it) and drop .rpf-up.</p>
+  <code>app/admin/redesign/profile/ProfileEditor.tsx:497</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Settings rows (Disconnect, Remove), the Logo's Remove, Coaches' Decline/Remove, the demo pop-up's Remove</span></div>
+  <p class="what">Red word actions come in three sizes: .rst-remove (Logo) is 36px tall with padding 0 6px and no hover; .rst-danger (settings.css:104) is 32px with padding 0 10px and a #f5f6f8 hover; .rco-act.danger (coaches.css) is 30px with padding 0 8px. Ink and grey word actions differ the same way: .rst-act 32px ink, .rco-act 30px #5b6474, .sup-textact 30px with no padding, .sup-doneact 24px with an rgba(20,26,36,.06) hover, .lbx-act 24px.</p>
+  <p class="rule">DESIGN-RULES §6 text action "12–13px, 600, ink or #5b6474"; DESIGN-RULES-ADMIN §8 "One hover for every row and menu item"</p>
+  <p class="fix"><b>Fix</b> Pick one word-action class (e.g. .rst-act/.rst-danger at 32px, padding 0 10px, the #f5f6f8 hover) and use it for Logo Remove, the Coaches actions and Support's Done/Attach. Delete .rst-remove and give .sup-doneact the neutral hover.</p>
+  <code>app/admin/redesign/settings/settings.css:143</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Settings &gt; Invoicing &gt; Online payments; Account &amp; security &gt; Sign-in logins and Devices; Profile &gt; Photos</span></div>
+  <p class="what">Where a row's hover word sits next to its state pill changes from row to row. Stripe draws [Disconnect (hover)] [Connected pill] [Connect]. Google/Apple draw [Connected pill] [Disconnect (hover)] (ClerkAccount.tsx:69-75). This device draws [pill] [Sign out]. A photo draws [Remove (hover)] [Uploaded pill] [Upload button] (ProfileEditor.tsx:477-499). The pills land in different columns.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §8: "Everything in a row sits on the row's true middle, the same in every row"; pills "down a column" one width</p>
+  <p class="fix"><b>Fix</b> Use one order for every Settings row: name and fact, then the hover words, then the state pill, then the one resting action. Move Google/Apple's Disconnect and This device's Sign out before their pill.</p>
+  <code>app/admin/redesign/settings/SettingsForms.tsx:394</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Settings page as a whole (its right edge and the chat tab)</span></div>
+  <p class="what">Settings renders RedesignRail but no ChatDock and doesn't import messages.css, unlike Library, Coaches, Feed, Business, Calendar and Phases. On Settings the chat tab is missing and the page's 60px right reserve is gone, so the content runs 60px further right than on every other coach-level page.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §8: "The tabs never cover the page: a page with them keeps 60px on its right (messages.css)"</p>
+  <p class="fix"><b>Fix</b> Add &lt;ChatDock chats={loadChatDock(coach)} /&gt; and import ../messages/messages.css, as library/page.tsx does.</p>
+  <code>app/admin/redesign/settings/page.tsx:160</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Every toast (Settings Saved, Library Not saved, Coaches approved/removed)</span></div>
+  <p class="what">Toast titles are font-weight 700. The success icon is #1b7a4b (not #2f7a3f), the error icon #b3261e (not #b42318), the edge #dfe3e8 (not #E1E5EB), and the shadow is navy-tinted rgba(8,31,92,.35).</p>
+  <p class="rule">DESIGN-RULES-ADMIN §2: "Archivo, weights 500 and 600 only"; "Success green #2f7a3f · danger red #b42318"; hairline #E1E5EB</p>
+  <p class="fix"><b>Fix</b> [data-title] font-weight 600; icons #2f7a3f / #b42318; border #e1e5eb; shadow 0 12px 28px rgba(20,30,50,.16) as the floating lists.</p>
+  <code>app/components/ui/ui.css:63</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">Every ⋯ menu's Delete (Library card ⋯, Settings &gt; Plans ⋯)</span></div>
+  <p class="what">A destructive .pb-menu item and its icon are #a32d2d, a third red next to danger red #b42318 (used by .rst-danger, .dlh-danger and .rco-act.danger on the same screens).</p>
+  <p class="rule">DESIGN-RULES-ADMIN §2: "danger red #b42318"; §6 "a destructive item red"</p>
+  <p class="fix"><b>Fix</b> color: #b42318 for [data-variant="destructive"] and its svg.</p>
+  <code>app/components/ui/ui.css:75</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Settings &gt; Business details &gt; Address vs Settings &gt; Profile &gt; Your details &gt; Address vs New client</span></div>
+  <p class="what">The address is drawn three ways. Business details: 'Street and number' across, then City, Region, Postcode, with Country in a separate 'Where you do business' part. Profile &gt; Your details (ProfileDetails.tsx:84-105): 'Street and number', Postcode, City, Country in its own 3-column grid. New client and Details (AddressFields.tsx:42-71): 'Address', Postcode, City, Country. City and Postcode swap order, and the street's label differs.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §9b Details: "the address in its parts, as the business address in Settings: Address… across the row, Postcode and City side by side… then Country"; "one AddressFields"</p>
+  <p class="fix"><b>Fix</b> Use one order and one label everywhere: Address (across), Postcode, City, Country (and Region beside it). Use AddressFields (look="hairline") or the same field order in Business details and Your details.</p>
+  <code>app/admin/redesign/settings/SettingsForms.tsx:329</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Settings &gt; Profile &gt; Public profile, the foot ('Saved | 2 min ago' / 'Not saved yet')</span></div>
+  <p class="what">Profile draws its own save state: a static white .rst-bar card saying 'Saved | just now' or 'Not saved yet' in grey (#8b93a1), with its own ago() words. The admin's one status part (SaveStatus) says '✓ All changes saved' / 'Not saved | Retry' in red. The page's real status is already the SaveBar.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §9: "One save status, drawn by one part (SaveStatus)"</p>
+  <p class="fix"><b>Fix</b> Drop the Saved/ago text and keep only the Published switch on the foot, or show SaveStatus's own words there.</p>
+  <code>app/admin/redesign/profile/ProfileEditor.tsx:344</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Breaks a rule</span><span class="where">New client pop-up: Member info | App access</span></div>
+  <p class="what">.nc-hl .nc-steps is a hand-built capsule, not .rd-btn-group, and it isn't in SLIDE_ROWS (SlidePills.tsx lists only `.nc-hl .nc-pills`), so the picked pill jumps on a 0.2s background fade instead of sliding. Unpicked steps are font-weight 500 and the picked one 600 (globals.css:15563/15565), so the words shift as you switch.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §5: capsule "13px words at 600 picked or not, so a switch never moves what sits beside it"; "Every toggle slides… a new capsule joins by its class in SLIDE_ROWS"</p>
+  <p class="fix"><b>Fix</b> Give the row class rd-btn-group (or add `.nc-hl .nc-steps` to SLIDE_ROWS), with .nc-step font-weight 600 always and no background transition.</p>
+  <code>app/globals.css:15562</code>
+</article><article class="f medium" data-sev="medium">
+  <div class="fh"><span class="sev">medium</span><span class="kind">Drawn two ways</span><span class="where">Library &gt; Add video pop-up, Upload a file</span></div>
+  <p class="what">The drop zone promises 'MP4 or MOV | up to 200 MB' (MAX_BYTES 200 MB), but LibraryDraft.upload refuses anything over 128 MB with '{n} MB is over 128 MB' (LibraryDraft.tsx:39, 201). A 150 MB clip passes the pop-up and then fails with a different limit.</p>
+  <p class="rule">Same fact said two ways (DESIGN-RULES-ADMIN §1: facts)</p>
+  <p class="fix"><b>Fix</b> Let the pop-up take its limit as a prop (128 MB from the Library) or set MAX_BYTES to the /api/upload cap, so the words and the check agree.</p>
+  <code>app/admin/redesign/training/DemoVideoDialog.tsx:300</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Settings &gt; Account &amp; security &gt; Devices, the current device's pill</span></div>
+  <p class="what">'This device' wears trn-state good (green #2f7a3f). Green is the state pill for Complete / Done / Connected; 'this device' is no completion.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §8 state pill: "Complete / Completed / Done green… live or to read ink, missing… grey"</p>
+  <p class="fix"><b>Fix</b> Use trn-state live (ink), or grey with no class.</p>
+  <code>app/admin/redesign/settings/ClerkAccount.tsx:94</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Settings &gt; Billing, the plan's state pill</span></div>
+  <p class="what">Billing's state pill is a bare `trn-state` without `rst-state`. Every other Settings row pill has rst-state, which gives min-width 96px with the word centred, so 'Trial' or 'Active' here is narrower than 'Connected' / 'Soon' in the rows above and below it.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §8: "Down a column every pill is the column's width, the word centred" (.rst-state, settings.css:92)</p>
+  <p class="fix"><b>Fix</b> className={`trn-state rst-state${pill.tone ? ` ${pill.tone}` : ''}`}.</p>
+  <code>app/admin/redesign/settings/BillingSettings.tsx:59</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Library: an exercise card's ⋯ (Edit video, Move to, Delete); Settings &gt; Plans ⋯</span></div>
+  <p class="what">One menu, three stroke weights. All three icons render at 15px: PencilIcon has stroke 1.1 on a 16 grid (~1.03px), ArrowRightIcon 1.8 on 24 (~1.13px), TrashIcon 2 on 24 (~1.25px). The Move to sub-trigger's own chevron is drawn at stroke 2 (dropdown-menu.tsx:112). In Plans' ⋯ the Archive item has no icon while Delete has the Trash.</p>
+  <p class="rule">DESIGN-RULES §5: "Icons from different sets in one list draw at one weight"</p>
+  <p class="fix"><b>Fix</b> Draw the menu icons at one effective weight (e.g. 1.6 on the 24 grid, 1.2 on the 16 grid). Either give Archive/Restore an icon or drop the Trash from Plans' Delete.</p>
+  <code>app/admin/redesign/library/LibraryDraft.tsx:293</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Off the line</span><span class="where">Coaches (Accounts, Waiting, Support inbox) and Settings rows/Plans</span></div>
+  <p class="what">A card's right inner edge differs from card to card. The Support inbox row (.sup-ihead) is 56px tall with padding 0 16px 0 18px. Coaches' account rows (coaches.css .rco-row .rls-row-main) use 0 12px 0 18px. Settings' .rst-row uses 8px 14px 8px 18px, and .rst-plan uses 0 12px 0 18px. The last column (when / actions / pills) ends 12, 14 or 16px from the card edge, so the Support and Accounts cards on one page don't share a right edge.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §8 "One list row everywhere… every row 52px"; Coaches' cards share one page</p>
+  <p class="fix"><b>Fix</b> One row: 52px with padding 0 12px 0 18px for .sup-ihead, and .rst-row's right padding at 12px.</p>
+  <code>app/admin/redesign/settings/support.css:75</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Coaches page: Support card vs Accounts card</span></div>
+  <p class="what">Two cards on one page use different empty words: Support says 'None', Accounts (CoachesDraft.tsx:135) says 'None yet'. The demo pop-up's Your videos says 'None yet' with its own .dmvh-none (padding 4px 0, #98a2b3, not the one empty box), and the Library search miss is a bare .lbx-none paragraph on the page.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §1: "Empty states are one or two words: None yet"; "Every empty box… is one box (.rls-none in .rls-card)"</p>
+  <p class="fix"><b>Fix</b> Use one word on Coaches (None yet). Draw .dmvh-none as the empty word in the shared grey #8b93a1 with no padding of its own.</p>
+  <code>app/admin/redesign/coaches/SupportInbox.tsx:138</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">New client pop-up: Gender capsule</span></div>
+  <p class="what">.nc-hl .nc-pills .pl-chip is font-weight 500 unpicked and 600 picked (15597), so Male/Female/Other change width as they are picked, while .rd-btn-group buttons are 600 always.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §5: "13px words at 600 picked or not"</p>
+  <p class="fix"><b>Fix</b> font-weight: 600 on .nc-hl .nc-pills .pl-chip.</p>
+  <code>app/globals.css:15595</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Library &gt; a card's Add/Edit video pop-up: Paste a link | Upload a file | Your videos</span></div>
+  <p class="what">.dmvh-seg is a per-pop-up copy of the capsule with padding 3px and 30px buttons. The admin capsule (.rd-btn-group, measurements.css:156) has 4px of air and 28px buttons.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §5: "capsule (36px… 4px of air between the chosen one and the edge…) One rule for every tab: .rd-btn-group… no per-tab copies"</p>
+  <p class="fix"><b>Fix</b> Use padding 4px and button height 28px (keeping flex:1 for equal thirds), or build it on .rd-btn-group.</p>
+  <code>app/admin/redesign/training/demo-video.css:38</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Library &gt; Add video pop-up footer</span></div>
+  <p class="what">The primary button reads 'Add demo' (two words where 'Add' says it). The in-place Remove ask uses 'Keep' for its cancel (line 357), where every admin ask in place uses 'Cancel'. 'Open ↗' and 'Open the link ↗' carry a typed arrow, and the dialog keeps its own copies of dlh-x / dlh-cancel / dlh-go (.dmvh-x, .dmvh-cancel, .dmvh-primary, the last with a hover #2a3242 that .dlh-go doesn't have).</p>
+  <p class="rule">DESIGN-RULES-ADMIN §1: "Buttons say the action, one word when it can: Save, Delete, Remove, Add"; §4 "Cancel in words"</p>
+  <p class="fix"><b>Fix</b> 'Add', 'Cancel', 'Open' with ArrowRightIcon (as Privacy's rows). Reuse .dlh-x, .dlh-cancel and .dlh-go.</p>
+  <code>app/admin/redesign/training/DemoVideoDialog.tsx:376</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Library grid: the dashed + Exercise tile vs a card's dashed 'Add video' stage</span></div>
+  <p class="what">The two dashed add places side by side are drawn differently. + Exercise has words at 13.5px/600 in ink and a + in #5b6474, and its hover border is #c5ccd8 with a white fill. Add video has words at 13px/600 in #5b6474 and a + in #98a2b3 (library.css:75-78), with an 8px-radius dashed inset.</p>
+  <p class="rule">Same affordance drawn two ways on one grid</p>
+  <p class="fix"><b>Fix</b> Give both one recipe: 13px/600 #5b6474 words, the + 22px #98a2b3, ink on hover.</p>
+  <code>app/admin/redesign/library/library.css:107</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Library create panel (+ Exercise / + Group) vs Settings &gt; Plans inline form vs Settings Save bar</span></div>
+  <p class="what">The ink Add/Save pill varies between these places. In the floating create panel (.rd-addpop-go, .rd-addpop-cancel) it is 34px, disabled at opacity .4. In Plans' inline form, the Save bar and Support it is .dlh-go: 36px, disabled filled #c9cfd8. The demo pop-up's is 36px with a hover #2a3242, and New client's 36px with a hover #262e3b.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §4: "The action is a black pill (36px, radius 999)"</p>
+  <p class="fix"><b>Fix</b> Make .rd-addpop-go and -cancel 36px with the .dlh-go disabled look (#c9cfd8), and give every ink pill one hover (or none).</p>
+  <code>app/admin/redesign/training/trn.css:272</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Off the line</span><span class="where">Settings &gt; Profile &gt; Public profile &gt; Studies, Experience</span></div>
+  <p class="what">.rpf-list pads 8px 14px 10px 10px. The rows start 10px in (the grip), and '+ Study' / '+ Role' sit at 10px + 14px margin = 24px (profile.css:64). Every other Profile and Settings card puts its content 18px from the edge (.rst-grid padding 16px 18px, .rpf-chips 14px 18px, .rst-row 18px).</p>
+  <p class="rule">Left edges should line up between cards (the audit's 'left edges'); DESIGN-RULES-ADMIN §8 rows' first column 18px in</p>
+  <p class="fix"><b>Fix</b> Put the grip in the 18px gutter (padding-left 18px minus the grip's width) and the add button's margin-left 0, so its words start at 18px.</p>
+  <code>app/admin/redesign/profile/profile.css:49</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Breaks a rule</span><span class="where">Settings &gt; Profile (About you, Story, Studies, Experience), Business details, New client</span></div>
+  <p class="what">Fields carry sample text and how-to hints as placeholders. Samples: 'Finlay Chedd', 'Full Potential Coaching' (here and in SettingsForms.tsx:321), 'Tampere, Finland', 'Hämeenkatu 12 B 4', New client's 'Alex' / 'Arvio'. Hints: 'The lead paragraph; its first letter becomes a drop cap.' and 'Type one and press Enter' (line 281).</p>
+  <p class="rule">DESIGN-RULES-ADMIN §1: "No sentences explaining what a feature is or how it works"; §7 TimePick "empty with no sample in it (11 Nov, Alex: 'why is there the 15:30? Useless')"; §8 cardio "no sample figures"</p>
+  <p class="fix"><b>Fix</b> Empty the sample and hint placeholders. Keep only format cues where a field truly needs one (the invoice number prefix).</p>
+  <code>app/admin/redesign/profile/ProfileEditor.tsx:249</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Settings &gt; Support: the Report a problem pill</span></div>
+  <p class="what">Report a problem wears a local FlagIcon (15px on a 16 grid), not one from components/icons. The flag already means a phase in the admin: the to-do strip's 'a phase missing… the flag', and the Events screen's flag is a phase's.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §9 to-do strip: "use the correct icons… always use the same thing" (flag = phase); DESIGN-RULES §9 "Events wears a ticket, never the flag, which is a phase's"</p>
+  <p class="fix"><b>Fix</b> Give Report a problem its own mark (e.g. an alert/warning glyph from icons.tsx at 1.6), or no icon.</p>
+  <code>app/admin/redesign/settings/SupportSection.tsx:44</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Drawn two ways</span><span class="where">Coaches header: + Add coach</span></div>
+  <p class="what">The header pill reads '+ Add coach', a verb plus noun after the +. Library's header pills read '+ Exercise' and '+ Group', and Settings' '+ Plan'. New client's footer 'Create and invite' is also two actions in one button.</p>
+  <p class="rule">DESIGN-RULES-ADMIN §1: "Buttons say the action, one word when it can"</p>
+  <p class="fix"><b>Fix</b> '+ Coach'; New client 'Invite' (or 'Create').</p>
+  <code>app/admin/redesign/coaches/CoachesDraft.tsx:85</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Polish</span><span class="where">Settings &gt; Support screenshot opened big vs Library demo pop-up's player</span></div>
+  <p class="what">The two dark-stage closes differ: the screenshot's ✕ (.sup-big-x) is 32px on rgba(20,26,36,.55), the demo lightbox's (.dmvh-lightbox-x, demo-video.css) 28px on rgba(255,255,255,.18).</p>
+  <p class="rule">Same control drawn two ways (DESIGN-RULES §9: a video plays on the whole screen with an ✕ at the top right)</p>
+  <p class="fix"><b>Fix</b> One lightbox ✕: 32px, rgba(20,26,36,.55), white 13px ✕, at 10px from the corner, in both.</p>
+  <code>app/admin/redesign/settings/support.css:67</code>
+</article><article class="f low" data-sev="low">
+  <div class="fh"><span class="sev">low</span><span class="kind">Polish</span><span class="where">Subscribe screen: Monthly | Yearly capsule, the −17% saving</span></div>
+  <p class="what">Inside the picked (ink) pill the saving turns #9fd3a9, a pastel third green next to #2f7a3f. The trial line under the price is a sentence ('Free for 14 days, then billed monthly. Cancel any time.').</p>
+  <p class="rule">DESIGN-RULES §4: "One rust and one green… green #2f7a3f"; DESIGN-RULES-ADMIN §9b subscribe "the trial a grey line"</p>
+  <p class="fix"><b>Fix</b> On the picked pill use rgba(255,255,255,.65) for the saving, as .rd-btn-group .on counts do (measurements.css:21). Shorten the trial line to facts: `Free for 14 days | then €X a month`.</p>
+  <code>app/globals.css:21209</code>
+</article></section>
+</div><script>
+document.querySelectorAll(".bar button").forEach((b) => b.addEventListener("click", () => { document.querySelectorAll(".bar button").forEach((x) => x.classList.toggle("on", x === b)); document.body.className = b.dataset.f; }));
+</script></body></html>
