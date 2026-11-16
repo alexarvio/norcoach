@@ -8,11 +8,18 @@
 
 import { useEffect, useState } from "react";
 import OpeningLogo, { OPENING_HOLD_MS } from "../components/OpeningLogo";
+import { QUIET_COOKIE } from "../lib/quietLoad";
 
 let played = false;
 
-export default function AdminOpening() {
-  const [state, setState] = useState<"on" | "revealing" | "gone">(() => (played ? "gone" : "on"));
+export default function AdminOpening({ quiet = false }: { quiet?: boolean }) {
+  const [state, setState] = useState<"on" | "revealing" | "gone">(() => (played || quiet ? "gone" : "on"));
+  // A quiet load (onto a new build): nothing played, and the cookie goes so the next real open plays it.
+  useEffect(() => {
+    if (!quiet) return;
+    played = true;
+    document.cookie = `${QUIET_COOKIE}=; path=/; max-age=0`;
+  }, [quiet]);
   const [opening] = useState(state === "on");
 
   useEffect(() => {
