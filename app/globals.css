@@ -21709,6 +21709,8 @@ body:has(.wo-screen) { background: #F5F6F8; }
 .wo-askline-pill.ink { background: #141a24; box-shadow: none; color: #fff; }
 .wo-askline-row:active .wo-askline-pill { opacity: 0.85; }
 .wo-askline-note { margin: 2px 0 0 13px; font-size: 13px; font-weight: 500; line-height: 1.4; color: #8b93a1; }
+.wo-askline-says { margin-top: 12px; }
+.vr-reply .coach-says + .vr-sheet-video { margin-top: 12px; }
 
 /* The target, the purple band (C): a soft training-purple tint (7%), a 2px purple line with rounded ends on its left,
    TARGET in purple, then a column for each figure, the figure 600 in ink over its word in small grey caps, the
