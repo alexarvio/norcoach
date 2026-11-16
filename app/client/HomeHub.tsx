@@ -751,7 +751,7 @@ export function MeetingCard({ m, recap, coachFirstName, ask }: { m: NonNullable<
       {recap && (
         <div className="hm-mt-recap">
           <span className="hm-mt-recap-label"><Bars parts={["Last meeting", recap.dateLabel]} /></span>
-          <RecapFold recap={recap} />
+          <RecapFold recap={recap} coachFirstName={coachFirstName} />
         </div>
       )}
     </div>
@@ -782,7 +782,7 @@ function LastMeetingCard({ recap, coachFirstName, ask }: { recap: NonNullable<Me
         <span className="hm-mt-glow" aria-hidden="true" />
         <div className="hm-mt-recap">
           <span className="hm-mt-recap-label"><Bars parts={["Last meeting", recap.dateLabel]} /></span>
-          <RecapFold recap={recap} />
+          <RecapFold recap={recap} coachFirstName={coachFirstName} />
         </div>
       </div>
     </section>
@@ -791,7 +791,7 @@ function LastMeetingCard({ recap, coachFirstName, ask }: { recap: NonNullable<Me
 
 // What was agreed, folded to its title: a chevron opens the coach's full
 // recap under it, eased open.
-function RecapFold({ recap, date }: { recap: NonNullable<MeetingRecap>; /** Shown as a pill on the title's line, before the chevron. */ date?: string }) {
+function RecapFold({ recap, date, coachFirstName }: { recap: NonNullable<MeetingRecap>; /** Shown as a pill on the title's line, before the chevron. */ date?: string; coachFirstName?: string }) {
   const [open, setOpen] = useState(false);
   // Opening at the foot of Home (17 Oct, Alex): the page rides up with the notes as they unfold, so their last
   // line stays above the floating nav instead of opening behind it.
@@ -827,7 +827,7 @@ function RecapFold({ recap, date }: { recap: NonNullable<MeetingRecap>; /** Show
       <div ref={bodyRef} className={`hm-recap-body${open ? " open" : ""}`} aria-hidden={!open}>
         {/* The call's notes as the Meetings screen draws them (3 Nov, Alex): its title over the points on the thin line. */}
         <div className="hm-recap-clip">
-          <MeetingNotes title={recap.title} notes={recap.text} />
+          <MeetingNotes title={recap.title} notes={recap.text} coach={coachFirstName} />
         </div>
       </div>
     </div>

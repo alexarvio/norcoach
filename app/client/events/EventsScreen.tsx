@@ -16,6 +16,7 @@ import { useCoachIdentity } from "../CheckInContext";
 import type { HomeEvent, HomeEvents } from "../EventsCard";
 import AddEventSheet, { type EventValues } from "./AddEventSheet";
 import { Bars } from "../Bars";
+import CoachSays from "../CoachSays";
 import { monthWords, weekdayWords } from "../../lib/clientDates";
 
 // The Events screen (9 Oct), restyled as an itinerary (15 Oct): one 1px
@@ -578,7 +579,12 @@ function RowMore({ e, status, open, coachName, pending, clipped, onEdit, onDelet
               <Bars parts={[e.goal.nowKg != null && `Now ${e.goal.nowKg} ${e.goal.unit}`, !e.goal.settled && e.goal.planNow != null && `Plan ${e.goal.planNow} ${e.goal.unit}`]} />
             </p>
           )}
-          {e.note && <p className="ev-x-note">{e.note}</p>}
+          {/* One the coach added: their note with their face and name (16 Nov, Alex: whatever the coach says, their face and name are with it); the client's own stays as it is. */}
+          {e.note && (e.mine ? <p className="ev-x-note">{e.note}</p> : (
+            <div className="ev-x-says">
+              <CoachSays label={coachName}>{e.note}</CoachSays>
+            </div>
+          ))}
           {/* No "Added by you · Finlay can see it" line (17 Oct, Alex): the avatar on the row already says whose it is. */}
           {/* A weight goal is the coach's to set and change (2 Nov, Alex): no Edit or Delete on it. */}
           {/* Delete asks in place, as the chat's Delete (3 Nov, Alex: words mockup): `Delete event?`, Cancel in words, Delete in red words. */}

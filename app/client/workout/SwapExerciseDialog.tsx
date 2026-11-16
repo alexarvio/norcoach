@@ -9,6 +9,7 @@ import { groupColour } from "../../lib/muscleGroups";
 import { pic } from "../../lib/pic";
 import { Bars } from "../Bars";
 import RingEdge from "../../components/RingEdge";
+import CoachSays from "../CoachSays";
 
 // "Swap exercise" (14 Oct, after the New event and gym pop-ups): a centred
 // pop-up, not a sheet. The machine is taken: the client picks one of the
@@ -233,7 +234,6 @@ export default function SwapExerciseDialog({
                       )}
                       <span className="sw-text">
                         <span className="sw-name">{s.name}</span>
-                        <span className={`sw-note${s.note ? "" : " none"}`}>{s.note ? `“${s.note}”` : "No note"}</span>
                       </span>
                       <span className="sw-check" aria-hidden="true">
                         {on ? (
@@ -244,6 +244,14 @@ export default function SwapExerciseDialog({
                           <RingEdge size={24} />
                         )}
                       </span>
+                      {/* The coach's note on it under the row (16 Nov, Alex: whatever the coach says, their face and name are with it); none, nothing. */}
+                      {s.note && (
+                        <div className="sw-says">
+                          <CoachSays label={coach.firstName} coach={{ name: coach.firstName, photoPath: coach.photo }}>
+                            {s.note}
+                          </CoachSays>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

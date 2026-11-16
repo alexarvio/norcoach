@@ -5,6 +5,8 @@ import { flushSync } from "react-dom";
 import { slideBelow } from "../lib/slideBelow";
 import { CheckIcon, ChevronDownIcon } from "../components/icons";
 import RingEdge from "../components/RingEdge";
+import CoachSays from "./CoachSays";
+import { useCoachIdentity } from "./CheckInContext";
 
 // The coach's supplements, folded into the foot of the calories card: one
 // row with a chevron and how many are ticked, opening to the list. Each item
@@ -25,6 +27,7 @@ const localDay = () => {
 };
 
 export default function SupplementsCard({ date, rows }: { date: string; rows: SupplementRow[] }) {
+  const coachFirst = useCoachIdentity()?.name.trim().split(/s+/)[0] || "Coach";
   const [day, setDay] = useState(date);
   const storageKey = `${PREFIX}${day}`;
   const [open, setOpen] = useState(false);
@@ -122,7 +125,7 @@ export default function SupplementsCard({ date, rows }: { date: string; rows: Su
         <div className="nd-supps-list">
           {rows.map((r, i) => {
             const on = taken.includes(r.name);
-            return (
+            const row = (
               <button
                 key={`${r.name}-${i}`}
                 type="button"
@@ -132,7 +135,6 @@ export default function SupplementsCard({ date, rows }: { date: string; rows: Su
               >
                 <span className="nd-supp-main">
                   <span className="nd-supp-name">{r.name}</span>
-                  {r.notes && <span className="nd-supp-note">{r.notes}</span>}
                 </span>
                 <span className="nd-supp-dose">
                   {r.quantity && <span className="nd-supp-qty">{r.quantity}</span>}
@@ -144,6 +146,17 @@ export default function SupplementsCard({ date, rows }: { date: string; rows: Su
                   <RingEdge size={22} />
                 </span>
               </button>
+            );
+            // The coach's note on it under its row (16 Nov, Alex: whatever the coach says, their face and name are with it).
+            return r.notes ? (
+              <div key={`${r.name}-${i}`} className="nd-supp-item">
+                {row}
+                <div className="nd-supp-says">
+                  <CoachSays label={coachFirst}>{r.notes}</CoachSays>
+                </div>
+              </div>
+            ) : (
+              row
             );
           })}
         </div>
