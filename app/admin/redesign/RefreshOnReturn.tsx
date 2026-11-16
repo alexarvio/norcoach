@@ -44,6 +44,18 @@ export default function RefreshOnReturn() {
       owed = false;
       stopPoll();
       last = Date.now();
+      void readAgain();
+    };
+    // Never across a deploy (16 Nov, Alex: "the admin reloads itself a lot"): a read from a newer build makes Next load
+    // the whole page again. On a new build the page stays as it is; FreshBuild moves it on at the next click elsewhere.
+    const page = document.documentElement.dataset.build;
+    const readAgain = async () => {
+      try {
+        const now = page ? (await (await fetch("/api/version", { cache: "no-store" })).json())?.build : null;
+        if (page && typeof now === "string" && now !== "unknown" && now !== page) return;
+      } catch {
+        return;
+      }
       router.refresh();
     };
     // Soon, not now: a pop-up closing, a field left or a hold let go settles first.
