@@ -14,7 +14,7 @@ import DoneCheck from "../../components/DoneCheck";
 import { NoteIcon } from "../../components/icons";
 import { useExerciseSets, type SheetRow } from "./useExerciseSets";
 import { weightTone } from "./setRules";
-import { BlockMenu, BlockRing, ChatGlyph, CheckGlyph, FoldedLine, MoreGlyph, PlayGlyph, SwapRow, TargetLine, ToolButton, UnitGlyph, WsFold, targetParts, useBlockFold, useBlockMenu } from "./sheetParts";
+import { BlockMenu, BlockRing, BlockTitle, ChatGlyph, CheckGlyph, FoldedLine, MoreGlyph, PlayGlyph, SwapRow, TargetLine, ToolButton, UnitGlyph, WsFold, targetParts, useBlockFold, useBlockMenu } from "./sheetParts";
 
 // One exercise on the workout sheet (15 Nov, Alex: docs/boards/workout-sheet-a-mockup.html): its head (the number ring,
 // the name, the demo, the chat and the ⋯), the ask's line, the swap, the target line, the coach's note and your note,
@@ -110,7 +110,7 @@ export default function SheetExercise({
   const guideCols = targetColumns({ sets: exercise.coachSets ?? exercise.sets, reps: exercise.reps });
   const showKg = s.askWeight || s.hasWarm;
   // No Last column with nothing to compare (15 Nov, Alex: the first week, or a swap): the slots take its room.
-  const hasLast = s.workRows.some((r) => s.lastOf(r.n) != null);
+  const hasLast = s.workRows.some((r) => s.lastOf(r.n) != null) || s.rows.some((r) => r.kind === "warm" && !r.gone && r.warmLast != null);
   const targetLine = free ? null : swapped ? <TargetLine guide parts={[...targetParts(guideCols).slice(0, 1), `for ${exercise.name}`]} /> : <TargetLine parts={targetParts(cols)} />;
 
   // The folded line's facts: how many sets, then the heaviest working set and its reps (a lift with no weight, the count).
@@ -141,8 +141,11 @@ export default function SheetExercise({
       </WsFold>
       <WsFold open={!fold.folded} easing={fold.easing}>
       <div className="ws-bh">
-        <BlockRing n={index} done={done} on={inView || s.started} doneCheck={<DoneCheck size={22} />} />
-        <h2 className="ws-bname">{name}</h2>
+        <BlockTitle
+          ring={<BlockRing n={index} done={done} on={inView || s.started} doneCheck={<DoneCheck size={22} />} />}
+          name={name}
+          onFold={s.allDone && !free ? fold.close : undefined}
+        />
         <div className="ws-tools">
           {/* Swapped, a naked sheet (4 Nov, Alex): the demo is the exercise it replaced, so none. */}
           {exercise.videoUrl && !swapped && (
@@ -230,18 +233,28 @@ export default function SheetExercise({
             <span />
             <span />
           </div>
-          {s.rows.map((row) => (
-            <SetRow
-              key={row.id}
-              row={row}
-              s={s}
-              showKg={showKg}
-              hasLast={hasLast}
-              free={free}
-              askingWarm={askWarm === row.id}
-              onAskWarm={(v) => setAskWarm(v ? row.id : null)}
-            />
-          ))}
+          {s.rows.map((row) => {
+            const set = (
+              <SetRow
+                key={row.id}
+                row={row}
+                s={s}
+                showKg={showKg}
+                hasLast={hasLast}
+                free={free}
+                askingWarm={askWarm === row.id}
+                onAskWarm={(v) => setAskWarm(v ? row.id : null)}
+              />
+            );
+            // A warm-up on the shared fold: an untouched one folds away once every set is in.
+            return row.kind === "warm" ? (
+              <WsFold key={row.id} open={!row.gone} easing>
+                {set}
+              </WsFold>
+            ) : (
+              set
+            );
+          })}
         </div>
 
         <div className="ws-setacts">
@@ -329,8 +342,9 @@ function SetRow({
   const warm = row.kind === "warm";
   const asksWeight = s.askWeight || warm;
   const label = warm ? "Warm-up" : `Set ${row.n}`;
-  const last = warm ? null : s.swapped ? null : s.lastOf(row.n);
-  const lastText = warm || !last ? "–" : last.weight != null && s.askWeight ? `${fmtWeight(kgToDisplay(last.weight, s.unit))} × ${last.reps ?? "–"}` : last.reps != null ? `${last.reps} reps` : "–";
+  const last = warm ? row.warmLast : s.swapped ? null : s.lastOf(row.n);
+  const lastText = !last ? "–" : warm ? `${last.weight != null ? `${fmtWeight(kgToDisplay(last.weight, s.unit))} × ` : ""}${last.reps ?? "–"}`
+    : last.weight != null && s.askWeight ? `${fmtWeight(kgToDisplay(last.weight, s.unit))} × ${last.reps ?? "–"}` : last.reps != null ? `${last.reps} reps` : "–";
   const doubt = !warm && s.doubt?.n === row.n ? s.doubt : null;
   const refused = !warm && !row.done && row.refused != null ? row.refused : null;
   const cantResend = refused === "gone" || refused === "stale";
