@@ -7,7 +7,7 @@
 /* ---- The screen and its scroll. */
 .ws-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; padding: 2px 16px calc(96px + env(safe-area-inset-bottom, 0px)); background: #F5F6F8; scrollbar-width: none; }
 .ws-scroll::-webkit-scrollbar { display: none; }
-.ws-add { padding-top: 18px; }
+.ws-add { padding-top: 6px; }
 
 /* The segments: done green, the block in view training purple (the global rule's pulse), started a softer green. */
 .wo-segments .wo-seg.ws-seg.done span { background: #2f7a3f; }
@@ -202,3 +202,21 @@
   .ws-pb.pop { animation: none; }
   .ws-bn, .ws-tool, .ws-tick, .ws-num.ws-num, .ws-yn-field, .ws-block.ws-block, .ws-block > .so-fold.ws-fold.so-fold { transition: none; }
 }
+
+/* ---- A rogue session's next exercise (16 Nov, Alex: A of docs/boards/rogue-add-mockup.html): where the next block
+   goes, a dashed ring with a + and the name faint; tapped, the name line is the field and the library flat under it. */
+.ws-addnext { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 8px 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.ws-addnext-ring { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; border: 1.5px dashed #C9CFD8; color: #8b93a1; box-sizing: border-box; }
+.ws-addnext-ring svg { width: 12px; height: 12px; }
+.ws-addnext.on .ws-addnext-ring { border-color: #141a24; color: #141a24; }
+.ws-addnext-name { font-size: 17px; font-weight: 600; line-height: 1.25; color: #98A2B3; }
+.ws-addnext:active .ws-addnext-name { color: #8b93a1; }
+.ws-addnext-field { flex: 1; min-width: 0; padding: 4px 0 6px; border: 0; border-radius: 0; background: none; box-shadow: inset 0 -1.5px 0 #141a24; font: inherit; font-size: 17px; font-weight: 600; color: #141a24; outline: none; -webkit-appearance: none; appearance: none; }
+.ws-addnext-problem { margin: 6px 0 0 32px; font-size: 13px; font-weight: 600; color: #b8471f; }
+.ws-addnext-list { margin: 4px 0 0 32px; display: flex; flex-direction: column; }
+.ws-addnext-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.ws-addnext-rname { min-width: 0; font-size: 15px; font-weight: 500; color: #141a24; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-addnext-group { flex: none; font-size: 12.5px; font-weight: 500; color: #8b93a1; }
+.ws-addnext-row.own { cursor: default; }
+.ws-addnext-row.own .ws-addnext-rname { color: #5b6474; }
+.ws-addnext-kinds { flex: none; display: inline-flex; gap: 16px; }
