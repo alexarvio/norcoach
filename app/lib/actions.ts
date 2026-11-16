@@ -123,6 +123,9 @@ import {
   dismissHomeAction,
   replyToMedia,
   sendFormReview,
+  videoReplyTarget,
+  setVideoReplyFile,
+  chatUsesFile,
   setEngagementParts,
   getReportTemplate,
   renameProgram,
@@ -1733,7 +1736,8 @@ export async function sendVideoReplyAction(id: number, note: string): Promise<bo
 export async function removeVideoReplyAction(id: number) {
   if (!Number.isInteger(id) || !(await coachForClient(getClientIdForVideoRequest(id)))) return;
   const file = removeVideoReply(id);
-  if (file) await deleteUpload(file);
+  // Kept while the chat still shows it (a picture reply, a recorded review posted there too).
+  if (file && !chatUsesFile(file)) await deleteUpload(file);
   revalidatePath("/admin");
   revalidatePath("/client");
 }
@@ -3334,14 +3338,57 @@ export async function setEngagementPartsAction(clientId: number, ids: string[]) 
 // file is already up through /api/video-reply.
 // Each lands in the chat as a message, so each is taken once (6 Nov, one-time key): sent again after a dropped signal,
 // it posts no second message.
-export async function replyToMediaAction(id: number, text: string, onceKey?: string): Promise<boolean> {
-  if (!Number.isInteger(id) || !(await coachForClient(getClientIdForVideoRequest(id)))) return false;
-  return once(`replyToMediaAction:${id}`, onceKeyOf(onceKey), () => {
-    const ok = replyToMedia(id, String(text ?? ""));
+// A written reply on a photo carries the photo back (16 Nov, Alex: "the client will get the pic sent back with the
+// comment of the coach"): the browser flattens the coach's drawing into it and sends it ahead to /api/upload; `upload`
+// is its handle. Kept as a fitted photo (fitPhoto), filed as the reply's file ("photo"), and in the chat with the words.
+export async function replyToMediaAction(id: number, text: string, onceKey?: string, upload?: string | null): Promise<boolean> {
+  const owner = Number.isInteger(id) ? getClientIdForVideoRequest(id) : null;
+  const coach = await coachForClient(owner);
+  if (owner == null || !coach) return false;
+  return once(`replyToMediaAction:${id}`, onceKeyOf(onceKey), async () => {
+    if (!String(text ?? "").trim()) return false;
+    let withPicture = false;
+    if (upload) {
+      const up = claimUpload(upload, { userId: coach.id, clientId: owner, kinds: ["media"] });
+      // Thrown, not answered: a failure is never kept against the key, so Send again tries again.
+      if (!up) throw new Error("The picture did not come through.");
+      if (!up.type.startsWith("image/")) {
+        discardUpload(up);
+        throw new Error("That isn't a picture.");
+      }
+      const original = fs.readFileSync(up.file);
+      discardUpload(up);
+      const fitted = await fitPhoto(original);
+      const bytes = fitted?.bytes ?? original;
+      const type = fitted?.type ?? "image/jpeg";
+      const target = videoReplyTarget(id, type === "image/png" ? "png" : "jpg");
+      if (!target) throw new Error("No reply to file the picture under.");
+      fs.mkdirSync(target.dir, { recursive: true });
+      fs.writeFileSync(target.filePath, bytes);
+      await putUpload(target.publicPath, bytes, type);
+      const previous = setVideoReplyFile(id, target.publicPath, "photo");
+      // The one it replaces goes, unless the chat still shows it (as a recorded review's, videoReplyUpload.ts).
+      if (previous && !chatUsesFile(previous)) await deleteUpload(previous);
+      // Its small copies now, so the client's chat and sheet draw it at once.
+      afterResponse(() => prepareChatMedia(target.publicPath, "image", bytes));
+      withPicture = true;
+    }
+    const ok = replyToMedia(id, String(text ?? ""), withPicture);
+    // A failure is thrown, never kept against the key (a plain false would answer every retry of these words).
+    if (!ok) throw new Error("The reply did not save.");
     revalidatePath("/admin");
     revalidatePath("/client");
     return ok;
   });
+}
+
+/** The client's face and full name for the media review's head (16 Nov, Alex: Training opened it with an initial for a
+    client who has a photo, as it hands over none). */
+export async function mediaReviewClientAction(id: number): Promise<{ name: string; avatarPath: string | null } | null> {
+  const owner = Number.isInteger(id) ? getClientIdForVideoRequest(id) : null;
+  if (owner == null || !(await coachForClientOpen(owner))) return null;
+  const c = getClient(owner);
+  return c ? { name: c.name, avatarPath: c.avatar_path ?? null } : null;
 }
 export async function sendFormReviewAction(id: number, message: string, meta: { durationMs: number; annotations: number }, onceKey?: string): Promise<boolean> {
   if (!Number.isInteger(id) || !(await coachForClient(getClientIdForVideoRequest(id)))) return false;

@@ -4,28 +4,28 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { useRouter } from "next/navigation";
 import { DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
-import { markVideoSeenAction, replyToMediaAction, sendChatMessageAction, sendFormReviewAction } from "../../../lib/actions";
+import { markVideoSeenAction, mediaReviewClientAction, replyToMediaAction, sendChatMessageAction, sendFormReviewAction } from "../../../lib/actions";
 import { pic } from "../../../lib/pic";
 import { newOnceKey } from "../../../lib/onceKey";
-import { pathOf, simplify, SIZES, STROKE, UNDERLAY, UNDERLAY_COLOR, unitFor, worthKeeping, type Pt, type Shape, type Tool } from "./shapes";
+import { uploadFileFirst } from "../../../lib/uploadFirst";
+import { paintShapes, pathOf, simplify, SIZES, STROKE, UNDERLAY, UNDERLAY_COLOR, unitFor, worthKeeping, type Pt, type Shape, type Tool } from "./shapes";
 import { MAX_SECONDS, recordingSupported, setClipMuted, useReviewRecorder, type Corner } from "./useReviewRecorder";
-import { Sep, SepJoin } from "../Sep";
+import { SepJoin } from "../Sep";
 
-// The coach's media review (12 Oct, design 18a): one modal for every photo or
-// video a client sends from an exercise, in place of the plain pop-up. A dark
-// stage on the left with the media; on the right the context (session, week,
-// asked for or not, the sets logged) and the conversation about it, with a
-// reply box. "Record review" turns the stage into a whiteboard: the coach
-// draws over the video while talking, and the whole thing is recorded as one
-// video and sent as the reply. A reply lands on the exercise (and carries to
-// the next session) and in the chat, linked to the exercise.
+// The coach's media review (12 Oct, design 18a; one panel since 16 Nov, Alex: docs/boards/photo-review-mockup.html):
+// one modal for every photo or video a client sends from an exercise. A dark stage on the left with the media and the
+// drawing tools; on the right who sent it, the exercise, their sets and words, what was said before, and at the foot,
+// always, the reply: a line to write on, and Record beside the mic and camera. A recording is the stage as one video
+// (the coach draws over it while talking), sent as the reply; written words on a photo send the photo back with the
+// drawing flattened into it. A reply lands on the exercise (and carries to the next session) and in the chat.
 
 /** An upload drawn into the recorder's canvas must come from this origin (15 Oct): the plain path redirects to the bucket, which taints the canvas ("Canvas is not origin-clean"); ?stream=1 sends the bytes through the app. */
 export const sameOrigin = (url: string) => (url.startsWith("/uploads/") ? `${url}${url.includes("?") ? "&" : "?"}stream=1` : url);
 
 export type ThreadItem =
   | { id: string; kind: "text"; mine: boolean; text: string; at: number }
-  | { id: string; kind: "review"; url: string; durationMs: number | null; annotations: number | null; message: string | null; at: number };
+  /** `photo`: a written reply on a photo, its file the photo sent back with the drawing (16 Nov); else read from the url. */
+  | { id: string; kind: "review"; url: string; durationMs: number | null; annotations: number | null; message: string | null; at: number; photo?: boolean };
 export type MediaReview = {
   requestId: number;
   /** New to the coach: opening it marks it seen. */
@@ -59,6 +59,7 @@ export const COLORS = [
   { id: "#FF6B6B", name: "Coral" },
   { id: "#00C7BE", name: "Teal" },
 ];
+// The keys still work (16 Nov, Alex: the legend under the panel is gone); each tool's tooltip names its key.
 const TOOLS: { id: Tool; name: string; key: string; icon: string }[] = [
   { id: "pen", name: "Pen", key: "P", icon: "M4 20l4-1 11-11-3-3L5 16zM14 6l3 3" },
   { id: "arrow", name: "Arrow", key: "A", icon: "M5 19L19 5M10 5h9v9" },
@@ -68,14 +69,42 @@ const TOOLS: { id: Tool; name: string; key: string; icon: string }[] = [
 const RATES = [1, 0.5, 0.25];
 const FRAME = 1 / 30;
 const CAM_KEY = "mrv-camera";
+/** A photo sent back is kept at most this long on its longest side (as the app keeps every photo, fitPhoto). */
+const PHOTO_MAX = 2048;
 
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
-const hhmm = (iso: string | number | null) => (iso == null ? "" : new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
+const isPicture = (url: string) => /\.(jpe?g|png|webp)(\?|$)/i.test(url);
 const Ico = ({ d, size = 18, w = 2.2 }: { d: string; size?: number; w?: number }) => (
   <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d={d} />
   </svg>
 );
+const MIC = "M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21";
+const CAM = "M3 6.5h13v11H3zM16 10.5l5-3v9l-5-3z";
+const SEND = "M5 12h14M13 6l6 6-6 6";
+
+/** The photo as the coach left it (16 Nov, Alex): the picture with the drawing flattened in, a JPEG, its longest side
+    PHOTO_MAX at most. Drawn from the app's own copy (sameOrigin), so the canvas can be read. */
+async function flattenPhoto(url: string, shapes: Shape[]): Promise<Blob> {
+  const im = new Image();
+  im.src = sameOrigin(url);
+  await im.decode();
+  const w = im.naturalWidth || 1;
+  const h = im.naturalHeight || 1;
+  const k = Math.min(1, PHOTO_MAX / Math.max(w, h));
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(w * k));
+  c.height = Math.max(1, Math.round(h * k));
+  const ctx = c.getContext("2d");
+  if (!ctx) throw new Error("No canvas");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(im, 0, 0, c.width, c.height);
+  paintShapes(ctx, shapes, unitFor(w, h), c.width / w);
+  const blob = await new Promise<Blob | null>((r) => c.toBlob(r, "image/jpeg", 0.9));
+  if (!blob) throw new Error("No picture");
+  return blob;
+}
 
 /** Up with progress; null once it is up, else what went wrong. The coach's phone sends its reviews through it too. */
 export function upload(id: number, blob: Blob, onProgress: (share: number) => void): Promise<string | null> {
@@ -123,11 +152,11 @@ export type ChatTarget = { clientId: number; replyTo: number };
 
 /** A photo or video a client sent in the chat, as a review (26 Oct, Alex: the laptop's chat had no Review, the phone's
     did): the same recorder, its recording or words going back into the chat as a reply to their message. */
-export function chatMediaReview(first: string, kind: "video" | "photo", url: string, words: string, when: string): MediaReview {
+export function chatMediaReview(first: string, kind: "video" | "photo", url: string, words: string, when: string, avatarPath: string | null = null): MediaReview {
   return {
     requestId: 0,
     unseen: false,
-    client: { firstName: first, name: first, avatarPath: null },
+    client: { firstName: first, name: first, avatarPath },
     exercise: { name: kind === "video" ? "Video" : "Photo", session: when, week: 0, day: 0 },
     requested: false,
     media: [{ kind, url }],
@@ -138,22 +167,51 @@ export function chatMediaReview(first: string, kind: "video" | "photo", url: str
   };
 }
 
+/** A face: the picture, else the initial. */
+function Face({ path, name, className }: { path: string | null; name: string; className: string }) {
+  return (
+    <span className={className} aria-hidden="true">
+      {path ? (
+        // eslint-disable-next-line @next/next/no-img-element -- the client's own upload, served by the app
+        <img src={pic(path, 96)} alt="" />
+      ) : (
+        name.charAt(0).toUpperCase()
+      )}
+    </span>
+  );
+}
+
 export default function MediaReviewModal({ review, chat = null, onClose }: { review: MediaReview; /** From the chat: what it answers. */ chat?: ChatTarget | null; onClose: () => void }) {
   const router = useRouter();
   const first = review.client.firstName;
-  // Opens on the recorder (15 Oct, Alex): the panel is the client, the video, where it comes from, and the recording. The thread and the text box went; a review reaches the chat on its own.
-  const [mode, setMode] = useState<"talk" | "record">("record");
   const [idx, setIdx] = useState(0);
   const item = review.media[Math.min(idx, review.media.length - 1)];
-  // A sent review playing on the stage in place of the client's media.
-  const [stageReview, setStageReview] = useState<string | null>(null);
-  const showing = stageReview ? { kind: "video" as const, url: stageReview } : item;
+  // A sent review playing (or a picture reply showing) on the stage in place of the client's media.
+  const [stageReview, setStageReview] = useState<{ kind: "video" | "photo"; url: string } | null>(null);
+  const showing = stageReview ?? item;
   const canRecord = useMemo(() => recordingSupported(), []);
 
   // Seen, once opened.
   useEffect(() => {
     if (review.unseen && !chat) void markVideoSeenAction(review.requestId);
   }, [review.unseen, review.requestId, chat]);
+
+  // Their face and full name (16 Nov, Alex: the head showed an initial for a client with a photo): asked for when the
+  // opener handed over none.
+  const [who, setWho] = useState<{ name: string; avatarPath: string | null } | null>(null);
+  useEffect(() => {
+    if (chat || review.requestId <= 0 || review.client.avatarPath) return;
+    let live = true;
+    mediaReviewClientAction(review.requestId).then(
+      (got) => live && got && setWho(got),
+      () => {}
+    );
+    return () => {
+      live = false;
+    };
+  }, [chat, review.requestId, review.client.avatarPath]);
+  const face = review.client.avatarPath ?? who?.avatarPath ?? null;
+  const fullName = who?.name || review.client.name;
 
   // ---- The stage and the frame the media sits in, fitted to it.
   const stageRef = useRef<HTMLDivElement>(null);
@@ -229,7 +287,8 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
     setT(v.currentTime);
   };
 
-  // ---- Drawing (record mode only).
+  // ---- Drawing: always on the client's media (16 Nov: one panel), never over a sent review.
+  const canDraw = !stageReview;
   const [tool, setTool] = useState<Tool>("arrow");
   const [color, setColor] = useState(COLORS[0].id);
   const [palette, setPalette] = useState(false);
@@ -256,7 +315,7 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
     return [((e.clientX - r.left) / r.width) * natural.w, ((e.clientY - r.top) / r.height) * natural.h];
   };
   const down = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (mode !== "record") return;
+    if (!canDraw) return;
     setPalette(false);
     e.currentTarget.setPointerCapture(e.pointerId);
     // Drawing never stops the video (27 Oct, Alex): only pause does.
@@ -285,7 +344,7 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
   const undo = () => setShapes((list) => list.slice(0, -1));
   const clearAll = () => setShapes([]);
 
-  // ---- Camera and mic.
+  // ---- Camera and mic: round toggles at the foot, white while off, ink while on.
   const [micOn, setMicOnState] = useState(true);
   const [camOn, setCamOn] = useState(false);
   useEffect(() => {
@@ -297,7 +356,7 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
   const [camStream, setCamStream] = useState<MediaStream | null>(null);
   const [camDenied, setCamDenied] = useState(false);
   useEffect(() => {
-    if (mode !== "record" || !camOn) return;
+    if (!camOn || !canRecord) return;
     let live = true;
     let got: MediaStream | null = null;
     navigator.mediaDevices
@@ -314,7 +373,7 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
       got?.getTracks().forEach((x) => x.stop());
       setCamStream(null);
     };
-  }, [mode, camOn]);
+  }, [camOn, canRecord]);
   useEffect(() => {
     if (camVideo.current && camStream) {
       camVideo.current.srcObject = camStream;
@@ -363,39 +422,51 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
     setMicOnState(on);
     recorder.setMicOn(on);
   };
+  // The countdown (3, 2, 1) before the take, which Stop calls off.
   const [count, setCount] = useState<number | null>(null);
+  const countTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const cancelCount = () => {
+    countTimers.current.forEach(clearTimeout);
+    countTimers.current = [];
+    setCount(null);
+  };
+  useEffect(() => () => countTimers.current.forEach(clearTimeout), []);
   const startRecording = () => {
-    if (count != null) return;
+    if (count != null || recorder.state !== "ready" || recorder.starting) return;
+    // On the client's media, never over a sent review.
+    setStageReview(null);
+    setPalette(false);
     setDrawn(shapes.length);
     const reduce = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const beat = reduce ? 400 : 600;
     setCount(3);
-    setTimeout(() => setCount(2), beat);
-    setTimeout(() => setCount(1), beat * 2);
-    setTimeout(() => {
-      setCount(null);
-      void recorder.start({ mic: micOn });
-    }, beat * 3);
+    countTimers.current = [
+      setTimeout(() => setCount(2), beat),
+      setTimeout(() => setCount(1), beat * 2),
+      setTimeout(() => {
+        countTimers.current = [];
+        setCount(null);
+        void recorder.start({ mic: micOn });
+      }, beat * 3),
+    ];
   };
-  const recDirty = recorder.state !== "ready";
+  // Stop before the take runs (the countdown, or the mic still being asked for) calls it off.
+  const stopRecording = () => (count != null ? cancelCount() : recorder.starting ? recorder.retake() : recorder.stop());
+  const recDirty = recorder.state !== "ready" || count != null || recorder.starting;
+  const takingFoot = count != null || recorder.starting || recorder.state === "recording" || recorder.state === "paused";
 
   // ---- Leaving: a recording in hand is never thrown away without asking.
-  const [confirm, setConfirm] = useState<null | "close" | "back">(null);
-  const backToTalk = () => {
+  const [confirm, setConfirm] = useState(false);
+  const discardTake = () => {
+    cancelCount();
     recorder.retake();
-    setShapes([]);
-    setMode("talk");
-    setConfirm(null);
+    setConfirm(false);
   };
-  const askClose = () => (mode === "record" && recDirty ? setConfirm("close") : onClose());
-  const enterRecord = () => {
-    setStageReview(null);
-    setMode("record");
-  };
+  const askClose = () => (recDirty ? setConfirm(true) : onClose());
 
   // ---- Switching media: drawings do not carry over.
   const go = (d: number) => {
-    if (review.media.length < 2) return;
+    if (review.media.length < 2 || recDirty) return;
     setIdx((i) => (i + d + review.media.length) % review.media.length);
     setShapes([]);
     setPlaying(false);
@@ -405,56 +476,125 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
   // ---- The conversation, with what was just sent ahead of the server.
   const [sent, setSent] = useState<ThreadItem[]>([]);
   const thread = useMemo(() => [...review.thread, ...sent.filter((s) => !review.thread.some((r) => r.kind === s.kind && Math.abs(r.at - s.at) < 120000))].sort((a, b) => a.at - b.at), [review.thread, sent]);
+  // One line for the reply (16 Nov): the words alone, or the note that goes with a recording.
   const [text, setText] = useState("");
+  const lineRef = useRef<HTMLTextAreaElement>(null);
+  const sizeLine = () => {
+    const el = lineRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(120, el.scrollHeight)}px`;
+  };
+  useLayoutEffect(sizeLine, [text]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // A one-time key a send (6 Nov); the same words sent again after "Try again" keep the failed one's key, and so does
   // the same recording, so one that in fact landed is not posted twice.
-  const textTry = useRef<{ what: string; key: string } | null>(null);
+  // The key covers the drawing too (the shapes list is a new array on every change), so a changed drawing sent with the
+  // same words is a new send, never answered with the one before.
+  const textTry = useRef<{ what: string; shapes: Shape[]; key: string } | null>(null);
   const reviewTry = useRef<{ blob: Blob; key: string } | null>(null);
+  // A drawing on a video goes only in a recording: words alone would leave it behind, so Send waits.
+  const drawingLeftBehind = !stageReview && item.kind === "video" && shapes.length > 0;
   const sendText = async () => {
     const clean = text.trim();
-    if (!clean || busy) return;
-    const onceKey = textTry.current?.what === clean ? textTry.current.key : newOnceKey();
-    textTry.current = { what: clean, key: onceKey };
+    if (!clean || busy || drawingLeftBehind) return;
+    const drawing = shapesRef.current;
+    const onceKey = textTry.current?.what === clean && textTry.current.shapes === drawing ? textTry.current.key : newOnceKey();
+    textTry.current = { what: clean, shapes: drawing, key: onceKey };
     setBusy(true);
     setError(null);
     if (chat) {
-      // From the chat: the words go back into it, answering their message.
+      // From the chat: the words go back into it, answering their message; a photo drawn on goes back with the drawing
+      // flattened in, as a picture in the same message.
       const fd = new FormData();
       fd.set("clientId", String(chat.clientId));
       fd.set("text", clean);
       fd.set("replyTo", String(chat.replyTo));
       fd.set("quiet", "1");
       fd.set("nonce", onceKey);
+      if (item.kind === "photo" && drawing.length > 0) {
+        try {
+          const blob = await flattenPhoto(item.url, drawing);
+          const up = await uploadFileFirst(blob, "chat", chat.clientId);
+          if ("refused" in up) {
+            setBusy(false);
+            return setError(up.refused);
+          }
+          fd.set("upload", up.handle);
+        } catch {
+          setBusy(false);
+          return setError("The drawing did not go up. Try again.");
+        }
+      }
       const sentOk = await sendChatMessageAction(fd).then(
         () => true,
         () => false
       );
       setBusy(false);
-      if (!sentOk) return setError("That did not send. Try again.");
+      if (!sentOk) return setError("Not sent. Try again.");
       textTry.current = null;
+      setShapes([]);
       onClose();
       return;
     }
-    const ok = await replyToMediaAction(review.requestId, clean, onceKey);
+    // Words on a photo send the photo back with them (16 Nov, Alex: "the client will get the pic sent back with the
+    // comment of the coach"), the drawing flattened in; on a video, the words alone. A photo the browser can't read back
+    // (an odd format) sends the words alone, unless something is drawn on it, which would be lost.
+    let handle: string | null = null;
+    let picture: string | null = null;
+    if (item.kind === "photo") {
+      let blob: Blob | null = null;
+      try {
+        blob = await flattenPhoto(item.url, drawing);
+      } catch {
+        if (drawing.length > 0) {
+          setBusy(false);
+          return setError("The drawing could not be added to the photo.");
+        }
+      }
+      if (blob) {
+        try {
+          const up = await uploadFileFirst(blob, "media");
+          if ("refused" in up) {
+            setBusy(false);
+            return setError(up.refused);
+          }
+          handle = up.handle;
+          picture = URL.createObjectURL(blob);
+        } catch {
+          setBusy(false);
+          return setError("The picture did not go up. Try again.");
+        }
+      }
+    }
+    const ok = await replyToMediaAction(review.requestId, clean, onceKey, handle).catch(() => false);
     setBusy(false);
-    if (!ok) return setError("That did not send. Try again.");
+    if (!ok) {
+      if (picture) URL.revokeObjectURL(picture);
+      return setError("Not sent. Try again.");
+    }
     textTry.current = null;
-    setSent((s) => [...s, { id: `t${Date.now()}`, kind: "text", mine: true, text: clean, at: Date.now() }]);
+    setSent((s) => [
+      ...s,
+      picture
+        ? { id: `p${Date.now()}`, kind: "review", url: picture, durationMs: null, annotations: null, message: clean, at: Date.now(), photo: true }
+        : { id: `t${Date.now()}`, kind: "text", mine: true, text: clean, at: Date.now() },
+    ]);
     setText("");
+    setShapes([]);
     router.refresh();
   };
-  const [reviewNote, setReviewNote] = useState("");
   const [progress, setProgress] = useState<number | null>(null);
   const sendReview = async () => {
     const blob = recorder.blob;
     if (!blob || progress != null) return;
+    const note = text.trim();
     setError(null);
     setProgress(0);
     if (chat) {
       // From the chat: the recording and the note go back into it, as one message answering theirs.
-      const chatErr = await uploadChatReview(chat.clientId, chat.replyTo, reviewNote.trim(), blob, setProgress);
+      const chatErr = await uploadChatReview(chat.clientId, chat.replyTo, note, blob, setProgress);
       setProgress(null);
       if (chatErr) return setError(chatErr);
       recorder.retake();
@@ -469,13 +609,14 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
     const meta = { durationMs: recorder.secs * 1000, annotations: drawn };
     const onceKey = reviewTry.current?.blob === blob ? reviewTry.current.key : newOnceKey();
     reviewTry.current = { blob, key: onceKey };
-    const ok = await sendFormReviewAction(review.requestId, reviewNote.trim(), meta, onceKey);
+    const ok = await sendFormReviewAction(review.requestId, note, meta, onceKey);
     setProgress(null);
     if (!ok) return setError("The review is up, but the reply did not save. Try Send again.");
     reviewTry.current = null;
-    setSent((s) => [...s, { id: `r${Date.now()}`, kind: "review", url: URL.createObjectURL(blob), durationMs: meta.durationMs, annotations: meta.annotations, message: reviewNote.trim() || null, at: Date.now() }]);
-    setReviewNote("");
-    backToTalk();
+    setSent((s) => [...s, { id: `r${Date.now()}`, kind: "review", url: URL.createObjectURL(blob), durationMs: meta.durationMs, annotations: meta.annotations, message: note || null, at: Date.now() }]);
+    setText("");
+    setShapes([]);
+    recorder.retake();
     router.refresh();
   };
 
@@ -490,11 +631,13 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
         toggle();
         return;
       }
-      if (mode === "talk") {
-        if (k === "arrowleft") go(-1);
-        if (k === "arrowright") go(1);
+      const v = videoOf();
+      if (k === "arrowleft" || k === "arrowright") {
+        if (v?.paused) step(k === "arrowleft" ? -FRAME : FRAME);
+        else if (!v) go(k === "arrowleft" ? -1 : 1);
         return;
       }
+      if (!canDraw) return;
       const t2 = TOOLS.find((x) => x.key.toLowerCase() === k);
       if (t2 && !e.metaKey && !e.ctrlKey) return setTool(t2.id);
       if (k === "z") {
@@ -503,9 +646,6 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
       }
       if (k === "[") return stepSize(-1);
       if (k === "]") return stepSize(1);
-      const v = videoOf();
-      if (v?.paused && k === "arrowleft") step(-FRAME);
-      if (v?.paused && k === "arrowright") step(FRAME);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -515,87 +655,89 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
   const all = liveShape ? [...shapes, liveShape] : shapes;
   const isVideo = showing.kind === "video";
   const recording = recorder.state === "recording";
-  const status =
-    recorder.state === "ready" ? { label: "READY", cls: "ready" } : recorder.state === "recording" ? { label: `REC ${clock(recorder.secs)}`, cls: "rec" } : recorder.state === "paused" ? { label: `PAUSED ${clock(recorder.secs)}`, cls: "paused" } : { label: `RECORDED ${clock(recorder.secs)}`, cls: "done" };
   const bubblePos: React.CSSProperties = drag
     ? { left: drag.x - 46, top: drag.y - 46 }
     : { [corner.startsWith("t") ? "top" : "bottom"]: corner.startsWith("t") ? 20 : 84, [corner.endsWith("l") ? "left" : "right"]: 20 };
   const nearEnd = recorder.secs >= MAX_SECONDS - 30;
-  const label = `${review.client.name}, ${review.exercise.name}`;
+  const label = `${fullName}, ${review.exercise.name}`;
+  const facts = chat ? [review.exercise.session] : [review.exercise.session, review.exercise.week > 0 && `Week ${review.exercise.week}`, review.exercise.day > 0 && `Day ${review.exercise.day}`];
+  const problem = recorder.problem ?? error;
 
   return (
     <DialogContent
       className="mrv-modal"
       onEscapeKeyDown={(e) => {
         e.preventDefault();
-        if (confirm) return setConfirm(null);
+        if (confirm) return setConfirm(false);
         if (palette) return setPalette(false);
         askClose();
       }}
       onInteractOutside={(e) => {
-        if (mode === "record" && recDirty) {
+        if (recDirty) {
           e.preventDefault();
-          setConfirm("close");
+          setConfirm(true);
         }
       }}
     >
       <DialogTitle className="sr-only">{label}</DialogTitle>
       <DialogDescription className="sr-only">
-        {first}&rsquo;s {item.kind} of {review.exercise.name}, and your conversation about it.
+        {first}&rsquo;s {item.kind} of {review.exercise.name}, and your reply to it.
       </DialogDescription>
 
       {/* ---- The stage */}
-      <div ref={stageRef} className={`mrv-stage${mode === "record" ? " rec-mode" : ""}`}>
+      <div ref={stageRef} className="mrv-stage">
         <div className="mrv-fit">
-        <div ref={frameRef} className="mrv-frame" style={{ "--r": natural.w / natural.h } as React.CSSProperties}>
-          {isVideo ? (
-            <video
-              key={showing.url}
-              ref={(el) => {
-                mediaEl.current = el;
-              }}
-              src={sameOrigin(showing.url)}
-              playsInline
-              preload="metadata"
-              onLoadedMetadata={(e) => {
-                const v = e.currentTarget;
-                if (v.videoWidth && v.videoHeight) setNatural({ w: v.videoWidth, h: v.videoHeight });
-                setDur(v.duration || 0);
-                v.playbackRate = rate;
-                setClipMuted(v, muted);
-              }}
-              onPlay={() => setPlaying(true)}
-              onPause={() => setPlaying(false)}
-              onEnded={() => setPlaying(false)}
-              onClick={toggle}
-            />
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element -- the client's own upload, served by the app
-            <img
-              key={showing.url}
-              ref={(el) => {
-                mediaEl.current = el;
-              }}
-              src={sameOrigin(showing.url)}
-              alt={`${first}'s photo`}
-              onLoad={(e) => {
-                const im = e.currentTarget;
-                if (im.naturalWidth && im.naturalHeight) setNatural({ w: im.naturalWidth, h: im.naturalHeight });
-              }}
-            />
-          )}
-          <svg ref={svgRef} className={`mrv-draw${mode === "record" ? " on" : ""}`} viewBox={`0 0 ${natural.w} ${natural.h}`} preserveAspectRatio="none" aria-hidden="true" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
-            {all.map((s, i) => {
-              const d = pathOf(s, unit);
-              return (
-                <g key={i}>
-                  <path d={d} stroke={UNDERLAY_COLOR} strokeWidth={UNDERLAY * unit * (s.size ?? 1)} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d={d} stroke={s.color} strokeWidth={STROKE * unit * (s.size ?? 1)} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                </g>
-              );
-            })}
-          </svg>
-        </div>
+          <div ref={frameRef} className="mrv-frame" style={{ "--r": natural.w / natural.h } as React.CSSProperties}>
+            {isVideo ? (
+              <video
+                key={showing.url}
+                ref={(el) => {
+                  mediaEl.current = el;
+                }}
+                src={sameOrigin(showing.url)}
+                playsInline
+                preload="metadata"
+                onLoadedMetadata={(e) => {
+                  const v = e.currentTarget;
+                  if (v.videoWidth && v.videoHeight) setNatural({ w: v.videoWidth, h: v.videoHeight });
+                  setDur(v.duration || 0);
+                  v.playbackRate = rate;
+                  setClipMuted(v, muted);
+                }}
+                onPlay={() => setPlaying(true)}
+                onPause={() => setPlaying(false)}
+                onEnded={() => setPlaying(false)}
+                onClick={toggle}
+              />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element -- the client's own upload, served by the app
+              <img
+                key={showing.url}
+                ref={(el) => {
+                  mediaEl.current = el;
+                }}
+                src={sameOrigin(showing.url)}
+                alt={`${first}'s photo`}
+                onLoad={(e) => {
+                  const im = e.currentTarget;
+                  if (im.naturalWidth && im.naturalHeight) setNatural({ w: im.naturalWidth, h: im.naturalHeight });
+                }}
+              />
+            )}
+            {canDraw && (
+              <svg ref={svgRef} className="mrv-draw on" viewBox={`0 0 ${natural.w} ${natural.h}`} preserveAspectRatio="none" aria-hidden="true" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
+                {all.map((s, i) => {
+                  const d = pathOf(s, unit);
+                  return (
+                    <g key={i}>
+                      <path d={d} stroke={UNDERLAY_COLOR} strokeWidth={UNDERLAY * unit * (s.size ?? 1)} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d={d} stroke={s.color} strokeWidth={STROKE * unit * (s.size ?? 1)} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                    </g>
+                  );
+                })}
+              </svg>
+            )}
+          </div>
         </div>
 
         {/* Playback, videos only. */}
@@ -649,22 +791,13 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
           </div>
         )}
 
-        {/* Conversation mode: Record review, and which of several. */}
-        {mode === "talk" && !stageReview && canRecord && (
-          <button type="button" className="mrv-recpill" onClick={enterRecord}>
-            <i aria-hidden="true" /> Record review
-          </button>
-        )}
         {stageReview && (
           <button type="button" className="mrv-recpill back" onClick={() => setStageReview(null)}>
             ‹ Back to {first}&rsquo;s {item.kind}
           </button>
         )}
-        {!recording && review.media.length > 1 && (
+        {!recDirty && !stageReview && review.media.length > 1 && (
           <>
-            <span className="mrv-count">
-              {item.kind.toUpperCase()} {idx + 1} OF {review.media.length}
-            </span>
             <button type="button" className="mrv-edge left" onClick={() => go(-1)} aria-label="Previous">
               ‹
             </button>
@@ -674,427 +807,292 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
           </>
         )}
 
-        {/* Record mode: the frame, the status, the tools, the camera. */}
-        {mode === "record" && (
-          <>
-            <span className={`mrv-recframe${recording ? " on" : ""}`} aria-hidden="true" />
-            <span className={`mrv-status ${status.cls}`} aria-live="polite">
-              <i aria-hidden="true" />
-              {status.label}
+        {/* A small REC on the stage while it records. */}
+        {(recorder.state === "recording" || recorder.state === "paused") && (
+          <span className={`mrv-rec${recorder.state === "paused" ? " paused" : ""}`} aria-live="polite">
+            <i aria-hidden="true" />
+            {recorder.state === "paused" ? "PAUSED" : "REC"}
+          </span>
+        )}
+
+        {/* The tools, on the client's media. */}
+        {canDraw && (
+          <div className="mrv-tools" role="toolbar" aria-label="Drawing">
+            {TOOLS.map((x) => (
+              <button key={x.id} type="button" className={`mrv-tool${tool === x.id ? " on" : ""}`} aria-pressed={tool === x.id} aria-label={`${x.name} (${x.key})`} title={`${x.name} (${x.key})`} onClick={() => setTool(x.id)}>
+                <Ico d={x.icon} />
+              </button>
+            ))}
+            <span className="mrv-tools-div" />
+            {/* The colour on, and the rest of the palette beside the toolbox when opened. */}
+            <span className="mrv-palette-wrap">
+              <button type="button" className="mrv-swatch on" aria-expanded={palette} aria-label={`Colour: ${COLORS.find((c) => c.id === color)?.name ?? "custom"}. Choose another`} title="Colour" onClick={() => setPalette((o) => !o)}>
+                <i style={{ background: color }} />
+              </button>
+              {palette && (
+                <span className="mrv-palette" role="listbox" aria-label="Colours">
+                  {COLORS.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      role="option"
+                      aria-selected={color === c.id}
+                      className={`mrv-pal${color === c.id ? " on" : ""}`}
+                      aria-label={c.name}
+                      title={c.name}
+                      onClick={() => {
+                        setColor(c.id);
+                        setPalette(false);
+                      }}
+                    >
+                      <i style={{ background: c.id }} />
+                    </button>
+                  ))}
+                </span>
+              )}
             </span>
-            <div className="mrv-tools" role="toolbar" aria-label="Drawing">
-              {TOOLS.map((x) => (
-                <button key={x.id} type="button" className={`mrv-tool${tool === x.id ? " on" : ""}`} aria-pressed={tool === x.id} aria-label={`${x.name} (${x.key})`} title={`${x.name} (${x.key})`} onClick={() => setTool(x.id)}>
-                  <Ico d={x.icon} />
-                </button>
-              ))}
-              <span className="mrv-tools-div" />
-              {/* The colour on, and the rest of the palette beside the toolbox when opened. */}
-              <span className="mrv-palette-wrap">
-                <button type="button" className="mrv-swatch on" aria-expanded={palette} aria-label={`Colour: ${COLORS.find((c) => c.id === color)?.name ?? "custom"}. Choose another`} title="Colour" onClick={() => setPalette((o) => !o)}>
-                  <i style={{ background: color }} />
-                </button>
-                {palette && (
-                  <span className="mrv-palette" role="listbox" aria-label="Colours">
-                    {COLORS.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        role="option"
-                        aria-selected={color === c.id}
-                        className={`mrv-pal${color === c.id ? " on" : ""}`}
-                        aria-label={c.name}
-                        title={c.name}
-                        onClick={() => {
-                          setColor(c.id);
-                          setPalette(false);
-                        }}
-                      >
-                        <i style={{ background: c.id }} />
-                      </button>
-                    ))}
-                  </span>
-                )}
-              </span>
-              <span className="mrv-tools-div" />
-              {SIZES.map((z) => (
-                <button key={z.id} type="button" className={`mrv-size${size === z.id ? " on" : ""}`} aria-pressed={size === z.id} aria-label={`${z.name} ([ or ])`} title={`${z.name} ([ or ])`} onClick={() => setSize(z.id)}>
-                  <i style={{ width: z.dot, height: z.dot, background: color }} />
-                </button>
-              ))}
-              <span className="mrv-tools-div" />
-              <button type="button" className="mrv-tool" disabled={!shapes.length} onClick={undo} aria-label="Undo (Z)" title="Undo (Z)">
-                <Ico d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3" />
+            <span className="mrv-tools-div" />
+            {SIZES.map((z) => (
+              <button key={z.id} type="button" className={`mrv-size${size === z.id ? " on" : ""}`} aria-pressed={size === z.id} aria-label={`${z.name} ([ or ])`} title={`${z.name} ([ or ])`} onClick={() => setSize(z.id)}>
+                <i style={{ width: z.dot, height: z.dot, background: color }} />
               </button>
-              <button type="button" className="mrv-tool" disabled={!shapes.length} onClick={clearAll} aria-label="Clear the drawing" title="Clear">
-                <Ico d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
-              </button>
-            </div>
-            {camOn && camStream && (
-              <div className={`mrv-cam${drag ? " dragging" : ""}`} style={bubblePos} onPointerDown={bubbleDown} onPointerMove={bubbleMove} onPointerUp={bubbleUp} onPointerCancel={bubbleUp} aria-label="Your camera" role="img">
-                <video ref={camVideo} muted playsInline />
-              </div>
-            )}
-            {count != null && (
-              <span key={count} className="mrv-countdown" aria-live="assertive">
-                {count}
-              </span>
-            )}
-          </>
+            ))}
+            <span className="mrv-tools-div" />
+            <button type="button" className="mrv-tool" disabled={!shapes.length} onClick={undo} aria-label="Undo (Z)" title="Undo (Z)">
+              <Ico d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3" />
+            </button>
+            <button type="button" className="mrv-tool" disabled={!shapes.length} onClick={clearAll} aria-label="Clear the drawing" title="Clear">
+              <Ico d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
+            </button>
+          </div>
+        )}
+        {camOn && camStream && !stageReview && (
+          <div className={`mrv-cam${drag ? " dragging" : ""}`} style={bubblePos} onPointerDown={bubbleDown} onPointerMove={bubbleMove} onPointerUp={bubbleUp} onPointerCancel={bubbleUp} aria-label="Your camera" role="img">
+            <video ref={camVideo} muted playsInline />
+          </div>
+        )}
+        {count != null && (
+          <span key={count} className="mrv-countdown" aria-live="assertive">
+            {count}
+          </span>
         )}
       </div>
 
       {/* ---- The panel */}
       <div className="mrv-panel">
         <header className="mrv-head">
-          <span className="mrv-avatar" aria-hidden="true">
-            {review.client.avatarPath ? (
-              // eslint-disable-next-line @next/next/no-img-element -- the client's own upload, served by the app
-              <img src={pic(review.client.avatarPath, 96)} alt="" />
-            ) : (
-              review.client.name.charAt(0).toUpperCase()
-            )}
-          </span>
-          <span className="mrv-head-main">
-            <b>{review.client.name}</b>
-            <small>
-              {review.exercise.name}
-              <Sep />
-              {/* From the chat: the day it was sent, not a count. */}
-              {chat ? review.exercise.session : <>{review.media.length} {item.kind === "photo" ? (review.media.length === 1 ? "photo" : "photos") : review.media.length === 1 ? "video" : "videos"}</>}
-              {review.sentAt ? (
-                <>
-                  <Sep />
-                  {hhmm(review.sentAt)}
-                </>
-              ) : null}
-            </small>
-          </span>
+          <Face path={face} name={fullName} className="mrv-avatar" />
+          <b className="mrv-who">{fullName}</b>
           <button type="button" className="mrv-close" onClick={askClose} aria-label="Close">
-            <Ico d="M6 6l12 12M18 6L6 18" size={12} w={2.6} />
+            <Ico d="M6 6l12 12M18 6L6 18" size={13} w={1.8} />
           </button>
         </header>
 
-        {mode === "talk" ? (
-          <div className="mrv-body talk" key="talk">
-            <div className="mrv-scroll">
-              {/* An exercise's video only: a chat one has no session, week or sets (26 Oct, Alex). */}
-              {!chat && (
-              <section className="mrv-ctx">
-                <div className="mrv-ctx-row">
-                  <span className="mrv-eyebrow">
-                    {review.exercise.session.toUpperCase()}
-                    <Sep />
-                    WK {review.exercise.week}
-                    {review.exercise.day > 0 && (
-                      <>
-                        <Sep />
-                        DAY {review.exercise.day}
-                      </>
-                    )}
-                  </span>
-                  <span className={`mrv-req${review.requested ? " asked" : ""}`}>{review.requested ? "You asked for this" : "Sent unasked"}</span>
-                </div>
-                {review.sets.length > 0 ? (
-                  <div className="mrv-sets">
-                    {review.sets.map((s) => (
-                      <span key={s.n} className="mrv-set">
-                        <b>{s.n}</b>
-                        {s.label}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mrv-nosets">No sets logged on it yet.</p>
-                )}
-              </section>
-              )}
+        <div className="mrv-scroll">
+          {/* The exercise, clearly (16 Nov, Alex), and where it was done in words: Week, never Wk. */}
+          <section className="mrv-ex">
+            <h2>{review.exercise.name}</h2>
+            <p className="mrv-facts">
+              <SepJoin parts={facts} />
+            </p>
+          </section>
 
-              {review.clientMessage && (
-                <div className="mrv-msg theirs">
-                  <span className="mrv-msg-avatar" aria-hidden="true">
-                    {review.client.avatarPath ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- the client's own upload, served by the app
-                      <img src={pic(review.client.avatarPath, 96)} alt="" />
-                    ) : (
-                      first.charAt(0).toUpperCase()
-                    )}
-                  </span>
-                  <span className="mrv-msg-col">
-                    <small>
-                      {first}
-                      {review.clientMessage.at ? (
-                        <>
-                          <Sep />
-                          {hhmm(review.clientMessage.at)}
-                        </>
-                      ) : null}
-                    </small>
-                    <span className="mrv-bubble theirs">{review.clientMessage.text}</span>
-                  </span>
-                </div>
-              )}
+          {!chat && review.sets.length > 0 && (
+            <section className="mrv-sets">
+              <span className="mrv-label">Sets</span>
+              {review.sets.map((s) => (
+                <span key={s.n} className="mrv-set">
+                  <span>{s.n}</span>
+                  {s.label}
+                </span>
+              ))}
+            </section>
+          )}
 
+          {review.clientMessage && (
+            <section className="mrv-said">
+              <Face path={face} name={first} className="mrv-said-face" />
+              <span className="mrv-label">{first}</span>
+              <p>{review.clientMessage.text}</p>
+            </section>
+          )}
+
+          {/* What was said before, kept simple: who, and the words or the review. */}
+          {thread.length > 0 && (
+            <section className="mrv-thread">
               {thread.map((m) =>
                 m.kind === "text" ? (
-                  <div key={m.id} className={`mrv-msg ${m.mine ? "mine" : "theirs"}`}>
-                    <span className="mrv-msg-col">
-                      <small>
-                        {m.mine ? "You" : first}
-                        <Sep />
-                        {hhmm(m.at)}
-                      </small>
-                      <span className={`mrv-bubble ${m.mine ? "mine" : "theirs"}`}>{m.text}</span>
-                    </span>
+                  <div key={m.id} className={`mrv-said${m.mine ? " mine" : ""}`}>
+                    {!m.mine && <Face path={face} name={first} className="mrv-said-face" />}
+                    <span className="mrv-label">{m.mine ? "You" : first}</span>
+                    <p>{m.text}</p>
                   </div>
                 ) : (
-                  <div key={m.id} className="mrv-msg mine">
-                    <span className="mrv-msg-col">
-                      <small>
-                        You<Sep />
-                        {hhmm(m.at)}
-                      </small>
-                      <button type="button" className="mrv-review" onClick={() => setStageReview(m.url)} aria-label="Play your form review on the stage">
-                        <span className="mrv-review-row">
-                          <span className="mrv-review-thumb">
+                  <div key={m.id} className="mrv-said mine">
+                    <span className="mrv-label">You</span>
+                    <button
+                      type="button"
+                      className="mrv-review"
+                      onClick={() => {
+                        if (recDirty) return;
+                        setStageReview({ kind: m.photo || isPicture(m.url) ? "photo" : "video", url: m.url });
+                      }}
+                      aria-label={m.photo || isPicture(m.url) ? "Show the photo you sent back" : "Play your review on the stage"}
+                    >
+                      <span className="mrv-review-thumb">
+                        {m.photo || isPicture(m.url) ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- the coach's own upload
+                          <img src={m.url.startsWith("blob:") ? m.url : pic(m.url, 480)} alt="" />
+                        ) : (
+                          <>
                             <video src={m.url} muted playsInline preload="metadata" aria-hidden="true" />
                             <i aria-hidden="true">
-                              <svg viewBox="0 0 24 24" width="12" height="12"><path d="M8 5v14l11-7z" fill="currentColor" /></svg>
+                              <svg viewBox="0 0 24 24" width="10" height="10"><path d="M8 5v14l11-7z" fill="currentColor" /></svg>
                             </i>
-                          </span>
-                          <span className="mrv-review-text">
-                            <span className="mrv-review-eyebrow">FORM REVIEW</span>
-                            <b>{m.durationMs != null ? clock(m.durationMs / 1000) : "Video"}</b>
-                            <small>
-                              <SepJoin parts={[m.annotations != null && `${m.annotations} drawing${m.annotations === 1 ? "" : "s"}`, "voice"]} />
-                            </small>
-                          </span>
-                        </span>
-                        {m.message && <span className="mrv-review-msg">{m.message}</span>}
-                      </button>
-                    </span>
+                          </>
+                        )}
+                      </span>
+                      <span className="mrv-review-text">
+                        {m.message ? <span className="mrv-review-msg">{m.message}</span> : <span className="mrv-review-msg faint">{m.durationMs != null ? clock(m.durationMs / 1000) : "Review"}</span>}
+                        {!(m.photo || isPicture(m.url)) && m.message && m.durationMs != null && <small>{clock(m.durationMs / 1000)}</small>}
+                      </span>
+                    </button>
                   </div>
                 )
               )}
+            </section>
+          )}
+        </div>
+
+        {/* ---- The reply, always at the foot (16 Nov, Alex): one panel, no modes. */}
+        <footer className="mrv-foot">
+          {recorder.micDenied && micOn && (
+            <p className="mrv-problem">
+              Microphone blocked{" "}
+              <button type="button" onClick={() => recorder.retake()}>
+                Try again
+              </button>
+            </p>
+          )}
+          {camDenied && camOn && <p className="mrv-problem">Camera blocked</p>}
+          {problem && <p className="mrv-problem">{problem}</p>}
+          {drawingLeftBehind && !!text.trim() && recorder.state === "ready" && !takingFoot && <p className="mrv-problem">A drawing on a video goes in a recording</p>}
+
+          {recorder.state === "done" && recorder.preview && (
+            <div className="mrv-take">
+              <video className="mrv-take-thumb" src={recorder.preview} playsInline preload="metadata" onClick={(e) => (e.currentTarget.paused ? void e.currentTarget.play() : e.currentTarget.pause())} aria-label="Play the recording" />
+              <span className="mrv-take-len">{clock(recorder.secs)}</span>
             </div>
+          )}
 
-            <footer className="mrv-compose">
-              {error && <p className="mrv-error">{error}</p>}
-              <label className={`mrv-field${text.trim() ? " has" : ""}`}>
-                <textarea
-                  value={text}
-                  placeholder={`Reply to ${first}…`}
-                  aria-label={`Reply to ${first}`}
-                  onChange={(e) => {
-                    setText(e.target.value);
-                    const el = e.currentTarget;
-                    el.style.height = "44px";
-                    el.style.height = `${Math.min(120, el.scrollHeight)}px`;
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                      e.preventDefault();
-                      void sendText();
-                    }
-                  }}
-                />
-              </label>
-              <div className="mrv-compose-row">
-                {canRecord && item && (
-                  <button type="button" className="mrv-recbtn" onClick={enterRecord}>
-                    <i aria-hidden="true" /> Record review
-                  </button>
-                )}
-                <button type="button" className="mrv-send" disabled={!text.trim() || busy} onClick={() => void sendText()}>
-                  {busy ? "Sending…" : "Send"} <Ico d="M5 12h14M13 6l6 6-6 6" size={15} w={2.4} />
+          {!takingFoot && (
+            <label className={`mrv-line${text ? " has" : ""}`}>
+              <textarea
+                ref={lineRef}
+                rows={1}
+                value={text}
+                aria-label={recorder.state === "done" ? `A note with the recording for ${first}` : `Reply to ${first}`}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    if (recorder.state === "done") void sendReview();
+                    else void sendText();
+                  }
+                }}
+              />
+            </label>
+          )}
+
+          <div className="mrv-acts">
+            {recorder.state === "done" ? (
+              <>
+                <span className="mrv-sp" />
+                <button type="button" className="mrv-pill" onClick={recorder.retake} disabled={progress != null}>
+                  Retake
                 </button>
-              </div>
-            </footer>
-          </div>
-        ) : (
-          <div className="mrv-body record" key="record">
-            <div className="mrv-scroll">
-              {/* An exercise's video only: a chat one has no session, week or sets (26 Oct, Alex). */}
-              {!chat && (
-              <section className="mrv-ctx">
-                <div className="mrv-ctx-row">
-                  <span className="mrv-eyebrow">
-                    {review.exercise.session.toUpperCase()}
-                    <Sep />
-                    WK {review.exercise.week}
-                    {review.exercise.day > 0 && (
-                      <>
-                        <Sep />
-                        DAY {review.exercise.day}
-                      </>
-                    )}
-                  </span>
-                  <span className={`mrv-req${review.requested ? " asked" : ""}`}>{review.requested ? "You asked for this" : "Sent unasked"}</span>
-                </div>
-                {review.sets.length > 0 ? (
-                  <div className="mrv-sets">
-                    {review.sets.map((s) => (
-                      <span key={s.n} className="mrv-set">
-                        <b>{s.n}</b>
-                        {s.label}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mrv-nosets">No sets logged on it yet.</p>
-                )}
-              </section>
-              )}
-
-              {review.clientMessage && (
-                <div className="mrv-msg theirs">
-                  <span className="mrv-msg-avatar" aria-hidden="true">
-                    {review.client.avatarPath ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- the client's own upload, served by the app
-                      <img src={pic(review.client.avatarPath, 96)} alt="" />
-                    ) : (
-                      first.charAt(0).toUpperCase()
-                    )}
-                  </span>
-                  <span className="mrv-msg-col">
-                    <small>
-                      {first}
-                      {review.clientMessage.at ? (
-                        <>
-                          <Sep />
-                          {hhmm(review.clientMessage.at)}
-                        </>
-                      ) : null}
-                    </small>
-                    <span className="mrv-bubble theirs">{review.clientMessage.text}</span>
-                  </span>
-                </div>
-              )}
-
-              {recorder.micDenied && micOn && (
-                <p className="mrv-banner">
-                  Allow microphone access to record a review.{" "}
-                  <button type="button" onClick={() => recorder.retake()}>
-                    Try again
-                  </button>
-                </p>
-              )}
-              {camDenied && camOn && <p className="mrv-banner">The camera is blocked in this browser, so the review records without it.</p>}
-              {(recorder.problem || error) && <p className="mrv-error">{recorder.problem ?? error}</p>}
-
-              {recorder.state === "ready" && (
-                <section className="mrv-card ready">
-                  <button type="button" className="mrv-bigrec" onClick={startRecording} disabled={count != null} aria-label="Start recording">
-                    <i aria-hidden="true" />
-                  </button>
-                  <b>Start recording</b>
-                  <small>You can draw before you start. Anything already on screen is included.</small>
-                </section>
-              )}
-              {(recorder.state === "recording" || recorder.state === "paused") && (
-                <section className="mrv-card live">
-                  <span className={`mrv-live-status ${recorder.state}`}>
-                    <i aria-hidden="true" />
-                    {recorder.state === "recording" ? (
-                      <span>
-                        RECORDING<Sep />
-                        {micOn && !recorder.micDenied ? "MIC ON" : "MIC OFF"}
-                      </span>
-                    ) : (
-                      "PAUSED"
-                    )}
-                  </span>
-                  <span className={`mrv-timer${nearEnd ? " warn" : ""}`}>{clock(recorder.secs)}</span>
-                  <span className="mrv-live-btns">
-                    {recorder.state === "recording" ? (
-                      <button type="button" className="mrv-live-btn" onClick={recorder.pause}>
-                        Pause
-                      </button>
-                    ) : (
-                      <button type="button" className="mrv-live-btn" onClick={recorder.resume}>
-                        Resume
-                      </button>
-                    )}
-                    <button type="button" className="mrv-live-btn stop" onClick={recorder.stop}>
-                      <i aria-hidden="true" /> Stop
+                <button type="button" className="mrv-pill ink" onClick={() => void sendReview()} disabled={progress != null}>
+                  {progress != null ? (
+                    <>
+                      <span className="mrv-ring" style={{ "--p": `${Math.round(progress * 100)}%` } as React.CSSProperties} aria-hidden="true" />
+                      {progress >= 1 ? "Saving" : `${Math.round(progress * 100)}%`}
+                    </>
+                  ) : (
+                    <>
+                      Send <Ico d={SEND} size={15} w={1.8} />
+                    </>
+                  )}
+                </button>
+              </>
+            ) : (
+              <>
+                {canRecord && (
+                  <>
+                    <button type="button" className={`mrv-tg${micOn ? " on" : ""}`} aria-pressed={micOn} aria-label="Microphone" title={micOn ? "Microphone on" : "Microphone off"} onClick={() => setMicOn(!micOn)}>
+                      <Ico d={MIC} size={16} w={1.6} />
                     </button>
-                  </span>
-                </section>
-              )}
-              {recorder.state === "done" && recorder.preview && (
-                <section className="mrv-card done">
-                  <div className="mrv-done-row">
-                    <video className="mrv-done-thumb" src={recorder.preview} playsInline preload="metadata" onClick={(e) => (e.currentTarget.paused ? void e.currentTarget.play() : e.currentTarget.pause())} aria-label="Play the recording" />
-                    <span className="mrv-review-text dark">
-                      <span className="mrv-review-eyebrow navy">
-                        FORM REVIEW<Sep />
-                        READY
-                      </span>
-                      <b className="big">{clock(recorder.secs)}</b>
-                      <small>
-                        <SepJoin parts={[`${drawn} drawing${drawn === 1 ? "" : "s"}`, micOn && !recorder.micDenied ? "voice" : "no voice", camOn && camStream && "camera"]} />
-                      </small>
+                    <button type="button" className={`mrv-tg${camOn ? " on" : ""}`} aria-pressed={camOn} aria-label="Camera" title={camOn ? "Camera on" : "Camera off"} onClick={toggleCam}>
+                      <Ico d={CAM} size={16} w={1.6} />
+                    </button>
+                  </>
+                )}
+                <span className="mrv-sp" />
+                {takingFoot ? (
+                  <>
+                    <span className={`mrv-clock${recorder.state === "paused" ? " paused" : ""}${nearEnd ? " warn" : ""}`} aria-live="off">
+                      <i aria-hidden="true" />
+                      {clock(recorder.secs)}
                     </span>
-                  </div>
-                  <textarea className="mrv-done-note" value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} placeholder="Add a message (optional)" aria-label="Add a message (optional)" />
-                  <span className="mrv-done-btns">
-                    <button type="button" className="mrv-retake" onClick={recorder.retake} disabled={progress != null}>
-                      Retake
+                    {recorder.state !== "ready" && (
+                      <button type="button" className="mrv-tg" aria-label={recorder.state === "paused" ? "Resume" : "Pause"} title={recorder.state === "paused" ? "Resume" : "Pause"} onClick={recorder.state === "paused" ? recorder.resume : recorder.pause}>
+                        {recorder.state === "paused" ? (
+                          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" /></svg>
+                        ) : (
+                          <Ico d="M9 6v12M15 6v12" size={14} w={2} />
+                        )}
+                      </button>
+                    )}
+                    <button type="button" className="mrv-stop" onClick={stopRecording} aria-label="Stop" title="Stop">
+                      <b aria-hidden="true" />
                     </button>
-                    <button type="button" className="mrv-sendrev" onClick={() => void sendReview()} disabled={progress != null}>
-                      {progress != null ? (
-                        <>
-                          <span className="mrv-ring" style={{ "--p": `${Math.round(progress * 100)}%` } as React.CSSProperties} aria-hidden="true" />
-                          {progress >= 1 ? "Saving…" : `Sending ${Math.round(progress * 100)}%`}
-                        </>
-                      ) : (
-                        <>
-                          Send to {first} <Ico d="M5 12h14M13 6l6 6-6 6" size={15} w={2.4} />
-                        </>
-                      )}
+                  </>
+                ) : (
+                  <>
+                    {canRecord && (
+                      <button type="button" className="mrv-pill" onClick={startRecording} disabled={busy}>
+                        <i className="mrv-dot" aria-hidden="true" />
+                        Record
+                      </button>
+                    )}
+                    <button type="button" className="mrv-pill ink" disabled={!text.trim() || busy || drawingLeftBehind} onClick={() => void sendText()}>
+                      {busy ? "Sending" : "Send"} <Ico d={SEND} size={15} w={1.8} />
                     </button>
-                  </span>
-                </section>
-              )}
-
-              <div className="mrv-toggles">
-                <button type="button" className={`mrv-toggle${micOn ? " on" : ""}`} aria-pressed={micOn} onClick={() => setMicOn(!micOn)}>
-                  <Ico d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3" size={16} />
-                  Mic {micOn ? "on" : "off"}
-                </button>
-                <button type="button" className={`mrv-toggle${camOn ? " on" : ""}`} aria-pressed={camOn} onClick={toggleCam}>
-                  <Ico d="M3 7h12v10H3zM15 10.5l6-3.5v10l-6-3.5" size={16} />
-                  Camera {camOn ? "on" : "off"}
-                </button>
-              </div>
-              <p className="mrv-keys">
-                <SepJoin parts={["P pen", "A arrow", "L line", "O circle", "[ ] size", "Z undo", "Space play/pause"]} />
-              </p>
-            </div>
+                  </>
+                )}
+              </>
+            )}
           </div>
-        )}
+        </footer>
       </div>
 
       {/* Asked before a recording is thrown away. */}
       {confirm && (
-        <div className="mrv-confirm" role="alertdialog" aria-label="Discard the recording?">
+        <div className="mrv-confirm" role="alertdialog" aria-label="Delete the recording?">
           <div className="mrv-confirm-card">
-            <b>Discard the recording?</b>
-            <small>Your drawings are discarded with it.</small>
+            <b>Delete the recording?</b>
             <span>
-              <button type="button" className="mrv-retake" onClick={() => setConfirm(null)}>
+              <button type="button" className="mrv-text-btn" onClick={() => setConfirm(false)}>
                 Cancel
               </button>
               <button
                 type="button"
                 className="mrv-discard"
                 onClick={() => {
-                  const was = confirm;
-                  backToTalk();
-                  if (was === "close") onClose();
+                  discardTake();
+                  onClose();
                 }}
               >
-                Discard
+                Delete
               </button>
             </span>
           </div>
@@ -1106,4 +1104,3 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
 
 /** Whether a Training-tab video is one this modal shows: in, or answered, with a file. */
 export const reviewable = (v: { state: string; src: string | null } | null | undefined) => !!v && (v.state === "in" || v.state === "replied") && !!v.src;
-

@@ -75,7 +75,8 @@ export function listPhoneVideos(coachId: number): PhoneVideos {
       asked: !v.from_client,
       sentAt: ms(v.submitted_at),
       repliedAt: v.replied_at ? ms(v.replied_at) : v.closed_at ? ms(v.closed_at) : null,
-      reply: v.reply_file_path ? "review" : v.reply_note?.trim() ? "text" : v.closed_at ? "done" : null,
+      // A written reply on a photo (16 Nov) carries the photo back as its file: it is the words, not a recording.
+      reply: v.reply_file_path && v.reply_media !== "photo" ? "review" : v.reply_note?.trim() ? "text" : v.closed_at ? "done" : null,
     });
   }
   return {
@@ -109,7 +110,7 @@ export function phoneReview(requestId: number): PhoneReview | null {
       })
     : [];
   const thread: ThreadItem[] = [];
-  if (v.reply_file_path) thread.push({ id: `r${v.id}`, kind: "review", url: v.reply_file_path, durationMs: v.reply_duration_ms ?? null, annotations: v.reply_annotations ?? null, message: v.reply_note?.trim() || null, at: ms(v.replied_at) });
+  if (v.reply_file_path && v.reply_media !== "photo") thread.push({ id: `r${v.id}`, kind: "review", url: v.reply_file_path, durationMs: v.reply_duration_ms ?? null, annotations: v.reply_annotations ?? null, message: v.reply_note?.trim() || null, at: ms(v.replied_at) });
   else if (v.reply_note?.trim()) thread.push({ id: `n${v.id}`, kind: "text", mine: true, text: v.reply_note.trim(), at: ms(v.replied_at) });
   const name = c?.name ?? "Client";
   return {

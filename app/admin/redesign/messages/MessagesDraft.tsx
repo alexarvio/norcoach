@@ -558,7 +558,7 @@ export default function MessagesDraft({ clientId, firstName, plan: fromPage, act
           <Dialog open onOpenChange={(o) => !o && setReviewing(null)}>
             <MediaReviewModal
               key={reviewing.id}
-              review={chatMediaReview(firstName, reviewing.media.type === "video" ? "video" : "photo", reviewing.media.path, reviewing.text, dayOf(reviewing.when))}
+              review={chatMediaReview(firstName, reviewing.media.type === "video" ? "video" : "photo", reviewing.media.path, reviewing.text, dayOf(reviewing.when), plan.avatarPath ?? null)}
               chat={{ clientId, replyTo: reviewing.id }}
               onClose={() => {
                 setReviewing(null);

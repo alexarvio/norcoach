@@ -116,6 +116,11 @@ export function useReviewRecorder(src: Source) {
   const [preview, setPreview] = useState<string | null>(null);
   const [micDenied, setMicDenied] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  // From Record's countdown ending until the take runs (the mic, the sound and the video's first frame are awaited):
+  // the take is under way, so the panel holds Record and asks before closing.
+  const [starting, setStarting] = useState(false);
+  // Each start, retake and unmount moves it on, so a start whose awaits finish after it gives back what it got.
+  const gen = useRef(0);
   const canvas = useRef<HTMLCanvasElement | null>(null);
   const raf = useRef<number | null>(null);
   const rec = useRef<MediaRecorder | null>(null);
@@ -206,20 +211,26 @@ export function useReviewRecorder(src: Source) {
 
   const start = useCallback(
     async (opts: { mic: boolean }) => {
+      if (rec.current) return;
       setProblem(null);
       const s = srcRef.current;
       const m = s.media();
       if (!m) return;
+      const my = ++gen.current;
+      const gone = () => gen.current !== my;
+      setStarting(true);
       // The mic first (25 Oct, Alex: the take had the clip and no voice): iPhone gives a sound context made before the
       // mic silence from it. With the mic on, its context may start without the tap.
       let audio: MediaStream | null = null;
       if (opts.mic) {
         audio = await getMic();
+        if (gone()) return audio?.getTracks().forEach((t) => t.stop());
         setMicDenied(!audio);
       }
       mic.current = audio;
       const actx = theAudio();
       await Promise.race([actx?.resume().catch(() => {}), new Promise((r) => setTimeout(r, 800))]);
+      if (gone()) return audio?.getTracks().forEach((t) => t.stop());
       // A context that won't run would record nothing at all: the voice alone then, straight from the mic.
       const live = actx && actx.state === "running" ? actx : null;
       // A video with no painted frame records black: nudge it to one first.
@@ -234,6 +245,8 @@ export function useReviewRecorder(src: Source) {
       }
       // The clip's own sound goes in, under the voice (25 Oct, Alex; it stayed out before): heard again, as it plays.
       if (m instanceof HTMLVideoElement) m.muted = clipMuted;
+      if (gone()) return audio?.getTracks().forEach((t) => t.stop());
+      setStarting(false);
       const { w, h } = s.size();
       const k = Math.min(1, LONG_EDGE / Math.max(w, h));
       // A fresh canvas each take, at the media's own shape.
@@ -280,6 +293,7 @@ export function useReviewRecorder(src: Source) {
         setSecs(0);
         setState("recording");
       } catch (e) {
+        rec.current = null;
         stopLoop();
         dropMic();
         setProblem(`Recording could not start (${e instanceof Error ? e.message : String(e)}).`);
@@ -308,6 +322,8 @@ export function useReviewRecorder(src: Source) {
     mic.current?.getAudioTracks().forEach((t) => (t.enabled = on));
   }, []);
   const retake = useCallback(() => {
+    gen.current++;
+    setStarting(false);
     if (rec.current && rec.current.state !== "inactive") {
       rec.current.onstop = null;
       rec.current.stop();
@@ -338,6 +354,7 @@ export function useReviewRecorder(src: Source) {
   // Gone with the modal: nothing keeps running or listening.
   useEffect(
     () => () => {
+      gen.current++;
       stopLoop();
       dropMic();
       if (rec.current && rec.current.state !== "inactive") {
@@ -348,5 +365,5 @@ export function useReviewRecorder(src: Source) {
     []
   );
 
-  return { state, secs, blob, preview, micDenied, problem, start, pause, resume, stop, retake, setMicOn };
+  return { state, starting, secs, blob, preview, micDenied, problem, start, pause, resume, stop, retake, setMicOn };
 }

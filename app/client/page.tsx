@@ -550,8 +550,9 @@ function latestCoachActivity(clientId: number, coachFirst: string, phoneTz: stri
     // A form review lands in the chat too, pointing at the exercise: show it
     // as the reply, which View plays in the pop-up (17 Oct).
     const media = latestMsg.media;
-    const reply = media?.type === "video" ? listVideoReplies(clientId).find((r) => r.replySrc === media.path) ?? null : null;
-    if (reply) return { kind: "video", title: `Replied to your video of ${reply.exerciseName}`, body: reply.replyNote || null, whenLabel: relativeLabel(iso), cta: "Watch", videoReply: reply, unread, unseen: !reply.seen, moreThisWeek };
+    // A written reply on a photo lands as the photo sent back (16 Nov, Alex): an image, the reply all the same.
+    const reply = media?.type === "video" || media?.type === "image" ? listVideoReplies(clientId).find((r) => r.replySrc === media.path) ?? null : null;
+    if (reply) return { kind: "video", title: `Replied to your ${reply.theirsPhoto ? "photo" : "video"} of ${reply.exerciseName}`, body: reply.replyNote || null, whenLabel: relativeLabel(iso), cta: reply.replyPhoto ? "View" : "Watch", videoReply: reply, unread, unseen: !reply.seen, moreThisWeek };
     if (latestMsg.link && !latestMsg.link.gone) {
       const k = latestMsg.link.link.kind;
       const context = k === "food" || k === "nutrition" ? "nutrition" : k === "checkin" ? "checkin" : k === "photos" ? "photos" : "training";
