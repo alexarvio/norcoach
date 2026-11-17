@@ -12,6 +12,7 @@ import type { CheckInMetric, CheckInSection } from "./CheckInScreen";
 import { Bars } from "./Bars";
 import { dayWords } from "../lib/clientDates";
 import { nativePlatform } from "../lib/native";
+import { connectHealth, useHealthConnected } from "./HealthSync";
 
 // A day's check-in as a centred pop-up (13 Oct, "Rows"): the gym pop-up's
 // language, a sand glow at the top, one bordered row a metric, one navy
@@ -142,7 +143,10 @@ export default function CheckInDialog({
   const rows = groups.flatMap((g) => g.rows);
   const { source: noteSource, saved: savedNote } = noteOf(form.sections, rows);
 
-  const [values, setValues] = useState<Record<string, string>>(() => seedOf(rows));
+  const [typed, setValues] = useState<Record<string, string>>(() => seedOf(rows));
+  // A row the phone filled, even one it filled while the pop-up is open (connected from its line, 17 Nov): the phone's
+  // figure, read-only, is what shows and goes with Save, never what was typed before it came.
+  const values: Record<string, string> = { ...typed, ...Object.fromEntries(rows.filter((r) => r.metric.live).map((r) => [r.key, r.metric.value])) };
   const [note, setNote] = useState(savedNote);
   const [pending, setPending] = useState(false);
   const [phase, setPhase] = useState<"open" | "closing" | "saved">("open");
@@ -204,10 +208,11 @@ export default function CheckInDialog({
       }
     };
     document.addEventListener("keydown", onKey);
-    // The first metric still to fill, in view.
+    // The first metric still to fill, in view; the body stays at its top when it already is, so the line on the phone's
+    // connection over the list stays in sight (17 Nov).
     const t = setTimeout(() => {
       const first = body.current?.querySelector<HTMLElement>(".cki-row:not(.filled)");
-      if (first && body.current) body.current.scrollTop = Math.max(0, first.offsetTop - 8);
+      if (first && body.current && first.offsetTop + first.offsetHeight > body.current.clientHeight) body.current.scrollTop = Math.max(0, first.offsetTop - 8);
     }, 60);
     return () => {
       clearTimeout(t);
@@ -343,6 +348,8 @@ export default function CheckInDialog({
           <div ref={body} className="cki-body">
             {/* The list is only what the client fills (17 Nov, Alex: B3 of docs/boards/auto-metric-b-block-mockup.html); the
                 phone's figures sit apart under it, read-only. */}
+            {/* The phone could fill some of these and isn't connected yet (17 Nov, Alex): one line, first, with Connect. */}
+            {rows.some((r) => r.metric.phone && !r.metric.live) && <HealthOff onSynced={(saved) => saved && router.refresh()} />}
             {groups.map((g) => ({ ...g, rows: g.rows.filter((r) => !r.metric.live) })).filter((g) => g.rows.length > 0).map((g) => (
               <div key={g.id} className="cki-group">
                 {g.label && <div className="cki-group-label">{g.label}</div>}
@@ -405,6 +412,43 @@ export default function CheckInDialog({
       )}
     </>,
     document.body
+  );
+}
+
+/**
+ * "Apple Health not connected" and Connect (17 Nov, Alex: clients turn it on in Settings, and a check-in asking for steps,
+ * weight, sleep or heart rate should say when it isn't). In the app alone, only while the phone isn't connected; the
+ * AutoBlock's grey, one line. Connect does what Settings' switch does, the phone's own sheet then the first sync, and the
+ * line goes; what the phone fills moves into the AutoBlock as the page reads again. A short fact in rust when it didn't go.
+ */
+function HealthOff({ onSynced }: { onSynced: (saved: boolean) => void }) {
+  const connected = useHealthConnected();
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  if (connected) return null;
+  const store = nativePlatform() === "android" ? "Health Connect" : "Apple Health";
+  const connect = async () => {
+    if (busy) return;
+    setBusy(true);
+    setFailed(null);
+    try {
+      const { note, result } = await connectHealth();
+      if (note) setFailed(note);
+      else onSynced(!!result?.saved);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="cki-auto cki-health-off" role="status">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+        <path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" />
+      </svg>
+      <span className={`cki-health-off-words${failed ? " bad" : ""}`}>{failed ?? `${store} not connected`}</span>
+      <button type="button" className="cki-health-off-go" onClick={() => void connect()} disabled={busy}>
+        Connect
+      </button>
+    </div>
   );
 }
 

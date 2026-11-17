@@ -5,10 +5,11 @@
 // still change. Steps fill as they did (syncHealthStepsAction, 24 Oct). The calories a food app wrote there (MyFitnessPal
 // and the like, 17 Nov) are the day's calories in the calorie log, whatever the coach tracks (syncCalories).
 
-import { getData, isStepsMetric, MAX_DAY_STEPS, persist, allocId, type HealthWorkout } from "./db";
-import { checkInEditable, foodDayType, getMetricEntries, listMetricDefinitions, listMonthlyMetricsAsked, localDateStr, monthStart, setMetricEntry, weekStart, WEIGHT_NAME, weightInUnit, type MetricCadence, type MetricDefinition } from "./queries";
+import { getData, MAX_DAY_STEPS, persist, allocId, type HealthWorkout } from "./db";
+import { checkInEditable, foodDayType, getMetricEntries, listMetricDefinitions, listMonthlyMetricsAsked, localDateStr, monthStart, setMetricEntry, weekStart, weightInUnit, type MetricCadence, type MetricDefinition } from "./queries";
+import { healthKindOf, type HealthKind } from "./healthKind";
 
-export type HealthKind = "steps" | "weight" | "sleep" | "restingHeartRate" | "hrv";
+export { healthKindOf, type HealthKind };
 
 /** What the phone sends: each kind a figure a day (weight every weigh-in a day with its moment), and the workouts of
  *  the window it read (null when it couldn't read them, so none are taken away). Days are the phone's own. */
@@ -34,33 +35,6 @@ export type HealthSyncResult = { tracked: HealthKind[]; saved: number; workouts:
 
 /** A figure past these is a slip of a sensor or an app, never a reading. */
 const RANGE: Record<Exclude<HealthKind, "steps">, [number, number]> = { weight: [25, 350], sleep: [0, 16], restingHeartRate: [25, 150], hrv: [5, 300] };
-
-const HOURS_UNIT = /^(h|hr|hrs|hour|hours|uur|uren)\.?$/i;
-const MINUTES_UNIT = /^(m|min|mins|minute|minutes)\.?$/i;
-const SCALE_UNIT = /^\/\s*\d+$|out of|score|%/i;
-
-/** Which of the phone's kinds a metric of the coach's is, by its name and unit, or none. Sleep only as hours (or minutes)
- *  slept, never a 1–10 quality; weight only the body's (Weight, Body weight), never a goal or a lift. */
-export function healthKindOf(def: Pick<MetricDefinition, "name" | "unit" | "frequency">): { kind: HealthKind; minutes?: boolean } | null {
-  const name = def.name.trim();
-  const unit = (def.unit ?? "").trim();
-  if (WEIGHT_NAME.test(name)) {
-    if (/goal|target|lift|lifted/i.test(name)) return null;
-    if (unit && !/^(kg|kgs|kilo|kilos|kilograms?|lbs?\.?|pounds?)$/i.test(unit)) return null;
-    return { kind: "weight" };
-  }
-  if (def.frequency !== "daily") return null;
-  if (isStepsMetric(name)) return /goal|target/i.test(name) ? null : { kind: "steps" };
-  if (/resting\s*(hr|heart\s*rate|pulse)|\brhr\b/i.test(name)) return !unit || /^bpm$/i.test(unit) ? { kind: "restingHeartRate" } : null;
-  if (/\bhrv\b|heart\s*rate\s*variab/i.test(name)) return !unit || /^ms$/i.test(unit) ? { kind: "hrv" } : null;
-  if (/\bsleep|\bslept\b/i.test(name)) {
-    if (/quality|score|rating|rate|feel|well|deep|rem\b|restful/i.test(name) || SCALE_UNIT.test(unit)) return null;
-    if (HOURS_UNIT.test(unit)) return { kind: "sleep" };
-    if (MINUTES_UNIT.test(unit)) return { kind: "sleep", minutes: true };
-    if (!unit && /hours?|\bhrs?\b|duration|slept|how long/i.test(name)) return { kind: "sleep" };
-  }
-  return null;
-}
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const num = (v: unknown) => (typeof v === "number" ? v : Number(v));

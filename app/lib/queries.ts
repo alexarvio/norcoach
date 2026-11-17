@@ -31,6 +31,7 @@ import { setsDue } from "./setsDue";
 import { assistedRow, beforeStop, copiedWeights, isReset, laneKg, laneOfGym, laneTypedAt, laterSlot, liftOf, raisedTo, repWindow, setsSinceReset, stopAfter, writeLane, type Lane } from "./targetRule";
 import { FEATURES } from "./features";
 import { daysBetween, weightGoalViews, type WeightGoalView } from "./weightGoal";
+import { healthKindOf, WEIGHT_NAME } from "./healthKind";
 import type { HealthWorkout, WeightGoal } from "./db";
 
 // "Today" (or any Date) as a local YYYY-MM-DD calendar-date string. This is
@@ -3834,8 +3835,9 @@ export function listMeasurementFields(clientId: number): MeasurementFieldDef[] {
     .sort((a, b) => a.order_index - b.order_index);
 }
 
-/** A body weight's name (23 Oct, Alex): "Weight", "Body weight", "Bodyweight (AM)"; a lift's weight never. */
-export const WEIGHT_NAME = /^(body\s?)?weight\b/i;
+/** A body weight's name (23 Oct, Alex): "Weight", "Body weight", "Bodyweight (AM)"; a lift's weight never. Kept with the
+ *  phone's kinds (healthKind.ts), which read it too. */
+export { WEIGHT_NAME };
 const LB_UNIT = /^lbs?\.?$/i;
 const KG_PER_LB = 0.45359237;
 const DAY_ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -8508,6 +8510,9 @@ function checkInTrackerSection(
         // Filled by the phone (Apple Health / Health Connect): drawn live and not typed in (16 Nov, Alex: A of
         // docs/boards/auto-metric-mockup.html).
         live: current?.source === "health" && current.value != null,
+        // One the phone could fill once Apple Health or Health Connect is connected (17 Nov, Alex): the pop-up says when
+        // it isn't yet.
+        phone: !!healthKindOf(def),
       };
     }),
   };

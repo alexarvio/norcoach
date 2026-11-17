@@ -32,7 +32,37 @@ const writeOn = (on: boolean) => {
   } catch {
     /* blocked storage: syncs for this visit only */
   }
+  onListeners.forEach((l) => l());
 };
+// Settings' switch and the check-in pop-up's line read the same switch, so turning it on in one shows in the other.
+const onListeners = new Set<() => void>();
+const subscribeOn = (l: () => void) => {
+  onListeners.add(l);
+  return () => onListeners.delete(l);
+};
+
+/** Whether this phone's health store is connected (Settings · Connected apps), live; true outside the app and while
+ *  drawing on the server, so nothing says "not connected" where it can't be. */
+export function useHealthConnected(): boolean {
+  return useSyncExternalStore(subscribeOn, () => !cap() || readOn(), () => true);
+}
+
+/** Connect this phone's health store, as Settings' switch does: the phone's own sheet asks, then the first sync. A
+ *  short fact when it didn't go ("Not allowed"), else null. */
+export async function connectHealth(): Promise<{ note: string | null; result: HealthSyncResult | null }> {
+  const platform = platformOf();
+  try {
+    const avail = await callNative<{ available?: boolean }>("Health", "isAvailable");
+    if (!avail.available) return { note: platform === "android" ? "Health Connect not installed" : "Not on this phone", result: null };
+    const auth = await askToRead();
+    // Android says what was allowed; iPhone never does.
+    if (platform === "android" && !auth.readAuthorized?.length) return { note: "Not allowed", result: null };
+    writeOn(true);
+    return { note: null, result: await syncHealth().catch(() => null) };
+  } catch {
+    return { note: "Couldn't connect. Try again", result: null };
+  }
+}
 
 // What the phone is asked to read. A phone that turned the switch on before 16 Nov was asked for steps alone: it is
 // asked once more for the rest on its next sync (iPhone shows its sheet only for the types it hasn't asked yet). The
@@ -257,19 +287,19 @@ export function HealthAutoSync() {
 export function ConnectedApps({ coachName }: { coachName: string }) {
   const platform = useSyncExternalStore(noSubscribe, platformOf, () => null);
   const router = useRouter();
-  const stored = useSyncExternalStore(noSubscribe, readOn, () => false);
-  const [chosen, setOn] = useState<boolean | null>(null);
-  const on = chosen ?? stored;
+  const on = useSyncExternalStore(subscribeOn, readOn, () => false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
-  const sync = useCallback(async () => {
-    const r = await syncHealth();
-    // Nothing to say while anything goes (16 Nov): only when the coach tracks none of it and there are no workouts.
-    if (r && r.tracked.length === 0 && r.workouts === 0 && !r.calories) setNote(`${coachName} isn't tracking steps, weight, sleep or heart rate yet`);
-    else setNote(null);
-    if (r?.saved) router.refresh();
-  }, [router, coachName]);
+  const synced = useCallback(
+    (r: HealthSyncResult | null) => {
+      // Nothing to say while anything goes (16 Nov): only when the coach tracks none of it and there are no workouts.
+      if (r && r.tracked.length === 0 && r.workouts === 0 && !r.calories) setNote(`${coachName} isn't tracking steps, weight, sleep or heart rate yet`);
+      else setNote(null);
+      if (r?.saved) router.refresh();
+    },
+    [router, coachName]
+  );
 
   // The names alone, Soon on their right; no line under the rows or the section (3 Nov, Alex: the words audit).
   if (!platform) {
@@ -294,29 +324,15 @@ export function ConnectedApps({ coachName }: { coachName: string }) {
     if (busy) return;
     if (on) {
       writeOn(false);
-      setOn(false);
       setNote(null);
       return;
     }
     setBusy(true);
     setNote(null);
     try {
-      const avail = await callNative<{ available?: boolean }>("Health", "isAvailable");
-      if (!avail.available) {
-        setNote(platform === "android" ? "Health Connect not installed" : "Not on this phone");
-        return;
-      }
-      const auth = await askToRead();
-      // Android says what was allowed; iPhone never does.
-      if (platform === "android" && !auth.readAuthorized?.length) {
-        setNote("Not allowed");
-        return;
-      }
-      writeOn(true);
-      setOn(true);
-      await sync();
-    } catch {
-      setNote("Couldn't connect. Try again");
+      const { note: failed, result } = await connectHealth();
+      if (failed) setNote(failed);
+      else synced(result);
     } finally {
       setBusy(false);
     }
