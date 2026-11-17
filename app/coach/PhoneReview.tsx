@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { markVideoSeenAction, replyToMediaAction, sendChatMessageAction, sendFormReviewAction } from "../lib/actions";
-import { COLORS, sameOrigin, upload, uploadChatReview, type ChatTarget } from "../admin/redesign/media-review/MediaReviewModal";
+import { COLORS, flattenPhoto, sameOrigin, upload, uploadChatReview, type ChatTarget } from "../admin/redesign/media-review/MediaReviewModal";
+import { uploadFileFirst } from "../lib/uploadFirst";
 import { pathOf, simplify, STROKE, UNDERLAY, UNDERLAY_COLOR, unitFor, worthKeeping, type Pt, type Shape, type Tool } from "../admin/redesign/media-review/shapes";
 import { recordingSupported, setClipMuted, useReviewRecorder } from "../admin/redesign/media-review/useReviewRecorder";
 import type { PhoneReview as Review } from "../lib/coachPhone";
@@ -225,7 +226,7 @@ function Reviewer({ review, chat = null, onBack, onSent }: { review: Review; cha
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const reviewTry = useRef<{ blob: Blob; key: string } | null>(null);
-  const wordsTry = useRef<{ what: string; key: string } | null>(null);
+  const wordsTry = useRef<{ what: string; shapes: Shape[]; key: string } | null>(null);
   const sendReview = async () => {
     const blob = recorder.blob;
     if (!blob || progress != null) return;
@@ -261,11 +262,37 @@ function Reviewer({ review, chat = null, onBack, onSent }: { review: Review; cha
   const sendWords = async () => {
     const clean = words.trim();
     if (!clean || busy) return;
-    // A one-time key a send (6 Nov); the same words sent again after "Not sent" keep the failed one's key.
-    const onceKey = wordsTry.current?.what === clean ? wordsTry.current.key : newOnceKey();
-    wordsTry.current = { what: clean, key: onceKey };
+    const drawing = shapesRef.current;
+    // A one-time key a send (6 Nov); the same words (and drawing) sent again after "Not sent" keep the failed one's key.
+    const onceKey = wordsTry.current?.what === clean && wordsTry.current.shapes === drawing ? wordsTry.current.key : newOnceKey();
+    wordsTry.current = { what: clean, shapes: drawing, key: onceKey };
     setBusy(true);
     setError(null);
+    const fail = (why: string) => {
+      setBusy(false);
+      setError(why);
+    };
+    // Words on a photo send the photo back with them, as the laptop does (17 Nov, Alex: the reply showed no picture in
+    // the chat, only its link): the drawing flattened in, a JPEG. From the chat, only a photo drawn on goes back, as the
+    // laptop's chat does. A photo the phone can't read back sends the words alone, unless something is drawn on it.
+    let handle: string | null = null;
+    if (!isVideo && (!chat || drawing.length > 0)) {
+      let blob: Blob | null = null;
+      try {
+        blob = await flattenPhoto(item.url, drawing);
+      } catch {
+        if (drawing.length > 0) return fail("The drawing could not be added to the photo.");
+      }
+      if (blob) {
+        try {
+          const up = await uploadFileFirst(blob, chat ? "chat" : "media", chat?.clientId);
+          if ("refused" in up) return fail(up.refused);
+          handle = up.handle;
+        } catch {
+          return fail("The picture did not go up. Try again.");
+        }
+      }
+    }
     const ok = chat
       ? await (async () => {
           const fd = new FormData();
@@ -274,12 +301,14 @@ function Reviewer({ review, chat = null, onBack, onSent }: { review: Review; cha
           fd.set("replyTo", String(chat.replyTo));
           fd.set("quiet", "1");
           fd.set("nonce", onceKey);
+          if (handle) fd.set("upload", handle);
           return sendChatMessageAction(fd).then(() => true, () => false);
         })()
-      : await replyToMediaAction(review.requestId, clean, onceKey).catch(() => false);
+      : await replyToMediaAction(review.requestId, clean, onceKey, handle).catch(() => false);
     setBusy(false);
     if (!ok) return setError("Not sent. Check the connection and try again.");
     wordsTry.current = null;
+    setShapes([]);
     onSent();
     onBack();
   };
