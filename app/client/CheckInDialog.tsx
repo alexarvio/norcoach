@@ -432,6 +432,10 @@ function AutoBlock({ rows, values }: { rows: Row[]; values: Record<string, strin
           <path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" />
         </svg>
         From {store}
+        {/* Live (17 Nov, Alex: "a pulsating green dot… that it is an ongoing thing"): the phone keeps these filled. */}
+        <span className="cki-live cki-auto-live" aria-label="Live">
+          <i />
+        </span>
       </div>
       {rows.map((r) => {
         const m = r.metric;

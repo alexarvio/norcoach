@@ -21867,6 +21867,8 @@ html.zoomed .cki-live > i::after { animation: none; }
 .cki-auto { margin: 14px -6px 0; padding: 12px 8px 6px; border-radius: 16px; background: #F5F6F8; }
 .cki-auto-head { display: flex; align-items: center; gap: 7px; margin-bottom: 2px; font-size: 10px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #8b93a1; }
 .cki-auto-head svg { flex: none; width: 14px; height: 14px; color: #d6455d; }
+/* The live dot at the head's right, over the figures' edge, pulsing as every live thing (17 Nov, Alex). */
+.cki-auto-head .cki-auto-live { margin-left: auto; margin-right: 6px; }
 .cki-auto-row { display: flex; align-items: center; min-height: 38px; }
 .cki-auto-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 500; color: #3a4250; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cki-auto-fig { flex: none; display: flex; align-items: baseline; justify-content: flex-end; gap: 4px; width: 136px; }
