@@ -3,18 +3,20 @@
 import { useState, useTransition } from "react";
 import { useUser } from "@clerk/nextjs";
 import { toast } from "sonner";
-import { disconnectLoginAction, signOutDeviceAction, signOutOtherDevicesAction } from "../../../lib/accountActions";
+import { disconnectLoginAction, setPasswordAction, signOutDeviceAction, signOutOtherDevicesAction } from "../../../lib/accountActions";
+import { usePasswordsOn } from "../../../login/usePasswordsOn";
 import { logoutAction } from "../../../lib/auth-actions";
 import type { AccountSecurity, SignedInDevice } from "../../../lib/accountSecurity";
 import { lastActiveWords } from "../../../lib/lastActive";
 import { SepJoin } from "../Sep";
-import { AccountEmail, Section } from "./SettingsForms";
+import { AccountEmail, Field, Section } from "./SettingsForms";
 
 // Settings, Account & security with the sign-in through Clerk (27 Oct, Alex: mockup B; "only email, and that's it"):
 // Sign-in (the email, changed in place, then each login linked to it: Google connected or Connect, Apple Soon while its
 // button is off) and Devices (where the account is signed in, this one first with Sign out, the others each with
 // Sign out, and Sign out everywhere else in the head). Each acts at once (lib/accountActions.ts), none on the Save bar.
-// Two-step sign-in is left out: Clerk asks a paid plan for it.
+// Two-step sign-in is left out: Clerk asks a paid plan for it. Password (17 Nov, Alex: "Settings row") between them,
+// once Clerk takes passwords: set one, or change it with the current one.
 
 const APPLE_ON = process.env.NEXT_PUBLIC_APPLE_SIGNIN !== "off";
 const RETURN = "/admin/redesign/settings#account";
@@ -114,6 +116,7 @@ export default function ClerkAccount({ email, security }: { email: string; secur
           )}
         </div>
       </Section>
+      <ClerkPassword />
       {security ? (
         <Section
           title="Devices"
@@ -141,5 +144,61 @@ export default function ClerkAccount({ email, security }: { email: string; secur
         />
       )}
     </>
+  );
+}
+
+/** Password (17 Nov, Alex: "Settings row"): a coach who signs in with an emailed code sets one here and can sign in
+ *  with it after, the code still working; one who has one changes it, the current one checked first. Saved at once
+ *  through Clerk's server (lib/accountActions.ts), not on the page's bar, as the email above. */
+function ClerkPassword() {
+  const passwords = usePasswordsOn();
+  const { isLoaded, user } = useUser();
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [error, setError] = useState("");
+  const [busy, start] = useTransition();
+  if (passwords !== true || !isLoaded || !user) return null;
+  const has = user.passwordEnabled;
+  const ready = !!next && (!has || !!current);
+  const save = () =>
+    start(async () => {
+      const r = await setPasswordAction(next, has ? current : null).catch(() => ({ ok: false, error: "Not saved. Try again." }));
+      if (!r.ok) return setError(r.error ?? "Not saved. Try again.");
+      await user.reload().catch(() => {});
+      setCurrent("");
+      setNext("");
+      setError("");
+      toast.success(has ? "Password changed" : "Password saved");
+    });
+  return (
+    <Section title="Password">
+      <div className="rls-card rst-card">
+        <form
+          className="rst-grid"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (ready && !busy) save();
+          }}
+        >
+          <input className="sr-only" type="email" name="email" autoComplete="username" value={user.primaryEmailAddress?.emailAddress ?? ""} readOnly tabIndex={-1} aria-hidden="true" />
+          {has && (
+            <Field label="Current password">
+              <input className="dlh-line" type="password" value={current} onChange={(e) => (setCurrent(e.target.value), setError(""))} autoComplete="current-password" />
+            </Field>
+          )}
+          <Field label={has ? "New password" : "Password"} wide={!has}>
+            <input className="dlh-line" type="password" value={next} onChange={(e) => (setNext(e.target.value), setError(""))} autoComplete="new-password" />
+          </Field>
+          {(next || current) && (
+            <div className="rst-foot wide">
+              <span className="rst-err">{error}</span>
+              <button type="submit" className="dlh-go" disabled={!ready || busy}>
+                {busy ? "Saving…" : "Save"}
+              </button>
+            </div>
+          )}
+        </form>
+      </div>
+    </Section>
   );
 }

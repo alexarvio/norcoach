@@ -17,6 +17,7 @@ export default function PasswordInput({
   value,
   onChange,
   label,
+  inputClassName,
 }: {
   name: string;
   autoComplete: string;
@@ -27,11 +28,14 @@ export default function PasswordInput({
   onChange?: (value: string) => void;
   /** Its words for a screen reader when no label wraps it. */
   label?: string;
+  /** The field's own look where it sits (Settings' Password: its fields'). */
+  inputClassName?: string;
 }) {
   const [shown, setShown] = useState(false);
   return (
     <span className="auth-pass">
       <input
+        className={inputClassName}
         name={name}
         type={shown ? "text" : "password"}
         autoComplete={autoComplete}

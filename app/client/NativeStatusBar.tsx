@@ -75,7 +75,19 @@ function darkUnderClock(): boolean {
   return false;
 }
 
-export function NativeStatusBar() {
+// Leaving the dark sign-in screens for a light one (17 Nov): the clock is set dark once, and this page's watcher sends
+// nothing after it, so a resend can't turn it white again before the next page has drawn. Back on the page (the browser's
+// back keeps it), it watches again.
+let leaving = false;
+export function leaveWithDarkClock() {
+  if (nativePlatform() !== "ios") return;
+  leaving = true;
+  void callNative("StatusBar", "setStyle", { style: "LIGHT" }).catch(() => {});
+}
+
+/** `leaveDark`: the page is dark and the screens it leads to are light (the sign-in screens, SiteShell): unloading it sets
+ *  the clock dark first. */
+export function NativeStatusBar({ leaveDark = false }: { leaveDark?: boolean } = {}) {
   useEffect(() => {
     if (nativePlatform() !== "ios") return;
     // What the phone has taken last; null when unknown (not yet sent, a send that failed).
@@ -88,7 +100,7 @@ export function NativeStatusBar() {
     let settle = 0;
     let gone = false;
     const apply = (force = false) => {
-      if (gone || sending || document.visibilityState === "hidden") return;
+      if (gone || leaving || sending || document.visibilityState === "hidden") return;
       const dark = darkUnderClock();
       if (!force && dark === last) return;
       sending = true;
@@ -122,6 +134,7 @@ export function NativeStatusBar() {
     };
     const back = () => {
       if (document.visibilityState === "hidden") return;
+      leaving = false;
       era++;
       last = null;
       look();
@@ -140,6 +153,7 @@ export function NativeStatusBar() {
     window.addEventListener("pageshow", back);
     window.addEventListener("focus", back);
     window.addEventListener("norcoachappear", back);
+    if (leaveDark) window.addEventListener("pagehide", leaveWithDarkClock);
     return () => {
       gone = true;
       window.clearTimeout(timer);
@@ -155,7 +169,8 @@ export function NativeStatusBar() {
       window.removeEventListener("pageshow", back);
       window.removeEventListener("focus", back);
       window.removeEventListener("norcoachappear", back);
+      window.removeEventListener("pagehide", leaveWithDarkClock);
     };
-  }, []);
+  }, [leaveDark]);
   return null;
 }

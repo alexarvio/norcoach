@@ -131,6 +131,7 @@ import { clerkOn } from "../lib/clerk";
 import MyDetailsCard from "./MyDetailsCard";
 import GymSettings from "./GymSettings";
 import SettingsFold from "./SettingsFold";
+import PasswordSettings from "./PasswordSettings";
 import ClientWeekSwitcher from "./ClientWeekSwitcher";
 import AppShell, { AppTab, type Arrival, type PhoneScreen } from "./AppShell";
 import { ownTab } from "../lib/tabMemory";
@@ -1060,7 +1061,7 @@ function NutritionTab({ CLIENT_ID, diary, readOnly = false }: { CLIENT_ID: numbe
   );
 }
 
-function SettingsTab({ CLIENT_ID }: { CLIENT_ID: number }) {
+function SettingsTab({ CLIENT_ID, own = false }: { CLIENT_ID: number; /** The client in their own app: a coach looking (the phone preview, a coach on ?client=) never sees their own sign-in here. */ own?: boolean }) {
   const client = getClient(CLIENT_ID);
   const coach = getCoachProfileForClient(CLIENT_ID);
   const profile = getClientProfile(CLIENT_ID);
@@ -1093,8 +1094,8 @@ function SettingsTab({ CLIENT_ID }: { CLIENT_ID: number }) {
       </header>
 
       <div className="st-body">
-      {/* Six rows, each opening (10 Nov, Alex), in order of use: yours (details, gyms, card pictures), then how the app
-          behaves, what it connects to, your data. Log out is on the burger. */}
+      {/* The rows, each opening (10 Nov, Alex), in order of use: yours (details, password, gyms, card pictures), then how
+          the app behaves, what it connects to, your data. Log out is on the burger. */}
       <MyDetailsCard
         clientId={CLIENT_ID}
         email={profile.email ?? null}
@@ -1102,6 +1103,9 @@ function SettingsTab({ CLIENT_ID }: { CLIENT_ID: number }) {
         phoneCode={profile.phone_code ?? null}
         address={{ address: profile.address ?? "", postcode: profile.postcode ?? "", city: profile.city ?? "", region: profile.region ?? "", country_code: profile.country_code ?? "", country: profile.country ?? "" }}
       />
+
+      {/* A password to sign in with (17 Nov, Alex: "Settings row"), once Clerk takes passwords; the code still works. */}
+      {own && clerkOn() && <PasswordSettings />}
 
       <GymSettings clientId={CLIENT_ID} gyms={gymDashboards(CLIENT_ID)} />
 
@@ -1573,7 +1577,7 @@ export default async function ClientPage({
       }}
       chatUnread={getNotifications(CLIENT_ID).some((n) => n.kind === "coach_note" && !n.read)}
       // Settings left the bottom nav for the burger (7 Oct): the chat has its tab.
-      settingsContent={<SettingsTab CLIENT_ID={CLIENT_ID} />}
+      settingsContent={<SettingsTab CLIENT_ID={CLIENT_ID} own={viewerIsClient} />}
       events={homeEvents(CLIENT_ID)}
       helpEmail={getCoachEmail(CLIENT_ID)}
       coachProfile={getCoachProfileForClient(CLIENT_ID)}
