@@ -47,7 +47,7 @@ export default function AskSheet({ clientId, coachFirst, onClose, onSent }: { cl
         <label className="evs-field">
           <span className="evs-label">What about</span>
           <span className="evs-title ring" style={{ "--c": "#2f6fd6" } as React.CSSProperties}>
-            <input value={about} onChange={(e) => setAbout(e.target.value)} placeholder="The next phase, my knee, the plan for the holiday" maxLength={140} autoFocus />
+            <input value={about} onChange={(e) => setAbout(e.target.value)} placeholder="The next phase, my knee, the plan for the holiday" maxLength={140} autoFocus={!(typeof window !== "undefined" && window.matchMedia?.("(hover: none)").matches)} />
           </span>
         </label>
         <label className="evs-field">

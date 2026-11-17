@@ -129,7 +129,10 @@ export default function AddEventSheet({
   const opener = useRef<HTMLElement | null>(null);
   useEffect(() => {
     opener.current = document.activeElement as HTMLElement | null;
-    const t = setTimeout(() => titleRef.current?.focus(), 300);
+    // On a phone the sheet opens whole, keyboard down (17 Nov, Alex: it opened, then shrank as the keyboard came up and
+    // had to be scrolled); the keyboard comes with a tap on the title. With a mouse the title still takes the focus.
+    const touch = typeof window !== "undefined" && window.matchMedia?.("(hover: none)").matches;
+    const t = touch ? 0 : window.setTimeout(() => titleRef.current?.focus(), 300);
     return () => {
       clearTimeout(t);
       opener.current?.focus?.();
