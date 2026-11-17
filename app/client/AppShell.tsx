@@ -724,28 +724,8 @@ export default function AppShell({
               <nav className="app-menu" aria-label="Menu">
                 <div className="app-menu-head">
                   <NorCoachLogo className="app-header-brand app-menu-brand" />
-                  {/* Your coach, under the logo and over Meetings (12 Nov, Alex: B of docs/boards/hidden-ways-mockup.html,
-                      moved here from Settings): their face, their name and the business under it, a tap opening their
-                      profile, Back coming back to where you were. The business is hardcoded, like the rail's, until the
-                      coach profile carries it. */}
-                  {coachProfile ? (
-                    <button type="button" className="app-menu-coach" onClick={() => go(() => setPushView("coach"))}>
-                      <span className="app-menu-coach-face" aria-hidden="true">
-                        {coachAvatarPath ? (
-                          // eslint-disable-next-line @next/next/no-img-element -- an upload served by the app's own route
-                          <img src={pic(coachAvatarPath, 96)} alt="" />
-                        ) : (
-                          (coachProfile.displayName || coachMessages.coachName).charAt(0).toUpperCase()
-                        )}
-                      </span>
-                      <span className="app-menu-coach-body">
-                        <span className="app-menu-coach-name">{coachProfile.displayName || coachMessages.coachName}</span>
-                        <span className="app-menu-name">Full Potential Coaching</span>
-                      </span>
-                    </button>
-                  ) : (
-                    <span className="app-menu-name">Full Potential Coaching</span>
-                  )}
+                  {/* The coach under the logo is parked (17 Nov, Alex: "I like the idea, but it's not what I want to focus on
+                      right now"): the logo alone. Their profile screen stays in the code for later. */}
                 </div>
                 <div className="app-menu-list">
                   {meetings && (
