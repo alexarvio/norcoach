@@ -1348,6 +1348,8 @@ export async function logMetricPeriodAction(formData: FormData) {
 // sleep, resting heart rate and HRV fill the coach's own metrics of the live lifestyle phase for the periods a check-in
 // can still change, flagged as the phone's; the workouts are kept for the coach's Activity (lib/healthSync.ts). Says
 // which kinds the coach tracks and how many workouts the phone had, so Settings can say when there is nothing to send.
+// The calories a food app wrote there (MyFitnessPal and the like, 17 Nov) are the day's calories where the client logged
+// and typed none; how many days the phone had is said too.
 export async function syncHealthAction(input: HealthSyncInput): Promise<HealthSyncResult> {
   const { clientId } = await requireClient();
   const r = syncHealthForClient(clientId, input && typeof input === "object" ? input : {});
@@ -1355,7 +1357,7 @@ export async function syncHealthAction(input: HealthSyncInput): Promise<HealthSy
     revalidatePath("/admin");
     revalidatePath("/client");
   }
-  return { tracked: r.tracked, saved: r.saved, workouts: r.workouts };
+  return { tracked: r.tracked, saved: r.saved, workouts: r.workouts, calories: r.calories ?? 0 };
 }
 
 // Steps alone, as the app sent them before 16 Nov ({ date, steps } a day): through the same sync.

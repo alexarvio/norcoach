@@ -42,7 +42,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Health Connect: the app reads steps, weight, sleep, resting heart rate,
-         HRV and workouts (16 Nov; app/client/HealthSync.tsx). The health
+         HRV and workouts (16 Nov), and the calories eaten a food app such as
+         MyFitnessPal writes there (nutrition, 17 Nov; app/client/HealthSync.tsx). The health
          plugin declares every type it supports; Google Play asks for a reason
          per health permission, so the rest are removed here. -->
     <uses-permission android:name="android.permission.health.READ_STEPS" />
@@ -61,7 +62,7 @@
     <uses-permission android:name="android.permission.health.READ_HEIGHT" tools:node="remove" />
     <uses-permission android:name="android.permission.health.READ_HYDRATION" tools:node="remove" />
     <uses-permission android:name="android.permission.health.READ_MINDFULNESS" tools:node="remove" />
-    <uses-permission android:name="android.permission.health.READ_NUTRITION" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_NUTRITION" />
     <uses-permission android:name="android.permission.health.READ_OXYGEN_SATURATION" tools:node="remove" />
     <uses-permission android:name="android.permission.health.READ_RESPIRATORY_RATE" tools:node="remove" />
     <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" />

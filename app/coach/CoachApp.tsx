@@ -3,21 +3,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChatStream } from "../components/useChatStream";
 import { useSearchParams } from "next/navigation";
-import { logoutAction } from "../lib/auth-actions";
 import { chatWhen } from "../admin/redesign/ChatList";
 import { dayMonth } from "../lib/dayMonth";
 import { coachInboxAction, markVideoDoneAction, type CoachInbox } from "./actions";
 import type { PhoneVideo } from "../lib/coachPhone";
 import ChatThread from "./ChatThread";
-import { forgetAllThreads, markThreadsReadable, prefetchThreads, setThreadOwner } from "./threadCache";
+import { markThreadsReadable, prefetchThreads, setThreadOwner } from "./threadCache";
 import PhoneReview from "./PhoneReview";
-import { Avatar, Facts, Icon, Sheet } from "./parts";
+import CoachSettings, { type SettingsCoach } from "./CoachSettings";
+import { Avatar, Facts, Icon } from "./parts";
 import CoachCalendar, { useCalendarState, type CalendarState } from "./CoachCalendar";
 import type { PhoneCalendar } from "./calendar";
 import ChatLastLine from "../components/ChatLastLine";
 import RingEdge from "../components/RingEdge";
 import { sized } from "../components/ChatMedia";
-import { PushSwitch, type NativeReady } from "../client/PushToggle";
+import type { NativeReady } from "../client/PushToggle";
 import { NativePush } from "../client/NativePush";
 import { subscribeKeyboard } from "../client/keyboard";
 
@@ -27,8 +27,8 @@ import { subscribeKeyboard } from "../client/keyboard";
 // ?tab=calendar), moved with the browser's own history so the phone's Back
 // works and nothing is fetched to switch screens. The lists ask for
 // themselves every 15 s while the app is showing, as the chat does.
-// Notifications are turned on in the account sheet (the coach's face); a
-// tapped one opens its chat or video (lib/coachPush.ts; NativePush in the
+// The coach's face opens Settings (?settings=1, CoachSettings.tsx), a pushed
+// screen where notifications are turned on; a tapped one opens its chat or video (lib/coachPush.ts; NativePush in the
 // iPhone and Android apps, the service worker in a browser).
 
 const POLL_MS = 15000;
@@ -36,7 +36,7 @@ const POLL_MS = 15000;
 type Push = { publicKey: string | null; nativeReady: NativeReady };
 type Tab = "chats" | "videos" | "calendar";
 
-export default function CoachApp({ inbox: fromPage, calendar, today, coach, push }: { inbox: CoachInbox; calendar: PhoneCalendar; /** The server's day, for the first paint. */ today: string; coach: { id: number; name: string; photoPath: string | null }; push: Push }) {
+export default function CoachApp({ inbox: fromPage, calendar, today, coach, push }: { inbox: CoachInbox; calendar: PhoneCalendar; /** The server's day, for the first paint. */ today: string; coach: { id: number } & SettingsCoach; push: Push }) {
   // The threads this phone keeps are this coach's (threadCache.ts).
   setThreadOwner(coach.id);
   // The keyboard source from the start, not only in a chat (13 Nov: the app's web view no longer shrinks to it; a
@@ -47,6 +47,7 @@ export default function CoachApp({ inbox: fromPage, calendar, today, coach, push
   const params = useSearchParams();
   const chatId = Number(params.get("c")) || null;
   const videoId = Number(params.get("v")) || null;
+  const settings = params.get("settings") === "1";
   const asked = params.get("tab");
   const tab: Tab = asked === "videos" || asked === "calendar" ? asked : "chats";
   // The Calendar's week and day, kept here so a chat opened from it comes back to them.
@@ -76,6 +77,17 @@ export default function CoachApp({ inbox: fromPage, calendar, today, coach, push
       document.removeEventListener("visibilitychange", tick);
     };
   }, [refresh]);
+
+  // What Settings saved in this visit, kept here: Settings mounts again from the first render's props each time it is
+  // opened, and /coach is not read again after a save, so without this it would open on old values and send them back.
+  // A fresh read of the page (its own record changed) starts from the server again.
+  const [kept, setKept] = useState<{ notify?: SettingsCoach["notify"]; asked?: boolean }>({});
+  const coachKey = JSON.stringify([coach.notify, coach.deletionAsked]);
+  const [seenCoach, setSeenCoach] = useState(coachKey);
+  if (seenCoach !== coachKey) {
+    setSeenCoach(coachKey);
+    setKept({});
+  }
 
   // The first chats fetched ahead while the list shows, so opening one draws it at once (17 Nov, Alex).
   useEffect(() => {
@@ -122,6 +134,21 @@ export default function CoachApp({ inbox: fromPage, calendar, today, coach, push
       </div>
     );
   }
+  if (settings) {
+    // Settings, pushed over the tab it was opened from (17 Nov, Alex: A of docs/boards/coach-settings-mockup.html).
+    return (
+      <div className="cph">
+        <NativePush />
+        <CoachSettings
+          coach={{ ...coach, notify: kept.notify ?? coach.notify, deletionAsked: kept.asked || coach.deletionAsked }}
+          push={push}
+          onBack={back}
+          onNotifySaved={(notify) => setKept((k) => ({ ...k, notify }))}
+          onDeletionAsked={() => setKept((k) => ({ ...k, asked: true }))}
+        />
+      </div>
+    );
+  }
 
   const unreadChats = inbox.chats.filter((c) => c.unread).length;
   const waiting = inbox.videos.waiting.length;
@@ -135,7 +162,10 @@ export default function CoachApp({ inbox: fromPage, calendar, today, coach, push
         cal={cal}
         today={today}
         coach={coach}
-        push={push}
+        onOpenSettings={() => {
+          listY[tab] = window.scrollY;
+          open("settings=1");
+        }}
         onOpenChat={(id) => {
           listY[tab] = window.scrollY;
           open(`c=${id}`);
@@ -168,9 +198,8 @@ export default function CoachApp({ inbox: fromPage, calendar, today, coach, push
 /** Where each list was left, for coming back from a chat or a video. */
 const listY: Record<string, number> = {};
 
-function Lists({ tab, inbox, setInbox, cal, today, coach, push, onOpenChat, onOpenVideo }: { tab: Tab; inbox: CoachInbox; setInbox: React.Dispatch<React.SetStateAction<CoachInbox>>; cal: CalendarState; today: string; coach: { name: string; photoPath: string | null }; push: Push; onOpenChat: (id: number) => void; onOpenVideo: (id: number) => void }) {
+function Lists({ tab, inbox, setInbox, cal, today, coach, onOpenSettings, onOpenChat, onOpenVideo }: { tab: Tab; inbox: CoachInbox; setInbox: React.Dispatch<React.SetStateAction<CoachInbox>>; cal: CalendarState; today: string; coach: { name: string; photoPath: string | null }; onOpenSettings: () => void; onOpenChat: (id: number) => void; onOpenVideo: (id: number) => void }) {
   const [q, setQ] = useState("");
-  const [account, setAccount] = useState(false);
   const shownTab = useRef<Tab | null>(null);
   // Back from a chat or a video: the list where it was left.
   useEffect(() => {
@@ -184,7 +213,7 @@ function Lists({ tab, inbox, setInbox, cal, today, coach, push, onOpenChat, onOp
   const chats = inbox.chats.filter((c) => !needle || c.name.toLowerCase().includes(needle));
   const now = new Date();
   const me = (
-    <button type="button" className="cph-me" onClick={() => setAccount(true)} aria-label={`${coach.name}: sign out`}>
+    <button type="button" className="cph-me" onClick={onOpenSettings} aria-label="Settings">
       <Avatar name={coach.name} src={coach.photoPath} size={30} />
     </button>
   );
@@ -256,42 +285,6 @@ function Lists({ tab, inbox, setInbox, cal, today, coach, push, onOpenChat, onOp
             </>
           )}
         </>
-      )}
-
-      {account && (
-        <Sheet onClose={() => setAccount(false)} label="Account">
-          <div className="cph-sheet-who">
-            <Avatar name={coach.name} src={coach.photoPath} size={40} />
-            <b>{coach.name}</b>
-          </div>
-          {/* The client's switch, drawn as this sheet's row: white while off, ink while on (21 Oct). */}
-          <PushSwitch
-            publicKey={push.publicKey}
-            nativeReady={push.nativeReady}
-            row={(p) => (
-              <button type="button" className="cph-sheet-row cph-switch-row" onClick={p.onClick} disabled={p.disabled} aria-pressed={p.on}>
-                <span className="cph-switch-text">
-                  Notifications
-                  {p.detail && <small>{p.detail}</small>}
-                </span>
-                <span className={`cph-switch${p.on ? " on" : ""}`} aria-hidden="true">
-                  <i />
-                </span>
-              </button>
-            )}
-          />
-          <button
-            type="button"
-            className="cph-sheet-row"
-            onClick={() => {
-              // The chats kept on this phone go with the session (the sign-in page clears them too).
-              forgetAllThreads();
-              void logoutAction();
-            }}
-          >
-            Sign out
-          </button>
-        </Sheet>
       )}
     </main>
   );

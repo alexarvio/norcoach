@@ -164,8 +164,9 @@ export type CalorieLog = {
   /** The kind of day the client said it was when logging. Absent on older
       logs, which fall back to whether a set was logged that date. */
   day_type?: "training" | "rest" | null;
-  /** "diary" when the food diary wrote the figure; a typed figure has none. */
-  source?: "diary" | null;
+  /** "diary" when the food diary wrote the figure; "health" when the phone's Apple Health / Health Connect did (a food
+      app such as MyFitnessPal writing its calories there; lib/healthSync.ts, 17 Nov); a typed figure has none. */
+  source?: "diary" | "health" | null;
 };
 // One food logged in a client's food diary: what, how much, and the
 // calories and macros that amount came to (a snapshot, so a later change to

@@ -1,6 +1,7 @@
 "use client";
 
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { nativePlatform } from "../lib/native";
 import AddMealSheet, { CopyMealDialog, DeleteMealDialog } from "./AddMealSheet";
 import { createPortal, flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
@@ -134,6 +135,8 @@ export type FoodDiaryProps = {
   eaten: Macros;
   dayType: "training" | "rest";
   loggedKcal: number | null;
+  /** The day's figure came from the phone: a food app (MyFitnessPal…) through Apple Health / Health Connect (17 Nov). */
+  loggedFromPhone?: boolean;
   meals: { id: FoodMeal; label: string; own: boolean; kcal: number; protein: number; carbs: number; fat: number; entries: FoodEntryView[]; savedAs: string | null; /** The saved meal that filled this slot, while it still holds that meal. */ savedMealId: number | null; /** It holds other foods than the saved meal now does: Update {name} is offered. */ savedDiffers?: boolean; photo: string | null; /** What the card shows: the saved meal's picture, else that day's photo. */ picture: string | null; /** That picture's tiny preview, there at once. */ thumb: string | null; comments: { id: number; text: string; when: string }[] }[];
   recent: FoodOptionView[];
   saved: { id: number; name: string; kcal: number; protein: number; carbs: number; fat: number; picture: string | null; thumb: string | null; count: number; names: string[]; items: SavedItem[] }[];
@@ -1018,7 +1021,7 @@ export default function FoodDiaryScreen({
           </header>
 
           </div>
-          {/* A figure typed in with no food behind it counts as eaten on the rings. */}
+          {/* A figure typed in, or the phone's from a food app (17 Nov), with no food behind it counts as eaten on the rings. */}
           <Targets
             target={diary.target}
             eaten={diary.eaten.kcal === 0 && diary.loggedKcal != null ? { ...diary.eaten, kcal: diary.loggedKcal } : diary.eaten}
@@ -1032,6 +1035,7 @@ export default function FoodDiaryScreen({
               <CaloriesBox
                 key={date}
                 logged={diary.loggedKcal}
+                fromPhone={!!diary.loggedFromPhone && diary.loggedKcal != null}
                 readOnly={readOnly}
                 onSave={(kcal) => {
                   const fd = new FormData();
@@ -3653,7 +3657,35 @@ function CustomFoodPanel({ clientId, onCancel, onCreated }: { clientId: number; 
     ate without having to go through the whole process"): a short field in the white hairline box, `kcal` after the
     figure; Cancel in words and the small ink Save come under it, on the right, once something is changed, as every
     field that saves does. Emptied and saved, the figure goes. It counts on the rings while the day holds no food. */
-function CaloriesBox({ logged, readOnly, onSave }: { logged: number | null; readOnly: boolean; onSave: (kcal: number | null) => void }) {
+function CaloriesBox({ logged, fromPhone, readOnly, onSave }: { logged: number | null; fromPhone?: boolean; readOnly: boolean; onSave: (kcal: number | null) => void }) {
+  if (fromPhone && logged != null) return <PhoneCalories kcal={logged} />;
+  return <TypedCalories logged={logged} readOnly={readOnly} onSave={onSave} />;
+}
+
+const noStoreSubscribe = () => () => {};
+const storeName = () => (nativePlatform() === "android" ? "Health Connect" : "Apple Health");
+
+/** The day's calories a food app (MyFitnessPal and the like) wrote to the phone (17 Nov, Alex: "see that we can also link
+    calories tracked there"): the same box, the figure read-only in ink with nothing to type, and under it `From Apple
+    Health` (Health Connect on Android) grey with the check-in's small green dot pulsing (`cki-live`), as the phone keeps it
+    filled. Food logged on the day, or a figure typed before, is the day's instead (lib/healthSync.ts). */
+function PhoneCalories({ kcal }: { kcal: number }) {
+  const store = useSyncExternalStore(noStoreSubscribe, storeName, () => "Apple Health");
+  return (
+    <div className="fdi-kcal fdi-kcal-phone" role="group" aria-label={`Calories eaten ${kcal} kcal, from ${store}`}>
+      <div className="fdi-kcal-box">
+        <b>{kcal.toLocaleString("en-GB")}</b>
+        <span>kcal</span>
+      </div>
+      <div className="fdi-kcal-from cki-live">
+        <i aria-hidden="true" />
+        From {store}
+      </div>
+    </div>
+  );
+}
+
+function TypedCalories({ logged, readOnly, onSave }: { logged: number | null; readOnly: boolean; onSave: (kcal: number | null) => void }) {
   const shown = logged != null ? String(logged) : "";
   const [text, setText] = useState(shown);
   const [base, setBase] = useState(shown);
