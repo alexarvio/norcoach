@@ -232,7 +232,8 @@ export default function AddEventSheet({
           <TypePicker value={type} onPick={pickType} />
 
           <label className="evs-field">
-            <span className="evs-label">What&rsquo;s happening</span>
+            {/* Title (17 Nov, Alex: "What's happening is a bit weird as a name"), as the coach's New entry says it. */}
+            <span className="evs-label">Title</span>
             <span className={`evs-title${titleFocus || title ? " ring" : ""}`}>
               <input
                 ref={titleRef}
