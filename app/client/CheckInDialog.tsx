@@ -448,7 +448,7 @@ function MetricRow({ row, value, problem, filled, inputRef, onChange, onNext }: 
               inputMode={whole ? "numeric" : "decimal"}
               enterKeyHint="next"
               autoComplete="off"
-              placeholder={placeholder}
+              // No grey figure in the field (17 Nov, Alex): last time is said once, under the name.
               value={value}
               onFocus={(e) => e.currentTarget.select()}
               onChange={(e) => onChange(cleanNumeric(e.target.value, whole))}
