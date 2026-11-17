@@ -435,7 +435,11 @@ function MetricRow({ row, value, problem, filled, inputRef, onChange, onNext }: 
           )}
         </div>
         {m.live && !m.scaleMax && (
-          <span className="cki-num cki-num-live" aria-label={`${m.name} ${value}${unit ? ` ${unit}` : ""}`}>
+          <span className="cki-num cki-num-live" aria-label={`${m.name} ${value}${unit ? ` ${unit}` : ""}, from the phone`}>
+            <svg className="cki-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+              <rect x="5" y="11" width="14" height="9" rx="2" />
+              <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+            </svg>
             <b>{Number.isFinite(Number(value)) && whole ? Number(value).toLocaleString("en-GB") : value}</b>
             <span className="cki-unit">{unit}</span>
           </span>
