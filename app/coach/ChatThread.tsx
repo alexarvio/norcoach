@@ -1,5 +1,6 @@
 "use client";
 
+import { dismissKeyboardOnTap } from "../components/dismissKeyboard";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useChatStream, useChatTyping, useTypingSignal } from "../components/useChatStream";
 import { landed, useChatOutbox, useKeptDraft } from "../components/chatOutbox";
@@ -594,6 +595,7 @@ export default function ChatThread({ clientId, name, avatarPath, onBack, onRead 
       <div
         ref={scroller}
         className="cph-thread-scroll"
+        onClick={dismissKeyboardOnTap}
         onScroll={(e) => {
           // Only the coach's own scrolling decides it; a placed one never does.
           if (placing.current) return;

@@ -1,5 +1,6 @@
 "use client";
 
+import { dismissKeyboardOnTap } from "../components/dismissKeyboard";
 import type { HomeEventCategory } from "./EventsCard";
 import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { useChatStream, useChatTyping, useTypingSignal } from "../components/useChatStream";
@@ -525,7 +526,7 @@ export default function CoachMessagesScreen({ coachName, coachPhoto = null, myPh
           </button>
         </div>
       )}
-      <main ref={body} className="cm-body" data-kb-own="">
+      <main ref={body} className="cm-body" data-kb-own="" onClick={dismissKeyboardOnTap}>
         {days.length === 0 ? (
           // An empty chat (17 Oct, Alex): one quiet line, low over the box where the first message will go.
           <p className="cm-start">This is the beginning of your chat with {coachName.trim().split(/\s+/)[0] || coachName}</p>
