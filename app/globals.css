@@ -21850,3 +21850,15 @@ html.vrec-on, html.vrec-on * { -webkit-user-select: none !important; user-select
 .cki-num-live > b { font-size: 22px; font-weight: 600; color: #141a24; font-variant-numeric: tabular-nums; white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { .cki-live > i::after { animation: none; opacity: 0; } }
 html.zoomed .cki-live > i::after { animation: none; }
+
+/* ---- The phone's figures, apart under the check-in's list (17 Nov, Alex: B3 of docs/boards/auto-metric-b-block-mockup.html):
+   a soft grey block reaching 14px past the form on both sides, so inside it the heart and the names start where the form's
+   names do (the rows' 2px + the 14px), the figures end on the form's figure edge (the 136px figure box, its 26px unit
+   column). Read-only. */
+.cki-auto { margin: 14px -14px 0; padding: 12px 16px 6px; border-radius: 16px; background: #F5F6F8; }
+.cki-auto-head { display: flex; align-items: center; gap: 7px; margin-bottom: 2px; font-size: 10px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #8b93a1; }
+.cki-auto-head svg { flex: none; width: 14px; height: 14px; color: #d6455d; }
+.cki-auto-row { display: flex; align-items: center; min-height: 38px; }
+.cki-auto-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 500; color: #3a4250; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cki-auto-fig { flex: none; display: flex; align-items: baseline; justify-content: flex-end; gap: 4px; width: 136px; }
+.cki-auto-fig > b { font-size: 17px; font-weight: 600; color: #5b6474; font-variant-numeric: tabular-nums; white-space: nowrap; }
