@@ -104,7 +104,6 @@ function lastLine(m: CheckInMetric): string {
 }
 
 /** The day a check-in is for, as its line says it: "Mon 2 Nov". */
-const shortDay = (date: string) => dayWords(date, { weekday: "short" });
 // Filled is green, whatever the metric (13 Oct, Alex: no colour coding for now).
 const GREEN = { hex: "#2f7a3f", rgb: "47,122,63" };
 const colourOf = () => GREEN;
@@ -134,7 +133,8 @@ export default function CheckInDialog({
   // the measurements), the month's.
   const groups: { id: string; label: string; rows: Row[] }[] = [];
   const daily = rowsOf(form.sections.find((s) => s.id === "daily"), "daily");
-  if (daily.length) groups.push({ id: "day", label: isToday ? "All day" : "That day", rows: daily });
+  // The day's rows with no label over them (17 Nov, Alex: "All day" said nothing the pop-up's title doesn't).
+  if (daily.length) groups.push({ id: "day", label: "", rows: daily });
   const week = form.weeklyOpen ? [...rowsOf(form.sections.find((s) => s.id === "weekly"), "weekly"), ...rowsOf(form.sections.find((s) => s.id === "measurements"), "measurements")] : [];
   if (week.length) groups.push({ id: "week", label: form.weekLabel ?? "This week", rows: week });
   const month = form.monthlyOpen ? rowsOf(form.sections.find((s) => s.id === "monthly"), "monthly") : [];
@@ -324,20 +324,14 @@ export default function CheckInDialog({
               <h2 id="cki-title" className="cki-title">
                 {isToday ? "Today's check-in" : dayLabel(form.date, true)}
               </h2>
-              {/* All in and nothing changed since: a check and Saved alone (23 Oct, Alex). */}
-              <p className={`cki-sub${allIn ? " done" : ""}${allIn && !dirty ? " saved" : ""}`} aria-live="polite">
-                {total === 0 ? (
-                  "Nothing to fill in."
-                ) : allIn && !dirty ? (
-                  <>
-                    <CheckIcon />
-                    Saved
-                  </>
-                ) : (
-                  // Today's day on it, always (2 Nov, Alex: "always have it on the day that we are").
-                  <Bars parts={[isToday ? shortDay(form.date) : null, allIn ? "All filled" : `${total - filled.length} of ${total} still to fill`]} />
-                )}
-              </p>
+              {/* No line under the title while filling (17 Nov, Alex: the ring says where it stands, the title the day); a check
+                  and Saved once all is in and saved (23 Oct, Alex). */}
+              {total > 0 && allIn && !dirty && (
+                <p className="cki-sub done saved" aria-live="polite">
+                  <CheckIcon />
+                  Saved
+                </p>
+              )}
             </div>
             <button type="button" className="gpk-round" onClick={close} aria-label="Close">
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -351,7 +345,7 @@ export default function CheckInDialog({
                 phone's figures sit apart under it, read-only. */}
             {groups.map((g) => ({ ...g, rows: g.rows.filter((r) => !r.metric.live) })).filter((g) => g.rows.length > 0).map((g) => (
               <div key={g.id} className="cki-group">
-                <div className="cki-group-label">{g.label}</div>
+                {g.label && <div className="cki-group-label">{g.label}</div>}
                 <div className="cki-rows">
                   {g.rows.map((r) => (
                     <MetricRow
