@@ -3,7 +3,7 @@ import path from "path";
 import { once } from "events";
 import { DATA_DIR } from "./db";
 import { chatUsesFile, setVideoReplyFile, videoReplyTarget } from "./queries";
-import { deleteUpload, putUploadFromDisk } from "./storage";
+import { deleteUpload, prepareChatMedia, putUploadFromDisk } from "./storage";
 import { toMp4 } from "./transcode";
 
 // Receiving a coach's reply video (see app/api/video-reply/[id]/route.ts):
@@ -61,6 +61,10 @@ export async function receiveReplyVideo(request: Request, id: number): Promise<R
       filedType = "video/mp4";
     }
   }
+  // Its first frame now, from the file still on the disk (17 Nov, Alex: the review's picture took 4-5 s to show in the
+  // client's chat): made on the first look instead, it was fetched back from the bucket the copy below empties the disk
+  // for, and read twice, as a review opens on black.
+  await prepareChatMedia(filed.publicPath, "video");
   await putUploadFromDisk(filed.publicPath, filed.filePath, filedType);
   const previous = setVideoReplyFile(id, filed.publicPath);
   // The one it replaces goes, unless the chat still shows it (a form review, 12 Oct).
