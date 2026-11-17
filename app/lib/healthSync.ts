@@ -2,10 +2,11 @@
 // coach tracks them on the client's live lifestyle phase (listMetricDefinitions; a metric is never made here), and the
 // workouts, kept for the coach's Activity. The phone reads (app/client/HealthSync.tsx) and sends a day's figures; here
 // they are matched to the metrics, checked and saved, flagged as the phone's ("health"), for the periods a check-in can
-// still change. Steps fill as they did (syncHealthStepsAction, 24 Oct).
+// still change. Steps fill as they did (syncHealthStepsAction, 24 Oct). The calories a food app wrote there (MyFitnessPal
+// and the like, 17 Nov) are the day's calories in the calorie log, whatever the coach tracks (syncCalories).
 
 import { getData, isStepsMetric, MAX_DAY_STEPS, persist, allocId, type HealthWorkout } from "./db";
-import { checkInEditable, getMetricEntries, listMetricDefinitions, listMonthlyMetricsAsked, localDateStr, monthStart, setMetricEntry, weekStart, WEIGHT_NAME, weightInUnit, type MetricCadence, type MetricDefinition } from "./queries";
+import { checkInEditable, foodDayType, getMetricEntries, listMetricDefinitions, listMonthlyMetricsAsked, localDateStr, monthStart, setMetricEntry, weekStart, WEIGHT_NAME, weightInUnit, type MetricCadence, type MetricDefinition } from "./queries";
 
 export type HealthKind = "steps" | "weight" | "sleep" | "restingHeartRate" | "hrv";
 
@@ -21,10 +22,15 @@ export type HealthSyncInput = {
   workouts?: HealthWorkoutIn[] | null;
   /** The start of the window the workouts were read for (ISO). */
   workoutsFrom?: string;
+  /** The calories eaten a day, as a food app (MyFitnessPal and the like) wrote them to the phone's store; absent when the
+   *  phone couldn't read them, so nothing is taken away. */
+  calories?: { date: string; kcal: number }[] | null;
+  /** The first day the calories were read for (YYYY-MM-DD). */
+  caloriesFrom?: string;
 };
 export type HealthWorkoutIn = { id?: string; type: string; start: string; end: string; seconds: number; kcal?: number | null; meters?: number | null; source?: string | null };
 /** Which kinds the coach tracks, how many figures were saved, and how many workouts the phone had in its window. */
-export type HealthSyncResult = { tracked: HealthKind[]; saved: number; workouts: number; workoutsChanged?: boolean };
+export type HealthSyncResult = { tracked: HealthKind[]; saved: number; workouts: number; workoutsChanged?: boolean; /** Days the phone had calories for. */ calories?: number };
 
 /** A figure past these is a slip of a sensor or an app, never a reading. */
 const RANGE: Record<Exclude<HealthKind, "steps">, [number, number]> = { weight: [25, 350], sleep: [0, 16], restingHeartRate: [25, 150], hrv: [5, 300] };
@@ -153,7 +159,64 @@ export function syncHealthForClient(clientId: number, input: HealthSyncInput): H
   }
 
   const w = syncWorkouts(clientId, input);
-  return { tracked, saved, workouts: w.count, workoutsChanged: w.changed };
+  const c = syncCalories(clientId, input, today);
+  return { tracked, saved: saved + c.saved, workouts: w.count, workoutsChanged: w.changed, calories: c.count };
+}
+
+/** A day's calories past this is a slip, never a day's eating. */
+const MAX_DAY_KCAL = 20000;
+const shiftDay = (day: string, by: number) => {
+  const d = new Date(`${day}T00:00:00`);
+  d.setDate(d.getDate() + by);
+  return localDateStr(d);
+};
+
+/** The calories a food app wrote to the phone (MyFitnessPal has no API of its own; it writes Apple Health and Health
+ *  Connect, 17 Nov, Alex: "see that we can also link calories tracked there"), as the day's figure the coach reads, flagged
+ *  as the phone's ("health"). Only on a day the client logged no food in the diary and typed no figure: theirs wins while
+ *  it is there (a typed figure emptied, or the day's food all taken out, leaves the day to the phone again on the next
+ *  sync). A later sync updates the phone's figure, its day keeping its time; a day the phone
+ *  no longer has calories for, within the window it read, loses the phone's figure. Never a check-in. */
+function syncCalories(clientId: number, input: HealthSyncInput, today: string): { saved: number; count: number } {
+  if (!Array.isArray(input.calories)) return { saved: 0, count: 0 };
+  const data = getData();
+  // The phone's days (its zone may be a day ahead of the server's), the last eight and no further back.
+  const first = shiftDay(today, -9);
+  const last = shiftDay(today, 1);
+  const days = new Map<string, number>();
+  for (const d of input.calories.slice(0, 20)) {
+    const date = String(d?.date);
+    const kcal = Math.round(num(d?.kcal));
+    if (!DAY.test(date) || date < first || date > last || !Number.isFinite(kcal) || kcal <= 0 || kcal > MAX_DAY_KCAL) continue;
+    days.set(date, kcal);
+  }
+  const withFood = new Set((data.food_entries ?? []).filter((e) => e.client_id === clientId).map((e) => e.date));
+  const now = new Date().toISOString();
+  let saved = 0;
+  for (const [date, kcal] of days) {
+    if (withFood.has(date)) continue;
+    const was = data.calorie_logs.find((l) => l.client_id === clientId && l.date === date);
+    if (was && was.source !== "health") continue;
+    if (was) {
+      if (was.kcal === kcal) continue;
+      was.kcal = kcal;
+      was.logged_at ??= now;
+    } else {
+      data.calorie_logs.push({ id: allocId("calorie_logs"), client_id: clientId, date, kcal, logged_at: now, note: null, day_type: foodDayType(clientId, date), source: "health" });
+    }
+    saved++;
+  }
+  // Gone from the phone (deleted in the food app) within the days it read: the phone's figure goes.
+  const from = String(input.caloriesFrom ?? "");
+  if (DAY.test(from)) {
+    const keep = data.calorie_logs.filter((l) => !(l.client_id === clientId && l.source === "health" && l.date >= (from < first ? first : from) && l.date <= last && !days.has(l.date)));
+    if (keep.length !== data.calorie_logs.length) {
+      saved += data.calorie_logs.length - keep.length;
+      data.calorie_logs = keep;
+    }
+  }
+  if (saved) persist();
+  return { saved, count: days.size };
 }
 
 /** The phone's workouts of its window, one a store id: new ones in, changed ones updated, and ones the phone no longer

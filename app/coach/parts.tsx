@@ -35,6 +35,8 @@ const PATHS = {
   check: "M5 12.5l4.5 4.5L19 7.5",
   calendar: "M5 5.5h14v14H5zM5 9.5h14M9 3.5v4M15 3.5v4",
   forward: "M9 5l7 7-7 7",
+  camera: "M4 8h3l1.5-2h7L17 8h3v11H4zM12 9.8a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 1 0 0-6.4z",
+  right: "M5 12h14M13 6l6 6-6 6",
   more: "M5.2 12a.8.8 0 1 0 1.6 0 .8.8 0 1 0-1.6 0zM11.2 12a.8.8 0 1 0 1.6 0 .8.8 0 1 0-1.6 0zM17.2 12a.8.8 0 1 0 1.6 0 .8.8 0 1 0-1.6 0z",
 } as const;
 export type IconName = keyof typeof PATHS;
@@ -53,8 +55,9 @@ export function Avatar({ name, src, size }: { name: string; src: string | null; 
   return (
     <span className="cph-av" style={{ width: size, height: size, fontSize: Math.round(size * 0.36) }} aria-hidden="true">
       {src ? (
+        // The 96 copy is for a face up to 48px (lib/pic.ts); a bigger one (Settings' 64px) takes the 480, sharp on a 3x phone.
         // eslint-disable-next-line @next/next/no-img-element -- their own upload, served by the app
-        <img src={pic(src, 96)} alt="" loading="lazy" decoding="async" />
+        <img src={pic(src, size > 48 ? 480 : 96)} alt="" loading="lazy" decoding="async" />
       ) : (
         (name.trim().charAt(0) || "?").toUpperCase()
       )}

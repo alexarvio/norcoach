@@ -3216,7 +3216,10 @@ export function getActivityFeed(coachId: number): FeedEvent[] {
     d.latest = latestOf(d.latest, f.logged_at);
     diary.set(key, d);
   }
+  // A figure the phone filled (Apple Health / Health Connect, 17 Nov) is no row of the client's doing: the coach reads it as the
+  // day's calories elsewhere, never as "Logged food" in Activity.
   for (const c of data.calorie_logs) {
+    if (c.source === "health") continue;
     const d = diary.get(`${c.client_id}:${c.date}`);
     if (d) {
       d.note = c.note?.trim() || d.note;
@@ -7758,7 +7761,7 @@ export function clientStartDate(clientId: number): string | null {
   const daily = new Set(data.metric_definitions.filter((m) => m.client_id === clientId && m.frequency === "daily").map((m) => m.id));
   for (const e of data.metric_entries) if (daily.has(e.metric_definition_id)) see(e.period);
   for (const e of data.food_entries ?? []) if (e.client_id === clientId) see(e.date);
-  for (const c of data.calorie_logs) if (c.client_id === clientId) see(c.date);
+  for (const c of data.calorie_logs) if (c.client_id === clientId && c.source !== "health") see(c.date);
   const dayIds = new Set(data.program_days.filter((pd) => pd.client_id === clientId).map((pd) => pd.id));
   const assignmentIds = new Set(data.workout_assignments.filter((wa) => dayIds.has(wa.program_day_id)).map((wa) => wa.id));
   for (const s of data.set_logs) if (assignmentIds.has(s.workout_assignment_id)) see(s.logged_at?.slice(0, 10));
@@ -14156,6 +14159,8 @@ export type FoodDiaryView = {
   dayType: "training" | "rest";
   /** What the calorie log holds for the day, pushed from here or typed; null when nothing is logged. */
   loggedKcal: number | null;
+  /** That figure came from the phone (a food app through Apple Health / Health Connect, 17 Nov; lib/healthSync.ts). */
+  loggedFromPhone: boolean;
 };
 
 const dayLabelFor = (date: string, today: string): string => {
@@ -14590,6 +14595,8 @@ export function getFoodDiary(clientId: number, date: string): FoodDiaryView {
     targets: foodDiaryTargetsFor(clientId),
     dayType: foodDayType(clientId, date),
     loggedKcal: getCalorieLog(clientId, date)?.kcal ?? null,
+    // The phone's figure (17 Nov; lib/healthSync.ts): read-only in the diary, "From Apple Health".
+    loggedFromPhone: getCalorieLog(clientId, date)?.source === "health",
     eaten: { kcal: sum("kcal"), protein: sum("protein"), carbs: sum("carbs"), fat: sum("fat") },
     meals: meals.map((m) => {
       const rows = entries.filter((e) => e.meal === m.id);

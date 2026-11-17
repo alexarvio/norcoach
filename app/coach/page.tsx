@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { requireCoach } from "../lib/auth";
-import { getCoachProfile, localDateStr } from "../lib/queries";
+import { getCoachProfile, getCoachSettings, localDateStr } from "../lib/queries";
+import { isSupportCoach, listSupportThread } from "../lib/support";
 import { loadPhoneCalendar } from "./calendar";
 import { listPhoneVideos } from "../lib/coachPhone";
 import { nativePushReady, pushPublicKey } from "../lib/push";
@@ -34,12 +35,26 @@ export default async function CoachPage() {
   const today = localDateStr();
   const monday = new Date(`${today}T12:00:00`);
   monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  // Settings (17 Nov, Alex): the laptop's own record. The business as the rail names it; notifications as Settings,
+  // Notifications keeps them; a deletion already asked of Norcoach support reads as asked.
+  const settings = getCoachSettings(coach.id);
+  const canAskSupport = isSupportCoach(coach.id);
+  const deletionAsked = canAskSupport && listSupportThread(coach.id).some((m) => m.from === "coach" && m.text.trim() === "Please delete my account.");
   return (
     <CoachApp
       inbox={{ chats: loadChatDock(coach), videos: listPhoneVideos(coach.id) }}
       calendar={loadPhoneCalendar(coach.id, localDateStr(monday), today)}
       today={today}
-      coach={{ id: coach.id, name, photoPath: profile?.avatar_path ?? null }}
+      coach={{
+        id: coach.id,
+        name,
+        photoPath: profile?.avatar_path ?? null,
+        business: settings.business?.business_name?.trim() ?? "",
+        email: coach.email,
+        notify: settings.notify ?? {},
+        canAskSupport,
+        deletionAsked,
+      }}
       push={{ publicKey: pushPublicKey(), nativeReady: nativePushReady() }}
     />
   );

@@ -10,7 +10,8 @@ import SettingsFold from "./SettingsFold";
 // Apple Health (iPhone) or Health Connect (Android), read by the native app (mobile/, the @capgo/capacitor-health
 // plugin) and sent to syncHealthAction: steps, weight, sleep, resting heart rate and HRV fill the coach's own metrics
 // when the coach tracks them, and the workouts go to the coach's Activity (16 Nov, Alex: "aight do so!"; steps alone
-// before). In a browser none of this exists: Settings shows the rows as "Soon", as before.
+// before); the calories a food app wrote there are the day's calories in the food diary (17 Nov). In a browser none of
+// this exists: Settings shows the rows as "Soon", as before.
 
 const noSubscribe = () => () => {};
 
@@ -34,10 +35,12 @@ const writeOn = (on: boolean) => {
 };
 
 // What the phone is asked to read. A phone that turned the switch on before 16 Nov was asked for steps alone: it is
-// asked once more for the rest on its next sync (iPhone shows its sheet only for the types it hasn't asked yet).
-const READ = ["steps", "weight", "sleep", "restingHeartRate", "heartRateVariability", "workouts"];
+// asked once more for the rest on its next sync (iPhone shows its sheet only for the types it hasn't asked yet). The
+// calories eaten came 17 Nov (Alex: MyFitnessPal "or see that we can also link calories tracked there"; a food app writes
+// them to Apple Health and Health Connect), so every phone is asked once more for them ("3").
+const READ = ["steps", "weight", "sleep", "restingHeartRate", "heartRateVariability", "dietaryEnergyConsumed", "workouts"];
 const ASKED_KEY = "ironline-health-asked";
-const ASKED = "2";
+const ASKED = "3";
 // On Android a permission the installed app doesn't declare is never granted, and the site reaches phones before a new
 // app build does: the ask is kept with the build it was made in, so the next build (declaring the new types) asks again.
 // iPhone's sheet asks every type the build knows, so its mark is the version alone.
@@ -173,6 +176,22 @@ async function syncHealth(): Promise<HealthSyncResult | null> {
     /* steps not allowed: the rest still go */
   }
 
+  // The calories eaten each day, as a food app (MyFitnessPal and the like) wrote them: the store's own day sum. Not
+  // allowed (or an Android build that doesn't declare it): none sent, none taken away.
+  try {
+    const res = await callNative<{ samples?: { startDate: string; value: number }[] }>("Health", "queryAggregated", {
+      dataType: "dietaryEnergyConsumed",
+      startDate: start.toISOString(),
+      endDate: now.toISOString(),
+      bucket: "day",
+      aggregation: "sum",
+    });
+    input.calories = (res.samples ?? []).map((s) => ({ date: localDay(new Date(s.startDate)), kcal: s.value }));
+    input.caloriesFrom = fromDay;
+  } catch {
+    /* calories not allowed: the rest still go */
+  }
+
   // Weight: each day's latest weigh-in, in kg, with when it was.
   const weighIns = new Map<string, { date: string; kg: number; at: string }>();
   for (const s of await samplesOf("weight", weightFrom, 500)) {
@@ -247,7 +266,7 @@ export function ConnectedApps({ coachName }: { coachName: string }) {
   const sync = useCallback(async () => {
     const r = await syncHealth();
     // Nothing to say while anything goes (16 Nov): only when the coach tracks none of it and there are no workouts.
-    if (r && r.tracked.length === 0 && r.workouts === 0) setNote(`${coachName} isn't tracking steps, weight, sleep or heart rate yet`);
+    if (r && r.tracked.length === 0 && r.workouts === 0 && !r.calories) setNote(`${coachName} isn't tracking steps, weight, sleep or heart rate yet`);
     else setNote(null);
     if (r?.saved) router.refresh();
   }, [router, coachName]);
@@ -309,7 +328,7 @@ export function ConnectedApps({ coachName }: { coachName: string }) {
         <button type="button" className="settings-toggle-row" onClick={toggle} disabled={busy}>
           <div className="home-dark-row-body">
             <div className="home-dark-row-title">{name}</div>
-            <div className="home-dark-row-detail">Steps, weight, sleep, heart rate, workouts</div>
+            <div className="home-dark-row-detail">Steps, weight, sleep, heart rate, workouts, calories</div>
           </div>
           <span className={`settings-switch${on ? " on" : ""}`} aria-hidden="true">
             <span className="settings-switch-knob" />

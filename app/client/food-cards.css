@@ -249,3 +249,10 @@
 .fdi-kcal-cancel { height: 32px; padding: 0 4px; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; cursor: pointer; }
 .fdi-kcal-save { height: 32px; padding: 0 16px; border: 0; border-radius: 999px; background: #141a24; font: inherit; font-size: 13px; font-weight: 600; color: #fff; cursor: pointer; }
 .fdi-kcal-save:disabled { opacity: 0.4; cursor: default; }
+/* The day's calories from the phone (17 Nov, Alex: a food app such as MyFitnessPal through Apple Health): the same box, the
+   figure read-only in ink, nothing to type; under it `From Apple Health` grey with the check-in's green dot pulsing
+   (`cki-live`, globals.css), its ring's edge in line with the figure. */
+.fdi-kcal.fdi-kcal-phone { margin-bottom: -6px; }
+.fdi-kcal-phone .fdi-kcal-box { cursor: default; }
+.fdi-kcal-phone .fdi-kcal-box b { flex: 1; min-width: 0; font-size: 16px; font-weight: 600; color: #141a24; font-variant-numeric: tabular-nums; }
+.fdi-kcal-from.cki-live { display: flex; padding: 9px 18px 0 22px; font-size: 12px; font-weight: 500; color: #8b93a1; }

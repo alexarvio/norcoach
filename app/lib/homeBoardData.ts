@@ -572,7 +572,7 @@ function sinceOf(ctx: Ctx): HomeBoard["since"] {
   // Days with food logged since: a diary entry, or a typed day's calories.
   const food = new Set<string>();
   for (const f of data.food_entries) if (f.client_id === ctx.clientId && f.date <= ctx.today && savedSince(f.logged_at, f.date)) food.add(f.date);
-  for (const c of data.calorie_logs) if (c.client_id === ctx.clientId && c.kcal > 0 && c.date <= ctx.today && savedSince(c.logged_at, c.date)) food.add(c.date);
+  for (const c of data.calorie_logs) if (c.client_id === ctx.clientId && c.source !== "health" && c.kcal > 0 && c.date <= ctx.today && savedSince(c.logged_at, c.date)) food.add(c.date);
 
   const messages = data.chat_messages.filter((m) => m.client_id === ctx.clientId && m.sender === "client" && (m.text?.trim() || m.media_path) && stampMs(m.created_at) > prev).length;
 
