@@ -85,7 +85,7 @@ const SEND = "M5 12h14M13 6l6 6-6 6";
 
 /** The photo as the coach left it (16 Nov, Alex): the picture with the drawing flattened in, a JPEG, its longest side
     PHOTO_MAX at most. Drawn from the app's own copy (sameOrigin), so the canvas can be read. */
-async function flattenPhoto(url: string, shapes: Shape[]): Promise<Blob> {
+export async function flattenPhoto(url: string, shapes: Shape[]): Promise<Blob> {
   const im = new Image();
   im.src = sameOrigin(url);
   await im.decode();
