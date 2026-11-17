@@ -17,6 +17,7 @@ import PreviewBar from "./PreviewBar";
 import ProgressPicturesScreen, { type ProgressPicturesProps, warmShapeUpdateBanner } from "./ProgressPicturesScreen";
 import CoachProfileScreen from "./CoachProfileScreen";
 import { HealthAutoSync } from "./HealthSync";
+import MarkAnchor from "./MarkAnchor";
 import { NativePush } from "./NativePush";
 import { NativeStatusBar } from "./NativeStatusBar";
 import { useKeyboardReveal } from "./keyboard";
@@ -595,6 +596,7 @@ export default function AppShell({
     <CoachIdentityProvider value={{ name: coachMessages.coachName, photoPath: coachAvatarPath }}>
       <LinkProvider value={openLink}>
       {!readOnly && <HealthAutoSync />}
+      <MarkAnchor />
       {!readOnly && <NativeStatusBar />}
       {!readOnly && <NativePush />}
       <div
