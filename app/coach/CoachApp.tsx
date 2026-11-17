@@ -9,6 +9,7 @@ import { dayMonth } from "../lib/dayMonth";
 import { coachInboxAction, markVideoDoneAction, type CoachInbox } from "./actions";
 import type { PhoneVideo } from "../lib/coachPhone";
 import ChatThread from "./ChatThread";
+import { forgetAllThreads, markThreadsReadable, prefetchThreads, setThreadOwner } from "./threadCache";
 import PhoneReview from "./PhoneReview";
 import { Avatar, Facts, Icon, Sheet } from "./parts";
 import CoachCalendar, { useCalendarState, type CalendarState } from "./CoachCalendar";
@@ -35,10 +36,14 @@ const POLL_MS = 15000;
 type Push = { publicKey: string | null; nativeReady: NativeReady };
 type Tab = "chats" | "videos" | "calendar";
 
-export default function CoachApp({ inbox: fromPage, calendar, today, coach, push }: { inbox: CoachInbox; calendar: PhoneCalendar; /** The server's day, for the first paint. */ today: string; coach: { name: string; photoPath: string | null }; push: Push }) {
+export default function CoachApp({ inbox: fromPage, calendar, today, coach, push }: { inbox: CoachInbox; calendar: PhoneCalendar; /** The server's day, for the first paint. */ today: string; coach: { id: number; name: string; photoPath: string | null }; push: Push }) {
+  // The threads this phone keeps are this coach's (threadCache.ts).
+  setThreadOwner(coach.id);
   // The keyboard source from the start, not only in a chat (13 Nov: the app's web view no longer shrinks to it; a
   // sheet's fields lift by --kb, coach.css).
   useEffect(() => subscribeKeyboard(() => {}), []);
+  // Hydrated: a chat opened from here on draws its kept copy in its first render (threadCache.ts).
+  useEffect(() => markThreadsReadable(), []);
   const params = useSearchParams();
   const chatId = Number(params.get("c")) || null;
   const videoId = Number(params.get("v")) || null;
@@ -71,6 +76,13 @@ export default function CoachApp({ inbox: fromPage, calendar, today, coach, push
       document.removeEventListener("visibilitychange", tick);
     };
   }, [refresh]);
+
+  // The first chats fetched ahead while the list shows, so opening one draws it at once (17 Nov, Alex).
+  useEffect(() => {
+    if (chatId || videoId || tab !== "chats") return;
+    const t = setTimeout(() => prefetchThreads(inbox.chats), 300);
+    return () => clearTimeout(t);
+  }, [inbox.chats, chatId, videoId, tab]);
 
   // Opened from a list in this visit: Back is the browser's. Opened straight from a link: Back is the list.
   const fromList = useRef(false);
@@ -262,7 +274,15 @@ function Lists({ tab, inbox, setInbox, cal, today, coach, push, onOpenChat, onOp
               </button>
             )}
           />
-          <button type="button" className="cph-sheet-row" onClick={() => logoutAction()}>
+          <button
+            type="button"
+            className="cph-sheet-row"
+            onClick={() => {
+              // The chats kept on this phone go with the session (the sign-in page clears them too).
+              forgetAllThreads();
+              void logoutAction();
+            }}
+          >
             Sign out
           </button>
         </Sheet>

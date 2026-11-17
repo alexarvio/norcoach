@@ -18,8 +18,8 @@ import { ChatImage, ChatVideo, withVideoFrame } from "../../../components/ChatMe
 import { uploadFirstOrThrow } from "../../../lib/uploadFirst";
 import { ChatAttachmentRow, useChatAttachment } from "../../../components/ChatAttachment";
 import MediaReviewModal, { chatMediaReview } from "../media-review/MediaReviewModal";
-import { chatDraftThreadAction } from "./actions";
-import { chatTypingAction, deleteChatMessageAction, editChatMessageAction, markSeenAction, pinMessageAction, reactToMessageAction, sendChatMessageAction, setMessageLinkAction } from "../../../lib/actions";
+import { deleteChatMessageAction, editChatMessageAction, markSeenAction, pinMessageAction, reactToMessageAction, setMessageLinkAction } from "../../../lib/actions";
+import { postChatMessage, readChatThread, signalChatTyping } from "../../../components/chatFetch";
 import type { MessageLink } from "../../../lib/messageLinks";
 import { pic } from "../../../lib/pic";
 import { newOnceKey } from "../../../lib/onceKey";
@@ -56,7 +56,7 @@ export default function MessagesDraft({ clientId, firstName, plan: fromPage, act
   const [pending, start] = useTransition();
   const router = useRouter();
   // The thread as the chat last fetched it (2 Oct): it asks for itself
-  // (chatDraftThreadAction) rather than re-reading the page, which redrew
+  // (/api/chat/thread) rather than re-reading the page, which redrew
   // every tab of the client. A page read that brings something new still wins.
   const [plan, setPlan] = useState(fromPage);
   const pageKey = JSON.stringify(fromPage);
@@ -71,7 +71,8 @@ export default function MessagesDraft({ clientId, firstName, plan: fromPage, act
     revRef.current = plan.rev;
   }, [plan.rev]);
   const refreshThread = async () => {
-    const next = await chatDraftThreadAction(clientId, revRef.current).catch(() => null);
+    // Its own route (17 Nov): a read never waits behind a send, a read mark or the page's other actions.
+    const next = await readChatThread<DraftMessages>(clientId, "coach", { rev: revRef.current, from: "laptop" });
     if (!next) return;
     setPlan(next);
     // Something the client wrote came in while the chat is open: it is read
@@ -88,7 +89,7 @@ export default function MessagesDraft({ clientId, firstName, plan: fromPage, act
   // Typing… and Seen (27 Oct, Alex): the client typing shows over the box; Seen under the coach's last message once
   // the client has had the chat open since.
   const theyType = useChatTyping(active ? clientId : null, "client");
-  const typed = useTypingSignal(() => chatTypingAction(clientId));
+  const typed = useTypingSignal(() => signalChatTyping(clientId));
   const lastOwn = messages.find((m) => m.mine);
   const seenId = lastOwn?.seen ? lastOwn.id : null;
   // The words in the box kept on this computer (27 Oct, step 2): leaving the chat never loses them.
@@ -231,7 +232,7 @@ export default function MessagesDraft({ clientId, firstName, plan: fromPage, act
           const { upload, poster } = await att.take();
           fd.set("upload", upload);
           if (poster) fd.set("poster", new File([poster], "poster.jpg", { type: "image/jpeg" }));
-          await sendChatMessageAction(fd);
+          await postChatMessage(fd);
         },
         () => {
           att.clear();
@@ -267,7 +268,7 @@ export default function MessagesDraft({ clientId, firstName, plan: fromPage, act
     if (replying) fd.set("replyTo", String(replying.id));
     act(
       // The file goes ahead to the server's disk; the send carries its handle (4 Nov, Alex: memory).
-      async () => sendChatMessageAction(await uploadFirstOrThrow(await withVideoFrame(fd, file), "chat", clientId)),
+      async () => postChatMessage(await uploadFirstOrThrow(await withVideoFrame(fd, file), "chat", clientId)),
       () => {
         setReplying(null);
         setLink(null);

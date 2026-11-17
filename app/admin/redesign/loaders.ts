@@ -25,7 +25,7 @@ import {
   getActivityFeed,
   getClientProfile,
   phaseCheckInDays,
-  chatQuote,
+  chatQuoteOf,
   chatUnread,
   chatFirstUnread,
   chatUnreadCount,
@@ -1359,11 +1359,16 @@ export function messageLinkHref(clientId: number, link: MessageLink, week: numbe
   }
 }
 
-export function loadMessages(clientId: number): DraftMessages {
+const NO_LINK_TARGETS: DraftMessages["targets"] = { training: [], foodDays: [], nutrition: false, checkins: [], photos: false };
+
+/** `targets` false (the coach's phone, which never links, 17 Nov): no link targets read, an empty list in their place. */
+export function loadMessages(clientId: number, opts: { targets?: boolean } = {}): DraftMessages {
   const when = dayMonthTime;
   const hrefFor = (link: MessageLink, week: number | null) => messageLinkHref(clientId, link, week);
   // Both sides, newest first: the client answers from their app.
   const all = listChatMessages(clientId);
+  // Each reply's quote from this chat's own messages, looked up once (17 Nov: it searched every chat's per reply).
+  const byId = new Map(all.map((m) => [m.id, m]));
   const seen = chatSeenTest(clientId);
   // A picture or video with no look yet gets one behind this read (25 Oct).
   const lacking = all.filter((m) => m.media_path && !m.media_thumb && (m.media_type === "image" || m.media_type === "video"));
@@ -1385,12 +1390,12 @@ export function loadMessages(clientId: number): DraftMessages {
         edited: !!m.edited_at,
         seen: seen(m),
         replyTo: (() => {
-          const q = chatQuote(clientId, m.reply_to);
+          const q = m.reply_to == null ? null : chatQuoteOf(byId.get(m.reply_to));
           return q ? { id: q.id, mine: q.sender === "coach", text: q.text } : null;
         })(),
       };
     });
-  return { rev: chatRev(clientId), messages, targets: listMessageLinkTargets(clientId), avatarPath: getClient(clientId)?.avatar_path ?? null, coachAvatarPath: getCoachAvatarPath(clientId), unread: chatUnread(clientId), firstUnread: chatFirstUnread(clientId), lastActiveAt: clientLastActive(clientId) };
+  return { rev: chatRev(clientId), messages, targets: opts.targets === false ? NO_LINK_TARGETS : listMessageLinkTargets(clientId), avatarPath: getClient(clientId)?.avatar_path ?? null, coachAvatarPath: getCoachAvatarPath(clientId), unread: chatUnread(clientId), firstUnread: chatFirstUnread(clientId), lastActiveAt: clientLastActive(clientId) };
 }
 
 // ---- Invoices tab: the client's invoices as they print, and what Settings

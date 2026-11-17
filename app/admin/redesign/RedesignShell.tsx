@@ -16,7 +16,8 @@ import HomeDraft, { type DraftHome } from "./home/HomeDraft";
 import NoProgramme from "./training/NoProgramme";
 import NoPhase from "./NoPhase";
 import MessagesDraft, { type DraftLink, type DraftMessages } from "./messages/MessagesDraft";
-import { chatDraftThreadAction, chatListAction } from "./messages/actions";
+import { chatListAction } from "./messages/actions";
+import { readChatThread } from "../../components/chatFetch";
 import ChatList, { ChatsBack, type DockChat } from "./ChatList";
 import InvoicesDraft from "./invoices/InvoicesDraft";
 import RedesignRail from "./RedesignRail";
@@ -240,7 +241,7 @@ export default function RedesignShell({ clientId, clientName, firstName, rail, i
     setOther(c);
     setView("other");
     if (kept) requestAnimationFrame(() => panelRef.current?.querySelector<HTMLTextAreaElement>(".rd-chatview.other .rm-box")?.focus({ preventScroll: true }));
-    const plan = await chatDraftThreadAction(c.id).catch(() => null);
+    const plan = await readChatThread<DraftMessages>(c.id, "coach", { from: "laptop" });
     if (picking.current !== c.id) return;
     if (kept) {
       if (plan) setOtherThread({ id: c.id, name: c.name, plan });

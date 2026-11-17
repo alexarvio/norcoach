@@ -3,6 +3,7 @@
 import { useKeptDraft } from "./chatOutbox";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { sendChatMessageAction } from "../lib/actions";
+import { postChatMessage } from "./chatFetch";
 import { newOnceKey } from "../lib/onceKey";
 import { withVideoFrame } from "./ChatMedia";
 import { uploadFirstOrThrow } from "../lib/uploadFirst";
@@ -113,11 +114,14 @@ export default function ChatComposeForm({
   // the app down (21 Oct: a throw in the transition reached the app's error
   // screen and the words were lost). It stays unsent: the link and the reply
   // stay over the box for another try.
+  // A chat screen that reads its own thread after a send (onSent) sends through the chat's own route (17 Nov), never
+  // queued behind the page's other actions; without one, the action, whose page read shows the message.
+  const sendIt = (fd: FormData) => (onSent ? postChatMessage(fd) : sendChatMessageAction(fd));
   const deliver = async (fd: FormData) => {
     if (onSent) fd.set("quiet", "1");
     try {
       // A photo, video, voice message or file goes ahead to the server's disk; the send carries its handle (4 Nov, Alex: memory).
-      await sendChatMessageAction(await uploadFirstOrThrow(fd, "chat", clientId));
+      await sendIt(await uploadFirstOrThrow(fd, "chat", clientId));
     } catch {
       return false;
     }
@@ -197,7 +201,7 @@ export default function ChatComposeForm({
               return;
             }
             try {
-              await sendChatMessageAction(fd);
+              await sendIt(fd);
             } catch {
               // The send didn't go: the row says so (4 Nov, review: nothing did), the words and it kept for Send again.
               att.failSend();

@@ -6644,6 +6644,8 @@ export function chatSeenTest(clientId: number): (m: ChatMessage) => boolean {
 
 export function chatThreadViews(clientId: number): ChatThreadView[] {
   const all = listChatMessages(clientId);
+  // Each reply's quote from this chat's own messages, looked up once (17 Nov).
+  const byId = new Map(all.map((m) => [m.id, m]));
   const seen = chatSeenTest(clientId);
   // A picture or video with no look yet gets one behind this read (25 Oct).
   const lacking = all.filter((m) => m.media_path && !m.media_thumb && (m.media_type === "image" || m.media_type === "video"));
@@ -6666,7 +6668,7 @@ export function chatThreadViews(clientId: number): ChatThreadView[] {
         timeLabel: clock(d),
         link: m.link ? describeMessageLink(clientId, m.link) : null,
         replyTo: (() => {
-          const q = chatQuote(clientId, m.reply_to);
+          const q = m.reply_to == null ? null : chatQuoteOf(byId.get(m.reply_to));
           return q ? { id: q.id, fromMe: q.sender === "client", text: q.text } : null;
         })(),
       };
@@ -6680,7 +6682,11 @@ export function chatThreadViews(clientId: number): ChatThreadView[] {
  */
 export function chatQuote(clientId: number, replyTo: number | null | undefined): { id: number; sender: "client" | "coach"; text: string } | null {
   if (replyTo == null) return null;
-  const m = getData().chat_messages.find((x) => x.id === replyTo && x.client_id === clientId);
+  return chatQuoteOf(getData().chat_messages.find((x) => x.id === replyTo && x.client_id === clientId));
+}
+
+/** chatQuote of a message already found (17 Nov: a thread looks its replies up once, not the whole store per reply). */
+export function chatQuoteOf(m: ChatMessage | null | undefined): { id: number; sender: "client" | "coach"; text: string } | null {
   if (!m) return null;
   const words = m.text.trim() || (m.media_type === "image" ? "📷 Photo" : m.media_type === "video" ? "🎥 Video" : m.media_type === "audio" ? "🎤 Voice message" : m.media_path ? `📄 ${m.media_name ?? "File"}` : "");
   return { id: m.id, sender: m.sender, text: words.slice(0, 160) };

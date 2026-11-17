@@ -4,11 +4,12 @@ import type { HomeEventCategory } from "./EventsCard";
 import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { useChatStream, useChatTyping, useTypingSignal } from "../components/useChatStream";
 import { landed, useChatOutbox } from "../components/chatOutbox";
+import { readChatThread, signalChatTyping } from "../components/chatFetch";
 import { ChevronDownIcon, ChevronLeftIcon, PinIcon } from "../components/icons";
 import ChatComposeForm from "../components/ChatComposeForm";
 import RingEdge from "../components/RingEdge";
 import { REACTIONS } from "../components/MessageReactions";
-import { chatThreadAction, chatTypingAction, deleteMyChatMessageAction, editMyChatMessageAction, markCoachNotesReadAction, reactToMessageAction, unpinMessageAction } from "../lib/actions";
+import { deleteMyChatMessageAction, editMyChatMessageAction, markCoachNotesReadAction, reactToMessageAction, unpinMessageAction } from "../lib/actions";
 import CoachMark from "./CoachMark";
 import { useOpenLink } from "./CheckInContext";
 import ChatMediaGallery, { exerciseOf } from "../components/ChatMediaGallery";
@@ -142,8 +143,9 @@ export default function CoachMessagesScreen({ coachName, coachPhoto = null, myPh
       if (viewerIsClient) void markCoachNotesReadAction(clientId).catch(() => {});
     }
   };
+  // Its own route (17 Nov): a read never waits behind a send or the app's other actions.
   const refresh = () =>
-    chatThreadAction(clientId, revRef.current)
+    readChatThread<{ rev: string; messages: CoachMessageView[] }>(clientId, "app", { rev: revRef.current })
       .then((r) => {
         if (!r) return;
         revRef.current = r.rev;
@@ -157,7 +159,7 @@ export default function CoachMessagesScreen({ coachName, coachPhoto = null, myPh
   const theyType = useChatTyping(clientId, viewerIsClient ? "coach" : "client");
   // The coach's quiet hours (27 Oct, Alex): one fact over the box while they hold.
   const awayUntil = useAwayUntil(quiet);
-  const typed = useTypingSignal(() => chatTypingAction(clientId));
+  const typed = useTypingSignal(() => signalChatTyping(clientId));
   const lastOwn = [...thread].reverse().find((m) => (viewerIsClient ? m.mine : !m.mine));
   const seenId = lastOwn?.seen ? lastOwn.id : null;
   // What is sending (27 Oct, step 2): on screen at once, kept on the phone until the server has it, Not sent with a
