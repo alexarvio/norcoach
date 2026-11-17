@@ -39,7 +39,7 @@ export default async function CoachPage() {
       inbox={{ chats: loadChatDock(coach), videos: listPhoneVideos(coach.id) }}
       calendar={loadPhoneCalendar(coach.id, localDateStr(monday), today)}
       today={today}
-      coach={{ name, photoPath: profile?.avatar_path ?? null }}
+      coach={{ id: coach.id, name, photoPath: profile?.avatar_path ?? null }}
       push={{ publicKey: pushPublicKey(), nativeReady: nativePushReady() }}
     />
   );

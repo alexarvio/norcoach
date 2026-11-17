@@ -1,7 +1,8 @@
 "use server";
 
 import { chatChanged, chatCurrent, chatRev, chatTyping, timedChatRead } from "./chatBus";
-import { once, onceKeyOf, releaseOnce, takeOnce } from "./once";
+import { once, onceKeyOf } from "./once";
+import { sendChatAs } from "./chatSend";
 import { isDialCode, splitTypedPhone } from "./phone";
 import { isMeetingTypeId } from "./meetingTypes";
 import { isClientCall, takesClient } from "./calendarKinds";
@@ -213,8 +214,6 @@ import {
   setMeetingStatus,
   setMetricEntry,
   setMetricCadence,
-  saveChatMedia,
-  type ChatMedia,
   sendChatMessage,
   setChatReaction,
   editChatMessage,
@@ -252,7 +251,6 @@ import {
   getCalendarEntry,
   type CalendarEntryInput,
   describeMessageLink,
-  hasMealComment,
   isSessionComplete,
   removeMealComment,
   editMealComment,
@@ -421,7 +419,7 @@ import {
 } from "./queries";
 import { writeReportNarrative } from "./reportAi";
 import { COACH_PROFILE_LIMITS } from "./coachProfileView";
-import { deleteUpload, fitPhoto, keyOf, photoName, posterFromDevice, prepareChatMedia, putUpload, putUploadFromDisk, warmSmallCopies, webVideo } from "./storage";
+import { deleteUpload, fitPhoto, keyOf, prepareChatMedia, putUpload, putUploadFromDisk, warmSmallCopies, webVideo } from "./storage";
 import fs from "fs";
 import { claimUpload, discardUpload, placeUpload, UPLOAD_CAPS, type StagedUpload, type UploadKind } from "./streamUpload";
 import { logoAsPng, makeLogoMark, removeCoachLogo, saveCoachLogo } from "./brandMark";
@@ -2557,83 +2555,17 @@ export async function removeMeetingNoteAction(formData: FormData) {
 
 export async function sendChatMessageAction(formData: FormData) {
   const clientId = await requireClientAccess(Number(formData.get("clientId")));
-
   // Who you are is decided by your session, not by a form field. Reading
   // "sender" off the request would let a client post messages that appear
   // to come from their coach.
   const user = await getSessionUser();
-  const sender: "client" | "coach" = user?.role === "coach" ? "coach" : "client";
-
-  const text = String(formData.get("text") || "").trim();
-  // A photo, video, voice message or file was sent ahead to /api/upload and written to the disk as it came (4 Nov,
-  // Alex: memory; there was no cap here before, now the upload's 128 MB a video, 20 MB a picture, 25 MB a file).
-  const up = await takeUpload(formData, clientId || null, ["chat"]);
-  if (!clientId) return discardUpload(up);
-  // A retry of a send that already arrived (its answer lost on the way): taken once (27 Oct, the outbox).
-  const nonce = String(formData.get("nonce") || "").slice(0, 80);
-  // Known in the store, so one that comes again after a restart or a deploy is still known (6 Nov, lib/once.ts).
-  if (nonce && !takeOnce(`chat${clientId}`, nonce)) return discardUpload(up);
-
-  let media: ChatMedia | undefined;
-  // Filing the file can fail (the disk, the bucket); its key is then given back, so the send going again goes through
-  // instead of being taken for one already posted (6 Nov, review).
-  if (up) try {
-    // A picture (20 MB at most) is read once and kept shrunk, 2048 at most, never the phone's original as well (4 Nov,
-    // Alex, fix 2: storage; fitPhoto); its name takes the fitted one's extension, which saveChatMedia files it under.
-    const fitted = (up.type || "").startsWith("image/") ? await fitPhoto(fs.readFileSync(up.file)) : null;
-    media = fitted
-      ? saveChatMedia(clientId, fitted.bytes, fitted.type, photoName(up.name, fitted.type))
-      : saveChatMedia(clientId, EMPTY, up.type || "application/octet-stream", up.name);
-    const onDisk = fitted ? (discardUpload(up), "") : placeUpload(up, media.path);
-    // A video's first frame taken by the sending device (25 Oct, as WhatsApp): its poster at once.
-    const frame = formData.get("poster") as File | null;
-    if (media.type === "video" && frame && frame.size > 0 && frame.size < 5 * 1024 * 1024) await posterFromDevice(media.path, Buffer.from(await frame.arrayBuffer()));
-    if (media.type === "image") {
-      // Its small copies are made from these bytes while it goes to the bucket (25 Oct).
-      const buffer = fitted?.bytes ?? fs.readFileSync(onDisk);
-      void prepareChatMedia(media.path, "image", buffer);
-      await putUpload(media.path, buffer, fitted?.type ?? (up.type || undefined));
-    } else {
-      // A video, a voice message or a file streams to the bucket, never read in.
-      await putUploadFromDisk(media.path, onDisk, up.type || undefined);
-    }
-  } catch (err) {
-    if (nonce) releaseOnce(`chat${clientId}`, nonce);
-    throw err;
-  }
-  if (!text && !media) return;
-
-  // A link only one that parses, and only one the client can actually open.
-  // The client links only their own sessions and exercises (asking about one
-  // from the workout); describeMessageLink checks the day is theirs.
-  let link: MessageLink | null = null;
-  {
-    try {
-      link = parseMessageLink(JSON.parse(String(formData.get("link") || "null")));
-    } catch {
-      link = null;
-    }
-    if (link && sender === "client" && link.kind !== "session" && link.kind !== "exercise") link = null;
-    if (link && describeMessageLink(clientId, link).gone) link = null;
-    // A meal takes one comment: a second send (two tabs, a double click) is dropped.
-    if (link?.kind === "food" && link.meal && hasMealComment(clientId, link.date, link.meal)) return;
-  }
-
-  // A reply to one message (WhatsApp-style): sendChatMessage keeps it only if that message is in this chat.
-  const replyTo = Number(formData.get("replyTo")) || null;
-  sendChatMessage(clientId, sender, text, media, link, replyTo);
-  // The coach's phone buzzes for what a client writes (21 Oct, /coach).
-  if (sender === "client") pushCoachMessage(clientId, { text, media: media?.type });
-  // A picture's small copies and a video's poster are made now, after the
-  // answer, so the first person to open the chat doesn't wait for them (21 Oct).
-  const kind = media?.type;
-  // A video: its poster at once, then its small web copy, which the message then shows (25 Oct, Alex), the original
-  // dropped once it does (4 Nov, Alex, fix 2: storage).
-  if (media && kind === "video") afterResponse(async () => (await prepareChatMedia(media.path, kind), await webVideo(media.path, { dropOriginal: true })));
+  if (!user) return;
+  // The send itself (lib/chatSend.ts), shared with the chats' own route (/api/chat/send, 17 Nov).
+  const sent = await sendChatAs(user, clientId, formData);
   // The chat screens ask for their own thread after a send ("quiet"): a page
   // read on top sent the whole page back with every message (21 Oct: 211 KB
   // on the client's phone, 96 KB for the coach). Other callers still need it.
-  if (formData.get("quiet") !== "1") chatSaved();
+  if (sent && formData.get("quiet") !== "1") chatSaved();
 }
 
 /** A chat change: both apps' pages are read again, unless the chat screen asked for its own thread only (quiet). */

@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ChatIcon } from "../../components/icons";
 import MessagesDraft, { type DraftMessages } from "./messages/MessagesDraft";
-import { chatDraftThreadAction } from "./messages/actions";
+import { readChatThread } from "../../components/chatFetch";
+import { useChatStream } from "../../components/useChatStream";
+import { chatListAction } from "./messages/actions";
 import ChatList, { ChatsBack, type DockChat } from "./ChatList";
 import { useCloseOnEmptyClick } from "./useCloseOnEmptyClick";
 
@@ -17,10 +19,33 @@ import { useCloseOnEmptyClick } from "./useCloseOnEmptyClick";
 export type { DockChat };
 
 const DOCK_KEY = "norcoach:chat-dock";
+const LIST_POLL_MS = 15000;
 
-export default function ChatDock({ chats }: { chats: DockChat[] }) {
+export default function ChatDock({ chats: fromPage }: { chats: DockChat[] }) {
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
+  // The list, pulled here while the dock is open (17 Nov): a send goes through the chat's own route now, which draws
+  // no page again, so the page's list alone would keep a chat just answered in its old place. A newer page's list
+  // (a read on return, a move) is taken as it comes.
+  const [chats, setChats] = useState(fromPage);
+  const [pageList, setPageList] = useState(fromPage);
+  if (pageList !== fromPage) {
+    setPageList(fromPage);
+    setChats(fromPage);
+  }
+  const pullChats = useCallback(() => {
+    chatListAction()
+      .then(setChats)
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    pullChats();
+    const id = setInterval(pullChats, LIST_POLL_MS);
+    return () => clearInterval(id);
+  }, [open, pullChats]);
+  // In real time, as a client's panel (RedesignShell): a message sent or come in moves the list while it is open.
+  useChatStream(open ? "all" : null, pullChats, 400);
   // Put back open on a new screen (14 Oct, Alex): in place, no slide and no page contracting.
   const [still, setStill] = useState(false);
   const [pick, setPick] = useState<DockChat | null>(null);
@@ -71,7 +96,7 @@ export default function ChatDock({ chats }: { chats: DockChat[] }) {
     setPick(c);
     setThread(null);
     setRead((r) => new Set(r).add(c.id));
-    const plan = await chatDraftThreadAction(c.id).catch(() => null);
+    const plan = await readChatThread<DraftMessages>(c.id, "coach", { from: "laptop" });
     if (plan) {
       setThread({ id: c.id, plan });
       setOpened((n) => n + 1);

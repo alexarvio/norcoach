@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useChatStream, useChatTyping, useTypingSignal } from "../components/useChatStream";
 import { landed, useChatOutbox, useKeptDraft } from "../components/chatOutbox";
-import { coachThreadAction } from "./actions";
+import { forgetThread, keepThread, keptThread, threadsReadable } from "./threadCache";
+import { fetchChatThread, markChatSeen, postChatMessage, signalChatTyping } from "../components/chatFetch";
 import type { DraftMedia, DraftMessage, DraftMessages } from "../admin/redesign/messages/MessagesDraft";
-import { chatTypingAction, deleteChatMessageAction, editChatMessageAction, markSeenAction, pinMessageAction, reactToMessageAction, sendChatMessageAction } from "../lib/actions";
+import { deleteChatMessageAction, editChatMessageAction, pinMessageAction, reactToMessageAction } from "../lib/actions";
 import VoiceRecordButton from "../components/VoiceRecordButton";
 import VoiceNote from "../components/VoiceNote";
 import { pic } from "../lib/pic";
@@ -23,9 +24,9 @@ import { ChatReview } from "./PhoneReview";
 import LastActive from "../components/LastActive";
 
 // One client's chat on the coach's phone (21 Oct): the laptop's thread (its
-// loader, through coachThreadAction, which also keeps this chat's pushes
-// quiet while it shows, and the same actions for every send, reaction, edit,
-// pin and delete), laid out for a thumb. Their messages on the left in white
+// loader, through /api/chat/thread, which also keeps this chat's pushes
+// quiet while it shows; the send through /api/chat/send and the same actions
+// for every reaction, edit, pin and delete), laid out for a thumb. Their messages on the left in white
 // with a hairline, the coach's on the right in a neutral tint; hold one to
 // react, reply, copy, edit, pin or delete it. + picks a photo, video or file,
 // which waits over the box until the ink arrow sends it with the words as one
@@ -42,46 +43,74 @@ const NOT_SENT = "Not sent. Check the connection and try again.";
 
 
 export default function ChatThread({ clientId, name, avatarPath, onBack, onRead }: { clientId: number; name: string; avatarPath: string | null; onBack: () => void; onRead: () => void }) {
-  const [plan, setPlan] = useState<DraftMessages | null>(null);
+  // Opening is instant (17 Nov, Alex: "when I open the chat, I can instantly see the components of it inside"): the
+  // copy kept this visit at once, else the one kept on the phone before the first paint, then brought up to date under
+  // it (threadCache.ts). Read, sent, marked read and typed through the chat's own routes (chatFetch.ts), never a
+  // server action, so none of it waits behind another and nothing draws the /coach page again.
+  // Opened inside the app, the kept copy is drawn in the first render; opened straight from a link (the page drawn on
+  // the server, then hydrated), the phone's copy only once hydrated, so the two first paints match.
+  const [plan, setPlan] = useState<DraftMessages | null>(() => (threadsReadable() ? keptThread(clientId) : null));
   const first = name.split(/\s+/)[0] || "them";
   const readRef = useRef(onRead);
   useEffect(() => {
     readRef.current = onRead;
   });
+  // The first unread before it is marked read (25 Oct): the kept copy's to begin with, the first fresh read's once in.
+  const firstUnread = useRef<number | null | undefined>(plan ? plan.firstUnread ?? null : undefined);
+  useLayoutEffect(() => {
+    if (plan) return;
+    const kept = keptThread(clientId);
+    if (!kept) return;
+    if (firstUnread.current === undefined) firstUnread.current = kept.firstUnread ?? null;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the phone's copy after hydration, once, before the first paint
+    setPlan(kept);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on opening
+  }, []);
 
   // The thread, now and every 15 s while it shows; anything new from the client is read as it comes in.
   const take = useCallback(
     (next: DraftMessages | null) => {
       if (!next) return;
       setPlan(next);
+      keepThread(clientId, next);
       // Read only while it is on screen (27 Oct: Seen must mean seen).
       if (next.unread && document.visibilityState === "visible") {
-        void markSeenAction(clientId, { tab: "messages" }).catch(() => {});
+        void markChatSeen(clientId);
         readRef.current();
       }
     },
     [clientId]
   );
   // The revision the thread on screen is at (chatBus.ts): an unchanged chat sends nothing.
-  const revRef = useRef<string | undefined>(undefined);
+  const revRef = useRef<string | undefined>(plan?.rev);
   useEffect(() => {
     revRef.current = plan?.rev;
   }, [plan?.rev]);
-  const refresh = useCallback(async () => take(await coachThreadAction(clientId, revRef.current).catch(() => null)), [clientId, take]);
+  const read = useCallback(async (): Promise<DraftMessages | null> => {
+    const r = await fetchChatThread<DraftMessages>(clientId, "coach", { rev: revRef.current, from: "phone", reading: true });
+    if (r === "denied") {
+      // Refused (signed out, or no longer this coach's client): the kept copy goes, from the screen and the phone.
+      forgetThread(clientId);
+      revRef.current = undefined;
+      setPlan(null);
+      return null;
+    }
+    return typeof r === "string" ? null : r.data;
+  }, [clientId]);
+  const refresh = useCallback(async () => take(await read()), [read, take]);
   // In real time (27 Oct, Alex): what the client writes, edits and reacts comes in as it happens.
   useChatStream(clientId, () => void refresh());
-  // The first unread before it is marked read (25 Oct): the thread is read first, then the chat marked seen.
-  const firstUnread = useRef<number | null | undefined>(undefined);
   useEffect(() => {
-    coachThreadAction(clientId)
+    // The kept copy's revision (none when it was cut to its newest): unchanged, nothing comes back.
+    read()
       .then((t) => {
-        if (firstUnread.current === undefined) firstUnread.current = t?.firstUnread ?? null;
+        if (t) firstUnread.current = t.firstUnread ?? null;
+        else if (firstUnread.current === undefined) firstUnread.current = null;
         take(t);
-      }, () => {})
+      })
       .finally(() => {
-        void markSeenAction(clientId, { tab: "messages" })
-          .then(() => readRef.current())
-          .catch(() => {});
+        // Never in front of a send (17 Nov): its own fire-and-forget route.
+        void markChatSeen(clientId).then((ok) => ok && readRef.current());
       });
     const tick = () => {
       if (document.visibilityState === "visible") void refresh();
@@ -92,13 +121,13 @@ export default function ChatThread({ clientId, name, avatarPath, onBack, onRead 
       clearInterval(id);
       document.removeEventListener("visibilitychange", tick);
     };
-  }, [clientId, refresh, take]);
+  }, [clientId, read, refresh, take]);
 
   const messages = plan?.messages ?? [];
   // Typing… and Seen (27 Oct, Alex): the client typing shows over the box; Seen under the coach's last message once
   // the client has had the chat open since.
   const theyType = useChatTyping(clientId, "client");
-  const typed = useTypingSignal(() => chatTypingAction(clientId));
+  const typed = useTypingSignal(() => signalChatTyping(clientId));
   const lastOwn = messages.find((m) => m.mine);
   const seenId = lastOwn?.seen ? lastOwn.id : null;
   const avatar = plan?.avatarPath ?? avatarPath;
@@ -236,7 +265,7 @@ export default function ChatThread({ clientId, name, avatarPath, onBack, onRead 
       return;
     }
     try {
-      await sendChatMessageAction(fd);
+      await postChatMessage(fd);
     } catch {
       setError(NOT_SENT);
       setSendingAtt(false);
@@ -264,7 +293,7 @@ export default function ChatThread({ clientId, name, avatarPath, onBack, onRead 
     if (replying) fd.set("replyTo", String(replying.id));
     try {
       // The file goes ahead to the server's disk; the send carries its handle (4 Nov, Alex: memory).
-      await sendChatMessageAction(await uploadFirstOrThrow(await withVideoFrame(fd, file), "chat", clientId));
+      await postChatMessage(await uploadFirstOrThrow(await withVideoFrame(fd, file), "chat", clientId));
       setReplying(null);
       atEnd.current = true;
       await refresh();

@@ -4,6 +4,7 @@ import { ensureCoachFromEnv, ensureOwnerFromEnv, getSessionUser, resetCoachFromE
 import { LoginCard } from "./AuthCards";
 import { clerkIdentity, clerkOn } from "../lib/clerk";
 import { SignInFlow } from "./ClerkFlows";
+import ForgetKeptChats from "./ForgetKeptChats";
 
 export default async function LoginPage({
   searchParams,
@@ -34,6 +35,18 @@ export default async function LoginPage({
   // so (and offers another email), where this form would only answer
   // "You're already signed in".
   if (clerkOn() && (await clerkIdentity())) redirect("/auth/continue");
-  if (clerkOn()) return <SignInFlow notice={deleted ? "Your account and everything in it has been deleted." : null} />;
-  return <LoginCard error={error} deleted={deleted} reset={reset} canReset={resetsAvailable()} />;
+  // Signed out (every Sign out lands here): the chats the coach's phone kept on this device go (ForgetKeptChats).
+  if (clerkOn())
+    return (
+      <>
+        <ForgetKeptChats />
+        <SignInFlow notice={deleted ? "Your account and everything in it has been deleted." : null} />
+      </>
+    );
+  return (
+    <>
+      <ForgetKeptChats />
+      <LoginCard error={error} deleted={deleted} reset={reset} canReset={resetsAvailable()} />
+    </>
+  );
 }

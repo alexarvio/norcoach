@@ -69,7 +69,7 @@ export async function uploadFileFirst(
  * few seconds stale and be refused). So the cookie is renewed first when it needs to be (cached when still good). Never waits more than 3 s, never throws; without Clerk it
  * does nothing.
  */
-async function freshSignIn() {
+export async function freshSignIn() {
   const clerk = (globalThis as unknown as { Clerk?: { session?: { getToken?: () => Promise<unknown> } | null } }).Clerk;
   const getToken = clerk?.session?.getToken;
   if (typeof getToken !== "function") return;

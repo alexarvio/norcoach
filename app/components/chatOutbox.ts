@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { sendChatMessageAction } from "../lib/actions";
+import { postChatMessage } from "./chatFetch";
 
 // Never lose a message (27 Oct, Alex: step 2 of the chat). Every chat's words go through this outbox: on screen at once,
 // kept on the phone (localStorage) until the server has them, so a dropped signal, a closed app or a failed send leaves
@@ -62,7 +62,8 @@ export function useChatOutbox<Q = unknown>(clientId: number, side: "coach" | "cl
       if (o.replyTo) fd.set("replyTo", String(o.replyTo));
       if (o.link) fd.set("link", o.link);
       try {
-        await sendChatMessageAction(fd);
+        // Its own route, never a server action (17 Nov): it goes at once, not behind the page's other actions.
+        await postChatMessage(fd);
       } catch {
         update((l) => l.map((x) => (x.key === o.key ? { ...x, failed: true } : x)));
         busy.current.delete(o.key);
