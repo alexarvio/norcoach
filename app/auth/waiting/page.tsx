@@ -12,6 +12,7 @@ export default async function WaitingPage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
   if (!user.pending) redirect("/auth/continue");
-  const name = getData().users.find((u) => u.id === user.id)?.pending?.name?.split(" ")[0] || "for signing up";
-  return <WaitingScreen name={name} signOut={<a href="/auth/signout">Sign out</a>} />;
+  const me = getData().users.find((u) => u.id === user.id);
+  const name = me?.pending?.name?.split(" ")[0] || "";
+  return <WaitingScreen name={name} email={me?.email ?? null} signOut={<a href="/auth/signout">Sign out</a>} />;
 }

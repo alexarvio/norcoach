@@ -5,9 +5,14 @@ import { nativePlatform } from "../lib/native";
 import { NorCoachLogo } from "../components/NorCoachLogo";
 import { Bars } from "../client/Bars";
 import { useKeyboardReveal } from "../client/keyboard";
+import PasswordInput from "./PasswordInput";
+// The website's dark background, one file for the site and the coach sign-up (17 Nov, Alex): change it there.
+import "../../website/site-bg.css";
 
-// The sign-in screens for the switch to Clerk (26 Sep): no passwords, an
-// email code or Apple or Google, for coaches and clients alike. Each screen
+// The sign-in screens for the switch to Clerk (26 Sep): an email code or Apple
+// or Google, for coaches and clients alike; since 17 Nov (Alex) a coach who
+// signs up by email sets a password too, and signs in with it, the emailed
+// code then confirming the address and checking a new device. Each screen
 // only draws and reports what was typed or pressed; ClerkFlows.tsx runs
 // Clerk behind them, and the onboarding board shows them with nothing
 // wired (every handler optional).
@@ -29,6 +34,50 @@ export function AuthShell({ children }: { children: ReactNode }) {
     </div>
   );
 }
+
+/**
+ * The coach sign-up's frame (17 Nov, Alex: B of docs/boards/coach-signup-mockup.html, "I definitely like B"): the
+ * website carries on. On a laptop the website's dark background (site-bg.css, shared with the site) with the logo and
+ * its hero line beside the form on paper; on a phone the dark is a short head with the screen's title over the paper.
+ * `full` is the dark alone (waiting for approval). The title is drawn in the head on a phone and over the form on a
+ * laptop, one of the two hidden at a time.
+ */
+export function SiteShell({ title, children, aside, full = false }: { title: ReactNode; children?: ReactNode; aside?: ReactNode; full?: boolean }) {
+  useKeyboardReveal();
+  return (
+    <div className={`su-page${full ? " full" : ""}`}>
+      <div className="su-band site-bg site-bg-mark">
+        <NorCoachLogo className="su-logo" />
+        {!full && (
+          <p className="su-pitch" aria-hidden="true">
+            Scale the quality <span>of your online coaching.</span>
+          </p>
+        )}
+        <h1 className="su-head">{title}</h1>
+        {full && <div className="su-full">{children}</div>}
+      </div>
+      {!full && (
+        <div className="su-paper">
+          {aside && <p className="su-aside top">{aside}</p>}
+          <div className="su-form au-card">
+            <h1 className="su-title">{title}</h1>
+            {children}
+            {aside && <p className="su-aside foot">{aside}</p>}
+          </div>
+          <p className="su-legal">
+            <Bars parts={[<a key="p" href="/privacy">Privacy policy</a>, <a key="s" href="/support">Support</a>]} />
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const SignInLink = () => (
+  <>
+    Already have an account? <a href="/login">Sign in</a>
+  </>
+);
 
 function ErrorLine({ error }: { error?: string | null }) {
   return error ? <p className="auth-error au-error">{error}</p> : null;
@@ -69,7 +118,8 @@ function Or() {
   );
 }
 
-/** Signing in, coach or client: Apple, Google, or an email that gets a code. */
+/** Signing in, coach or client: Apple, Google, or an email. The email first: an account with a password is asked for it
+ *  next (PasswordScreen), any other gets a code (17 Nov). */
 export function SignInScreen({ onEmail, onApple, onGoogle, busy, error, notice, signupHref = "/signup" }: Oauth & Busy & { onEmail?: (email: string) => void; notice?: string | null; signupHref?: string }) {
   const [email, setEmail] = useState("");
   const inApp = useSyncExternalStore(noSubscribe, () => nativePlatform() != null, () => false);
@@ -89,12 +139,13 @@ export function SignInScreen({ onEmail, onApple, onGoogle, busy, error, notice, 
       >
         <label className="auth-field">
           <span>Email</span>
-          <input name="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          {/* "username", so a password manager offers the saved login (17 Nov: passwords). */}
+          <input name="email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </label>
         {/* Where Clerk puts its bot check when a new account is made (sign-up protection). */}
         <div id="clerk-captcha" />
         <button className="btn auth-submit" type="submit" disabled={busy}>
-          {busy ? "Sending…" : "Email me a code"}
+          {busy ? "One moment…" : "Continue"}
         </button>
       </form>
       {/* Not inside the phone app (13 Nov): it is the clients' way in; coaches sign up on the website. */}
@@ -110,13 +161,9 @@ export function SignInScreen({ onEmail, onApple, onGoogle, busy, error, notice, 
   );
 }
 
-/** The six digits from the email. Typing moves along; a pasted code fills them all, and the last digit sends. */
-export function CodeScreen({ email, title = "Check your email", onVerify, onResend, onBack, busy, error }: Busy & { email: string; title?: string; onVerify?: (code: string) => void; onResend?: () => void; onBack?: () => void }) {
-  const [digits, setDigits] = useState<string[]>(["", "", "", "", "", ""]);
+/** The six boxes for an emailed code. Typing moves along; a pasted code fills them all; `onFull` with all six in. */
+function CodeBoxes({ digits, setDigits, onFull, autoFocus = true }: { digits: string[]; setDigits: (d: string[]) => void; onFull?: (code: string) => void; autoFocus?: boolean }) {
   const boxes = useRef<(HTMLInputElement | null)[]>([]);
-  const done = (next: string[]) => {
-    if (next.every((x) => x)) onVerify?.(next.join(""));
-  };
   const put = (i: number, value: string) => {
     const only = value.replace(/\D/g, "");
     const next = [...digits];
@@ -124,17 +171,45 @@ export function CodeScreen({ email, title = "Check your email", onVerify, onRese
       only.slice(0, 6 - i).split("").forEach((d, k) => (next[i + k] = d));
       setDigits(next);
       boxes.current[Math.min(5, i + only.length)]?.focus();
-      done(next);
+      if (next.every((x) => x)) onFull?.(next.join(""));
       return;
     }
     next[i] = only;
     setDigits(next);
     if (only && i < 5) boxes.current[i + 1]?.focus();
-    if (only) done(next);
+    if (only && next.every((x) => x)) onFull?.(next.join(""));
   };
   return (
-    <AuthShell>
-      <h1 className="auth-title">{title}</h1>
+    <div className="au-code" role="group" aria-label="The code from the email">
+      {digits.map((d, i) => (
+        <input
+          key={i}
+          ref={(el) => {
+            boxes.current[i] = el;
+          }}
+          value={d}
+          inputMode="numeric"
+          autoComplete={i === 0 ? "one-time-code" : "off"}
+          autoFocus={autoFocus && i === 0}
+          maxLength={6}
+          aria-label={`Digit ${i + 1}`}
+          onChange={(e) => put(i, e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Backspace" && !d && i > 0) boxes.current[i - 1]?.focus();
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+const SIX = ["", "", "", "", "", ""];
+
+/** The six digits from the email; the last digit sends. In the coach sign-up's frame with `look="site"` (17 Nov). */
+export function CodeScreen({ email, title = "Check your email", onVerify, onResend, onBack, busy, error, look = "card" }: Busy & { email: string; title?: string; onVerify?: (code: string) => void; onResend?: () => void; onBack?: () => void; look?: "card" | "site" }) {
+  const [digits, setDigits] = useState<string[]>(SIX);
+  const body = (
+    <>
       <p className="auth-note auth-note-top">
         We sent a 6-digit code to <b>{email}</b>.
       </p>
@@ -143,29 +218,10 @@ export function CodeScreen({ email, title = "Check your email", onVerify, onRese
         className="auth-form"
         onSubmit={(e) => {
           e.preventDefault();
-          done(digits);
+          if (digits.every((x) => x)) onVerify?.(digits.join(""));
         }}
       >
-        <div className="au-code" role="group" aria-label="The code from the email">
-          {digits.map((d, i) => (
-            <input
-              key={i}
-              ref={(el) => {
-                boxes.current[i] = el;
-              }}
-              value={d}
-              inputMode="numeric"
-              autoComplete={i === 0 ? "one-time-code" : "off"}
-              autoFocus={i === 0}
-              maxLength={6}
-              aria-label={`Digit ${i + 1}`}
-              onChange={(e) => put(i, e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Backspace" && !d && i > 0) boxes.current[i - 1]?.focus();
-              }}
-            />
-          ))}
-        </div>
+        <CodeBoxes digits={digits} setDigits={setDigits} onFull={onVerify} />
         <button className="btn auth-submit" type="submit" disabled={busy || digits.some((x) => !x)}>
           {busy ? "Checking…" : "Continue"}
         </button>
@@ -181,40 +237,142 @@ export function CodeScreen({ email, title = "Check your email", onVerify, onRese
           Use a different email
         </button>
       </p>
+    </>
+  );
+  if (look === "site") return <SiteShell title={title}>{body}</SiteShell>;
+  return (
+    <AuthShell>
+      <h1 className="auth-title">{title}</h1>
+      {body}
     </AuthShell>
   );
 }
 
-/** A coach making their own account: how they sign in, first. Who they are comes next (CoachDetailsScreen). */
-export function CoachSignUpScreen({ onEmail, onApple, onGoogle, busy, error }: Oauth & Busy & { onEmail?: (email: string) => void }) {
-  const [email, setEmail] = useState("");
+/** Signing in with a password (17 Nov): the account's email said, the password, Sign in. A forgotten one is reset by an
+ *  emailed code, or a code signs them in instead. */
+export function PasswordScreen({ email, onSubmit, onForgot, onCode, onBack, busy, error }: Busy & { email: string; onSubmit?: (password: string) => void; onForgot?: () => void; onCode?: () => void; onBack?: () => void }) {
+  const [password, setPassword] = useState("");
   return (
     <AuthShell>
-      <h1 className="auth-title">Create a coach account</h1>
+      <h1 className="auth-title">Enter your password</h1>
+      <p className="auth-note auth-note-top">
+        <b>{email}</b>
+      </p>
       <ErrorLine error={error} />
-      <Providers verb="Sign up" onApple={onApple} onGoogle={onGoogle} busy={busy} />
+      <form
+        className="auth-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (password) onSubmit?.(password);
+        }}
+      >
+        {/* The email for the phone's password manager, so it fills the right one. */}
+        <input className="sr-only" type="email" name="email" autoComplete="username" value={email} readOnly tabIndex={-1} aria-hidden="true" />
+        <label className="auth-field">
+          <span>Password</span>
+          <PasswordInput name="password" autoComplete="current-password" autoFocus value={password} onChange={setPassword} />
+        </label>
+        <button className="btn auth-submit" type="submit" disabled={busy || !password}>
+          {busy ? "Signing in…" : "Sign in"}
+        </button>
+      </form>
+      <p className="auth-note">
+        <button type="button" className="au-link" onClick={onForgot} disabled={busy}>
+          Forgot password?
+        </button>
+      </p>
+      <p className="auth-note">
+        <button type="button" className="au-link" onClick={onCode} disabled={busy}>
+          Email me a code instead
+        </button>
+      </p>
+      <p className="auth-note">
+        <button type="button" className="au-link" onClick={onBack}>
+          Use a different email
+        </button>
+      </p>
+    </AuthShell>
+  );
+}
+
+/** A new password (17 Nov): the code emailed to the account and the new password, then signed in with it. */
+export function ResetPasswordScreen({ email, onSubmit, onResend, onBack, busy, error }: Busy & { email: string; onSubmit?: (code: string, password: string) => void; onResend?: () => void; onBack?: () => void }) {
+  const [digits, setDigits] = useState<string[]>(SIX);
+  const [password, setPassword] = useState("");
+  const ready = digits.every((x) => x) && password.length > 0;
+  return (
+    <AuthShell>
+      <h1 className="auth-title">Reset your password</h1>
+      <p className="auth-note auth-note-top">
+        We sent a 6-digit code to <b>{email}</b>.
+      </p>
+      <ErrorLine error={error} />
+      <form
+        className="auth-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (ready) onSubmit?.(digits.join(""), password);
+        }}
+      >
+        <CodeBoxes digits={digits} setDigits={setDigits} />
+        <input className="sr-only" type="email" name="email" autoComplete="username" value={email} readOnly tabIndex={-1} aria-hidden="true" />
+        <label className="auth-field">
+          <span>New password</span>
+          <PasswordInput name="password" autoComplete="new-password" value={password} onChange={setPassword} />
+        </label>
+        <button className="btn auth-submit" type="submit" disabled={busy || !ready}>
+          {busy ? "Saving…" : "Save and sign in"}
+        </button>
+      </form>
+      <p className="auth-note">
+        Nothing there? Check spam, or{" "}
+        <button type="button" className="au-link" onClick={onResend} disabled={busy}>
+          send a new code
+        </button>
+      </p>
+      <p className="auth-note">
+        <button type="button" className="au-link" onClick={onBack}>
+          Back
+        </button>
+      </p>
+    </AuthShell>
+  );
+}
+
+/** A coach making their own account (17 Nov, Alex: B of docs/boards/coach-signup-mockup.html): Apple, Google, or an
+ *  email and a password, the email then confirmed by a code. Who they are comes next (CoachDetailsScreen). */
+export function CoachSignUpScreen({ onEmail, onApple, onGoogle, busy, error, askPassword = true }: Oauth & Busy & { onEmail?: (email: string, password: string) => void; askPassword?: boolean }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  return (
+    <SiteShell title="Apply for early access" aside={<SignInLink />}>
+      <ErrorLine error={error} />
+      <Providers onApple={onApple} onGoogle={onGoogle} busy={busy} />
       <Or />
       <form
         className="auth-form"
         onSubmit={(e) => {
           e.preventDefault();
-          if (email.trim()) onEmail?.(email.trim());
+          if (email.trim() && (password || !askPassword)) onEmail?.(email.trim(), askPassword ? password : "");
         }}
       >
         <label className="auth-field">
           <span>Email</span>
           <input name="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </label>
+        {askPassword && (
+          <label className="auth-field">
+            <span>Password</span>
+            <PasswordInput name="password" autoComplete="new-password" value={password} onChange={setPassword} />
+          </label>
+        )}
         {/* Where Clerk puts its bot check when a new account is made (sign-up protection). */}
         <div id="clerk-captcha" />
         <button className="btn auth-submit" type="submit" disabled={busy}>
-          {busy ? "Sending…" : "Email me a code"}
+          {busy ? "One moment…" : "Continue"}
         </button>
       </form>
-      <p className="auth-note">
-        Already have an account? <a href="/login">Sign in</a>
-      </p>
-    </AuthShell>
+    </SiteShell>
   );
 }
 
@@ -225,8 +383,7 @@ export function CoachSignUpScreen({ onEmail, onApple, onGoogle, busy, error }: O
  */
 export function CoachDetailsScreen({ action, name, email, error }: { action?: (formData: FormData) => void | Promise<void>; name: string; email: string; error?: string | null }) {
   return (
-    <AuthShell>
-      <h1 className="auth-title">About you</h1>
+    <SiteShell title="About you">
       <p className="auth-note auth-note-top">
         Signed up as <b>{email}</b>. This is how you&rsquo;ll appear to your clients.
       </p>
@@ -244,18 +401,27 @@ export function CoachDetailsScreen({ action, name, email, error }: { action?: (f
           Continue
         </button>
       </form>
-    </AuthShell>
+    </SiteShell>
   );
 }
 
-/** A new coach, signed up and waiting for the owner to let them in. */
-export function WaitingScreen({ name, signOut }: { name: string; signOut?: ReactNode }) {
+/** A new coach, signed up and waiting for the owner to let them in: the dark alone, no list of perks (17 Nov, Alex:
+ *  they were the launch's, "I don't know if I would even put these as check marks there"). */
+export function WaitingScreen({ name, email, signOut }: { name: string; email?: string | null; signOut?: ReactNode }) {
   return (
-    <AuthShell>
-      <h1 className="auth-title">Thanks, {name}</h1>
-      <p className="au-lead">Your coach account is waiting for approval. We&rsquo;ll email you as soon as you&rsquo;re in, usually within a day.</p>
-      <p className="auth-note">{signOut ?? <a href="#">Sign out</a>}</p>
-    </AuthShell>
+    <SiteShell
+      full
+      title={
+        <>
+          Thanks{name ? `, ${name}` : ""}. <span>You&rsquo;re on the list.</span>
+        </>
+      }
+    >
+      <p className="su-wait">
+        We&rsquo;ll email {email ? <b>{email}</b> : "you"} as soon as you&rsquo;re in, usually within a day.
+      </p>
+      <p className="su-out">{signOut ?? <a href="#">Sign out</a>}</p>
+    </SiteShell>
   );
 }
 
