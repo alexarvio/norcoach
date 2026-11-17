@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
+import { createPortal } from "react-dom";
 import { addCalendarEntryAction, updateCalendarEntryAction } from "../lib/actions";
 import { TRAINING_ICON } from "../lib/eventTypes";
 import { callLink, isClientCall, takesClient } from "../lib/calendarKinds";
@@ -142,6 +143,22 @@ export default function EntrySheet({
   const [note, setNote] = useState(e?.note ?? "");
   const [link, setLink] = useState(e?.link ?? "");
   const [page, setPage] = useState<Page>("form");
+  // The time list (17 Nov, Alex: "most apps just have a drop down… a column of all the times"): which time it drops for,
+  // and where, under the numeral tapped (above it when there is no room below).
+  const [drop, setDrop] = useState<{ which: "start" | "end"; top: number; left: number } | null>(null);
+  const dropList = useRef<HTMLDivElement>(null);
+  const openDrop = (which: "start" | "end", el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    const W = 150;
+    const H = 6 * 40 + 10;
+    const below = r.bottom + 6 + H < window.innerHeight - 16;
+    setDrop({ which, top: below ? r.bottom + 6 : Math.max(16, r.top - 6 - H), left: which === "start" ? r.left : Math.max(16, r.right - W) });
+  };
+  useLayoutEffect(() => {
+    // Open on the time picked, in the middle of the list.
+    const on = dropList.current?.querySelector<HTMLElement>(".on");
+    if (on && dropList.current) dropList.current.scrollTop = on.offsetTop - dropList.current.clientHeight / 2 + on.clientHeight / 2;
+  }, [drop]);
   // The date being typed (DateText's way: digits, the slashes filling in); null shows the day it holds.
   const [dateTyping, setDateTyping] = useState<string | null>(null);
   // A date typed that can't be read, left on the field: it stays on screen in rust and holds Add back, so the entry
@@ -497,7 +514,7 @@ export default function EntrySheet({
         <div className={`so-fold cph-ent-timefold${!allDay || measuring ? " open" : ""}${still ? " still" : ""}`} aria-hidden={allDay && !measuring ? true : undefined} inert={allDay && !measuring}>
           <div className="so-fold-in">
             <div className="cph-ent-range">
-              <button type="button" className="cph-ent-end" onClick={() => setPage("start")} aria-label={`Starts, ${time}`}>
+              <button type="button" className="cph-ent-end" onClick={(e) => openDrop("start", e.currentTarget)} aria-label={`Starts, ${time}`} aria-expanded={drop?.which === "start"}>
                 <small>Starts</small>
                 <b>{time}</b>
               </button>
@@ -506,7 +523,7 @@ export default function EntrySheet({
                   <path d="M5 12h14M13 6l6 6-6 6" />
                 </svg>
               </span>
-              <button type="button" className="cph-ent-end right" onClick={() => setPage("end")} aria-label={`Ends, ${hhmm(endMin)}`}>
+              <button type="button" className="cph-ent-end right" onClick={(e) => openDrop("end", e.currentTarget)} aria-label={`Ends, ${hhmm(endMin)}`} aria-expanded={drop?.which === "end"}>
                 <small>Ends</small>
                 <b>{hhmm(endMin)}</b>
               </button>
@@ -520,12 +537,45 @@ export default function EntrySheet({
                   </button>
                 );
               })}
-              <button type="button" role="radio" aria-checked={customLength} className={customLength ? "on" : ""} onClick={() => setPage("end")}>
+              <button type="button" role="radio" aria-checked={customLength} className={customLength ? "on" : ""} onClick={() => { const end = document.querySelector<HTMLElement>(".cph-ent-end.right"); if (end) openDrop("end", end); }}>
                 Other
               </button>
             </div>
             {/* Always a line, so an overlap appearing never moves the sheet. */}
             <small className="cph-ent-overlap">{overlap ?? " "}</small>
+            {/* In the page itself, never inside the sheet (a sliding sheet would carry a fixed list with it). */}
+            {drop &&
+              createPortal(
+              <>
+                <button type="button" className="cph-ent-dropscrim" aria-label="Close the times" onClick={() => setDrop(null)} />
+                <div ref={dropList} className="cph-ent-drop" role="listbox" aria-label={drop.which === "end" ? "Ends" : "Starts"} style={{ top: drop.top, left: drop.left }}>
+                  {(drop.which === "end" ? [...QUARTERS.map(toMin), 24 * 60].filter((m) => m > toMin(time)) : QUARTERS.map(toMin)).map((m) => {
+                    const on = m === (drop.which === "end" ? endMin : toMin(time));
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        role="option"
+                        aria-selected={on}
+                        className={on ? "on" : ""}
+                        onClick={() => {
+                          if (drop.which === "end") {
+                            // An end of its own is Other, unless it lands on one of the lengths.
+                            const l = m - toMin(time);
+                            setLength(l);
+                            setCustomLength(!LENGTHS.includes(l));
+                          } else setTime(hhmm(m));
+                          setDrop(null);
+                        }}
+                      >
+                        {hhmm(m)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>,
+              document.body
+            )}
           </div>
         </div>
 
