@@ -1,0 +1,81 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Automatic metrics, again</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600&display=swap" rel="stylesheet"><style>
+  :root { --ink:#141a24; --body:#3a4250; --sec:#5b6474; --faint:#8b93a1; --label:#98A2B3; --line:#C9CFD8; --hair:#E1E5EB; --green:#2f7a3f; --beige:#a08a5c; }
+  * { box-sizing:border-box; margin:0; }
+  body { font-family:Archivo,system-ui,sans-serif; font-weight:500; color:var(--ink); background:#fff; padding:28px 20px 72px; -webkit-font-smoothing:antialiased; }
+  h1 { font-size:20px; font-weight:600; margin-bottom:4px; }
+  .sub { color:var(--faint); font-size:13px; margin-bottom:22px; max-width:1000px; line-height:1.55; }
+  .opts { display:flex; flex-wrap:wrap; gap:30px; align-items:flex-start; }
+  .opt { width:340px; }
+  .opt h3 { font-size:14px; font-weight:600; margin-bottom:4px; }
+  .opt > p { font-size:12.5px; color:var(--faint); line-height:1.5; min-height:96px; margin-bottom:12px; }
+  .phone { position:relative; overflow:hidden; border-radius:34px; background:rgba(60,64,72,.55); box-shadow:0 0 0 8px #1b1f27; height:700px; }
+  .sheet { position:absolute; left:10px; right:10px; top:40px; background:#fff; border-radius:26px; padding:20px 18px 18px; }
+  .hd { display:flex; gap:12px; align-items:flex-start; margin-bottom:16px; }
+  .ring { width:52px; height:52px; border-radius:50%; flex:none; display:grid; place-items:center; box-shadow:inset 0 0 0 4px #efede6; position:relative; }
+  .ring::before { content:""; position:absolute; inset:0; border-radius:50%; background:conic-gradient(var(--green) var(--p), transparent 0); -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 4px)); mask:radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 4px)); }
+  .ring b { font-size:15px; font-weight:600; line-height:1; text-align:center; } .ring b small { display:block; font-size:9px; color:var(--faint); font-weight:500; }
+  .hd .t { flex:1; } .hd .e { font-size:9.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--beige); line-height:1.4; }
+  .hd h4 { font-size:19px; font-weight:600; margin-top:3px; } .hd i { font-style:normal; display:block; font-size:12px; color:var(--faint); margin-top:4px; }
+  .x { font-size:14px; color:var(--sec); }
+  .gl { font-size:10px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--sec); margin:6px 0 2px; }
+  .row { display:flex; align-items:center; gap:10px; min-height:58px; }
+  .row .tx { flex:1; min-width:0; } .row .n { font-size:15px; font-weight:600; } .row .l { font-size:11.5px; color:var(--faint); margin-top:2px; display:flex; align-items:center; gap:6px; }
+  .fld { width:132px; height:40px; display:flex; align-items:flex-end; justify-content:flex-end; gap:6px; padding-bottom:6px; border-bottom:1px solid var(--line); }
+  .fld.f { border-bottom-color:var(--green); }
+  .fld b { font-size:21px; font-weight:600; font-variant-numeric:tabular-nums; line-height:1; } .fld span { width:22px; font-size:12px; color:var(--faint); font-weight:600; }
+  .scale { display:flex; justify-content:space-between; padding:8px 4px 6px; font-size:13px; color:var(--ink); border-bottom:1px solid #E1E5EB; position:relative; margin-bottom:4px; }
+  .scale::after { content:""; position:absolute; left:0; bottom:-1px; height:2px; width:79%; background:var(--green); }
+  .scale span:nth-child(n+9) { color:var(--label); }
+  .note { display:flex; gap:10px; align-items:center; margin-top:14px; font-size:13.5px; color:var(--label); } .note .f { width:26px; height:26px; border-radius:50%; background:#c7b8a6 url("https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=60&q=60&fit=crop") center/cover; flex:none; }
+  .save { margin-top:16px; height:44px; border-radius:999px; background:#cfd5de; color:#fff; display:grid; place-items:center; font-size:14px; font-weight:600; }
+  svg { fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+  .heart { width:14px; height:14px; color:#d6455d; flex:none; }
+  /* A */
+  .auto-a { opacity:.5; }
+  .auto-a .fld { border-bottom:0; } .auto-a .fld span svg { width:13px; height:13px; color:var(--faint); }
+  /* B: their own block at the foot */
+  .blk { margin-top:12px; padding:10px 12px; border-radius:14px; background:#F5F6F8; }
+  .blk .bh { display:flex; align-items:center; gap:6px; font-size:10px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--faint); margin-bottom:4px; }
+  .blk .br { display:flex; align-items:baseline; justify-content:space-between; height:30px; font-size:13.5px; color:var(--body); }
+  .blk .br b { font-size:15px; font-weight:600; color:var(--sec); font-variant-numeric:tabular-nums; }
+  /* C: a chip, not a line */
+  .chip { height:34px; padding:0 12px; border-radius:999px; background:#F5F6F8; display:inline-flex; align-items:center; gap:7px; font-size:16px; font-weight:600; color:var(--sec); font-variant-numeric:tabular-nums; }
+  .chip svg { width:13px; height:13px; }
+  /* D: in the head */
+  .hfacts { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  .hfacts span { height:26px; padding:0 10px; border-radius:999px; background:#F5F6F8; display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--sec); font-weight:600; font-variant-numeric:tabular-nums; }
+  .hfacts svg { width:12px; height:12px; color:#d6455d; }
+  .notes { margin-top:28px; max-width:1000px; font-size:13px; color:var(--body); line-height:1.65; } .notes b { color:var(--ink); font-weight:600; } .notes li { margin:2px 0 2px 18px; }
+</style></head><body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="heart" viewBox="0 0 24 24"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z"/></symbol>
+  <symbol id="lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+</defs></svg>
+<h1>Check-in: what you fill vs what the phone fills</h1>
+<p class="sub">The aim: at a glance you see which rows want your input and which are already taken care of. Weight, sleep and adherence are yours; Steps comes from Apple Health. Four ways, from the gentlest to the strongest. In every one the automatic row can't be typed in, counts as filled, and turns into an ordinary field on a day the phone has nothing.</p>
+<div class="opts" id="o"></div>
+<div class="notes"><b>Notes</b><ul>
+  <li><b>A</b> is your idea: the row faded, its figure on the right where every figure is, the lock in the unit's place on the right.</li>
+  <li><b>B</b> is the clearest: the form is only what you fill, and the phone's figures sit apart at the foot, read-only. With several (steps, sleep, heart rate) they stack in that one block.</li>
+  <li>The heart is Apple Health's mark in spirit (not Apple's logo): red, small. Health Connect on Android would get its own.</li>
+</ul></div>
+<script>
+  const head = (p, n, extra = "") => `<div class="hd"><span class="ring" style="--p:${p}%"><b>${n}<small>of 4</small></b></span><span class="t"><span class="e">Lifestyle | General wellbeing</span><h4>Today's check-in</h4><i>Tue 17 Nov | 1 of 3 still to fill</i>${extra}</span><span class="x">✕</span></div>`;
+  const weight = `<div class="row"><div class="tx"><div class="n">Weight</div><div class="l">Last logged 90.3 kg</div></div><div class="fld"><b></b><span>kg</span></div></div>`;
+  const sleep = `<div class="row"><div class="tx"><div class="n">Hours of sleep</div><div class="l">Last logged 9 h</div></div><div class="fld f"><b>7</b><span>h</span></div></div>`;
+  const adher = `<div class="row" style="min-height:46px"><div class="tx"><div class="n">Adherence to programme</div><div class="l">Last logged 7 of 10</div></div></div><div class="scale">${[1,2,3,4,5,6,7,8,9,10].map((x) => `<span>${x}</span>`).join("")}</div>`;
+  const foot = `<div class="note"><span class="f"></span>Anything worth knowing today? (optional)</div><div class="save">Save</div>`;
+  const phone = (h, body) => `<div class="phone"><div class="sheet">${h}<div class="gl">All day</div>${body}${foot}</div></div>`;
+  const stepsA = `<div class="row auto-a"><div class="tx"><div class="n">Steps</div><div class="l"><svg class="heart"><use href="#heart"/></svg>From Apple Health</div></div><div class="fld"><b>8,412</b><span><svg><use href="#lock"/></svg></span></div></div>`;
+  const stepsC = `<div class="row"><div class="tx"><div class="n">Steps</div><div class="l">From Apple Health</div></div><span class="chip"><svg class="heart"><use href="#heart"/></svg>8,412</span></div>`;
+  const blockB = `<div class="blk"><div class="bh"><svg class="heart"><use href="#heart"/></svg>From Apple Health</div><div class="br">Steps<b>8,412</b></div><div class="br">Resting heart rate<b>58 bpm</b></div></div>`;
+  const opts = [
+    ["A · The row faded (your idea)", "Steps stays in its place in the list, the whole row at half strength: the name, 'From Apple Health' with a small red heart, the figure on the right where every figure is, no line under it, and a small lock in the unit's place on the right.", phone(head(75, 3), weight + sleep + stepsA + adher)],
+    ["B · Apart, at the foot (my pick)", "The list is only what you fill. Under it, a soft grey block 'From Apple Health' with the phone's figures, read-only, small. You never wonder: everything in the list is yours to do. Its figures still show on Progress and to the coach as any reading.", phone(head(75, 3), weight + sleep + adher + blockB)],
+    ["C · A chip, not a field", "Steps stays in the list, but its figure sits in a soft grey pill with the heart, not on a line: a pill reads 'shown', a line reads 'type here'. Calm, and the row keeps its place.", phone(head(75, 3), weight + sleep + stepsC + adher)],
+    ["D · Out of the list, into the head", "The phone's figures leave the list and sit as small grey pills under the title. The list is only yours, and the head says what's already in. Lightest, but the figures are smallest here.", phone(head(75, 3, `<div class="hfacts"><span><svg><use href="#heart"/></svg>8,412 steps</span><span><svg><use href="#heart"/></svg>58 bpm</span></div>`), weight + sleep + adher)],
+  ];
+  document.getElementById("o").innerHTML = opts.map(([h, p, s]) => `<div class="opt"><h3>${h}</h3><p>${p}</p>${s}</div>`).join("");
+</script>
+</body></html>

@@ -344,7 +344,9 @@ export default function CheckInDialog({
           </div>
 
           <div ref={body} className="cki-body">
-            {groups.map((g) => (
+            {/* The list is only what the client fills (17 Nov, Alex: B3 of docs/boards/auto-metric-b-block-mockup.html); the
+                phone's figures sit apart under it, read-only. */}
+            {groups.map((g) => ({ ...g, rows: g.rows.filter((r) => !r.metric.live) })).filter((g) => g.rows.length > 0).map((g) => (
               <div key={g.id} className="cki-group">
                 <div className="cki-group-label">{g.label}</div>
                 <div className="cki-rows">
@@ -364,6 +366,7 @@ export default function CheckInDialog({
                 </div>
               </div>
             ))}
+            {rows.some((r) => r.metric.live) && <AutoBlock rows={rows.filter((r) => r.metric.live)} values={values} />}
             <div className="cki-group">
               <div className="cki-group-label">Note for {coachName}</div>
               <label className={`cki-note-box${note.trim() ? " has" : ""}`}>
@@ -411,6 +414,42 @@ export default function CheckInDialog({
 // ---- One metric: the name and the last reading on the left; a number box
 // on the right, or a scale bar underneath that fills as a gradient. The row
 // tints and outlines in its group's colour once it is filled.
+/**
+ * The phone's figures, apart under the list (17 Nov, Alex: B3 of docs/boards/auto-metric-b-block-mockup.html): a soft
+ * grey block "From Apple Health" with a small heart, read-only rows. The grey reaches past the form on both sides, so
+ * inside it the heart and the names start where the form's names start, the figures end where the form's figures end
+ * and the units sit in the form's unit column.
+ */
+function AutoBlock({ rows, values }: { rows: Row[]; values: Record<string, string> }) {
+  const store = nativePlatform() === "android" ? "Health Connect" : "Apple Health";
+  return (
+    <div className="cki-auto" role="group" aria-label={`From ${store}`}>
+      <div className="cki-auto-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+          <path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z" />
+        </svg>
+        From {store}
+      </div>
+      {rows.map((r) => {
+        const m = r.metric;
+        const raw = (values[r.key] ?? m.value ?? "").trim();
+        const n = Number(raw);
+        const shown = raw && Number.isFinite(n) && isWholeMetric(m) ? Math.round(n).toLocaleString("en-GB") : raw;
+        const unit = m.scaleMax ? `/${m.scaleMax}` : m.unit;
+        return (
+          <div key={r.key} className="cki-auto-row">
+            <span className="cki-auto-name">{m.name}</span>
+            <span className="cki-auto-fig">
+              <b>{shown}</b>
+              <span className="cki-unit">{unit}</span>
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function MetricRow({ row, value, problem, filled, inputRef, onChange, onNext }: { row: Row; date: string; value: string; problem: string | null; filled: boolean; inputRef: (el: HTMLInputElement | null) => void; onChange: (v: string) => void; onNext: () => void }) {
   const m = row.metric;
   const c = colourOf();
