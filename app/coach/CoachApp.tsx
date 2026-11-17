@@ -238,7 +238,8 @@ function Lists({ tab, inbox, setInbox, cal, today, coach, push, onOpenChat, onOp
       ) : (
         <>
           <h2 className="cph-label">Waiting</h2>
-          {inbox.videos.waiting.length === 0 ? <p className="cph-empty left">None</p> : <VideoRows
+          {inbox.videos.waiting.length === 0 && <p className="cph-empty left">None</p>}
+          {<VideoRows
               rows={inbox.videos.waiting}
               now={now.getTime()}
               onOpen={onOpenVideo}
@@ -323,14 +324,50 @@ function Thumb({ v }: { v: PhoneVideo }) {
   );
 }
 
+/**
+ * The rows as they come and go, eased (17 Nov, Alex: after a reply "the screen jumps just a tiny bit"): a video leaving
+ * the list (replied, marked done) folds shut on the shared fold before it goes, one arriving folds open, so nothing
+ * under them snaps. The rows on first showing simply show.
+ */
+const FOLD_MS = 340;
+function useEasedRows(rows: PhoneVideo[]) {
+  const [shown, setShown] = useState<{ v: PhoneVideo; state: "in" | "open" | "out" }[]>(() => rows.map((v) => ({ v, state: "open" })));
+  const [seen, setSeen] = useState(rows);
+  if (seen !== rows) {
+    setSeen(rows);
+    const ids = new Set(rows.map((v) => v.id));
+    const had = new Set(shown.map((s) => s.v.id));
+    const next: { v: PhoneVideo; state: "in" | "open" | "out" }[] = rows.map((v) => ({ v, state: had.has(v.id) ? "open" : "in" }));
+    // Those that left stay where they were, folding shut, until the fold is done.
+    shown.forEach((s, i) => {
+      if (!ids.has(s.v.id)) next.splice(Math.min(i, next.length), 0, { v: s.v, state: "out" });
+    });
+    setShown(next);
+  }
+  useEffect(() => {
+    if (!shown.some((s) => s.state !== "open")) return;
+    // In: open on the next frame, so the fold eases from shut. Out: gone once folded.
+    const raf = requestAnimationFrame(() => setShown((list) => list.map((s) => (s.state === "in" ? { ...s, state: "open" } : s))));
+    const t = window.setTimeout(() => setShown((list) => list.filter((s) => s.state !== "out")), FOLD_MS);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(t);
+    };
+  }, [shown]);
+  return shown;
+}
+
 function VideoRows({ rows, now, onOpen, onDone, past = false }: { rows: PhoneVideo[]; now: number; onOpen: (id: number) => void; onDone?: (id: number) => void; past?: boolean }) {
+  const eased = useEasedRows(rows);
   return (
     <ul className="cph-rows">
-      {rows.map((v) => {
+      {eased.map(({ v, state }) => {
         const wait = waitFor(v.sentAt, now);
         const first = v.client.split(/\s+/)[0] || v.client;
         return (
-          <li key={v.id} className="cph-video-li">
+          <li key={v.id} className={`so-fold cph-video-fold${state === "open" ? " open" : ""}`} aria-hidden={state === "out" || undefined}>
+          <div className="so-fold-in">
+          <div className="cph-video-li">
             <button type="button" className={`cph-video${past ? " past" : ""}`} onClick={() => onOpen(v.id)}>
               <Thumb v={v} />
               <span className="cph-video-main">
@@ -363,6 +400,8 @@ function VideoRows({ rows, now, onOpen, onDone, past = false }: { rows: PhoneVid
                 )}
               </span>
             )}
+          </div>
+          </div>
           </li>
         );
       })}
