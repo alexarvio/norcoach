@@ -235,3 +235,17 @@
   .fdc-card.bare .fdc-tool.fdc-tool:hover { background: #fff; }
 }
 .fdc-card.bare .fdc-name-box.fdc-name-box { color: #141a24; }
+
+/* The day's calories as one figure (17 Nov, Alex): over Supplements | Water, the same white hairline shape as the Water
+   pill (56px, radius 26), ink while typing; the figure 16px (a phone never zooms in), `kcal` grey after it. Cancel in
+   words and the small ink Save come in under it on the right, on the shared fold, once something is changed. */
+.fdi-kcal { margin: 12px 0 -16px; }
+.fdi-kcal-box { display: flex; align-items: center; gap: 10px; box-sizing: border-box; min-height: 56px; padding: 0 18px; border-radius: 26px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; transition: box-shadow 0.2s ease; cursor: text; }
+.fdi-kcal-box:focus-within { box-shadow: inset 0 0 0 1px #141a24; }
+.fdi-kcal-box input { flex: 1; min-width: 0; padding: 0; border: 0; outline: 0; background: none; font: inherit; font-size: 16px; font-weight: 600; color: #141a24; font-variant-numeric: tabular-nums; }
+.fdi-kcal-box input::placeholder { font-weight: 500; color: #98A2B3; }
+.fdi-kcal-box span { flex: none; font-size: 14px; font-weight: 500; color: #8b93a1; }
+.fdi-kcal-acts { display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding-top: 10px; }
+.fdi-kcal-cancel { height: 32px; padding: 0 4px; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; cursor: pointer; }
+.fdi-kcal-save { height: 32px; padding: 0 16px; border: 0; border-radius: 999px; background: #141a24; font: inherit; font-size: 13px; font-weight: 600; color: #fff; cursor: pointer; }
+.fdi-kcal-save:disabled { opacity: 0.4; cursor: default; }

@@ -29,6 +29,7 @@ import {
   deleteSavedMealAction,
   saveMealAction,
   getFoodDiaryAction,
+  logCaloriesAction,
   lookupBarcodeAction,
   searchPackagedAction,
   removeFoodEntryAction,
@@ -1025,6 +1026,28 @@ export default function FoodDiaryScreen({
             onDayType={chooseDay}
           />
           <div className="nd-body fdi-list">
+            {/* The day's calories as one figure (17 Nov, Alex: "write down the amount of calories and then just save it"),
+                while the day holds no food: food logged is the day's figure. */}
+            {diary.eaten.kcal === 0 && (
+              <CaloriesBox
+                key={date}
+                logged={diary.loggedKcal}
+                readOnly={readOnly}
+                onSave={(kcal) => {
+                  const fd = new FormData();
+                  fd.set("clientId", String(clientId));
+                  fd.set("date", date);
+                  fd.set("kcal", kcal == null ? "" : String(kcal));
+                  fd.set("dayType", diary.dayType);
+                  setDiary((d) => (d.date === date ? { ...d, loggedKcal: kcal } : d));
+                  startLoad(async () => {
+                    await logCaloriesAction(fd).catch(() => {});
+                    const next = await getFoodDiaryAction(clientId, date).catch(() => null);
+                    if (next) setDiary((d) => (d.date === date ? next : d));
+                  });
+                }}
+              />
+            )}
             {/* Supplements | Water, today's (12 Nov, Alex: Nutrition is the diary). */}
             {beforeMeals}
             {/* A photo card a meal (9 Nov, Alex: option A of docs/boards/meal-cards-mockup.html), its foods folding out under
@@ -3623,5 +3646,66 @@ function CustomFoodPanel({ clientId, onCancel, onCreated }: { clientId: number; 
         {pending ? "Saving…" : "Save and add"}
       </button>
     </div>
+  );
+}
+
+/** The day's calories typed as one figure (17 Nov, Alex: clients "want to be able to write down how many calories they
+    ate without having to go through the whole process"): a short field in the white hairline box, `kcal` after the
+    figure; Cancel in words and the small ink Save come under it, on the right, once something is changed, as every
+    field that saves does. Emptied and saved, the figure goes. It counts on the rings while the day holds no food. */
+function CaloriesBox({ logged, readOnly, onSave }: { logged: number | null; readOnly: boolean; onSave: (kcal: number | null) => void }) {
+  const shown = logged != null ? String(logged) : "";
+  const [text, setText] = useState(shown);
+  const [base, setBase] = useState(shown);
+  if (base !== shown) {
+    setBase(shown);
+    setText(shown);
+  }
+  const clean = text.replace(/[\s.,]/g, "");
+  const valid = clean === "" || /^\d{1,5}$/.test(clean);
+  const changed = clean !== shown;
+  const save = () => {
+    if (!changed || !valid) return;
+    onSave(clean === "" ? null : Number(clean));
+    (document.activeElement as HTMLElement | null)?.blur?.();
+  };
+  return (
+    <form
+      className="fdi-kcal"
+      onSubmit={(e) => {
+        e.preventDefault();
+        save();
+      }}
+    >
+      <label className="fdi-kcal-box">
+        <input
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
+          maxLength={6}
+          value={text}
+          placeholder="Calories eaten"
+          aria-label="Calories eaten"
+          readOnly={readOnly}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setText(shown);
+          }}
+        />
+        <span>kcal</span>
+      </label>
+      <div className={`so-fold fdi-kcal-fold${changed ? " open" : ""}`}>
+        <div className="so-fold-in">
+          <div className="fdi-kcal-acts">
+            <button type="button" className="fdi-kcal-cancel" tabIndex={changed ? undefined : -1} onClick={() => setText(shown)}>
+              Cancel
+            </button>
+            <button type="submit" className="fdi-kcal-save" tabIndex={changed ? undefined : -1} disabled={!valid}>
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </form>
   );
 }
