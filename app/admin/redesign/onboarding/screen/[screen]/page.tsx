@@ -3,7 +3,7 @@ import { requireCoach } from "../../../../../lib/auth";
 import { inviteEmail, mailConfigured } from "../../../../../lib/mail";
 import { resetsAvailable } from "../../../../../lib/passwordReset";
 import { ChangePasswordCard, LoginCard } from "../../../../../login/AuthCards";
-import { ApprovalsScreen, CodeScreen, CoachDetailsScreen, CoachSignUpScreen, InviteEmailScreen, InviteWelcomeScreen, SignInScreen, WaitingScreen } from "../../../../../login/SignInScreens";
+import { CodeScreen, CoachDetailsScreen, CoachSignUpScreen, InviteEmailScreen, InviteWelcomeScreen, SignInScreen } from "../../../../../login/SignInScreens";
 import CoachesPanel from "../../../../CoachesPanel";
 import { loadRail } from "../../../loaders";
 import DemoFrame, { DialogScreen } from "../../DemoFrame";
@@ -107,25 +107,6 @@ export default async function OnboardingScreen({ params }: { params: Promise<{ s
       return (
         <DemoFrame>
           <CoachDetailsScreen name="Robin de Vries" email="new.coach@example.com" />
-        </DemoFrame>
-      );
-    case "waiting":
-      return (
-        <DemoFrame>
-          <WaitingScreen name="Robin" />
-        </DemoFrame>
-      );
-    case "approvals":
-      return (
-        <DemoFrame>
-          <div className="rd-page">
-            <ApprovalsScreen
-              waiting={[
-                { name: "Robin de Vries", business: "Strong Start Coaching", email: "new.coach@example.com", when: "today" },
-                { name: "Maya Patel", business: "Maya Lifts", email: "maya@example.com", when: "yesterday" },
-              ]}
-            />
-          </div>
         </DemoFrame>
       );
     case "invite-email-new":

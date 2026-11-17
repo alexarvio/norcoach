@@ -1,7 +1,7 @@
 "use server";
 
 import { getURLFromRedirectError } from "next/dist/client/components/redirect";
-import { approveCoachAction, createCoachAction, declineCoachAction, removeCoachAction, resetCoachPasswordAction } from "../../../lib/auth-actions";
+import { createCoachAction, removeCoachAction, resetCoachPasswordAction } from "../../../lib/auth-actions";
 
 // Coaches in the redesign runs the old admin's own account actions, unchanged (same owner check, same validation,
 // same saving). Each of them answers by sending the owner back to /admin?view=coaches with coachOk / coachError;
@@ -41,12 +41,4 @@ export async function resetCoachPassword(coachId: number, password: string): Pro
 
 export async function removeCoach(coachId: number): Promise<CoachOutcome> {
   return answer(() => removeCoachAction(form({ coachId })));
-}
-
-export async function approveSignUp(coachId: number): Promise<CoachOutcome> {
-  return answer(() => approveCoachAction(form({ coachId })));
-}
-
-export async function declineSignUp(coachId: number): Promise<CoachOutcome> {
-  return answer(() => declineCoachAction(form({ coachId })));
 }

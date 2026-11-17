@@ -39,36 +39,30 @@ export function AuthShell({ children }: { children: ReactNode }) {
  * The coach sign-up's frame (17 Nov, Alex: B of docs/boards/coach-signup-mockup.html, "I definitely like B"): the
  * website carries on. On a laptop the website's dark background (site-bg.css, shared with the site) with the logo and
  * its hero line beside the form on paper; on a phone the dark is a short head with the screen's title over the paper.
- * `full` is the dark alone (waiting for approval). The title is drawn in the head on a phone and over the form on a
- * laptop, one of the two hidden at a time.
+ * The title is drawn in the head on a phone and over the form on a laptop, one of the two hidden at a time.
  */
-export function SiteShell({ title, children, aside, full = false }: { title: ReactNode; children?: ReactNode; aside?: ReactNode; full?: boolean }) {
+export function SiteShell({ title, children, aside }: { title: ReactNode; children?: ReactNode; aside?: ReactNode }) {
   useKeyboardReveal();
   return (
-    <div className={`su-page${full ? " full" : ""}`}>
+    <div className="su-page">
       <div className="su-band site-bg site-bg-mark">
         <NorCoachLogo className="su-logo" />
-        {!full && (
-          <p className="su-pitch" aria-hidden="true">
-            Scale the quality <span>of your online coaching.</span>
-          </p>
-        )}
+        <p className="su-pitch" aria-hidden="true">
+          Scale the quality <span>of your online coaching.</span>
+        </p>
         <h1 className="su-head">{title}</h1>
-        {full && <div className="su-full">{children}</div>}
       </div>
-      {!full && (
-        <div className="su-paper">
-          {aside && <p className="su-aside top">{aside}</p>}
-          <div className="su-form au-card">
-            <h1 className="su-title">{title}</h1>
-            {children}
-            {aside && <p className="su-aside foot">{aside}</p>}
-          </div>
-          <p className="su-legal">
-            <Bars parts={[<a key="p" href="/privacy">Privacy policy</a>, <a key="s" href="/support">Support</a>]} />
-          </p>
+      <div className="su-paper">
+        {aside && <p className="su-aside top">{aside}</p>}
+        <div className="su-form au-card">
+          <h1 className="su-title">{title}</h1>
+          {children}
+          {aside && <p className="su-aside foot">{aside}</p>}
         </div>
-      )}
+        <p className="su-legal">
+          <Bars parts={[<a key="p" href="/privacy">Privacy policy</a>, <a key="s" href="/support">Support</a>]} />
+        </p>
+      </div>
     </div>
   );
 }
@@ -345,7 +339,7 @@ export function CoachSignUpScreen({ onEmail, onApple, onGoogle, busy, error, ask
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   return (
-    <SiteShell title="Apply for early access" aside={<SignInLink />}>
+    <SiteShell title="Create your coach account" aside={<SignInLink />}>
       <ErrorLine error={error} />
       <Providers onApple={onApple} onGoogle={onGoogle} busy={busy} />
       <Or />
@@ -401,26 +395,6 @@ export function CoachDetailsScreen({ action, name, email, error }: { action?: (f
           Continue
         </button>
       </form>
-    </SiteShell>
-  );
-}
-
-/** A new coach, signed up and waiting for the owner to let them in: the dark alone, no list of perks (17 Nov, Alex:
- *  they were the launch's, "I don't know if I would even put these as check marks there"). */
-export function WaitingScreen({ name, email, signOut }: { name: string; email?: string | null; signOut?: ReactNode }) {
-  return (
-    <SiteShell
-      full
-      title={
-        <>
-          Thanks{name ? `, ${name}` : ""}. <span>You&rsquo;re on the list.</span>
-        </>
-      }
-    >
-      <p className="su-wait">
-        We&rsquo;ll email {email ? <b>{email}</b> : "you"} as soon as you&rsquo;re in, usually within a day.
-      </p>
-      <p className="su-out">{signOut ?? <a href="#">Sign out</a>}</p>
     </SiteShell>
   );
 }
@@ -490,33 +464,6 @@ export function InviteWelcomeScreen({
         </button>
       </form>
     </AuthShell>
-  );
-}
-
-/** The owner's list of coaches waiting to be let in. */
-export function ApprovalsScreen({ waiting }: { waiting: { name: string; business: string; email: string; when: string }[] }) {
-  return (
-    <div className="au-approvals">
-      <h2 className="au-approvals-title">Waiting for approval</h2>
-      <div className="au-approvals-list">
-        {waiting.map((w) => (
-          <div key={w.email} className="au-approval">
-            <span className="au-approval-main">
-              <b>{w.name}</b>
-              <small>
-                {w.business} · {w.email} · signed up {w.when}
-              </small>
-            </span>
-            <button type="button" className="au-btn">
-              Decline
-            </button>
-            <button type="button" className="au-btn primary">
-              Approve
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 

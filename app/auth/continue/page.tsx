@@ -3,10 +3,11 @@ import { redirect } from "next/navigation";
 import { clerkIdentity, clerkOn } from "../../lib/clerk";
 import { findUserByEmail, getSessionUser } from "../../lib/auth";
 import { NATIVE_COOKIE } from "../../lib/quietLoad";
+import { letCoachIn } from "../../lib/coachSignUp";
 
 // Every sign-in through Clerk ends here: our own account for this person,
 // and where it lives. Someone who came through the coach sign-up and has no
-// account yet gets a coach account that waits for the owner's approval.
+// account yet says who they are next (About you), and is in.
 export const dynamic = "force-dynamic";
 
 // The page they were sent to sign in from (?next=, proxy.ts), when it fits the account (26 Oct, Alex: the coach phone
@@ -25,7 +26,9 @@ export default async function ContinuePage({ searchParams }: { searchParams: Pro
   const user = await getSessionUser();
   // A coach signing in inside the phone app goes straight to its coach screens (17 Nov, Alex: the admin showed first).
   const inApp = (await cookies()).get(NATIVE_COOKIE)?.value === "1";
-  if (user) redirect(user.pending ? "/auth/waiting" : (backTo(next, user.role) ?? (user.role === "client" ? "/client" : inApp ? "/coach" : "/admin/redesign")));
+  // A coach still waiting from when sign-ups were approved by hand is let in now (17 Nov, Alex: no approval).
+  if (user?.pending) letCoachIn(user.id);
+  if (user) redirect(backTo(next, user.role) ?? (user.role === "client" ? "/client" : inApp ? "/coach" : "/admin/redesign"));
 
   const who = await clerkIdentity();
   if (!who) redirect("/login");
