@@ -79,8 +79,15 @@ export default function VoiceRecordButton({ onRecorded, className = "", disabled
     }
     let stream: MediaStream;
     try {
-      // A voice, clean (13 Nov, Alex: "the quality is so bad"): one channel, echo and noise taken out, the level kept even.
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      // A voice as it sounds (17 Nov, Alex: "some of them, it's pretty bad"; 13 Nov: "the quality is so bad"). Echo
+      // cancellation is for calls: on an iPhone it switches the mic to its call mode, cut to call quality and heavily
+      // processed, and nothing plays while a voice note records, so there is no echo to take out. Off everywhere; on an
+      // iPhone the noise and level processing ride on that same call mode, so they go too; elsewhere noise suppression
+      // stays (a gym is loud). One channel at the best rate the phone gives.
+      const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, sampleRate: { ideal: 48000 }, echoCancellation: false, noiseSuppression: !ios, autoGainControl: !ios },
+      });
     } catch {
       void ctx?.close().catch(() => {});
       return setPhase("denied");
@@ -94,8 +101,8 @@ export default function VoiceRecordButton({ onRecorded, className = "", disabled
     const mime = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg"].find((m) => MediaRecorder.isTypeSupported(m)) ?? "";
     let r: MediaRecorder;
     try {
-      // 96 kbps, well over the phone's own default: a voice as it sounds.
-      r = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), audioBitsPerSecond: 96000 });
+      // 128 kbps (17 Nov; was 96): a voice as it sounds, with room to spare.
+      r = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), audioBitsPerSecond: 128000 });
     } catch {
       r = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
     }
