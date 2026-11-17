@@ -35,6 +35,8 @@ export type CheckInMetric = {
   askAt?: "morning" | "anytime" | "evening";
   /** The metric's group, for its colour on the pop-up. */
   category?: string;
+  /** Filled by the phone's health store: live, not typed in (16 Nov). */
+  live?: boolean;
 };
 export type CheckInSection = {
   id: "daily" | "weekly" | "monthly" | "measurements";
