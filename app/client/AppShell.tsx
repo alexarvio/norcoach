@@ -1,7 +1,8 @@
 "use client";
 
 import { ownTab } from "../lib/tabMemory";
-import { ReactNode, useEffect, useRef, useState, useSyncExternalStore, useTransition, type SyntheticEvent } from "react";
+import { ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, useTransition, type SyntheticEvent } from "react";
+import { QUIET_COOKIE } from "../lib/quietLoad";
 import { pic } from "../lib/pic";
 import "./gyms.css";
 import { useRouter } from "next/navigation";
@@ -66,6 +67,10 @@ export type AppTab = {
 };
 
 type PushView = "notifications" | "checkin" | "photos" | "coach" | "messages" | "meetings" | "invoices" | "settings" | "events" | null;
+// The screen on top kept on the phone as the app leaves the screen, to open on again (17 Nov).
+const RESUME_KEY = "ironline.client.resume";
+const RESUME_MS = 10 * 60 * 1000;
+const RESUMABLE = new Set<PushView>(["notifications", "checkin", "photos", "messages", "meetings", "invoices", "settings", "events"]);
 /** The screens the coach's phone preview can be asked for (21 Oct): the three tabs, and the pushed screens. */
 export type PhoneScreen = "home" | "training" | "nutrition" | "checkin" | "photos" | "messages" | "meetings" | "invoices" | "events";
 const PHONE_TABS = new Set<string>(["home", "training", "nutrition"]);
@@ -245,6 +250,43 @@ export default function AppShell({
     if (initialPush === "messages") void markCoachNotesReadAction(clientId).catch(() => {});
   }, [initialPush, readOnly, clientId]);
   const pushView: PushView = chosenPush ?? null;
+  // Back where it was (17 Nov, Alex: shape update → the camera → back, and the app "reloads itself again… goes to the
+  // home screen"): the app reloads onto a new build as it comes back, and the phone can drop it from memory while the
+  // camera is open. The screen on top is kept on the phone with when the app left the screen; a load within ten minutes
+  // of that opens on it again, and without the opening (the quiet cookie, read by page.tsx and loading.tsx).
+  useLayoutEffect(() => {
+    if (readOnly || initialPush) return;
+    try {
+      const raw = window.localStorage.getItem(RESUME_KEY);
+      if (!raw) return;
+      const r = JSON.parse(raw) as { owner: number; push: PushView; at: number };
+      if (r.owner !== clientId || !r.push || Date.now() - r.at > RESUME_MS) return;
+      if (!RESUMABLE.has(r.push) || !canPush(r.push) || (r.push === "settings" && !settingsContent)) return;
+      setChosenPush(r.push);
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on loading
+  }, []);
+  const pushNow = useRef(pushView);
+  pushNow.current = pushView;
+  useEffect(() => {
+    if (readOnly) return;
+    const keep = () => {
+      try {
+        window.localStorage.setItem(RESUME_KEY, JSON.stringify({ owner: clientId, push: pushNow.current, at: Date.now() }));
+      } catch {}
+    };
+    const away = () => {
+      if (document.visibilityState !== "hidden") return;
+      keep();
+      document.cookie = `${QUIET_COOKIE}=1; path=/; max-age=${RESUME_MS / 1000}; samesite=lax`;
+    };
+    document.addEventListener("visibilitychange", away);
+    window.addEventListener("pagehide", keep);
+    return () => {
+      document.removeEventListener("visibilitychange", away);
+      window.removeEventListener("pagehide", keep);
+    };
+  }, [readOnly, clientId]);
   // The workout's saves kept on the phone go from here (7 Nov, workoutOutbox.ts): on opening, the signal back, the app
   // back in front. Never in the coach's phone preview: there nothing is read, shown or sent.
   useWorkoutOutboxRunner(clientId, !readOnly);

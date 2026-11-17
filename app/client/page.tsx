@@ -136,6 +136,7 @@ import AppShell, { AppTab, type Arrival, type PhoneScreen } from "./AppShell";
 import { ownTab } from "../lib/tabMemory";
 import NativeCoachRedirect from "../coach/NativeCoachRedirect";
 import OpeningSplash from "./OpeningSplash";
+import { QUIET_COOKIE } from "../lib/quietLoad";
 import AvatarUpload from "./AvatarUpload";
 import { phaseCovers, phaseLastDay } from "../lib/phases";
 import { defaultPhaseCover } from "../lib/phaseCovers";
@@ -1299,6 +1300,8 @@ export default async function ClientPage({
   // The phone's timezone and the tab it was on, from cookies AppShell sets:
   // the page is drawn as the phone will show it, so nothing jumps on load.
   const jar = await cookies();
+  // Back from the camera or onto a new build (17 Nov, Alex): the app opens where it was, with no opening.
+  const quietLoad = jar.get(QUIET_COOKIE)?.value === "1";
   const tzCookie = decodeURIComponent(jar.get("ironline_tz")?.value ?? "");
   const phoneTz = tzCookie && isTimezone(tzCookie) ? tzCookie : null;
   const initialTab = phone ? (PHONE_TAB_SCREENS.has(phoneScreen) ? phoneScreen : "home") : ownTab(jar.get("ironline_tab")?.value, CLIENT_ID);
@@ -1542,7 +1545,7 @@ export default async function ClientPage({
     {/* A coach in the native app goes to their phone screens (21 Oct, /coach). */}
     {viewer?.role === "coach" && !phone && <NativeCoachRedirect />}
     {/* The opening (7 Nov, Alex): the star spins away once the app is ready; never in the coach's phone preview. */}
-    {!phone && <OpeningSplash />}
+    {!phone && !quietLoad && <OpeningSplash />}
     <AppShell
       clientName={client?.name ?? ""}
       tabs={tabs}
