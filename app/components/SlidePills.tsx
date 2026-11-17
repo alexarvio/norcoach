@@ -23,7 +23,7 @@ export const SLIDE_ROWS = [
   // The subscribe screen's Monthly | Yearly (28 Oct).
   ".au-plan-cap",
   // The client app: the check-in's Progress range, the check-in's and Shape update's views over their photo, Add an
-  // event's Date range | One day | Repeats, Compare's view, and every chat's Media and files (the coach's phone and the
+  // event's One day | Multi-day | Repeats, Compare's view, and every chat's Media and files (the coach's phone and the
   // laptop too). Not the rows of separate white chips (the metric chips, Compare's angles, the Events filter, the gym's
   // Type, the food diary's modes): the pill would pass behind the white chips and show only in the gaps.
   ".pg-range",

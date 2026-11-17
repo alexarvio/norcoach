@@ -647,7 +647,7 @@ export function EventDialog({ today, event, cats, firstName, faces, initialStart
       </div>
 
       <label className="npd-field">
-        <span className="npd-label">What&rsquo;s happening</span>
+        <span className="npd-label">Title</span>
         <input className="npd-line" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={placeholder} maxLength={80} autoFocus={!event} />
       </label>
 
@@ -656,12 +656,12 @@ export function EventDialog({ today, event, cats, firstName, faces, initialStart
         <div className="npd-side">
           <div className="npd-when">
             <span className="npd-label">When</span>
-            <div className="npd-seg" role="group" aria-label="One day, a stretch, or repeating">
+            <div className="npd-seg" role="group" aria-label="One day, several days, or repeating">
               <button type="button" className={shape === "event" ? "on" : ""} aria-pressed={shape === "event"} onClick={() => setShape("event")}>
                 One day
               </button>
               <button type="button" className={shape === "period" ? "on" : ""} aria-pressed={shape === "period"} onClick={() => setShape("period")}>
-                Range
+                Multi-day
               </button>
               <button type="button" className={shape === "repeat" ? "on" : ""} aria-pressed={shape === "repeat"} onClick={() => setShape("repeat")}>
                 Repeats

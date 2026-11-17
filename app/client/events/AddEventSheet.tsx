@@ -334,12 +334,13 @@ function WhenSection({ mode, start, end, until, days, today, onMode, onStart, on
     <div className="evs-when">
       <div className="evs-when-head">
         <span className="evs-label">When</span>
-        <div className="evs-seg" role="group" aria-label="A date range, one day, or repeating">
-          <button type="button" className={mode === "range" ? "on" : ""} aria-pressed={mode === "range"} onClick={() => onMode("range")}>
-            Date range
-          </button>
+        {/* One day first, then Multi-day and Repeats, the words the coach's event pop-up uses too (17 Nov, Alex). */}
+        <div className="evs-seg" role="group" aria-label="One day, several days, or repeating">
           <button type="button" className={mode === "one" ? "on" : ""} aria-pressed={mode === "one"} onClick={() => onMode("one")}>
             One day
+          </button>
+          <button type="button" className={mode === "range" ? "on" : ""} aria-pressed={mode === "range"} onClick={() => onMode("range")}>
+            Multi-day
           </button>
           <button type="button" className={mode === "repeat" ? "on" : ""} aria-pressed={mode === "repeat"} onClick={() => onMode("repeat")}>
             Repeats
