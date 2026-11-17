@@ -147,6 +147,15 @@ export default function EntrySheet({
   // and where, under the numeral tapped (above it when there is no room below).
   const [drop, setDrop] = useState<{ which: "start" | "end"; top: number; left: number } | null>(null);
   const dropList = useRef<HTMLDivElement>(null);
+  // The clients, the same way (17 Nov, Alex: "a little drop down there… instead of a separate screen with all the names"):
+  // under the client square, its right edge on the square's, above it when there is no room below.
+  const [who, setWho] = useState<{ top: number; right: number } | null>(null);
+  const openWho = (el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    const H = 340;
+    const below = r.bottom + 6 + H < window.innerHeight - 16;
+    setWho({ top: below ? r.bottom + 6 : Math.max(16, r.top - 6 - H), right: Math.max(16, window.innerWidth - r.right) });
+  };
   const openDrop = (which: "start" | "end", el: HTMLElement) => {
     const r = el.getBoundingClientRect();
     const W = 150;
@@ -438,7 +447,7 @@ export default function EntrySheet({
         <div className="cph-ent-titlerow">
           <input id="cph-ent-what" className="cph-ent-box" value={topic} onChange={(x) => setTopic(x.target.value)} placeholder={suggested ?? ENTRY_PRESET[cat]?.placeholder ?? "What is it?"} maxLength={80} enterKeyHint="done" />
           {withClient && (
-            <button type="button" className={`cph-ent-box cph-ent-sq${client ? " set" : ""}`} onClick={() => setPage("with")} aria-label={client ? `With ${client.name}` : "Pick a client"}>
+            <button type="button" className={`cph-ent-box cph-ent-sq${client ? " set" : ""}`} onClick={(ev) => openWho(ev.currentTarget)} aria-expanded={!!who} aria-label={client ? `With ${client.name}` : "Pick a client"}>
               {client ? <Avatar name={client.name} src={client.avatarPath} size={26} /> : <CatIcon d={PERSON_ICON} />}
             </button>
           )}
@@ -543,6 +552,32 @@ export default function EntrySheet({
             </div>
             {/* Always a line, so an overlap appearing never moves the sheet. */}
             <small className="cph-ent-overlap">{overlap ?? " "}</small>
+            {who &&
+              createPortal(
+                <>
+                  <button type="button" className="cph-ent-dropscrim" aria-label="Close the clients" onClick={() => (setWho(null), setQ(""))} />
+                  <div className="cph-ent-drop cph-ent-whodrop" role="listbox" aria-label="Clients" style={{ top: who.top, right: who.right }}>
+                    <label className="cph-ent-dropsearch">
+                      <Icon name="search" />
+                      <input type="search" value={q} onChange={(x) => setQ(x.target.value)} placeholder="Search" aria-label="Search clients" enterKeyHint="search" />
+                    </label>
+                    <div className="cph-ent-droprows">
+                      <button type="button" role="option" aria-selected={clientId == null} className={clientId == null ? "on" : ""} onClick={() => (setClientId(null), setQ(""), setWho(null))}>
+                        <span className="cph-av cph-ent-none" style={{ width: 24, height: 24 }} aria-hidden="true">–</span>
+                        Just you
+                      </button>
+                      {shown.map((c) => (
+                        <button key={c.id} type="button" role="option" aria-selected={c.id === clientId} className={c.id === clientId ? "on" : ""} onClick={() => (setClientId(c.id), setQ(""), setWho(null))}>
+                          <Avatar name={c.name} src={c.avatarPath} size={24} />
+                          {c.name}
+                        </button>
+                      ))}
+                      {shown.length === 0 && <p className="cph-ent-dropnone">No match</p>}
+                    </div>
+                  </div>
+                </>,
+                document.body
+              )}
             {/* In the page itself, never inside the sheet (a sliding sheet would carry a fixed list with it). */}
             {drop &&
               createPortal(
