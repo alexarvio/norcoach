@@ -37,6 +37,8 @@ export type CheckInMetric = {
   category?: string;
   /** Filled by the phone's health store: live, not typed in (16 Nov). */
   live?: boolean;
+  /** One the phone's health store could fill (healthKindOf), once it is connected (17 Nov). */
+  phone?: boolean;
 };
 export type CheckInSection = {
   id: "daily" | "weekly" | "monthly" | "measurements";
@@ -129,6 +131,8 @@ export default function CheckInScreen({
   const [open, setOpen] = useState<CheckInForm | null>(null);
   const openToday = () => setOpen({ date: today, sections, weeklyOpen, monthlyOpen });
   const openDay = (d: CheckInFeedDay) => setOpen({ date: d.date, sections: d.edit, weeklyOpen: true, monthlyOpen: true, weekLabel: "That week", monthLabel: "That month" });
+  // The open day read again with the page (17 Nov): a phone connected from the pop-up fills its rows there.
+  const openForm: CheckInForm | null = !open ? null : open.date === today ? { ...open, sections } : { ...open, sections: history.days.find((d) => d.date === open.date)?.edit ?? open.sections };
   const coach = useCoachIdentity();
   const coachFirst = coach?.name.trim().split(/\s+/)[0] || "Coach";
   const [stuck, setStuck] = useState(false);
@@ -271,7 +275,7 @@ export default function CheckInScreen({
           )}
         </div>
       </div>
-      {open && <CheckInDialog clientId={clientId} form={open} today={today} coachName={coachFirst} onClose={() => setOpen(null)} />}
+      {openForm && <CheckInDialog clientId={clientId} form={openForm} today={today} coachName={coachFirst} onClose={() => setOpen(null)} />}
     </div>
   );
 }
