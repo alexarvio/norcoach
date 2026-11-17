@@ -9,12 +9,11 @@ import { pic } from "../../../lib/pic";
 import { newOnceKey } from "../../../lib/onceKey";
 import { uploadFileFirst } from "../../../lib/uploadFirst";
 import { paintShapes, pathOf, simplify, SIZES, STROKE, UNDERLAY, UNDERLAY_COLOR, unitFor, worthKeeping, type Pt, type Shape, type Tool } from "./shapes";
-import { MAX_SECONDS, recordingSupported, setClipMuted, useReviewRecorder, type Corner } from "./useReviewRecorder";
-import { SepJoin } from "../Sep";
+import { recordingSupported, setClipMuted, useReviewRecorder, type Corner } from "./useReviewRecorder";
 
 // The coach's media review (12 Oct, design 18a; one panel since 16 Nov, Alex: docs/boards/photo-review-mockup.html):
 // one modal for every photo or video a client sends from an exercise. A dark stage on the left with the media and the
-// drawing tools; on the right who sent it, the exercise, their sets and words, what was said before, and at the foot,
+// drawing tools; on the right who sent it, the exercise's name alone, what the coach asked, their words, what was said before, and at the foot,
 // always, the reply: a line to write on, and Record beside the mic and camera. A recording is the stage as one video
 // (the coach draws over it while talking), sent as the reply; written words on a photo send the photo back with the
 // drawing flattened into it. A reply lands on the exercise (and carries to the next session) and in the chat.
@@ -37,27 +36,22 @@ export type MediaReview = {
   sentAt: string | null;
   sets: { n: number; label: string }[];
   clientMessage: { text: string; at: string | null } | null;
+  /** What the coach wrote when asking for it (17 Nov, Alex): shown as theirs, `You asked`. */
+  askNote?: string | null;
   thread: ThreadItem[];
 };
 
-// The palette (12 Oct): one swatch on the toolbox, the rest a click away.
+// The palette (12 Oct): one swatch on the toolbox, the rest a click away. Eight on the laptop and the phone alike, in
+// this order, yellow picked first (17 Nov, Alex: docs/boards/review-align-mockup.html).
 export const COLORS = [
   { id: "#FFD60A", name: "Yellow" },
   { id: "#FF9F0A", name: "Orange" },
   { id: "#FF453A", name: "Red" },
-  { id: "#FF375F", name: "Pink" },
-  { id: "#BF5AF2", name: "Purple" },
-  { id: "#5E5CE6", name: "Indigo" },
-  { id: "#0A84FF", name: "Blue" },
-  { id: "#64D2FF", name: "Cyan" },
   { id: "#30D158", name: "Green" },
-  { id: "#B4F000", name: "Lime" },
+  { id: "#0A84FF", name: "Blue" },
+  { id: "#BF5AF2", name: "Purple" },
   { id: "#FFFFFF", name: "White" },
-  { id: "#8E8E93", name: "Grey" },
   { id: "#000000", name: "Black" },
-  { id: "#AC8E68", name: "Brown" },
-  { id: "#FF6B6B", name: "Coral" },
-  { id: "#00C7BE", name: "Teal" },
 ];
 // The keys still work (16 Nov, Alex: the legend under the panel is gone); each tool's tooltip names its key.
 const TOOLS: { id: Tool; name: string; key: string; icon: string }[] = [
@@ -197,10 +191,10 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
   }, [review.unseen, review.requestId, chat]);
 
   // Their face and full name (16 Nov, Alex: the head showed an initial for a client with a photo): asked for when the
-  // opener handed over none.
-  const [who, setWho] = useState<{ name: string; avatarPath: string | null } | null>(null);
+  // opener handed over none; the coach's own face with it, for "You asked" (17 Nov, Alex).
+  const [who, setWho] = useState<{ name: string; avatarPath: string | null; coachName: string; coachAvatarPath: string | null } | null>(null);
   useEffect(() => {
-    if (chat || review.requestId <= 0 || review.client.avatarPath) return;
+    if (chat || review.requestId <= 0) return;
     let live = true;
     mediaReviewClientAction(review.requestId).then(
       (got) => live && got && setWho(got),
@@ -209,9 +203,16 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
     return () => {
       live = false;
     };
-  }, [chat, review.requestId, review.client.avatarPath]);
+  }, [chat, review.requestId]);
   const face = review.client.avatarPath ?? who?.avatarPath ?? null;
   const fullName = who?.name || review.client.name;
+  const coachFace = who?.coachAvatarPath ?? null;
+  // A blank ring until their name is in, never a stand-in initial that then changes.
+  const coachName = who?.coachName ?? "";
+  // The coach's own lines wear their face too, as You asked does (mockup frame 4); a chat-opened review has no read
+  // for it, so its lines stay without one.
+  const coachFaced = !chat && review.requestId > 0;
+  const askNote = chat ? null : review.askNote?.trim() || null;
 
   // ---- The stage and the frame the media sits in, fitted to it.
   const stageRef = useRef<HTMLDivElement>(null);
@@ -260,10 +261,20 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
     setMuted(next);
     setClipMuted(videoOf(), next);
   };
+  // A new speed never moves the clip (17 Nov, Alex: "if I am in second 4 it stays in second 4"): the place and whether
+  // it plays are kept, and put back should the browser have moved either; the default rate too, so a reload keeps it.
   const setSpeed = (next: number) => {
     setRate(next);
     const v = videoOf();
-    if (v) v.playbackRate = next;
+    if (!v) return;
+    const at = v.currentTime;
+    const wasPlaying = !v.paused && !v.ended;
+    v.defaultPlaybackRate = next;
+    v.playbackRate = next;
+    if (Math.abs(v.currentTime - at) > 0.05) v.currentTime = at;
+    if (wasPlaying && v.paused) void v.play().catch(() => {});
+    else if (!wasPlaying && !v.paused) v.pause();
+    setT(v.currentTime);
   };
   // The time, smoothly, while it plays.
   useEffect(() => {
@@ -658,9 +669,7 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
   const bubblePos: React.CSSProperties = drag
     ? { left: drag.x - 46, top: drag.y - 46 }
     : { [corner.startsWith("t") ? "top" : "bottom"]: corner.startsWith("t") ? 20 : 84, [corner.endsWith("l") ? "left" : "right"]: 20 };
-  const nearEnd = recorder.secs >= MAX_SECONDS - 30;
   const label = `${fullName}, ${review.exercise.name}`;
-  const facts = chat ? [review.exercise.session] : [review.exercise.session, review.exercise.week > 0 && `Week ${review.exercise.week}`, review.exercise.day > 0 && `Day ${review.exercise.day}`];
   const problem = recorder.problem ?? error;
 
   return (
@@ -701,6 +710,7 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
                   const v = e.currentTarget;
                   if (v.videoWidth && v.videoHeight) setNatural({ w: v.videoWidth, h: v.videoHeight });
                   setDur(v.duration || 0);
+                  v.defaultPlaybackRate = rate;
                   v.playbackRate = rate;
                   setClipMuted(v, muted);
                 }}
@@ -889,23 +899,17 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
         </header>
 
         <div className="mrv-scroll">
-          {/* The exercise, clearly (16 Nov, Alex), and where it was done in words: Week, never Wk. */}
+          {/* The exercise's name alone (17 Nov, Alex: no session, week, day or sets on the review). */}
           <section className="mrv-ex">
             <h2>{review.exercise.name}</h2>
-            <p className="mrv-facts">
-              <SepJoin parts={facts} />
-            </p>
           </section>
 
-          {!chat && review.sets.length > 0 && (
-            <section className="mrv-sets">
-              <span className="mrv-label">Sets</span>
-              {review.sets.map((s) => (
-                <span key={s.n} className="mrv-set">
-                  <span>{s.n}</span>
-                  {s.label}
-                </span>
-              ))}
+          {/* What the coach asked, as their words with their own face (17 Nov, Alex: docs/boards/review-align-mockup.html). */}
+          {askNote && (
+            <section className="mrv-said">
+              <Face path={coachFace} name={coachName} className="mrv-said-face" />
+              <span className="mrv-label">You asked</span>
+              <p>{askNote}</p>
             </section>
           )}
 
@@ -922,13 +926,15 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
             <section className="mrv-thread">
               {thread.map((m) =>
                 m.kind === "text" ? (
-                  <div key={m.id} className={`mrv-said${m.mine ? " mine" : ""}`}>
+                  <div key={m.id} className={`mrv-said${m.mine ? " mine" : ""}${m.mine && !coachFaced ? " bare" : ""}`}>
                     {!m.mine && <Face path={face} name={first} className="mrv-said-face" />}
+                    {m.mine && coachFaced && <Face path={coachFace} name={coachName} className="mrv-said-face" />}
                     <span className="mrv-label">{m.mine ? "You" : first}</span>
                     <p>{m.text}</p>
                   </div>
                 ) : (
-                  <div key={m.id} className="mrv-said mine">
+                  <div key={m.id} className={`mrv-said mine${coachFaced ? "" : " bare"}`}>
+                    {coachFaced && <Face path={coachFace} name={coachName} className="mrv-said-face" />}
                     <span className="mrv-label">You</span>
                     <button
                       type="button"
@@ -1039,7 +1045,7 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
                 <span className="mrv-sp" />
                 {takingFoot ? (
                   <>
-                    <span className={`mrv-clock${recorder.state === "paused" ? " paused" : ""}${nearEnd ? " warn" : ""}`} aria-live="off">
+                    <span className={`mrv-clock${recorder.state === "paused" ? " paused" : ""}`} aria-live="off">
                       <i aria-hidden="true" />
                       {clock(recorder.secs)}
                     </span>

@@ -3372,6 +3372,7 @@ function reviewOf(row: DraftRow, video: NonNullable<DraftRow["video"]>, session:
     sentAt: video.sentAt ?? null,
     sets: row.logged.map((l) => ({ n: l.set, label: `${weight(l.kg)} × ${l.reps ?? "—"}` })),
     clientMessage: video.clientNote ? { text: video.clientNote, at: video.sentAt ?? null } : null,
+    askNote: !video.fromClient && video.note?.trim() ? video.note.trim() : null,
     thread: thread.sort((a, b) => a.at - b.at),
   };
 }

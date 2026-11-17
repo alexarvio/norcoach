@@ -1,0 +1,126 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Calendar entry</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600&display=swap" rel="stylesheet"><style>
+  :root { --ink:#141a24; --body:#3a4250; --sec:#5b6474; --faint:#8b93a1; --label:#98A2B3; --line:#E1E5EB; --call:#2f6fd6; --red:#b42318; }
+  * { box-sizing:border-box; margin:0; }
+  body { font-family:Archivo,system-ui,sans-serif; font-weight:500; color:var(--ink); background:#f4f7fc; padding:28px 20px 72px; -webkit-font-smoothing:antialiased; }
+  h1 { font-size:20px; font-weight:600; margin-bottom:4px; }
+  .sub { color:var(--faint); font-size:13px; margin-bottom:24px; max-width:980px; line-height:1.55; }
+  .opts { display:flex; flex-wrap:wrap; gap:30px; align-items:flex-start; }
+  .opt { width:360px; }
+  .opt h3 { font-size:14px; font-weight:600; margin-bottom:4px; }
+  .opt > p { font-size:12.5px; color:var(--faint); line-height:1.5; min-height:70px; margin-bottom:12px; }
+  .phone { position:relative; height:640px; border-radius:30px; overflow:hidden; background:#a9adb5; box-shadow:0 24px 48px -28px rgba(16,24,40,.45); display:flex; flex-direction:column; justify-content:flex-end; }
+  .phone::before { content:"Calendar"; position:absolute; left:22px; top:26px; font-size:26px; font-weight:600; color:#2b313b; opacity:.55; }
+  .sheet { background:#fff; border-radius:22px 22px 0 0; padding:8px 20px 26px; }
+  .grab { width:38px; height:4px; border-radius:2px; background:#E1E5EB; margin:0 auto 14px; }
+  svg { fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+  .tag { display:inline-flex; align-items:center; gap:7px; font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--call); }
+  .tag svg { width:15px; height:15px; }
+  .t { font-size:22px; font-weight:600; letter-spacing:-.01em; }
+  .grey { font-size:13px; color:var(--sec); display:flex; align-items:center; gap:8px; }
+  .grey i { width:1px; height:11px; background:var(--label); }
+  .face { width:40px; height:40px; border-radius:50%; flex:none; background:#fff; box-shadow:inset 0 0 0 1px var(--line); display:grid; place-items:center; font-size:16px; font-weight:600; color:var(--ink); }
+  .face.s { width:28px; height:28px; font-size:12px; }
+  .pill { height:44px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; gap:8px; font-size:14.5px; font-weight:600; padding:0 18px; background:#fff; box-shadow:inset 0 0 0 1px #DCE1E8; color:var(--ink); }
+  .pill.ink { background:var(--ink); color:#fff; box-shadow:none; }
+  .pill svg { width:17px; height:17px; }
+  .w { font-size:14px; font-weight:600; color:var(--sec); } .w.red { color:var(--red); }
+  .lbl { font-size:10px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--sec); margin-bottom:4px; }
+  .note { font-size:14.5px; line-height:1.4; color:var(--body); }
+  .round { width:44px; height:44px; border-radius:50%; display:grid; place-items:center; background:#fff; box-shadow:inset 0 0 0 1px #DCE1E8; color:var(--ink); flex:none; }
+  .round svg { width:18px; height:18px; }
+  .round.ink { background:var(--ink); color:#fff; box-shadow:none; }
+  /* A */
+  .a .times { display:flex; align-items:center; gap:14px; margin-top:16px; }
+  .a .num { font-size:34px; font-weight:300; font-variant-numeric:tabular-nums; letter-spacing:-.01em; }
+  .a .arr { color:var(--label); } .a .arr svg { width:18px; height:18px; }
+  .a .who { display:flex; align-items:center; gap:12px; margin-top:18px; }
+  .a .who b { flex:1; font-size:16px; font-weight:600; }
+  .a .foot { display:flex; align-items:center; justify-content:space-between; margin-top:22px; }
+  /* B */
+  .b .rows { margin-top:14px; display:flex; flex-direction:column; }
+  .b .r { display:flex; align-items:center; gap:14px; min-height:52px; }
+  .b .r .ic { width:28px; display:grid; place-items:center; color:var(--sec); flex:none; } .b .r .ic svg { width:19px; height:19px; }
+  .b .r .tx { flex:1; min-width:0; } .b .r .tx b { display:block; font-size:15.5px; font-weight:600; } .b .r .tx small { font-size:12.5px; color:var(--faint); }
+  .b .r .act { font-size:14px; font-weight:600; color:var(--ink); }
+  .b .foot { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:18px; }
+  /* C */
+  .c .card { margin-top:14px; display:grid; grid-template-columns:52px 1fr; gap:12px; }
+  .c .tm { font-size:15px; font-weight:600; font-variant-numeric:tabular-nums; padding-top:12px; } .c .tm small { display:block; font-size:13px; font-weight:500; color:var(--faint); margin-top:2px; }
+  .c .ev { border-radius:14px; background:rgba(47,111,214,.10); box-shadow:inset 0 0 0 1px rgba(47,111,214,.45); padding:12px 14px; color:var(--call); }
+  .c .ev b { display:block; font-size:16px; font-weight:600; } .c .ev span { font-size:13px; }
+  .c .acts { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-top:20px; }
+  .c .act { display:flex; flex-direction:column; align-items:center; gap:7px; font-size:12px; font-weight:600; color:var(--ink); }
+  .c .rm { text-align:center; margin-top:22px; }
+  .notes { margin-top:30px; max-width:980px; font-size:13px; color:var(--body); line-height:1.65; } .notes b { color:var(--ink); font-weight:600; } .notes li { margin:2px 0 2px 18px; }
+</style></head><body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="cam" viewBox="0 0 24 24"><path d="M3 6.5h13v11H3zM16 10.5l5-3v9l-5-3z"/></symbol>
+  <symbol id="chat" viewBox="0 0 24 24"><path d="M20 11.5a8 8 0 0 1-11.6 7.1L4 20l1.4-4.1A8 8 0 1 1 20 11.5z"/></symbol>
+  <symbol id="edit" viewBox="0 0 24 24"><path d="M4.5 19.5l1-4L16 5a2.1 2.1 0 0 1 3 3L8.5 18.5zM14 7l3 3"/></symbol>
+  <symbol id="trash" viewBox="0 0 24 24"><path d="M5 7h14M10 4h4M7 7l.8 12.5h8.4L17 7M10.5 11v5M13.5 11v5"/></symbol>
+  <symbol id="arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2"/></symbol>
+  <symbol id="link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+  <symbol id="pen" viewBox="0 0 24 24"><path d="M4 20h16M6 16l9-9 3 3-9 9H6z"/></symbol>
+</defs></svg>
+<h1>Calendar entry, opened</h1>
+<p class="sub">The same Check in, with a link and a note, three ways. All in the New entry pop-up's voice: the category in its colour, the title at 600, times as light numerals or one grey line, one ink pill, Remove in red words. Join shows only when the entry has a link; Chat only with a client.</p>
+<div class="opts">
+
+  <div class="opt a">
+    <h3>A · Like New entry</h3>
+    <p>The tag, the title, then the times big as New entry draws them, the day and length grey under. The client a row with their face and a chat button. Join the one ink pill; Remove in red words and Edit at the foot.</p>
+    <div class="phone"><div class="sheet">
+      <div class="grab"></div>
+      <span class="tag"><svg><use href="#cam"/></svg>Client call</span>
+      <div class="t" style="margin-top:6px">Check in</div>
+      <div class="times"><span class="num">22:00</span><span class="arr"><svg><use href="#arrow"/></svg></span><span class="num">22:30</span></div>
+      <div class="grey" style="margin-top:4px">Sun 22/11<i></i>30 min</div>
+      <div class="who"><span class="face">S</span><b>Shyam Sundar</b><span class="round"><svg><use href="#chat"/></svg></span></div>
+      <div style="margin-top:16px"><div class="lbl">Note</div><p class="note">Ask how the new split feels.</p></div>
+      <span class="pill ink" style="width:100%;margin-top:20px"><svg><use href="#cam"/></svg>Join call</span>
+      <div class="foot"><span class="w red">Remove</span><span class="pill" style="height:38px;font-size:13.5px">Edit</span></div>
+    </div></div>
+  </div>
+
+  <div class="opt b">
+    <h3>B · Fact rows</h3>
+    <p>The title and tag, then one row per fact with its icon: when, who, the link, the note. The row's action on its right in words (Chat, Join). Edit and Remove share the foot as two pills.</p>
+    <div class="phone"><div class="sheet">
+      <div class="grab"></div>
+      <div class="t">Check in</div>
+      <span class="tag" style="margin-top:6px"><svg><use href="#cam"/></svg>Client call</span>
+      <div class="rows">
+        <div class="r"><span class="ic"><svg><use href="#clock"/></svg></span><span class="tx"><b>22:00 – 22:30</b><small>Sunday 22/11 | 30 min</small></span></div>
+        <div class="r"><span class="ic"><span class="face s">S</span></span><span class="tx"><b>Shyam Sundar</b></span><span class="act">Chat</span></div>
+        <div class="r"><span class="ic"><svg><use href="#link"/></svg></span><span class="tx"><b>meet.google.com</b></span><span class="act">Join</span></div>
+        <div class="r"><span class="ic"><svg><use href="#pen"/></svg></span><span class="tx" style="font-size:14.5px;color:var(--body)">Ask how the new split feels.</span></div>
+      </div>
+      <div class="foot"><span class="pill">Edit</span><span class="pill" style="color:var(--red)">Remove</span></div>
+    </div></div>
+  </div>
+
+  <div class="opt c">
+    <h3>C · The entry as on the day</h3>
+    <p>The entry drawn as it is in the day's list (time column, the call's blue card) so it reads as the thing tapped; under it three round actions with their word under each; Remove in red words alone at the foot.</p>
+    <div class="phone"><div class="sheet">
+      <div class="grab"></div>
+      <span class="grey">Sunday 22/11</span>
+      <div class="card"><div class="tm">22:00<small>22:30</small></div><div class="ev"><b>Check in</b><span>Shyam Sundar | 30 min</span></div></div>
+      <p class="note" style="margin:14px 0 0 64px">Ask how the new split feels.</p>
+      <div class="acts">
+        <span class="act"><span class="round ink"><svg><use href="#cam"/></svg></span>Join</span>
+        <span class="act"><span class="round"><svg><use href="#chat"/></svg></span>Chat</span>
+        <span class="act"><span class="round"><svg><use href="#edit"/></svg></span>Edit</span>
+      </div>
+      <div class="rm"><span class="w red">Remove</span></div>
+    </div></div>
+  </div>
+
+</div>
+<div class="notes"><b>Notes</b><ul>
+  <li>An entry with no client (your own time, a training slot without one) drops the client row and Chat; with no link, no Join. Remove still asks first.</li>
+  <li>My pick: A. It is New entry's own layout read back, so opening an entry and editing it look like one thing.</li>
+</ul></div>
+</body></html>
