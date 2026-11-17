@@ -21864,3 +21864,10 @@ html.zoomed .cki-live > i::after { animation: none; }
 .cki-auto-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 500; color: #3a4250; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cki-auto-fig { flex: none; display: flex; align-items: baseline; justify-content: flex-end; gap: 4px; width: 136px; }
 .cki-auto-fig > b { font-size: 17px; font-weight: 600; color: #5b6474; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ---- Add an event while typing (17 Nov, Alex: the sheet had to be scrolled once the keyboard was up): the category tiles
+   step aside, leaving the picked one as a single short row, so the title, the dates and the button fit above the
+   keyboard; with the keyboard down the tiles are all back. */
+html.kb-open .evs .evs-types { grid-template-columns: 1fr; }
+html.kb-open .evs .evs-types .evs-type:not(.on) { display: none; }
+html.kb-open .evs .evs-types .evs-type.on { flex-direction: row; justify-content: center; gap: 10px; height: 44px; min-height: 0; }
