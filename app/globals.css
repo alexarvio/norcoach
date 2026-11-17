@@ -14463,6 +14463,13 @@ body:has(.hm), .app-screen:has(.hm), .app-content:has(> .hm) { background: #F5F5
 .st-details-input:focus { border-color: #00897B; }
 .st-details-input::placeholder { color: #9E9E9E; }
 .st-details-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+/* Settings' Password (17 Nov, Alex): what Clerk refused, in rust; the eye a plain ghost at the field's end, no grey left
+   after a tap (a hover look only with a mouse). */
+.st-pass-error { margin: 0; font-size: 13px; font-weight: 500; line-height: 1.4; color: #b8471f; }
+.st-details-field .auth-pass-eye { right: 7px; width: 32px; height: 32px; border-radius: 999px; color: #8b93a1; }
+.st-details-field .auth-pass .st-details-input.st-details-input { padding-right: 44px; }
+.st-details-field .auth-pass-eye:hover { background: none; color: #8b93a1; }
+@media (hover: hover) { .st-details-field .auth-pass-eye:hover { background: #F5F6F8; color: #141a24; } }
 .st-details-cancel { min-height: 40px; padding: 0 16px; border: 1px solid #E0E0E0; border-radius: 12px; background: #fff; color: #333333; font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer; }
 .st-details-save { min-height: 40px; padding: 0 18px; border: 0; border-radius: 12px; background: #1E3A5F; color: #fff; font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer; }
 .st-details-save:disabled { background: #E0E0E0; color: #9E9E9E; cursor: default; }
@@ -21004,7 +21011,12 @@ select.st-details-input.st-details-input.st-details-input.empty { color: #98A2B3
 .su-page { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; background: #F5F6F8; font-family: var(--font-archivo), system-ui, sans-serif; font-weight: 500; color: #141a24; }
 /* The iPhone app never shrinks the page for the keyboard (§7): the page takes its room at its foot, as AuthShell does. */
 html.kb-open .su-page { padding-bottom: var(--kb, 0px); }
-.su-band { flex: none; display: flex; flex-direction: column; padding: calc(var(--sat, 0px) + 26px) max(24px, env(safe-area-inset-right, 0px)) 48px max(24px, env(safe-area-inset-left, 0px)); }
+/* Its top under the clock in the iPhone app: the app's own inset where the client app has set it (--sat), else the
+   phone's (Sign in comes before the client app). */
+.su-band { flex: none; display: flex; flex-direction: column; padding: calc(max(var(--sat, 0px), env(safe-area-inset-top, 0px)) + 26px) max(24px, env(safe-area-inset-right, 0px)) 48px max(24px, env(safe-area-inset-left, 0px)); }
+/* Sign in's two links on one line, parted by the drawn bar. */
+.su-form .su-links { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 0; }
+.su-form .su-links > .cl-sep { flex: none; }
 .su-band::before { width: 360px; height: 346px; right: -130px; top: -96px; }
 .su-band .su-logo { position: relative; flex: none; align-self: flex-start; font-size: 18px; color: #fff; }
 .su-pitch { display: none; }

@@ -6,6 +6,7 @@ import { NorCoachLogo } from "../components/NorCoachLogo";
 import { Bars } from "../client/Bars";
 import { useKeyboardReveal } from "../client/keyboard";
 import PasswordInput from "./PasswordInput";
+import { NativeStatusBar } from "../client/NativeStatusBar";
 // The website's dark background, one file for the site and the coach sign-up (17 Nov, Alex): change it there.
 import "../../website/site-bg.css";
 
@@ -25,6 +26,8 @@ export function AuthShell({ children }: { children: ReactNode }) {
   useKeyboardReveal();
   return (
     <div className="auth-page au-page">
+      {/* The clock dark over the light card in the iPhone app, after the dark sign-in screens set it white. */}
+      <NativeStatusBar />
       <div className="auth-card au-card">
         <div className="auth-brand">
           <NorCoachLogo />
@@ -45,7 +48,9 @@ export function SiteShell({ title, children, aside }: { title: ReactNode; childr
   useKeyboardReveal();
   return (
     <div className="su-page">
-      <div className="su-band site-bg site-bg-mark">
+      {/* In the iPhone app the clock and battery turn white over the dark (they followed only the client app). */}
+      <NativeStatusBar leaveDark />
+      <div className="su-band site-bg site-bg-mark" data-clock="dark">
         <NorCoachLogo className="su-logo" />
         <p className="su-pitch" aria-hidden="true">
           Scale the quality <span>of your online coaching.</span>
@@ -112,46 +117,119 @@ function Or() {
   );
 }
 
-/** Signing in, coach or client: Apple, Google, or an email. The email first: an account with a password is asked for it
- *  next (PasswordScreen), any other gets a code (17 Nov). */
-export function SignInScreen({ onEmail, onApple, onGoogle, busy, error, notice, signupHref = "/signup" }: Oauth & Busy & { onEmail?: (email: string) => void; notice?: string | null; signupHref?: string }) {
+/**
+ * Signing in, coach or client (17 Nov, Alex: "make the sign in have that dark look… the email and password combo"): the
+ * coach sign-up's frame, Apple, Google, then the email and the password together. Sign in with a password goes in with
+ * it; with the password left empty it emails a code, as everyone signs in today, and so does "Email me a code instead".
+ * The password field shows once Clerk takes passwords (`passwords`); until then the email alone and Continue, a code.
+ */
+export function SignInScreen({
+  onEmail,
+  onPassword,
+  onForgot,
+  onApple,
+  onGoogle,
+  busy,
+  error,
+  notice,
+  signupHref = "/signup",
+  passwords = false,
+}: Oauth &
+  Busy & {
+    /** A code to the email. */
+    onEmail?: (email: string) => void;
+    onPassword?: (email: string, password: string) => void;
+    onForgot?: (email: string) => void;
+    notice?: string | null;
+    signupHref?: string;
+    passwords?: boolean;
+  }) {
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [needEmail, setNeedEmail] = useState(false);
+  const emailBox = useRef<HTMLInputElement>(null);
   const inApp = useSyncExternalStore(noSubscribe, () => nativePlatform() != null, () => false);
+  /** A link that needs the email: it asks for it first. */
+  const withEmail = (go?: (email: string) => void) => {
+    const e = email.trim();
+    if (!e) {
+      setNeedEmail(true);
+      emailBox.current?.focus();
+      return;
+    }
+    setNeedEmail(false);
+    go?.(e);
+  };
   return (
-    <AuthShell>
-      <h1 className="auth-title">Sign in</h1>
+    <SiteShell
+      title="Sign in"
+      // Not inside the phone app (13 Nov): it is the clients' way in; coaches sign up on the website.
+      aside={
+        inApp ? undefined : (
+          <>
+            Coaching others? <a href={signupHref}>Create a coach account</a>
+          </>
+        )
+      }
+    >
       {notice && <p className="auth-ok">{notice}</p>}
-      <ErrorLine error={error} />
-      <Providers onApple={onApple} onGoogle={onGoogle} busy={busy} />
+      <ErrorLine error={needEmail ? "Add your email first." : error} />
+      <Providers onApple={onApple && (() => (setNeedEmail(false), onApple()))} onGoogle={onGoogle && (() => (setNeedEmail(false), onGoogle()))} busy={busy} />
       <Or />
       <form
         className="auth-form"
         onSubmit={(e) => {
           e.preventDefault();
-          if (email.trim()) onEmail?.(email.trim());
+          const em = email.trim();
+          if (!em) return;
+          setNeedEmail(false);
+          if (passwords && password) onPassword?.(em, password);
+          else onEmail?.(em);
         }}
       >
         <label className="auth-field">
           <span>Email</span>
           {/* "username", so a password manager offers the saved login (17 Nov: passwords). */}
-          <input name="email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input
+            ref={emailBox}
+            name="email"
+            type="email"
+            autoComplete="username"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              setNeedEmail(false);
+            }}
+            required
+          />
         </label>
+        {passwords && (
+          <label className="auth-field">
+            <span>Password</span>
+            <PasswordInput name="password" autoComplete="current-password" required={false} value={password} onChange={setPassword} />
+          </label>
+        )}
         {/* Where Clerk puts its bot check when a new account is made (sign-up protection). */}
         <div id="clerk-captcha" />
         <button className="btn auth-submit" type="submit" disabled={busy}>
-          {busy ? "One moment…" : "Continue"}
+          {busy ? "One moment…" : passwords ? "Sign in" : "Continue"}
         </button>
       </form>
-      {/* Not inside the phone app (13 Nov): it is the clients' way in; coaches sign up on the website. */}
-      {!inApp && (
-        <p className="auth-note">
-          Coaching others? <a href={signupHref}>Create a coach account</a>
+      {passwords && (
+        <p className="auth-note su-links">
+          <Bars
+            parts={[
+              <button key="f" type="button" className="au-link" onClick={() => withEmail(onForgot)} disabled={busy}>
+                Forgot password?
+              </button>,
+              <button key="c" type="button" className="au-link" onClick={() => withEmail(onEmail)} disabled={busy}>
+                Email me a code instead
+              </button>,
+            ]}
+          />
         </p>
       )}
-      <p className="auth-note auth-legal">
-        <Bars parts={[<a key="p" href="/privacy">Privacy policy</a>, <a key="s" href="/support">Support</a>]} />
-      </p>
-    </AuthShell>
+    </SiteShell>
   );
 }
 
@@ -200,11 +278,16 @@ function CodeBoxes({ digits, setDigits, onFull, autoFocus = true }: { digits: st
 const SIX = ["", "", "", "", "", ""];
 
 /** The six digits from the email; the last digit sends. In the coach sign-up's frame with `look="site"` (17 Nov). */
-export function CodeScreen({ email, title = "Check your email", onVerify, onResend, onBack, busy, error, look = "card" }: Busy & { email: string; title?: string; onVerify?: (code: string) => void; onResend?: () => void; onBack?: () => void; look?: "card" | "site" }) {
+export function CodeScreen({ email, title = "Check your email", note, onVerify, onResend, onBack, busy, error, look = "card" }: Busy & { email: string; title?: string; /** A fact over the code's line: "No password on this account yet." */ note?: string | null; onVerify?: (code: string) => void; onResend?: () => void; onBack?: () => void; look?: "card" | "site" }) {
   const [digits, setDigits] = useState<string[]>(SIX);
   const body = (
     <>
       <p className="auth-note auth-note-top">
+        {note && (
+          <>
+            {note}{" "}
+          </>
+        )}
         We sent a 6-digit code to <b>{email}</b>.
       </p>
       <ErrorLine error={error} />
@@ -242,61 +325,14 @@ export function CodeScreen({ email, title = "Check your email", onVerify, onRese
   );
 }
 
-/** Signing in with a password (17 Nov): the account's email said, the password, Sign in. A forgotten one is reset by an
- *  emailed code, or a code signs them in instead. */
-export function PasswordScreen({ email, onSubmit, onForgot, onCode, onBack, busy, error }: Busy & { email: string; onSubmit?: (password: string) => void; onForgot?: () => void; onCode?: () => void; onBack?: () => void }) {
-  const [password, setPassword] = useState("");
-  return (
-    <AuthShell>
-      <h1 className="auth-title">Enter your password</h1>
-      <p className="auth-note auth-note-top">
-        <b>{email}</b>
-      </p>
-      <ErrorLine error={error} />
-      <form
-        className="auth-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (password) onSubmit?.(password);
-        }}
-      >
-        {/* The email for the phone's password manager, so it fills the right one. */}
-        <input className="sr-only" type="email" name="email" autoComplete="username" value={email} readOnly tabIndex={-1} aria-hidden="true" />
-        <label className="auth-field">
-          <span>Password</span>
-          <PasswordInput name="password" autoComplete="current-password" autoFocus value={password} onChange={setPassword} />
-        </label>
-        <button className="btn auth-submit" type="submit" disabled={busy || !password}>
-          {busy ? "Signing in…" : "Sign in"}
-        </button>
-      </form>
-      <p className="auth-note">
-        <button type="button" className="au-link" onClick={onForgot} disabled={busy}>
-          Forgot password?
-        </button>
-      </p>
-      <p className="auth-note">
-        <button type="button" className="au-link" onClick={onCode} disabled={busy}>
-          Email me a code instead
-        </button>
-      </p>
-      <p className="auth-note">
-        <button type="button" className="au-link" onClick={onBack}>
-          Use a different email
-        </button>
-      </p>
-    </AuthShell>
-  );
-}
-
-/** A new password (17 Nov): the code emailed to the account and the new password, then signed in with it. */
-export function ResetPasswordScreen({ email, onSubmit, onResend, onBack, busy, error }: Busy & { email: string; onSubmit?: (code: string, password: string) => void; onResend?: () => void; onBack?: () => void }) {
+/** A new password (17 Nov): the code emailed to the account and the new password, then signed in with it. In the
+ *  sign-in's frame with `look="site"`. */
+export function ResetPasswordScreen({ email, onSubmit, onResend, onBack, busy, error, look = "card" }: Busy & { email: string; onSubmit?: (code: string, password: string) => void; onResend?: () => void; onBack?: () => void; look?: "card" | "site" }) {
   const [digits, setDigits] = useState<string[]>(SIX);
   const [password, setPassword] = useState("");
   const ready = digits.every((x) => x) && password.length > 0;
-  return (
-    <AuthShell>
-      <h1 className="auth-title">Reset your password</h1>
+  const body = (
+    <>
       <p className="auth-note auth-note-top">
         We sent a 6-digit code to <b>{email}</b>.
       </p>
@@ -329,6 +365,13 @@ export function ResetPasswordScreen({ email, onSubmit, onResend, onBack, busy, e
           Back
         </button>
       </p>
+    </>
+  );
+  if (look === "site") return <SiteShell title="Reset your password">{body}</SiteShell>;
+  return (
+    <AuthShell>
+      <h1 className="auth-title">Reset your password</h1>
+      {body}
     </AuthShell>
   );
 }
@@ -402,14 +445,13 @@ export function CoachDetailsScreen({ action, name, email, error }: { action?: (f
 /** Signed in, but this email has no Norcoach account. */
 export function NoAccountScreen({ email, signOut }: { email: string; signOut?: ReactNode }) {
   return (
-    <AuthShell>
-      <h1 className="auth-title">No account yet</h1>
+    <SiteShell title="No account yet">
       <p className="au-lead">
         There&rsquo;s no Norcoach account for <b>{email}</b>. If you train with a coach, ask them to invite you with this email. Coaching others yourself?{" "}
         <a href="/signup">Create a coach account</a>.
       </p>
       <p className="auth-note">{signOut ?? <a href="#">Use a different email</a>}</p>
-    </AuthShell>
+    </SiteShell>
   );
 }
 

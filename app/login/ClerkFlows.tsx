@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import { useAuth, useClerk } from "@clerk/nextjs";
 import { useSignIn, useSignUp } from "@clerk/nextjs/legacy";
 import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
-import { AuthShell, CodeScreen, CoachSignUpScreen, InviteWelcomeScreen, PasswordScreen, ResetPasswordScreen, SignInScreen } from "./SignInScreens";
+import { AuthShell, CodeScreen, CoachSignUpScreen, InviteWelcomeScreen, ResetPasswordScreen, SignInScreen } from "./SignInScreens";
 import { callNative, nativePlatform } from "../lib/native";
+import { leaveWithDarkClock } from "../client/NativeStatusBar";
+import { usePasswordsOn } from "./usePasswordsOn";
 import { isReviewEmail } from "../lib/reviewAccount";
 
 // Clerk behind the sign-in screens (26 Sep). One way in for everyone: an
@@ -41,6 +43,8 @@ function says(error: unknown, fallback = "Something went wrong. Try again."): st
 const notFound = (error: unknown) => isClerkAPIResponseError(error) && error.errors.some((e) => e.code === "form_identifier_not_found");
 const exists = (error: unknown) => isClerkAPIResponseError(error) && error.errors.some((e) => e.code === "form_identifier_exists");
 const signedIn = (error: unknown) => isClerkAPIResponseError(error) && error.errors.some((e) => e.code === "session_exists");
+/** A password tried on an account that has none (it signs in with a code). */
+const noPassword = (error: unknown) => isClerkAPIResponseError(error) && error.errors.some((e) => e.code === "strategy_for_user_invalid" || e.code === "no_password_set");
 /** Clerk refused a password because passwords aren't on for the instance. */
 const passwordOff = (error: unknown) =>
   isClerkAPIResponseError(error) && error.errors.some((e) => (e.code === "form_param_unknown" || e.code === "form_param_value_disabled") && /password/i.test(`${e.meta?.paramName ?? ""} ${e.longMessage ?? ""}`));
@@ -49,7 +53,12 @@ const cancelled = (error: unknown) => (error as { code?: string } | null)?.code 
 
 /** After Clerk says yes: a full page load, so the server sees the new session. */
 // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- a full load on purpose: the server must read the new session cookie
-const land = () => window.location.assign(continueUrl());
+const land = () => {
+  // The dark sign-in set the iPhone app's clock white (SiteShell, NativeStatusBar): the light screen it hands over to (the
+  // coach app, the client app's loading paper, Subscribe) starts with a dark one again; a full load runs no cleanup.
+  leaveWithDarkClock();
+  window.location.assign(continueUrl());
+};
 
 /** The code screen's title for each step: a new account confirms its email; a new device after a password is one more
  *  check (Clerk's Client Trust), said by the title, not as an error. */
@@ -59,21 +68,23 @@ type SignInResource = Awaited<ReturnType<NonNullable<ReturnType<typeof useSignIn
 type SignUpResource = Awaited<ReturnType<NonNullable<ReturnType<typeof useSignUp>["signUp"]>["create"]>>;
 
 /**
- * The email steps, shared by sign-in and coach sign-up. `start` is the sign-in's: the email first, then the password
- * for an account that has one, else a code to the address (signing in if Clerk knows it, signing up if not). `sendCode`
- * is the code alone (an invite's fallback). `signUpWithPassword` is the coach's: email and password, the address then
- * confirmed by a code (17 Nov, Alex: "if they go with the email, I want them to be able to create a password").
+ * The email steps, shared by sign-in and coach sign-up. `sendCode` is a code to the address (signing in if Clerk knows
+ * it, signing up if not), how everyone signed in before passwords and still can. `signInWithPassword` is the email and
+ * password together (17 Nov, Alex: "the email and password combo for signing in"): an account with no password yet gets
+ * the code instead. `forgotFor` a code and a new password. `signUpWithPassword` is the coach's: email and password, the
+ * address then confirmed by a code (17 Nov, Alex: "if they go with the email, I want them to be able to create a password").
  */
 function useEmailCode() {
   const { isLoaded: inLoaded, signIn, setActive } = useSignIn();
   const { isLoaded: upLoaded, signUp } = useSignUp();
   // "in": a code to sign in; "up": a code to confirm a new account's email; "in2": Clerk asked for a second code after
   // the first or after the password (a new device, Client Trust); "review": the App Review address, whose code is the
-  // fixed one on the server (app/auth/review), no email sent; "pw": the account has a password, asked for next;
-  // "reset": a code and a new password for a forgotten one.
-  const [step, setStep] = useState<{ email: string; via: "in" | "up" | "in2" | "review" | "pw" | "reset" } | null>(null);
+  // fixed one on the server (app/auth/review), no email sent; "reset": a code and a new password for a forgotten one.
+  const [step, setStep] = useState<{ email: string; via: "in" | "up" | "in2" | "review" | "reset" } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A fact over the code's own line (a password tried on an account that has none yet).
+  const [note, setNote] = useState<string | null>(null);
   const ready = inLoaded && upLoaded;
 
   /** Where a sign-in stands after a step: in, or one more code to the same email, or what Clerk still wants named. */
@@ -99,7 +110,7 @@ function useEmailCode() {
     return false;
   };
 
-  /** A code to the address for the sign-in under way, or a new sign-in by code. */
+  /** A code to the address for the sign-in under way. */
   const codeFor = async (attempt: SignInResource, email: string) => {
     const factor = attempt.supportedFirstFactors?.find((f) => f.strategy === "email_code");
     if (!factor || !("emailAddressId" in factor)) throw new Error("no email code");
@@ -107,9 +118,10 @@ function useEmailCode() {
     setStep({ email, via: "in" });
   };
 
-  /** The email given: a password asked next when the account has one, else a code (or a sign-up by code). */
-  const go = async (email: string, askPassword: boolean) => {
+  /** A code to the address: signing in if Clerk knows it, signing up if not. `why` a fact for the code screen. */
+  const sendCode = async (email: string, why: string | null = null) => {
     if (!ready) return;
+    setNote(why);
     if (isReviewEmail(email)) {
       setError(null);
       setStep({ email, via: "review" });
@@ -118,9 +130,7 @@ function useEmailCode() {
     setBusy(true);
     setError(null);
     try {
-      const attempt = await signIn.create({ identifier: email });
-      if (askPassword && attempt.supportedFirstFactors?.some((f) => f.strategy === "password")) setStep({ email, via: "pw" });
-      else await codeFor(attempt, email);
+      await codeFor(await signIn.create({ identifier: email }), email);
     } catch (e) {
       // A session from earlier is still open in this browser: on into the app.
       if (signedIn(e)) return land();
@@ -140,8 +150,49 @@ function useEmailCode() {
     }
     setBusy(false);
   };
-  const start = (email: string) => go(email, true);
-  const sendCode = (email: string) => go(email, false);
+
+  /** The email and its password together. An account with no password yet, or an email Clerk doesn't know, gets the
+   *  code instead, as before passwords; a wrong password says so. */
+  const signInWithPassword = async (email: string, pw: string) => {
+    if (!ready) return;
+    setNote(null);
+    if (isReviewEmail(email)) return sendCode(email);
+    setBusy(true);
+    setError(null);
+    try {
+      const done = await signIn.create({ strategy: "password", identifier: email, password: pw });
+      if (await finish(done, email)) return;
+    } catch (e) {
+      if (signedIn(e)) return land();
+      // Not in Clerk yet: the account is made with the password typed, its email then confirmed by a code.
+      if (notFound(e)) {
+        setBusy(false);
+        return signUpWithPassword(email, pw);
+      }
+      if (noPassword(e)) {
+        setBusy(false);
+        return sendCode(email, "No password on this account yet.");
+      }
+      setError(says(e));
+    }
+    setBusy(false);
+  };
+
+  /** Forgot password: a code to the address, then the code and a new password (ResetPasswordScreen). */
+  const forgotFor = async (email: string) => {
+    if (!ready) return;
+    setNote(null);
+    setBusy(true);
+    setError(null);
+    try {
+      await signIn.create({ strategy: "reset_password_email_code", identifier: email });
+      setStep({ email, via: "reset" });
+    } catch (e) {
+      if (signedIn(e)) return land();
+      setError(notFound(e) ? "No account with this email." : noPassword(e) ? "No password on this account yet. Email me a code instead." : says(e, "Couldn't send a reset code. Try again."));
+    }
+    setBusy(false);
+  };
 
   /** A new code for the step on screen, the same kind as the first. */
   const resend = async () => {
@@ -154,58 +205,10 @@ function useEmailCode() {
       else if (step.via === "in2") {
         const second = signIn.supportedSecondFactors?.find((f) => f.strategy === "email_code");
         if (second && "emailAddressId" in second) await signIn.prepareSecondFactor({ strategy: "email_code", emailAddressId: second.emailAddressId });
-      } else if (step.via === "reset") {
-        const factor = signIn.supportedFirstFactors?.find((f) => f.strategy === "reset_password_email_code");
-        if (factor && "emailAddressId" in factor) await signIn.prepareFirstFactor({ strategy: "reset_password_email_code", emailAddressId: factor.emailAddressId });
-      } else if (step.via === "review") {
-        /* the fixed code: nothing to send */
-      }
+      } else if (step.via === "reset") await signIn.create({ strategy: "reset_password_email_code", identifier: step.email });
+      // "review": the fixed code, nothing to send.
     } catch (e) {
       setError(says(e));
-    }
-    setBusy(false);
-  };
-
-  /** Signing in with the account's password. */
-  const password = async (pw: string) => {
-    if (!ready || !step) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const done = await signIn.attemptFirstFactor({ strategy: "password", password: pw });
-      if (await finish(done, step.email)) return;
-    } catch (e) {
-      if (signedIn(e)) return land();
-      setError(says(e));
-    }
-    setBusy(false);
-  };
-
-  /** From the password screen: a code to the address instead. */
-  const codeInstead = async () => {
-    if (!ready || !step) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await codeFor(signIn, step.email);
-    } catch (e) {
-      setError(says(e));
-    }
-    setBusy(false);
-  };
-
-  /** Forgot password: a code to the address, then the code and a new password (ResetPasswordScreen). */
-  const forgot = async () => {
-    if (!ready || !step) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const factor = signIn.supportedFirstFactors?.find((f) => f.strategy === "reset_password_email_code");
-      if (!factor || !("emailAddressId" in factor)) throw new Error("no reset");
-      await signIn.prepareFirstFactor({ strategy: "reset_password_email_code", emailAddressId: factor.emailAddressId });
-      setStep({ email: step.email, via: "reset" });
-    } catch (e) {
-      setError(says(e, "Couldn't send a reset code. Try again."));
     }
     setBusy(false);
   };
@@ -229,6 +232,7 @@ function useEmailCode() {
    *  an account already (a sign-up left before About you, say) signs in with the password given instead. */
   const signUpWithPassword = async (email: string, pw: string) => {
     if (!ready) return;
+    setNote(null);
     setBusy(true);
     setError(null);
     try {
@@ -240,7 +244,7 @@ function useEmailCode() {
       // Clerk took no password after all (switched off since the page loaded): the code alone, as before.
       if (passwordOff(e)) {
         setBusy(false);
-        return go(email, false);
+        return sendCode(email);
       }
       if (!exists(e)) {
         setError(says(e));
@@ -363,35 +367,31 @@ function useEmailCode() {
   };
 
   // Busy only while something is on its way; before Clerk has loaded a tap simply waits.
-  return { step, busy, error, start, sendCode, resend, verify, password, codeInstead, forgot, reset, signUpWithPassword, oauth, back: () => (setStep(null), setError(null)) };
+  return { step, busy, error, note, sendCode, signInWithPassword, forgotFor, resend, verify, reset, signUpWithPassword, oauth, back: () => (setStep(null), setError(null), setNote(null)) };
 }
 
-/** /login: Apple, Google, or the email then its password (an account with one) or a code. */
+/** /login: Apple, Google, or the email and its password together, or a code to the email (17 Nov, Alex), in the coach
+ *  sign-up's dark frame, its code and reset screens too. */
 export function SignInFlow({ notice }: { notice?: string | null }) {
   const f = useEmailCode();
-  if (f.step?.via === "pw") return <PasswordScreen email={f.step.email} onSubmit={f.password} onForgot={f.forgot} onCode={f.codeInstead} onBack={f.back} busy={f.busy} error={f.error} />;
-  if (f.step?.via === "reset") return <ResetPasswordScreen email={f.step.email} onSubmit={f.reset} onResend={f.resend} onBack={f.back} busy={f.busy} error={f.error} />;
-  if (f.step) return <CodeScreen key={f.step.via} email={f.step.email} title={titleOf(f.step.via)} onVerify={f.verify} onResend={f.resend} onBack={f.back} busy={f.busy} error={f.error} />;
-  return <SignInScreen onEmail={f.start} onApple={() => f.oauth("oauth_apple")} onGoogle={() => f.oauth("oauth_google")} busy={f.busy} error={f.error} notice={notice} />;
+  const passwords = usePasswordsOn();
+  if (f.step?.via === "reset") return <ResetPasswordScreen email={f.step.email} look="site" onSubmit={f.reset} onResend={f.resend} onBack={f.back} busy={f.busy} error={f.error} />;
+  if (f.step) return <CodeScreen key={f.step.via} email={f.step.email} title={titleOf(f.step.via)} note={f.note} look="site" onVerify={f.verify} onResend={f.resend} onBack={f.back} busy={f.busy} error={f.error} />;
+  return (
+    <SignInScreen
+      passwords={passwords === true}
+      onEmail={(email) => f.sendCode(email)}
+      onPassword={f.signInWithPassword}
+      onForgot={f.forgotFor}
+      onApple={() => f.oauth("oauth_apple")}
+      onGoogle={() => f.oauth("oauth_google")}
+      busy={f.busy}
+      error={f.error}
+      notice={notice}
+    />
+  );
 }
 
-type PasswordSetting = { userSettings?: { attributes?: { password?: { enabled?: boolean; required?: boolean } } } };
-/**
- * Whether Clerk takes passwords: Dashboard, User & authentication, Password, "Sign-up with password" ON and "Require a
- * password at sign-up" OFF (17 Nov; off on the live instance until switched on). It must stay optional: required, every
- * client sign-up by invite or code stops at "Clerk wants one more step: password". Read from Clerk's own settings once
- * it has loaded; null while it can't tell, and the field waits for a yes so it never shows and then goes.
- */
-function usePasswordsOn(): boolean | null {
-  const clerk = useClerk();
-  const { isLoaded } = useAuth();
-  const env = (clerk as unknown as { __internal_environment?: PasswordSetting | null }).__internal_environment ?? (clerk as unknown as { environment?: PasswordSetting | null }).environment;
-  const setting = isLoaded ? env?.userSettings?.attributes?.password : undefined;
-  useEffect(() => {
-    if (setting?.enabled && setting.required) console.error("Clerk requires a password at sign-up: client invites and code sign-ups can't finish. Turn off \"Require a password at sign-up\" in the Clerk Dashboard.");
-  }, [setting?.enabled, setting?.required]);
-  return typeof setting?.enabled === "boolean" ? setting.enabled : null;
-}
 
 /**
  * /signup: a coach makes their own account. First only how they sign in; a
