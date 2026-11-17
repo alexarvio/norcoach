@@ -171,8 +171,13 @@ const listY: Record<string, number> = {};
 function Lists({ tab, inbox, setInbox, cal, today, coach, push, onOpenChat, onOpenVideo }: { tab: Tab; inbox: CoachInbox; setInbox: React.Dispatch<React.SetStateAction<CoachInbox>>; cal: CalendarState; today: string; coach: { name: string; photoPath: string | null }; push: Push; onOpenChat: (id: number) => void; onOpenVideo: (id: number) => void }) {
   const [q, setQ] = useState("");
   const [account, setAccount] = useState(false);
+  const shownTab = useRef<Tab | null>(null);
   // Back from a chat or a video: the list where it was left.
   useEffect(() => {
+    // Another tab opens at its top (17 Nov, Alex: "make sure that it always starts from the top"); coming back from a chat
+    // or a video, the list is where it was left.
+    if (shownTab.current !== null && shownTab.current !== tab) for (const k of Object.keys(listY)) delete listY[k];
+    shownTab.current = tab;
     window.scrollTo(0, listY[tab] ?? 0);
   }, [tab]);
   const needle = q.trim().toLowerCase();

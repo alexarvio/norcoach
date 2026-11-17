@@ -26,8 +26,10 @@ body:has(.cph) { background: #F5F6F8; }
 .cph-error { margin: 0 4px 6px; font-size: 13px; color: #b42318; }
 
 /* ---- The lists */
-.cph-list { padding: calc(env(safe-area-inset-top, 0px) + 6px) 0 calc(env(safe-area-inset-bottom, 0px) + 100px); }
-.cph-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px 10px; }
+.cph-list { display: flex; flex-direction: column; min-height: 100dvh; box-sizing: border-box; padding: calc(env(safe-area-inset-top, 0px) + 6px) 0 calc(env(safe-area-inset-bottom, 0px) + 100px); }
+.cph-head { display: flex; align-items: center; justify-content: space-between; height: 68px; box-sizing: border-box; padding: 14px 20px 10px; }
+/* One header on every tab (17 Nov, Alex: going from Calendar to Videos the title and the face moved): one fixed height, so the
+   Calendar's 40px + beside the face never makes its header taller; the title and the face sit on one spot on all three. */
 .cph-head h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
 .cph-me { display: flex; border-radius: 50%; }
 .cph-search { display: flex; align-items: center; gap: 8px; height: 40px; margin: 2px 16px 10px; padding: 0 14px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; color: #98A2B3; }
@@ -271,7 +273,9 @@ html.cph-locked .cph-stage { touch-action: none; }
 .cph-cal-dayhead h2 { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: 17px; font-weight: 600; }
 .cph-cal-dayhead h2 span { font-size: 13px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; }
 .cph-cal-count { font-size: 12px; color: #8b93a1; font-variant-numeric: tabular-nums; }
-.cph-cal-daybody { min-height: 50dvh; touch-action: pan-y; }
+/* The day takes the room left and no more (17 Nov, Alex: an empty day could be scrolled into empty space): it fills the
+   screen for the swipe, never pushing the page past it. */
+.cph-cal-daybody { flex: 1 0 auto; min-height: 120px; touch-action: pan-y; }
 .cph-cal-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0 16px; list-style: none; }
 .cph-cal-entry { display: flex; align-items: stretch; gap: 10px; width: 100%; text-align: left; }
 .cph-cal-entry.done { opacity: 0.5; }
