@@ -21878,3 +21878,10 @@ html.kb-open .evs .evs-types .evs-type.on { flex-direction: row; justify-content
 html.kb-open .evs .evs-types .evs-type.on .evs-type-disc { width: 20px; height: 20px; color: var(--tc); }
 .evs-type-change { display: none; }
 html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: auto; font-size: 13px; font-weight: 600; color: #5b6474; }
+
+/* "Finlay is typing…" has its own room at the foot of every thread (17 Nov, Alex: it sat over their last message): the
+   line floats over the box's top edge, so each thread keeps that much clear under its last message, typing or not, and
+   nothing moves when it comes. */
+.cph-thread-inner.cph-thread-inner { padding-bottom: 34px; }
+.cm-body.cm-body { padding-bottom: 34px; }
+.rm-thread.rm-thread { padding-bottom: 34px; }
