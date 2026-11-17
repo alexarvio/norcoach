@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import AdminOpening from "./AdminOpening";
-import { OPENED_COOKIE, QUIET_COOKIE } from "../lib/quietLoad";
+import { redirect } from "next/navigation";
+import { NATIVE_COOKIE, OPENED_COOKIE, QUIET_COOKIE } from "../lib/quietLoad";
 
 // Every coach admin screen (7 Nov): the opening plays over the first one a page load draws; this layout stays mounted
 // from screen to screen, so moving around the admin never plays it again.
@@ -8,6 +9,8 @@ import { OPENED_COOKIE, QUIET_COOKIE } from "../lib/quietLoad";
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   // And any load after the first in this browser session: a reload, or a tab the browser put to sleep coming back.
   const jar = await cookies();
+  // In the phone app a coach belongs on their phone screens (21 Oct); sent there before the admin draws (17 Nov, Alex).
+  if (jar.get(NATIVE_COOKIE)?.value === "1") redirect("/coach");
   const quiet = jar.get(QUIET_COOKIE)?.value === "1" || jar.get(OPENED_COOKIE)?.value === "1";
   return (
     <>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { logoutAction } from "../lib/auth-actions";
 import { saveCoachNotifyAction, uploadCoachPhotoAction } from "../lib/actions";
@@ -13,8 +13,8 @@ import { Avatar, Icon, Sheet } from "./parts";
 
 // The coach phone's Settings (17 Nov, Alex: option A of docs/boards/coach-settings-mockup.html, with Help and legal and
 // Delete account): a pushed screen opened from the coach's face on every tab. Only what touches the phone's three jobs:
-// who you are, what buzzes, when it stays quiet, the account. One record with the laptop's Settings: the face is the
-// profile photo (uploadCoachPhotoAction, kind avatar), Messages, Videos and Quiet hours are Settings, Notifications
+// who you are, what buzzes, the account. One record with the laptop's Settings: the face is the
+// profile photo (uploadCoachPhotoAction, kind avatar), Messages and Videos are Settings, Notifications
 // (saveCoachNotifyAction), so a change on either shows on both. Name and business are read here, changed on the laptop.
 
 export type SettingsCoach = {
@@ -29,7 +29,6 @@ export type SettingsCoach = {
   deletionAsked: boolean;
 };
 
-const QUARTERS = Array.from({ length: 96 }, (_, i) => `${String(Math.floor(i / 4)).padStart(2, "0")}:${String((i % 4) * 15).padStart(2, "0")}`);
 const DELETE_TEXT = "Please delete my account.";
 
 /** A photo picked on the phone made a square face, 800px at most, as a JPEG (a phone photo can be over the 6 MB the
@@ -144,24 +143,9 @@ export default function CoachSettings({
   };
   const chat = notify.chat !== false;
   const video = notify.video !== false;
-  const quiet = !!notify.quiet;
-  const from = notify.quietFrom ?? "22:00";
-  const to = notify.quietTo ?? "07:00";
 
-  // The quarter-hour list (New entry's, EntrySheet): under the box tapped, above it when there is no room below.
-  const [drop, setDrop] = useState<{ which: "from" | "to"; top: number; left: number } | null>(null);
-  const dropList = useRef<HTMLDivElement>(null);
-  const openDrop = (which: "from" | "to", el: HTMLElement) => {
-    const r = el.getBoundingClientRect();
-    const W = 150;
-    const H = 6 * 40 + 10;
-    const below = r.bottom + 6 + H < window.innerHeight - 16;
-    setDrop({ which, top: below ? r.bottom + 6 : Math.max(16, r.top - 6 - H), left: Math.min(Math.max(16, r.left), window.innerWidth - 16 - W) });
-  };
-  useLayoutEffect(() => {
-    const on = dropList.current?.querySelector<HTMLElement>(".on");
-    if (on && dropList.current) dropList.current.scrollTop = on.offsetTop - dropList.current.clientHeight / 2 + on.clientHeight / 2;
-  }, [drop]);
+  // ---- Sign out asks first (17 Nov, Alex: "I just pressed it by accident").
+  const [signOutAsk, setSignOutAsk] = useState(false);
 
   // ---- Delete account: asked first, then a word to Norcoach support; nothing is deleted from here.
   const [confirm, setConfirm] = useState(false);
@@ -251,25 +235,6 @@ export default function CoachSettings({
           <span className="cph-set-name">Videos to review</span>
           <Switch on={video} />
         </button>
-      </section>
-
-      <section className="cph-set-grp">
-        <h2 className="cph-set-lbl">Quiet hours</h2>
-        <button type="button" className="cph-set-row" onClick={() => change({ quiet: !quiet })} aria-pressed={quiet}>
-          <span className="cph-set-name">Hold pushes overnight</span>
-          <Switch on={quiet} />
-        </button>
-        <div className={`cph-set-times${quiet ? "" : " off"}`}>
-          <button type="button" className="cph-set-tb" disabled={!quiet} onClick={(e) => openDrop("from", e.currentTarget)} aria-label={`From ${from}`}>
-            {from}
-          </button>
-          <span className="cph-set-arr" aria-hidden="true">
-            <Icon name="right" size={16} />
-          </span>
-          <button type="button" className="cph-set-tb" disabled={!quiet} onClick={(e) => openDrop("to", e.currentTarget)} aria-label={`To ${to}`}>
-            {to}
-          </button>
-        </div>
         {/* A tap sends the record as it stands again (a tap on the switch would only flip it back). */}
         {notifyFailed && (
           <button type="button" className="cph-set-bad" onClick={() => send(notify)}>
@@ -298,11 +263,7 @@ export default function CoachSettings({
         <button
           type="button"
           className="cph-set-row"
-          onClick={() => {
-            // The chats kept on this phone go with the session (the sign-in page clears them too).
-            forgetAllThreads();
-            void logoutAction();
-          }}
+          onClick={() => setSignOutAsk(true)}
         >
           <span className="cph-set-name strong">Sign out</span>
         </button>
@@ -318,30 +279,28 @@ export default function CoachSettings({
           ))}
       </section>
 
-      {drop && (
-        <>
-          <button type="button" className="cph-ent-dropscrim" aria-label="Close the times" onClick={() => setDrop(null)} />
-          <div ref={dropList} className="cph-ent-drop" role="listbox" aria-label={drop.which === "from" ? "From" : "To"} style={{ top: drop.top, left: drop.left }}>
-            {QUARTERS.map((t) => {
-              const on = t === (drop.which === "from" ? from : to);
-              return (
-                <button
-                  key={t}
-                  type="button"
-                  role="option"
-                  aria-selected={on}
-                  className={on ? "on" : ""}
-                  onClick={() => {
-                    change(drop.which === "from" ? { quietFrom: t } : { quietTo: t });
-                    setDrop(null);
-                  }}
-                >
-                  {t}
-                </button>
-              );
-            })}
+      {signOutAsk && (
+        <Sheet onClose={() => setSignOutAsk(false)} label="Sign out">
+          <div className="cph-confirm">
+            <h2>Sign out?</h2>
+            <div className="cph-confirm-row">
+              <button type="button" className="cph-text-btn" onClick={() => setSignOutAsk(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="cph-pill ink small"
+                onClick={() => {
+                  // The chats kept on this phone go with the session (the sign-in page clears them too).
+                  forgetAllThreads();
+                  void logoutAction();
+                }}
+              >
+                Sign out
+              </button>
+            </div>
           </div>
-        </>
+        </Sheet>
       )}
 
       {confirm && (

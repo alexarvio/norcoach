@@ -524,12 +524,6 @@ html.kb-open .cph-sheet { max-height: calc(100dvh - var(--kb, 0px) - 40px - env(
 .cph-set-sw.on { background: #141a24; box-shadow: none; }
 .cph-set-sw.on i { transform: translateX(14px); background: #fff; }
 .cph-set-row:disabled .cph-set-sw { opacity: 0.5; }
-/* Quiet hours: From and To as two boxes, a faint arrow between; off, grey and inert. */
-.cph-set-times { display: flex; align-items: center; gap: 10px; margin: 2px 0 6px; }
-.cph-set-tb { display: flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 12px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; font-size: 16px; font-variant-numeric: tabular-nums; color: #141a24; transition: color 0.2s ease; }
-.cph-set-tb:active:not(:disabled) { background: #F5F6F8; }
-.cph-set-times.off .cph-set-tb { color: #98A2B3; }
-.cph-set-arr { display: flex; color: #98A2B3; }
 .cph-set-bad { margin: 4px 0 0; font-size: 13px; color: #b8471f; }
 .cph-confirm .cph-set-bad { margin: -6px 0 10px; }
 /* Not saved under Quiet hours is a tap to send again: words alone, no button look. */
