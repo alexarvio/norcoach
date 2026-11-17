@@ -6,6 +6,8 @@ body:has(.cph) { background: #F5F6F8; }
 :where(.cph) button { margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; }
 :where(.cph) button:disabled { cursor: default; }
 .cph :focus-visible { outline: 2px solid #141a24; outline-offset: 2px; }
+/* A field shows it has the keyboard by its own ink edge or underline, never a ring round it (17 Nov, Alex). */
+.cph :is(input, textarea, select):focus-visible { outline: none; }
 .cph-ico { flex: none; display: block; }
 .cph-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .cph-sep { display: inline-block; flex: none; width: 1.5px; height: 0.85em; margin: 0 0.55em; border-radius: 1px; background: #b0b7c3; vertical-align: -0.1em; }
@@ -235,6 +237,7 @@ html.cph-locked .cph-stage { touch-action: none; }
 .cph-review-foot > .cph-pill:not(.small) { width: 100%; }
 .cph-recdot { width: 10px; height: 10px; border-radius: 50%; background: #e5484d; }
 .cph-note-row { display: flex; align-items: flex-end; gap: 14px; }
+.cph-note-acts { display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
 .cph-note { flex: 1; min-width: 0; max-height: 120px; padding: 6px 2px 8px; border: 0; border-bottom: 1px solid #C9CFD8; border-radius: 0; outline: 0; background: none; font: inherit; font-size: 16px; line-height: 1.35; color: #141a24; resize: none; field-sizing: content; }
 .cph-note:focus { border-bottom-color: #141a24; }
 .cph-note::placeholder { color: #98A2B3; }
