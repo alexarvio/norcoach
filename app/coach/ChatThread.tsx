@@ -733,6 +733,7 @@ export default function ChatThread({ clientId, name, avatarPath, onBack, onRead 
           messageId={reviewing.id}
           first={first}
           name={name}
+          avatarPath={avatar}
           media={{ kind: reviewing.media.type === "video" ? "video" : "photo", url: reviewing.media.path }}
           words={reviewing.text}
           when={dayLabel(dayOf(reviewing.when))}

@@ -1,5 +1,5 @@
 import { getData } from "./db";
-import { getLogsForAssignment } from "./queries";
+import { getCoachAvatarPath, getCoachDisplayName, listChatMessages } from "./queries";
 import type { MediaReview, ThreadItem } from "../admin/redesign/media-review/MediaReviewModal";
 
 // The coach's phone (21 Oct, Alex: answer messages and reply to videos, the
@@ -31,7 +31,13 @@ export type PhoneVideo = {
 };
 export type PhoneVideos = { waiting: PhoneVideo[]; replied: PhoneVideo[] };
 /** The review screen: the laptop's MediaReview, with what the coach asked for and when they answered. */
-export type PhoneReview = MediaReview & { askNote: string | null; repliedAt: number | null; clientId: number };
+export type PhoneReview = MediaReview & {
+  askNote: string | null;
+  repliedAt: number | null;
+  clientId: number;
+  /** The coach's own face, beside their ask and their earlier words (17 Nov, Alex: docs/boards/review-align-mockup.html). */
+  coach?: { name: string; photoPath: string | null };
+};
 
 type Data = ReturnType<typeof getData>;
 type Request = Data["video_requests"][number];
@@ -88,9 +94,6 @@ export function listPhoneVideos(coachId: number): PhoneVideos {
   };
 }
 
-const LB = 2.20462;
-const num = (n: number) => String(Math.round(n * 10) / 10);
-
 /** One photo or video as the review screen draws it; null when it is gone or has no file. */
 export function phoneReview(requestId: number): PhoneReview | null {
   const data = getData();
@@ -98,20 +101,33 @@ export function phoneReview(requestId: number): PhoneReview | null {
   if (!v || !v.file_path) return null;
   const c = data.clients.find((x) => x.id === v.client_id);
   const p = placeOf(data, v);
-  // The sets logged on it: the weight in the unit each was logged in, the unit said once.
-  let unitSaid = false;
-  const sets = p.a
-    ? getLogsForAssignment(p.a.id).map((l) => {
-        const lbs = l.unit === "lb";
-        const w = l.weight_kg == null ? null : lbs ? Math.round(l.weight_kg * LB * 2) / 2 : l.weight_kg;
-        const label = w == null ? `${l.reps ?? "—"} reps` : `${num(w)}${unitSaid ? "" : lbs ? " lbs" : " kg"} × ${l.reps ?? "—"}`;
-        if (w != null) unitSaid = true;
-        return { n: l.set_number, label };
-      })
-    : [];
+  // The whole conversation about the clip (17 Nov, Alex: docs/boards/review-align-mockup.html), as the laptop's review
+  // reads it: what both sides said in the chat about the exercise, oldest first, then the reply on the clip itself. A
+  // coach's video in it is an earlier review, to play on the stage; a coach's picture a photo sent back.
   const thread: ThreadItem[] = [];
-  if (v.reply_file_path && v.reply_media !== "photo") thread.push({ id: `r${v.id}`, kind: "review", url: v.reply_file_path, durationMs: v.reply_duration_ms ?? null, annotations: v.reply_annotations ?? null, message: v.reply_note?.trim() || null, at: ms(v.replied_at) });
-  else if (v.reply_note?.trim()) thread.push({ id: `n${v.id}`, kind: "text", mine: true, text: v.reply_note.trim(), at: ms(v.replied_at) });
+  const replyNote = v.reply_note?.trim() || "";
+  const clientNote = v.client_note?.trim() || "";
+  const askNote = !v.from_client ? v.note?.trim() || "" : "";
+  for (const m of listChatMessages(v.client_id)) {
+    if (m.link?.kind !== "exercise" || m.link.assignmentId !== v.assignment_id) continue;
+    const mine = m.sender === "coach";
+    const at = ms(m.created_at);
+    const text = m.text?.trim() || "";
+    // The clip itself and the reply on it are drawn from the request; the ask and the client's note have their own place.
+    if (m.media_path && (m.media_path === v.file_path || m.media_path === v.reply_file_path)) continue;
+    if (!m.media_path && mine && (text === replyNote || text === askNote)) continue;
+    if (!m.media_path && !mine && text === clientNote) continue;
+    if (mine && m.media_path && (m.media_type === "video" || m.media_type === "image")) {
+      thread.push({ id: `c${m.id}`, kind: "review", url: m.media_path, durationMs: null, annotations: null, message: text || null, at, photo: m.media_type === "image" });
+      continue;
+    }
+    const words = text || (m.media_path ? (m.media_type === "image" ? "A photo" : m.media_type === "video" ? "A video" : m.media_type === "audio" ? "A voice message" : "A file") : "");
+    if (words) thread.push({ id: `c${m.id}`, kind: "text", mine, text: words, at });
+  }
+  // The reply on the clip: a recording, or the photo sent back with the words (16 Nov; it was read as words alone).
+  if (v.reply_file_path) thread.push({ id: `r${v.id}`, kind: "review", url: v.reply_file_path, durationMs: v.reply_duration_ms ?? null, annotations: v.reply_annotations ?? null, message: replyNote || null, at: ms(v.replied_at), photo: v.reply_media === "photo" });
+  else if (replyNote) thread.push({ id: `n${v.id}`, kind: "text", mine: true, text: replyNote, at: ms(v.replied_at) });
+  thread.sort((x, y) => x.at - y.at);
   const name = c?.name ?? "Client";
   return {
     requestId: v.id,
@@ -122,10 +138,13 @@ export function phoneReview(requestId: number): PhoneReview | null {
     requested: !v.from_client,
     media: [{ kind: v.media === "photo" ? "photo" : "video", url: v.file_path }],
     sentAt: v.submitted_at ?? null,
-    sets,
-    clientMessage: v.client_note?.trim() ? { text: v.client_note.trim(), at: v.submitted_at ?? null } : null,
+    // No session, week, day or sets on the review (17 Nov, Alex): the exercise's name alone.
+    sets: [],
+    clientMessage: clientNote ? { text: clientNote, at: v.submitted_at ?? null } : null,
     thread,
-    askNote: !v.from_client && v.note?.trim() ? v.note.trim() : null,
+    askNote: askNote || null,
     repliedAt: v.replied_at ? ms(v.replied_at) : null,
+    // The coach's face and name as the laptop's review reads them (mediaReviewClientAction).
+    coach: { name: getCoachDisplayName(v.client_id), photoPath: getCoachAvatarPath(v.client_id) },
   };
 }

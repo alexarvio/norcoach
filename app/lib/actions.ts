@@ -194,6 +194,8 @@ import {
   setVideoRequestRecurring,
   removeVideoRequest,
   getClientIdForVideoRequest,
+  getCoachAvatarPath,
+  getCoachDisplayName,
   saveRequestedVideo,
   markVideoSeen,
   markProgramNoteSeen,
@@ -3312,12 +3314,12 @@ export async function replyToMediaAction(id: number, text: string, onceKey?: str
 }
 
 /** The client's face and full name for the media review's head (16 Nov, Alex: Training opened it with an initial for a
-    client who has a photo, as it hands over none). */
-export async function mediaReviewClientAction(id: number): Promise<{ name: string; avatarPath: string | null } | null> {
+    client who has a photo, as it hands over none), and the coach's own face for "You asked" (17 Nov, Alex). */
+export async function mediaReviewClientAction(id: number): Promise<{ name: string; avatarPath: string | null; coachName: string; coachAvatarPath: string | null } | null> {
   const owner = Number.isInteger(id) ? getClientIdForVideoRequest(id) : null;
   if (owner == null || !(await coachForClientOpen(owner))) return null;
   const c = getClient(owner);
-  return c ? { name: c.name, avatarPath: c.avatar_path ?? null } : null;
+  return c ? { name: c.name, avatarPath: c.avatar_path ?? null, coachName: getCoachDisplayName(owner), coachAvatarPath: getCoachAvatarPath(owner) } : null;
 }
 export async function sendFormReviewAction(id: number, message: string, meta: { durationMs: number; annotations: number }, onceKey?: string): Promise<boolean> {
   if (!Number.isInteger(id) || !(await coachForClient(getClientIdForVideoRequest(id)))) return false;
