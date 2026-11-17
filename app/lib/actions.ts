@@ -3327,6 +3327,9 @@ export async function sendFormReviewAction(id: number, message: string, meta: { 
   if (!Number.isInteger(id) || !(await coachForClient(getClientIdForVideoRequest(id)))) return false;
   return once(`sendFormReviewAction:${id}`, onceKeyOf(onceKey), () => {
     const ok = sendFormReview(id, String(message ?? ""), { durationMs: Number(meta?.durationMs), annotations: Number(meta?.annotations) });
+    // The clip's size and preview onto its chat message, from the frame made as it came in (videoReplyUpload.ts).
+    const clip = ok ? getData().video_requests.find((r) => r.id === id)?.reply_file_path : null;
+    if (clip) afterResponse(() => prepareChatMedia(clip, "video"));
     revalidatePath("/admin");
     revalidatePath("/client");
     return ok;
