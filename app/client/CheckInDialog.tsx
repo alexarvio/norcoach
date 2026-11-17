@@ -11,6 +11,7 @@ import { cleanNumeric, isWholeMetric } from "./CheckInLine";
 import type { CheckInMetric, CheckInSection } from "./CheckInScreen";
 import { Bars } from "./Bars";
 import { dayWords } from "../lib/clientDates";
+import { nativePlatform } from "../lib/native";
 
 // A day's check-in as a centred pop-up (13 Oct, "Rows"): the gym pop-up's
 // language, a sand glow at the top, one bordered row a metric, one navy
@@ -419,13 +420,27 @@ function MetricRow({ row, value, problem, filled, inputRef, onChange, onNext }: 
   const unit = m.scaleMax ? "" : m.unit;
   const style = { "--c": c.hex, "--c-rgb": c.rgb } as React.CSSProperties;
   return (
-    <div className={`cki-row${filled ? " filled" : ""}`} style={style}>
+    <div className={`cki-row${filled ? " filled" : ""}${m.live ? " live" : ""}`} style={style}>
       <div className="cki-row-top">
         <div className="cki-row-text">
           <span className="cki-row-name">{m.name}</span>
-          <span className="cki-row-last">{last}</span>
+          {m.live ? (
+            // Filled by the phone (16 Nov, Alex: A of docs/boards/auto-metric-mockup.html): live, nothing to type.
+            <span className="cki-row-last cki-live">
+              <i aria-hidden="true" />
+              Live from {nativePlatform() === "android" ? "Health Connect" : "Apple Health"}
+            </span>
+          ) : (
+            <span className="cki-row-last">{last}</span>
+          )}
         </div>
-        {!m.scaleMax && (
+        {m.live && !m.scaleMax && (
+          <span className="cki-num cki-num-live" aria-label={`${m.name} ${value}${unit ? ` ${unit}` : ""}`}>
+            <b>{Number.isFinite(Number(value)) && whole ? Number(value).toLocaleString("en-GB") : value}</b>
+            <span className="cki-unit">{unit}</span>
+          </span>
+        )}
+        {!m.live && !m.scaleMax && (
           <label className={`cki-num${problem ? " bad" : ""}`}>
             <input
               ref={inputRef}

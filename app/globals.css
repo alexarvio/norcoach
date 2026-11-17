@@ -21835,3 +21835,14 @@ html.vrec-on, html.vrec-on * { -webkit-user-select: none !important; user-select
 .sw-says { flex: 0 0 100%; padding: 4px 4px 4px 4px; }
 .ev-x-says { margin-top: 8px; }
 .nd-supp-says { padding: 0 16px 14px; }
+
+/* ---- A check-in figure the phone filled (16 Nov, Alex: A of docs/boards/auto-metric-mockup.html): the figure in ink with
+   no field, and under the name a small green dot pulsing, "Live from Apple Health"; the row keeps its colours. */
+.cki-live { display: inline-flex; align-items: center; gap: 7px; }
+.cki-live > i { position: relative; flex: none; width: 7px; height: 7px; border-radius: 50%; background: #2f7a3f; }
+.cki-live > i::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 1.5px solid rgba(47, 122, 63, 0.5); animation: cki-live 1.8s ease-out infinite; }
+@keyframes cki-live { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(1.4); opacity: 0; } }
+.cki-num.cki-num-live { justify-content: flex-end; align-items: baseline; }
+.cki-num-live > b { font-size: 22px; font-weight: 600; color: #141a24; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .cki-live > i::after { animation: none; opacity: 0; } }
+html.zoomed .cki-live > i::after { animation: none; }

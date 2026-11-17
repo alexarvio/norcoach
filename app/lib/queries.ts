@@ -8164,6 +8164,8 @@ export type CheckInMetric = {
   askAt?: MetricAskAt;
   /** The metric's group (METRIC_GROUPS key), for its colour on the check-in pop-up (13 Oct). */
   category?: string;
+  /** This period's figure came from the phone's health store: shown live, not typed in (16 Nov). */
+  live?: boolean;
 };
 
 export type CheckInSection = {
@@ -8494,6 +8496,9 @@ function checkInTrackerSection(
         loggedAt: current?.logged_at ?? null,
         askAt: metricAskAt(def),
         category: def.category,
+        // Filled by the phone (Apple Health / Health Connect): drawn live and not typed in (16 Nov, Alex: A of
+        // docs/boards/auto-metric-mockup.html).
+        live: current?.source === "health" && current.value != null,
       };
     }),
   };
