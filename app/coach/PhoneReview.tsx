@@ -499,25 +499,24 @@ function Reviewer({ review, chat = null, onBack, onSent }: { review: Review; cha
         {recorder.problem && <p className="cph-error">{recorder.problem}</p>}
         {rec === "ready" && (
           <>
-            {canRecord && !words.trim() && (
-              <button type="button" className="cph-pill ink" onClick={startRecording}>
-                <i className="cph-recdot" aria-hidden="true" />
-                Record review
-              </button>
+            <textarea className="cph-note" rows={1} value={words} placeholder={`Write to ${first}…`} aria-label={`Reply to ${first}`} onChange={(e) => setWords(e.target.value)} />
+            {words.trim() ? (
+              <div className="cph-note-acts">
+                <button type="button" className="cph-text-btn" onClick={() => setWords("")}>
+                  Cancel
+                </button>
+                <button type="button" className="cph-pill ink small" disabled={busy} onClick={() => void sendWords()}>
+                  {busy ? "Sending…" : "Send"}
+                </button>
+              </div>
+            ) : (
+              canRecord && (
+                <button type="button" className="cph-pill ink" onClick={startRecording}>
+                  <i className="cph-recdot" aria-hidden="true" />
+                  Record review
+                </button>
+              )
             )}
-            <div className="cph-note-row">
-              <textarea className="cph-note" rows={1} value={words} placeholder={canRecord ? `Or write to ${first}…` : `Write to ${first}…`} aria-label={`Reply to ${first}`} onChange={(e) => setWords(e.target.value)} />
-              {words.trim() && (
-                <>
-                  <button type="button" className="cph-text-btn" onClick={() => setWords("")}>
-                    Cancel
-                  </button>
-                  <button type="button" className="cph-pill ink small" disabled={busy} onClick={() => void sendWords()}>
-                    {busy ? "Sending…" : "Send"}
-                  </button>
-                </>
-              )}
-            </div>
           </>
         )}
         {recording && (
