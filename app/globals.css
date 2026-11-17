@@ -21381,11 +21381,15 @@ html.kb-open .pc-aura::before, html.kb-open .pc-aura::after, html.kb-open .ev-au
 /* Shape update, leaving with photos not sent: the send row becomes the check-in's question (.cki-confirm) across the row. */
 .pp-todo-save.pp-leave > .cki-confirm { flex: 1; min-width: 0; align-items: center; }
 
-/* The rest timer's choices (3 Nov, Alex: a countdown, "1 min 2 min and 3 min" on every tap): the three (and Stop while
-   one runs) as white hairline pills over the bar, the one running ink; "Rest done" green. The pills alone, no card
-   behind them (4 Nov, Alex: "just the pills… get rid of the one behind"). */
-.wo-rest-menu.wo-rest-menu { gap: 8px; padding: 0; border-radius: 0; background: none; box-shadow: none; }
-.wo-rest-opt.wo-rest-opt { height: 44px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; font-size: 14.5px; font-weight: 600; color: #141a24; }
+/* The rest timer's choices (3 Nov, Alex: a countdown, "1 min 2 min and 3 min" on every tap): a short list opening up
+   from the button, as wide as it (17 Nov, Alex: "a drop up… the width of it has to match the width of the button
+   timer"; was three pills across the screen), in the floating lists' look: white, radius 10, 5px in, the soft shadow,
+   no edge; a row each, the one running ink, Stop (while one runs) in rust last, by the button; "Rest done" green. */
+.wo-rest-menu.wo-rest-menu { flex-direction: column; gap: 0; padding: 5px; border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(20, 30, 50, 0.16); transform-origin: bottom center; animation: wo-rest-up 0.18s ease-out; }
+@keyframes wo-rest-up { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .wo-rest-menu.wo-rest-menu { animation: none; } }
+.wo-rest-opt.wo-rest-opt { flex: none; height: 44px; border-radius: 7px; background: none; box-shadow: none; font-size: 15px; font-weight: 600; color: #141a24; font-variant-numeric: tabular-nums; }
+.wo-rest-opt.wo-rest-opt:active { background: #F5F6F8; }
 .wo-rest-opt.wo-rest-opt.on { background: #141a24; box-shadow: none; color: #fff; }
 .wo-rest-opt.wo-rest-opt.stop { color: #b8471f; }
 .wo-rest.wo-rest.done { background: #fff; box-shadow: inset 0 0 0 1px rgba(47, 122, 63, 0.35); color: #2f7a3f; }
