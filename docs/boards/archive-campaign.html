@@ -1,0 +1,413 @@
+<title>The Archive Campaign</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a parchment campaign map; the route of missions runs down a dotted road, each mission a sealed scroll you can unfold. */
+:root {
+  --parch: #efe2c3;
+  --parch-2: #e6d4ab;
+  --ink: #2b1d0e;
+  --ink-soft: #5c4527;
+  --gold: #b0802a;
+  --blood: #8e2a1c;
+  --moss: #4d6b2f;
+  --river: #2f5a74;
+  --wood: #3a2614;
+  --line: rgba(43, 29, 14, 0.22);
+  --boring-bg: #f7f0de;
+  --display: "Cinzel", "Trajan Pro", Georgia, serif;
+  --body: "Crimson Pro", Georgia, "Times New Roman", serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html { background: var(--wood); }
+body {
+  margin: 0;
+  background:
+    radial-gradient(ellipse at 20% 0%, rgba(255, 248, 225, 0.65), transparent 55%),
+    radial-gradient(ellipse at 90% 100%, rgba(120, 84, 40, 0.18), transparent 50%),
+    var(--parch);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 19px;
+  line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 80px;
+}
+.wrap { max-width: 920px; margin: 0 auto; }
+h1, h2, h3 { font-family: var(--display); color: var(--ink); text-wrap: balance; margin: 0; }
+a { color: var(--river); }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+
+/* The banner */
+.banner { text-align: center; padding: 56px 0 30px; border-bottom: 2px solid var(--line); }
+.crest { display: block; margin: 0 auto 14px; width: 74px; height: 86px; }
+.eyebrow { font-family: var(--display); font-weight: 700; letter-spacing: 0.32em; text-transform: uppercase; font-size: 12px; color: var(--gold); }
+h1 { font-size: clamp(34px, 7vw, 58px); font-weight: 900; letter-spacing: 0.04em; margin: 10px 0 12px; }
+.lede { max-width: 640px; margin: 0 auto; font-size: 21px; font-style: italic; color: var(--ink-soft); }
+.stats { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 26px; margin-top: 22px; font-family: var(--display); font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-soft); }
+.stats b { color: var(--ink); font-size: 15px; }
+
+/* Sections */
+section { padding: 40px 0 8px; }
+.sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
+.sec-head h2 { font-size: clamp(24px, 4.4vw, 32px); font-weight: 700; }
+.sec-head span { font-family: var(--display); font-size: 12px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--gold); }
+p { margin: 0 0 12px; }
+
+/* The realm today: a legend of who is who */
+.cast { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 18px 0 10px; }
+.role { padding: 14px 16px; border: 1.5px solid var(--line); border-radius: 4px; background: rgba(255, 250, 235, 0.55); }
+.role h3 { font-size: 15px; letter-spacing: 0.08em; margin-bottom: 4px; display: flex; gap: 9px; align-items: center; }
+.role h3 svg { flex: none; width: 22px; height: 22px; }
+.role p { margin: 0; font-size: 17px; }
+.role small { display: block; margin-top: 6px; font-family: var(--mono); font-size: 12px; color: var(--ink-soft); }
+
+.diagram { margin: 18px 0 6px; overflow-x: auto; }
+.diagram svg { display: block; min-width: 620px; width: 100%; height: auto; }
+
+.threats { display: grid; gap: 10px; margin-top: 14px; }
+.threat { display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: start; padding: 12px 14px; border-left: 3px solid var(--blood); background: rgba(142, 42, 28, 0.06); }
+.threat svg { width: 26px; height: 26px; color: var(--blood); }
+.threat b { font-family: var(--display); font-size: 15px; letter-spacing: 0.04em; }
+.threat p { margin: 2px 0 0; font-size: 17px; }
+
+/* The route of missions */
+.route { position: relative; margin-top: 10px; padding-left: 56px; }
+.route::before { content: ""; position: absolute; left: 21px; top: 10px; bottom: 10px; border-left: 3px dotted var(--ink-soft); opacity: 0.55; }
+.age { font-family: var(--display); font-weight: 900; font-size: 13px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--river); margin: 34px 0 12px; position: relative; }
+.age::before { content: ""; position: absolute; left: -44px; top: 50%; width: 22px; height: 2px; background: var(--river); }
+.mission { position: relative; margin-bottom: 22px; padding: 20px 22px 16px; background: rgba(255, 251, 238, 0.72); border: 1.5px solid var(--line); border-radius: 3px; box-shadow: 0 1px 0 rgba(255,255,255,0.6) inset, 0 10px 24px -18px rgba(43, 29, 14, 0.6); }
+.seal { position: absolute; left: -56px; top: 16px; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; background: var(--blood); color: #f6e7c8; font-family: var(--display); font-weight: 900; font-size: 18px; box-shadow: 0 0 0 3px var(--parch), 0 4px 10px rgba(43,29,14,0.35); }
+.seal.now { background: var(--gold); color: var(--ink); }
+.mission h3 { font-size: clamp(20px, 3.6vw, 25px); font-weight: 700; letter-spacing: 0.02em; }
+.tagline { font-style: italic; color: var(--ink-soft); margin: 4px 0 12px; }
+.loot { display: flex; flex-wrap: wrap; gap: 8px 10px; margin: 6px 0 14px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; font-family: var(--display); font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; background: rgba(255,255,255,0.45); white-space: nowrap; }
+.chip.cost { color: var(--gold); border-color: rgba(176, 128, 42, 0.5); }
+.chip.risk-low { color: var(--moss); border-color: rgba(77, 107, 47, 0.45); }
+.chip.risk-mid { color: var(--gold); border-color: rgba(176, 128, 42, 0.5); }
+.chip.risk-high { color: var(--blood); border-color: rgba(142, 42, 28, 0.45); }
+.mission ul { margin: 0 0 12px; padding-left: 20px; }
+.mission li { margin: 3px 0; }
+.mission li::marker { color: var(--gold); }
+.unlock { margin: 10px 0 4px; padding: 10px 14px; background: rgba(77, 107, 47, 0.09); border-left: 3px solid var(--moss); font-size: 17px; }
+.unlock b { font-family: var(--display); font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--moss); margin-right: 6px; }
+
+/* The boring details, folded away */
+details { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 10px; }
+summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 8px; font-family: var(--display); font-size: 12px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-soft); }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: ""; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; rotate: -45deg; transition: rotate 0.2s; }
+details[open] summary::before { rotate: 45deg; }
+.boring { margin-top: 10px; padding: 12px 14px; background: var(--boring-bg); border: 1px solid var(--line); font-family: var(--mono); font-size: 13px; line-height: 1.6; color: #3d3428; overflow-wrap: anywhere; }
+.boring p { margin: 0 0 8px; }
+.boring ul { margin: 0 0 8px; padding-left: 18px; }
+.boring li { margin: 2px 0; }
+.boring code { background: rgba(43,29,14,0.07); padding: 0 4px; border-radius: 3px; }
+
+/* The king's orders */
+.orders { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 10px; }
+.orders li { display: grid; grid-template-columns: 30px 1fr; gap: 12px; align-items: start; padding: 12px 14px; background: rgba(255, 251, 238, 0.7); border: 1.5px solid var(--line); }
+.orders svg { width: 24px; height: 24px; color: var(--gold); }
+.orders b { font-family: var(--display); font-size: 15px; letter-spacing: 0.03em; }
+.orders p { margin: 2px 0 0; font-size: 17px; }
+
+.glossary { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px 22px; margin-top: 12px; font-size: 17px; }
+.glossary div { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.glossary b { font-family: var(--display); font-size: 14px; letter-spacing: 0.04em; }
+.glossary span { color: var(--ink-soft); }
+
+footer { margin-top: 44px; padding-top: 18px; border-top: 2px solid var(--line); font-size: 15px; color: var(--ink-soft); text-align: center; font-style: italic; }
+
+@media (max-width: 560px) {
+  body { font-size: 18px; }
+  .route { padding-left: 44px; }
+  .route::before { left: 15px; }
+  .seal { left: -44px; width: 34px; height: 34px; font-size: 15px; }
+  .age::before { left: -34px; width: 14px; }
+  .mission { padding: 16px 16px 12px; }
+}
+@media (prefers-reduced-motion: reduce) { summary::before { transition: none; } }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-keep" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M4 21V9h3V6h2v3h2V6h2v3h2V6h2v3h3v12zM10 21v-4a2 2 0 0 1 4 0v4"/></symbol>
+    <symbol id="i-scroll" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M7 4h11a2 2 0 0 1 0 4H8M7 4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8M10 12h6M10 15h6"/></symbol>
+    <symbol id="i-vault" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M3 10l9-6 9 6M5 10v10h14V10M9 20v-6h6v6"/></symbol>
+    <symbol id="i-horse" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" d="M5 20l2-6 1-4 4-5 2 1 2-2 1 3 3 2-1 2-3-1-2 3v7M9 20v-4"/></symbol>
+    <symbol id="i-skull" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M12 3a8 8 0 0 0-5 14v3h10v-3a8 8 0 0 0-5-14zM9 12h.01M15 12h.01M10 20v-2M14 20v-2"/><circle cx="9" cy="12" r="1.3" fill="currentColor"/><circle cx="15" cy="12" r="1.3" fill="currentColor"/></symbol>
+    <symbol id="i-crown" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M3 8l4 4 5-7 5 7 4-4-2 11H5zM5 19h14"/></symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <header class="banner">
+    <svg class="crest" viewBox="0 0 74 86" aria-hidden="true">
+      <path d="M37 3l32 10v26c0 22-14 37-32 44C19 76 5 61 5 39V13z" fill="#8e2a1c" stroke="#2b1d0e" stroke-width="2.5"/>
+      <path d="M37 18l5 13h13l-10 8 4 13-12-8-12 8 4-13-10-8h13z" fill="#efe2c3"/>
+    </svg>
+    <span class="eyebrow">Norcoach · War council · 17 Nov 2026</span>
+    <h1>The Archive Campaign</h1>
+    <p class="lede">How the kingdom keeps its records today, why that breaks when new coaches arrive, and the campaign to move every scroll into the Royal Archive without losing a single one.</p>
+    <div class="stats"><span><b>9</b> missions</span><span><b>~6–8</b> turns to secure the walls</span><span><b>~40–55</b> turns for the whole campaign</span><span><b>0</b> things clients should notice</span></div>
+  </header>
+
+  <section id="realm">
+    <div class="sec-head"><h2>The realm as it stands</h2><span>How it works today</span></div>
+    <p>Norcoach is a small kingdom. Every set lifted, every message, every meal and every check-in is a <b>scroll</b>. The scrolls live in the <b>Royal Archive</b> (the Postgres database). But nobody reads from the Archive while the kingdom is awake.</p>
+    <p>Instead, at dawn (when the server starts) one <b>Scribe</b> walks into the Archive, reads <i>every scroll ever written</i>, and memorises them all. All day, every screen in the app asks the Scribe. When something changes, the Scribe updates his memory and sends a <b>courier</b> to the Archive with the scrolls that changed.</p>
+
+    <div class="cast">
+      <div class="role"><h3><svg><use href="#i-keep"/></svg>The Keep</h3><p>The one server the app runs on, in the Netherlands.</p><small>Railway · 1 replica · /data volume</small></div>
+      <div class="role"><h3><svg><use href="#i-scroll"/></svg>The Scribe</h3><p>Holds every scroll in his head. Fast, but his head has a limit, and he is the only one.</p><small>getData() · the in-memory store · 768 MB heap</small></div>
+      <div class="role"><h3><svg><use href="#i-vault"/></svg>The Royal Archive</h3><p>Where the scrolls truly live. Only read once, at dawn.</p><small>Railway Postgres · 52 mirror tables + kv</small></div>
+      <div class="role"><h3><svg><use href="#i-horse"/></svg>The couriers</h3><p>Carry changed scrolls to the Archive after each change. They leave without waiting for a reply.</p><small>persist() · fire-and-forget · one transaction per save</small></div>
+    </div>
+
+    <div class="diagram" role="img" aria-label="Diagram: screens ask the Scribe in the Keep; couriers carry changes to the Royal Archive; the Archive is read only at dawn.">
+      <svg viewBox="0 0 760 210">
+        <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#2b1d0e"/></marker></defs>
+        <rect x="10" y="60" width="150" height="90" rx="6" fill="#fffbee" stroke="#2b1d0e" stroke-width="1.5"/>
+        <text x="85" y="98" text-anchor="middle" font-family="Cinzel, Georgia, serif" font-size="15" font-weight="700" fill="#2b1d0e">Coaches</text>
+        <text x="85" y="120" text-anchor="middle" font-family="Cinzel, Georgia, serif" font-size="15" font-weight="700" fill="#2b1d0e">&amp; clients</text>
+        <rect x="270" y="30" width="200" height="150" rx="6" fill="#efe2c3" stroke="#8e2a1c" stroke-width="2"/>
+        <text x="370" y="62" text-anchor="middle" font-family="Cinzel, Georgia, serif" font-size="16" font-weight="900" fill="#8e2a1c">The Keep</text>
+        <text x="370" y="96" text-anchor="middle" font-family="Crimson Pro, Georgia, serif" font-size="16" fill="#2b1d0e">The Scribe remembers</text>
+        <text x="370" y="116" text-anchor="middle" font-family="Crimson Pro, Georgia, serif" font-size="16" fill="#2b1d0e">every scroll</text>
+        <text x="370" y="150" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="11" fill="#5c4527">server memory</text>
+        <rect x="580" y="60" width="170" height="90" rx="6" fill="#fffbee" stroke="#2f5a74" stroke-width="2"/>
+        <text x="665" y="98" text-anchor="middle" font-family="Cinzel, Georgia, serif" font-size="15" font-weight="700" fill="#2f5a74">Royal</text>
+        <text x="665" y="120" text-anchor="middle" font-family="Cinzel, Georgia, serif" font-size="15" font-weight="700" fill="#2f5a74">Archive</text>
+        <line x1="162" y1="90" x2="266" y2="90" stroke="#2b1d0e" stroke-width="1.6" marker-end="url(#arr)"/>
+        <text x="214" y="80" text-anchor="middle" font-family="Crimson Pro, Georgia, serif" font-size="13" font-style="italic" fill="#5c4527">every screen asks</text>
+        <line x1="472" y1="80" x2="576" y2="80" stroke="#2b1d0e" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arr)"/>
+        <text x="524" y="70" text-anchor="middle" font-family="Crimson Pro, Georgia, serif" font-size="13" font-style="italic" fill="#5c4527">couriers with changes</text>
+        <line x1="576" y1="132" x2="472" y2="132" stroke="#2f5a74" stroke-width="1.6" marker-end="url(#arr)"/>
+        <text x="524" y="152" text-anchor="middle" font-family="Crimson Pro, Georgia, serif" font-size="13" font-style="italic" fill="#2f5a74">read once, at dawn</text>
+      </svg>
+    </div>
+
+    <p>With 11 clients this is quick and cheap. As coaches sign up, the kingdom grows, and four threats appear on the border:</p>
+    <div class="threats">
+      <div class="threat"><svg><use href="#i-skull"/></svg><div><b>The Scribe's head fills up</b><p>He has room for roughly 25–35 client-years of full use (an estimate). After that the Keep falls over.</p></div></div>
+      <div class="threat"><svg><use href="#i-skull"/></svg><div><b>He gets slower with every scroll</b><p>To know what changed, he re-reads his whole memory on every save, and a few chores re-read every client on every page view.</p></div></div>
+      <div class="threat"><svg><use href="#i-skull"/></svg><div><b>Lost couriers</b><p>A courier who trips is not sent again until some other change happens. A restart (every deploy) can cut a courier off mid-road. One strange letter on a scroll can block every courier after it.</p></div></div>
+      <div class="threat"><svg><use href="#i-skull"/></svg><div><b>Only one Keep</b><p>Two Scribes would number new scrolls the same way and overwrite each other. So the kingdom cannot add a second server when it gets busy.</p></div></div>
+    </div>
+    <details>
+      <summary>Boring details</summary>
+      <div class="boring">
+        <p>Boot: <code>instrumentation.ts</code> awaits <code>initStore()</code>; <code>runtime.ts</code> runs drizzle migrations, then <code>loadStore()</code> does one <code>SELECT *</code> per collection (52 tables) plus kv, builds the store, primes the writer with a full snapshot. Postgres is never read again for collection tables.</p>
+        <p>Save: <code>persist()</code> is fire-and-forget (only the workout outbox uses <code>persistNow()</code>). <code>PgStoreWriter.save()</code> stringifies every row of every collection, diffs against the last committed snapshot, and writes changed rows as multi-row upserts and deletes in one transaction. A failed save rolls back and is not retried until the next persist. On SIGTERM nothing waits for the writer.</p>
+        <p>Ids: <code>allocId</code> increments <code>_seq</code> in memory; ids are plain integer PKs, not sequences. Two processes would allocate the same ids and the upsert would silently overwrite. The <code>/data</code> volume is what stops Railway overlapping deploys.</p>
+        <p>Schema: mirror tables with every column nullable, dates as TEXT, an <code>extra</code> jsonb catch-all, no FKs, no secondary indexes. Only <code>push_subscriptions</code> and <code>password_resets</code> are read directly (<code>pg/direct.ts</code>).</p>
+        <p>Boot hazard: if kv <code>_seq</code> is missing, the app imports <code>/data/ironline.json</code>, which has not been written since the Postgres switch.</p>
+      </div>
+    </details>
+  </section>
+
+  <section id="campaign">
+    <div class="sec-head"><h2>The campaign</h2><span>Nine missions, in order</span></div>
+    <p>Each mission ships on its own, is rehearsed on the Training Grounds (staging) first, gets a copy in the vault before it goes live (a Railway snapshot and a git restore point), and has a retreat route if it goes wrong. A <b>turn</b> is one working session.</p>
+
+    <div class="route">
+      <div class="age">Age of Timber · secure the walls</div>
+
+      <article class="mission">
+        <span class="seal now">1</span>
+        <h3>Raise the Palisade</h3>
+        <p class="tagline">Nothing moves. We just stop losing couriers.</p>
+        <div class="loot"><span class="chip cost">2–3 turns</span><span class="chip risk-low">Risk: low</span><span class="chip">Clients notice: nothing</span></div>
+        <ul>
+          <li>A courier who trips is sent again until he arrives, and a horn sounds if several trip in a row.</li>
+          <li>When the Keep is about to restart, the Scribe sends every courier first, and writes anything unsent onto an emergency scroll.</li>
+          <li>At dawn, the Scribe refuses to start from an empty or half-burnt Archive instead of reading months-old scrolls.</li>
+          <li>One strange letter can no longer block every courier after it.</li>
+          <li>A full copy of the Archive goes to the vault every night, and we practise restoring it once.</li>
+        </ul>
+        <div class="unlock"><b>Unlocks</b>No lost saves on deploys or hiccups, and a real nightly backup.</div>
+        <details><summary>Boring details</summary><div class="boring">
+          <ul>
+            <li>Backoff timer re-running <code>writer.save()</code> while the last save failed; consecutive-failure counter and last good save on <code>/api/timing</code>; distinct Sentry alert after N failures.</li>
+            <li>Shutdown: on SIGTERM start <code>writer.save()</code> at once, end the SSE chat streams through chatBus so <code>server.close</code> can finish, save again before draining ends; if the last save fails write <code>/data/unsaved-&lt;ts&gt;.json</code> and alert. Railway draining ≥ 15 s. Staging test with a chat screen open.</li>
+            <li>Boot guards: refuse to start when <code>_seq</code> is missing but tables hold rows; refuse the JSON import in production unless <code>ALLOW_JSON_IMPORT=1</code>; raise each <code>_seq[table]</code> to ≥ MAX(id).</li>
+            <li>Poison guard in <code>store.ts fits()</code>: int32 range, NUL stripped, rows without a numeric id skipped and reported.</li>
+            <li>Refuse kv keys named like any table, past or present (a stray key would replace the table on the next boot).</li>
+            <li>Nightly <code>pg_dump</code> to the backup bucket (postgresql client in the image); one restore rehearsed on staging.</li>
+            <li>Rollback: revert the commit. No schema or data change.</li>
+          </ul>
+        </div></details>
+      </article>
+
+      <article class="mission">
+        <span class="seal">2</span>
+        <h3>Pave the Roads</h3>
+        <p class="tagline">The Scribe stops re-reading the whole library for small questions.</p>
+        <div class="loot"><span class="chip cost">2–3 turns</span><span class="chip risk-low">Risk: low</span><span class="chip">Clients notice: faster pages</span></div>
+        <ul>
+          <li>Client reminders stop running inside every page view and move to a clock.</li>
+          <li>The weight-progression chore only looks at workouts that changed, plus one full sweep at night.</li>
+          <li>The Feed, the chat list and the "needs you" counts are worked out in one pass per coach.</li>
+          <li>Saves only compare the shelves that actually changed.</li>
+        </ul>
+        <div class="unlock"><b>Unlocks</b>The app stays quick as coaches arrive, before any data moves.</div>
+        <details><summary>Boring details</summary><div class="boring">
+          <ul>
+            <li><code>applyDueClientReminders</code> out of <code>layout.tsx</code> render into an instrumentation interval.</li>
+            <li><code>applyDueProgramDeployments</code>: dirty assignment ids marked on every set write, edit and delete, plus a nightly full pass (a "last id" watermark would miss edits and deletes).</li>
+            <li><code>getActivityFeed</code> filtered to the coach's clients first; <code>listCoachAccounts</code> cached per request; <code>loadChatDock</code> and <code>coachNeeds</code> grouped in one pass.</li>
+            <li>Dirty-collection tracking so <code>snapshotOf</code> only stringifies what changed.</li>
+            <li>Push keys and reset tokens stay out of the coach export (security).</li>
+            <li>Verify: <code>/api/timing</code> before and after on staging; Feed, rail and Home output identical for 3 coaches.</li>
+          </ul>
+        </div></details>
+      </article>
+
+      <div class="age">Age of Stone · build the outposts</div>
+
+      <article class="mission">
+        <span class="seal">3</span>
+        <h3>Build the Training Grounds</h3>
+        <p class="tagline">A walled practice field with a copy of the kingdom, where nothing we do can touch real clients.</p>
+        <div class="loot"><span class="chip cost">1–2 turns + a night window</span><span class="chip risk-mid">Risk: medium</span><span class="chip">Clients notice: one short night stop, maybe</span></div>
+        <ul>
+          <li>A staging copy with its own storage and test keys: no real pushes, emails, invoices or photo deletions can leak out.</li>
+          <li>Check where the Archive stands. If it is far from the Keep (outside Europe), move it next door in one night window.</li>
+        </ul>
+        <div class="unlock"><b>Unlocks</b>Every later mission can be rehearsed safely first.</div>
+        <details><summary>Boring details</summary><div class="boring">
+          <ul>
+            <li>Staging restored from a prod dump with its own UPLOADS and BACKUP buckets, test-mode Stripe and Clerk, no push or mail keys, <code>RECURRING_INVOICES=off</code>, meeting reminders off, <code>TZ=Europe/Amsterdam</code>, <code>SKIP_SEED=1</code>, restricted access (health data and photos).</li>
+            <li>Relocation if needed: stop the app, <code>pg_dump</code> including the <code>drizzle</code> schema, restore, compare row counts and per-table md5, switch <code>DATABASE_URL</code>, start. The old database is a frozen backup; a rollback is a fresh dump back, not a pointer switch.</li>
+          </ul>
+        </div></details>
+      </article>
+
+      <article class="mission">
+        <span class="seal">4</span>
+        <h3>Forge the Seals</h3>
+        <p class="tagline">Groundwork, so scrolls can be written straight into the Archive later.</p>
+        <div class="loot"><span class="chip cost">2–3 turns</span><span class="chip risk-mid">Risk: medium</span><span class="chip">Clients notice: nothing</span></div>
+        <ul>
+          <li>The Archive numbers new scrolls itself, so two writers can never pick the same number.</li>
+          <li>The "don't send this twice" stamps live in the Archive, sealed together with the scroll they protect.</li>
+          <li>Times are written one clear way (today chat and set times use two formats).</li>
+          <li>While scrolls move, a deleted photo or video goes to a 30-day trash pit, never straight into the fire.</li>
+        </ul>
+        <div class="unlock"><b>Unlocks</b>Safe direct writes, with no duplicates and no lost media.</div>
+        <details><summary>Boring details</summary><div class="boring">
+          <ul>
+            <li>Postgres sequences for moving tables and their parents, <code>setval(MAX(id))</code> at every boot.</li>
+            <li><code>once_keys</code> into a real table, written in the same transaction as its row; empty nonce stored as NULL.</li>
+            <li>Real <code>timestamptz</code> columns backfilled with <code>stampMs</code>' rule (Europe/Amsterdam).</li>
+            <li>Every promotion out of <code>extra</code> backfills in SQL and is verified by counting rows still holding the field in <code>extra</code>; re-run on every roll-forward.</li>
+            <li>Media deletions to a trash prefix for 30 days; a failed reference check means keep.</li>
+          </ul>
+        </div></details>
+      </article>
+
+      <div class="age">Age of Iron · move the stores</div>
+
+      <article class="mission">
+        <span class="seal">5</span>
+        <h3>The Messenger Tower</h3>
+        <p class="tagline">Chat is the first store to move into the Archive. It becomes the model for all the rest.</p>
+        <div class="loot"><span class="chip cost">6–9 turns</span><span class="chip risk-mid">Risk: medium</span><span class="chip">Clients notice: one short night restart</span></div>
+        <ul>
+          <li>One gatekeeper owns all chat scrolls; every screen goes through him.</li>
+          <li>A week of <b>shadow scouting</b>: the new road runs silently beside the old one and every difference is written down. We only switch when the week is clean.</li>
+          <li>Switch at night. If anything is off, retreat to the previous version: the scrolls never left the Archive.</li>
+        </ul>
+        <div class="unlock"><b>Unlocks</b>The fastest-growing store leaves the Scribe's head, and we have a tested recipe.</div>
+        <details><summary>Boring details</summary><div class="boring">
+          <ul>
+            <li>4A: <code>chatStore</code> module owns <code>data.chat_messages</code> (still in memory); every read and write site re-pointed (incl. <code>editChatMessage</code>, <code>setChatMessageLink</code>).</li>
+            <li>4B: entry points fetch chat rows first, then compute synchronously; writes gain an await; mutations as single SQL statements (ON CONFLICT, jsonb_set) so concurrent reactions never lose one.</li>
+            <li>4C: shadow reads compared against the committed snapshot (<code>writer.last</code>), JSON canonicalised, sampled, with per-code-path counts; new write paths exercised on staging against a separate table. Exit: 7 clean days.</li>
+            <li>4D: night cut-over; table leaves COLLECTIONS, Data and emptyData with an explicit exclude list; ids kept (<code>chat-${id}</code> keys); nonce via ON CONFLICT on the new column; order by the real timestamp, then id. Rollback: previous build reloads the table at boot.</li>
+          </ul>
+        </div></details>
+      </article>
+
+      <article class="mission">
+        <span class="seal">6</span>
+        <h3>Clear the Health Caravans</h3>
+        <p class="tagline">Apple Health workouts are one giant scroll rewritten on every sync. Split it into proper rows.</p>
+        <div class="loot"><span class="chip cost">2 turns</span><span class="chip risk-low">Risk: low</span></div>
+        <details><summary>Boring details</summary><div class="boring"><p><code>health_workouts</code> is one kv value holding every client's newest 400 workouts; any sync rewrites it whole and every save re-stringifies all of kv. Move it to a table early; compare element counts against the blob; keep the blob until the shadow period ends.</p></div></details>
+      </article>
+
+      <article class="mission">
+        <span class="seal">7</span>
+        <h3>The Herald's Hall</h3>
+        <p class="tagline">Notifications and the activity log move next.</p>
+        <div class="loot"><span class="chip cost">5 turns</span><span class="chip risk-mid">Risk: medium</span></div>
+        <details><summary>Boring details</summary><div class="boring"><p><code>coach_activity</code>: index (client_id, created_at), a unique dedupe key for reminders, the chat↔notification match by text and ±5 s replaced by a stored message id set at write time and backfilled. 24 <code>logCoachActivity</code> callers, some inside synchronous jobs (recurring invoices): expect about 1.5× the first guess.</p></div></details>
+      </article>
+
+      <article class="mission">
+        <span class="seal">8</span>
+        <h3>The Granary and the Well</h3>
+        <p class="tagline">The food diary (with saved meals, saved days and meal photos, moved together), then check-in figures.</p>
+        <div class="loot"><span class="chip cost">8–10 turns</span><span class="chip risk-mid">Risk: medium</span></div>
+        <details><summary>Boring details</summary><div class="boring"><ul>
+          <li><code>food_entries</code> + <code>calorie_logs</code> + <code>food_days</code>, with <code>food_meals</code>, <code>saved_meals</code>, <code>meal_photos</code> together so using a saved meal stays one transaction; indexes (client_id, date), unique (client_id, date) on calorie_logs; <code>saved_meal_id</code> promoted.</li>
+          <li><code>metric_entries</code>: index (metric_definition_id, period), <code>source</code> promoted, a batch query for the reminder pass and healthSync's scans.</li>
+        </ul></div></details>
+      </article>
+
+      <div class="age">Age of Crowns · the last stronghold</div>
+
+      <article class="mission">
+        <span class="seal">9</span>
+        <h3>Siege of the Iron Logs</h3>
+        <p class="tagline">Logged sets, with workouts and session days. The biggest and most tangled store, so it goes last.</p>
+        <div class="loot"><span class="chip cost">12–18 turns</span><span class="chip risk-high">Risk: high</span><span class="chip">Clients notice: one short night restart</span></div>
+        <ul>
+          <li>Every set learns which client it belongs to.</li>
+          <li>Two weeks of shadow scouting instead of one.</li>
+          <li>The workout outbox (offline saving in the gym) keeps working throughout.</li>
+        </ul>
+        <div class="unlock"><b>Unlocks</b>The Scribe's head holds only small things. A second Keep becomes possible later.</div>
+        <details><summary>Boring details</summary><div class="boring"><ul>
+          <li><code>client_id</code> on set_logs set at write time and backfilled, re-backfilled at cutover; <code>gym_id</code> and <code>unit</code> promoted; indexes (client_id, logged_at) and workout_assignment_id.</li>
+          <li>Unique (workout_assignment_id, set number): the same migration deletes twins first (newest by logged_at, id), inserts become ON CONFLICT DO UPDATE, so boot never fails and outbox replays update.</li>
+          <li>Parents in memory get <code>await persistNow()</code> before a direct child insert (or sequences first), so a crash can never hand a parent id to another client.</li>
+          <li>63 references in 8 files; async spreads through workout_assignments (132) and program_days (127). Comparison scripts are their own work.</li>
+        </ul></div></details>
+      </article>
+    </div>
+  </section>
+
+  <section id="orders">
+    <div class="sec-head"><h2>Orders for the crown</h2><span>What only you can do</span></div>
+    <ul class="orders">
+      <li><svg><use href="#i-crown"/></svg><div><b>Approve each mission</b><p>Starting with mission 1, and each one after its rehearsal on the Training Grounds.</p></div></li>
+      <li><svg><use href="#i-crown"/></svg><div><b>Open the Training Grounds on Railway</b><p>Create the staging environment with me, and turn on Railway's own database backups.</p></div></li>
+      <li><svg><use href="#i-crown"/></svg><div><b>Keep one Keep</b><p>One server, with its storage volume attached, until the campaign is over.</p></div></li>
+      <li><svg><use href="#i-crown"/></svg><div><b>Grant the night windows</b><p>About 30 minutes if the Archive moves, and a few minutes' restart at night for each store that moves.</p></div></li>
+    </ul>
+  </section>
+
+  <section id="glossary">
+    <div class="sec-head"><h2>Translations from the old tongue</h2><span>Game word → real thing</span></div>
+    <div class="glossary">
+      <div><b>Scroll</b> <span>· one row of data: a set, a message, a meal</span></div>
+      <div><b>Royal Archive</b> <span>· the Postgres database on Railway</span></div>
+      <div><b>The Scribe</b> <span>· the copy of all data in the server's memory</span></div>
+      <div><b>The Keep</b> <span>· the one server the app runs on</span></div>
+      <div><b>Couriers</b> <span>· saves written from memory to Postgres</span></div>
+      <div><b>Training Grounds</b> <span>· the staging environment</span></div>
+      <div><b>The vault</b> <span>· backups and restore points</span></div>
+      <div><b>Shadow scouting</b> <span>· the new code runs silently beside the old and logs differences</span></div>
+      <div><b>A turn</b> <span>· one working session</span></div>
+      <div><b>Retreat route</b> <span>· the rollback for each step</span></div>
+    </div>
+  </section>
+
+  <footer>Drawn from a read-only survey of the code and checked by a second, hostile reader. The full written plan lives in the repository at docs/database-plan.md.</footer>
+</div>
