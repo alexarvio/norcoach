@@ -18,6 +18,7 @@ import ProgressPicturesScreen, { type ProgressPicturesProps, warmShapeUpdateBann
 import CoachProfileScreen from "./CoachProfileScreen";
 import { HealthAutoSync } from "./HealthSync";
 import MarkAnchor from "./MarkAnchor";
+import StableInset from "./StableInset";
 import { NativePush } from "./NativePush";
 import { NativeStatusBar } from "./NativeStatusBar";
 import { useKeyboardReveal } from "./keyboard";
@@ -284,11 +285,20 @@ export default function AppShell({
   const [, startTransition] = useTransition();
   // Opened from an exercise in the workout: the next message is about it.
   const [messageAbout, setMessageAbout] = useState<MessageAbout | null>(null);
+  // Read here the moment the chat opens (17 Nov): the dot stays off while the page as a whole is read again, and comes
+  // back only for a message the page says came in since.
+  const [chatReadHere, setChatReadHere] = useState(false);
+  const [unreadSeen, setUnreadSeen] = useState(chatUnread);
+  if (unreadSeen !== chatUnread) {
+    setUnreadSeen(chatUnread);
+    if (!chatUnread) setChatReadHere(false);
+  }
   const openMessages = (about?: MessageAbout) => {
     setMessageAbout(about && "link" in about ? about : null);
     setPushView("messages");
     // The client reading them, not a coach looking.
     if (readOnly) return;
+    setChatReadHere(true);
     startTransition(() => {
       markCoachNotesReadAction(clientId);
     });
@@ -597,6 +607,7 @@ export default function AppShell({
       <LinkProvider value={openLink}>
       {!readOnly && <HealthAutoSync />}
       <MarkAnchor />
+      <StableInset />
       {!readOnly && <NativeStatusBar />}
       {!readOnly && <NativePush />}
       <div
@@ -710,7 +721,7 @@ export default function AppShell({
                 <ChatIcon />
               </span>
               <span className="app-tab-label">Chat</span>
-              {chatUnread && pushView !== "messages" && <span className="app-tab-badge" aria-hidden="true" />}
+              {chatUnread && !chatReadHere && pushView !== "messages" && <span className="app-tab-badge" aria-hidden="true" />}
             </button>
           </nav>
           </div>

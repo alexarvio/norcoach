@@ -72,6 +72,11 @@ export type CoachMessagesProps = {
 // How often the thread asks for anything new while it is open.
 const POLL_MS = 15000;
 
+/** The thread as last read here (17 Nov, Alex: the chat took a couple of seconds to come up): the page's copy is as old as
+    the page, so opening the chat again shows the newest read at once, and reads again straight away. Kept only while
+    the page's copy is the same one it was read over; a newer page wins. */
+let lastRead: { clientId: number; from: CoachMessageView[]; rev: string; messages: CoachMessageView[] } | null = null;
+
 /** What a message is, in a word, when it has no words of its own. */
 const mediaWord = (m: CoachMessageView) =>
   !m.media ? "" : m.media.type === "image" ? "Photo" : m.media.type === "video" ? "Video" : m.media.type === "audio" ? "Voice message" : (m.media.name ?? "File");
@@ -112,7 +117,8 @@ export default function CoachMessagesScreen({ coachName, coachPhoto = null, myPh
   // chatThreadAction answers (a few kilobytes, every 15 s and after every
   // send), so nothing here draws the whole page again. A message just sent
   // sits at the foot as "sending" until the server's copy arrives.
-  const [thread, setThread] = useState<CoachMessageView[]>(fromPage);
+  const kept = lastRead && lastRead.clientId === clientId && lastRead.from === fromPage ? lastRead : null;
+  const [thread, setThread] = useState<CoachMessageView[]>(kept ? kept.messages : fromPage);
   const [seenFromPage, setSeenFromPage] = useState(fromPage);
   if (seenFromPage !== fromPage) {
     setSeenFromPage(fromPage);
@@ -120,8 +126,11 @@ export default function CoachMessagesScreen({ coachName, coachPhoto = null, myPh
   }
   // The revision the thread on screen is at (chatBus.ts): an unchanged chat sends nothing. A new copy from the page
   // has none, so the next read is a whole one.
-  const revRef = useRef<string | null>(null);
+  const revRef = useRef<string | null>(kept ? kept.rev : null);
+  const mountedFrom = useRef(fromPage);
   useEffect(() => {
+    if (mountedFrom.current === fromPage) return;
+    mountedFrom.current = fromPage;
     revRef.current = null;
   }, [fromPage]);
   const threadRef = useRef(thread);
@@ -149,9 +158,18 @@ export default function CoachMessagesScreen({ coachName, coachPhoto = null, myPh
       .then((r) => {
         if (!r) return;
         revRef.current = r.rev;
+        lastRead = { clientId, from: fromPageRef.current, rev: r.rev, messages: r.messages };
         took(r.messages);
       })
       .catch(() => {});
+  const fromPageRef = useRef(fromPage);
+  fromPageRef.current = fromPage;
+  // Read at once on opening (17 Nov, Alex): the page's copy can be minutes old, and the read is a few kilobytes on its
+  // own route, so the newest messages are there before the page as a whole is read again.
+  useEffect(() => {
+    void refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once a chat, on opening
+  }, [clientId]);
   // In real time (27 Oct, Alex): the coach's words, edits and reactions come in as they happen.
   useChatStream(clientId, () => void refresh());
   // Typing… and Seen (27 Oct, Alex): the other side typing shows over the box; Seen under your last message once
