@@ -32,6 +32,10 @@ const TOOLS: { id: Tool; icon: IconName; name: string }[] = [
 // The phone's palette: the laptop's colours a thumb needs.
 const PALETTE = ["#FFD60A", "#FF9F0A", "#FF453A", "#30D158", "#0A84FF", "#BF5AF2", "#FFFFFF", "#000000"].map((id) => COLORS.find((c) => c.id === id) ?? { id, name: id });
 const RATES = [1, 0.5, 0.25];
+// The camera bubble: its size and its room from the clip's corner on screen; the recording draws it in the same share.
+const CAM_KEY = "cph-camera";
+const BUBBLE = 76;
+const BUBBLE_INSET = 12;
 const clock = (s: number) => (Number.isFinite(s) ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}` : "0:00");
 
 
@@ -197,15 +201,59 @@ function Reviewer({ review, chat = null, onBack, onSent }: { review: Review; cha
     setLiveShape(null);
   };
 
-  // ---- The recorder: the clip, the drawing and the coach's voice, one video. No camera bubble on the phone.
+  // ---- The front camera (17 Nov, Alex: "toggle for coaches to turn on the front camera… so we also record ourselves…
+  // on the top right"): the coach's face in a round bubble at the clip's top right, in the recording too, as the
+  // laptop's camera bubble. Off until turned on; remembered on the phone.
+  const [camOn, setCamOn] = useState(false);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(CAM_KEY) === "1") Promise.resolve().then(() => setCamOn(true));
+    } catch {}
+  }, []);
+  const camVideo = useRef<HTMLVideoElement | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const [camStream, setCamStream] = useState<MediaStream | null>(null);
+  const [camDenied, setCamDenied] = useState(false);
+  useEffect(() => {
+    if (!camOn || !canRecord) return;
+    let live = true;
+    let got: MediaStream | null = null;
+    navigator.mediaDevices
+      ?.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 640 } }, audio: false })
+      .then((st) => {
+        if (!live) return st.getTracks().forEach((x) => x.stop());
+        got = st;
+        setCamStream(st);
+        setCamDenied(false);
+      })
+      .catch(() => live && setCamDenied(true));
+    return () => {
+      live = false;
+      got?.getTracks().forEach((x) => x.stop());
+      setCamStream(null);
+    };
+  }, [camOn, canRecord]);
+  const toggleCam = () => {
+    setCamOn((on) => {
+      try {
+        localStorage.setItem(CAM_KEY, on ? "0" : "1");
+      } catch {}
+      return !on;
+    });
+  };
+
+  // ---- The recorder: the clip, the drawing, the coach's voice and, with the camera on, their face, one video.
   const [micOn, setMicOnState] = useState(true);
   const recorder = useReviewRecorder({
     media: () => mediaEl.current,
     size: () => natural,
     shapes: () => (liveRef.current ? [...shapesRef.current, liveRef.current] : shapesRef.current),
     unit: () => unit,
-    camera: () => null,
-    bubble: () => ({ corner: "br", share: 0, inset: 0 }),
+    camera: () => (camOn && camStream ? camVideo.current : null),
+    bubble: () => {
+      const fw = Math.max(1, frameRef.current?.clientWidth ?? 1);
+      return { corner: "tr", share: BUBBLE / fw, inset: BUBBLE_INSET / fw };
+    },
   });
   const setMicOn = (on: boolean) => {
     setMicOnState(on);
@@ -351,7 +399,7 @@ function Reviewer({ review, chat = null, onBack, onSent }: { review: Review; cha
           // The recording just made (or a review already sent), to watch back.
           <video key={showing.url} className="cph-stage-own" src={showing.url} controls playsInline autoPlay={rec === "done"} />
         ) : (
-          <div className="cph-frame" style={{ "--r": natural.w / natural.h } as React.CSSProperties}>
+          <div ref={frameRef} className="cph-frame" style={{ "--r": natural.w / natural.h } as React.CSSProperties}>
             {isVideo ? (
               <video
                 ref={(el) => {
@@ -396,6 +444,22 @@ function Reviewer({ review, chat = null, onBack, onSent }: { review: Review; cha
                 );
               })}
             </svg>
+            {camOn && camStream && (
+              <div className="cph-cam" style={{ width: BUBBLE, height: BUBBLE, top: BUBBLE_INSET, right: BUBBLE_INSET }} role="img" aria-label="Your camera">
+                <video
+                  ref={(el) => {
+                    camVideo.current = el;
+                    if (el && el.srcObject !== camStream) {
+                      el.srcObject = camStream;
+                      void el.play().catch(() => {});
+                    }
+                  }}
+                  muted
+                  playsInline
+                  autoPlay
+                />
+              </div>
+            )}
           </div>
         )}
         </div>
@@ -526,6 +590,7 @@ function Reviewer({ review, chat = null, onBack, onSent }: { review: Review; cha
           </p>
         )}
         {recorder.problem && <p className="cph-error">{recorder.problem}</p>}
+        {camOn && camDenied && <p className="cph-error">Camera blocked</p>}
         {rec === "ready" && (
           <>
             <textarea className="cph-note" rows={1} value={words} placeholder={`Write to ${first}…`} aria-label={`Reply to ${first}`} onChange={(e) => setWords(e.target.value)} />
@@ -540,10 +605,20 @@ function Reviewer({ review, chat = null, onBack, onSent }: { review: Review; cha
               </div>
             ) : (
               canRecord && (
-                <button type="button" className="cph-pill ink" onClick={startRecording}>
-                  <i className="cph-recdot" aria-hidden="true" />
-                  Record review
-                </button>
+                <div className="cph-recstart">
+                  <button type="button" className="cph-pill ink" onClick={startRecording}>
+                    <i className="cph-recdot" aria-hidden="true" />
+                    Record review
+                  </button>
+                  <button type="button" className={`cph-round${micOn ? " ink" : ""}`} onClick={() => setMicOn(!micOn)} aria-pressed={micOn} aria-label={micOn ? "Mute the mic" : "Turn the mic on"}>
+                    <Icon name={micOn ? "mic" : "micoff"} />
+                    <RingEdge size={46} />
+                  </button>
+                  <button type="button" className={`cph-round${camOn ? " ink" : ""}`} onClick={toggleCam} aria-pressed={camOn} aria-label={camOn ? "Turn the camera off" : "Turn the camera on"}>
+                    <Icon name="video" />
+                    <RingEdge size={46} />
+                  </button>
+                </div>
               )
             )}
           </>

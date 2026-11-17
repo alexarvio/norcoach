@@ -380,7 +380,7 @@ export default function MediaReviewModal({ review, chat = null, onClose }: { rev
       void camVideo.current.play().catch(() => {});
     }
   }, [camStream]);
-  const [corner, setCorner] = useState<Corner>("br");
+  const [corner, setCorner] = useState<Corner>("tr");
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
   const bubbleDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
