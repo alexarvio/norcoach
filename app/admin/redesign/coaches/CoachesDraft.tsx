@@ -8,22 +8,21 @@ import { Toaster } from "../../../components/ui/toast";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
 import { PlusIcon } from "../../../components/icons";
 import { SepJoin } from "../Sep";
-import { dayMonth } from "../../../lib/dayMonth";
 import { ConfirmDialog } from "../training/TrainingDraft";
-import { addCoach, approveSignUp, declineSignUp, removeCoach, resetCoachPassword, type CoachOutcome } from "./actions";
+import { addCoach, removeCoach, resetCoachPassword, type CoachOutcome } from "./actions";
 import { setCoachPaysAction } from "../../../lib/billingActions";
 import type { SupportInboxRow } from "../../../lib/support";
 import SupportInbox from "./SupportInbox";
 
 // The owner's Coaches (22 Oct, Alex: the old /admin?view=coaches in the new style, root "rd trn rls rco"): Training's
-// bare header with Add coach as a white pill; the sign-ups waiting to be let in, the coaches' Support threads
+// bare header with Add coach as a white pill; the coaches' Support threads
 // (SupportInbox, 23 Oct), then every coach account, each a row
 // in one hairline card: the name semi-bold, the email grey, the clients, when one of them last logged something, the
-// password as a state pill, and the owner's actions in words on hover (Remove and Decline ask first). Add coach and
+// password as a state pill, and the owner's actions in words on hover (Remove asks first). No sign-ups to let in since
+// 17 Nov (Alex): a coach is in at once. Add coach and
 // Reset password are .dlh pop-ups on clean lines. Never any client's name or data. Ink, never navy; 500 and 600.
 
 export type CoachRow = { id: number; email: string; name: string; clients: number; lastActivity: string | null; mustChangePassword: boolean; owner: boolean; /** What they pay Norcoach (28 Oct; lib/billing.ts): whether they pay, and the state as its pill. */ pays: boolean; billing: { word: string; tone: string } };
-export type SignUpRow = { id: number; email: string; name: string; business: string | null; at: string };
 
 // The server's own check (createCoachAction), so Add waits for what it would accept.
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -47,16 +46,14 @@ async function settle(p: Promise<CoachOutcome>): Promise<CoachOutcome> {
 }
 
 const accountGrid = { gridTemplateColumns: "minmax(0, 1fr) 64px 132px 104px 124px 300px", columnGap: 16 } as const;
-const waitGrid = { gridTemplateColumns: "minmax(0, 1fr) 196px", columnGap: 16 } as const;
 
-export default function CoachesDraft({ accounts, waiting, support, billingOn = false }: { accounts: CoachRow[]; waiting: SignUpRow[]; /** The coaches' Support threads, newest first (SupportInbox). */ support: SupportInboxRow[]; /** Subscriptions set up on the server (lib/billing.ts): the owner can switch who pays. */ billingOn?: boolean }) {
+export default function CoachesDraft({ accounts, support, billingOn = false }: { accounts: CoachRow[]; /** The coaches' Support threads, newest first (SupportInbox). */ support: SupportInboxRow[]; /** Subscriptions set up on the server (lib/billing.ts): the owner can switch who pays. */ billingOn?: boolean }) {
   const router = useRouter();
   const [, start] = useTransition();
   const [busy, setBusy] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const [resetting, setResetting] = useState<CoachRow | null>(null);
   const [removing, setRemoving] = useState<CoachRow | null>(null);
-  const [declining, setDeclining] = useState<SignUpRow | null>(null);
 
   // A row's action: faded while it goes, then the page read again and the outcome in a toast.
   const act = (id: number, call: () => Promise<CoachOutcome>, done: string) => {
@@ -86,39 +83,6 @@ export default function CoachesDraft({ accounts, waiting, support, billingOn = f
           </button>
         </div>
       </header>
-
-      {/* ---- Who signed up themselves and waits to be let in. */}
-      {waiting.length > 0 && (
-        <section className="rls-section">
-          <div className="trn-weekhead">
-            <div>
-              <h2>Waiting for approval</h2>
-            </div>
-          </div>
-          <div className="rls-card rco-card">
-            {waiting.map((u) => (
-              <div key={u.id} className={`rls-row rco-row${busy === u.id ? " busy" : ""}`}>
-                <div className="rls-row-main" style={waitGrid}>
-                  <span className="rls-name">
-                    <b>{u.name}</b>
-                    <small>
-                      <SepJoin parts={[u.business, u.email, `signed up ${dayMonth(u.at)}`]} />
-                    </small>
-                  </span>
-                  <span className="rco-acts">
-                    <button type="button" className="rco-act danger" disabled={busy === u.id} onClick={() => setDeclining(u)}>
-                      Decline
-                    </button>
-                    <button type="button" className="rco-act ink" disabled={busy === u.id} onClick={() => act(u.id, () => approveSignUp(u.id), `${u.name} approved`)}>
-                      Approve
-                    </button>
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* ---- What the coaches wrote from Settings' Support: a coach a row, a thread opening under it. */}
       <SupportInbox initial={support} />
@@ -236,22 +200,6 @@ export default function CoachesDraft({ accounts, waiting, support, billingOn = f
               const c = removing;
               setRemoving(null);
               act(c.id, () => removeCoach(c.id), `${c.name} removed`);
-            }}
-          />
-        )}
-      </Dialog>
-
-      <Dialog open={declining != null} onOpenChange={(o) => !o && setDeclining(null)}>
-        {declining && (
-          <ConfirmDialog
-            title={`Decline ${declining.name}?`}
-            description="Their sign-up is deleted. This can’t be undone."
-            confirm="Decline"
-            danger
-            onConfirm={() => {
-              const u = declining;
-              setDeclining(null);
-              act(u.id, () => declineSignUp(u.id), `${u.name} declined`);
             }}
           />
         )}

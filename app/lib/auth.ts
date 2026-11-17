@@ -183,7 +183,7 @@ export async function requireCoach(): Promise<SessionUser> {
   // rather than bouncing them to the client app (see /login/switch).
   if (user.role !== "coach") redirect("/login/switch?to=coach");
   if (user.must_change_password) redirect("/login/change-password");
-  // Signed up, not yet let in by the owner.
+  // Signed up while the owner still let coaches in by hand: let in on the way (/auth/waiting → /auth/continue, 17 Nov).
   if (user.pending) redirect("/auth/waiting");
   // What they pay Norcoach (28 Oct, Alex; billing.ts): let in but not subscribed, the subscribe screen; a week unpaid,
   // read-only: every screen still reads, and a change (a server action's own body, or a form posted without one) takes

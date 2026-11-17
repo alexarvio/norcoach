@@ -20999,8 +20999,8 @@ select.st-details-input.st-details-input.st-details-input.empty { color: #98A2B3
 /* ---- The coach sign-up (17 Nov, Alex: B of docs/boards/coach-signup-mockup.html, "I definitely like B"): the website
    carries on. The dark is the website's own (website/site-bg.css, imported by SignInScreens.tsx), so a change to the
    site's background shows here too; this is only where things sit. On a laptop the dark beside the form on paper, on a
-   phone a short head with the screen's title over the paper, `.full` the dark alone (waiting for approval). The form
-   inside wears the sign-in card's parts (.au-card on .su-form, no card). Prefix su-. */
+   phone a short head with the screen's title over the paper. No waiting screen since 17 Nov (Alex: no approval). The
+   form inside wears the sign-in card's parts (.au-card on .su-form, no card). Prefix su-. */
 .su-page { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; background: #F5F6F8; font-family: var(--font-archivo), system-ui, sans-serif; font-weight: 500; color: #141a24; }
 /* The iPhone app never shrinks the page for the keyboard (§7): the page takes its room at its foot, as AuthShell does. */
 html.kb-open .su-page { padding-bottom: var(--kb, 0px); }
@@ -21021,15 +21021,6 @@ html.kb-open .su-page { padding-bottom: var(--kb, 0px); }
 .su-legal { display: flex; align-items: center; justify-content: center; gap: 10px; margin: auto 0 0; padding-top: 28px; font-size: 12px; font-weight: 500; color: #8b93a1; }
 .su-legal > .cl-sep { flex: none; margin: 0; }
 .su-legal a { color: #8b93a1; text-decoration: none; }
-/* Waiting: the paper goes and the dark fills the screen, the thanks in the site's hero voice, Sign out at the foot. */
-.su-page.full .su-band { flex: 1; padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 28px); }
-.su-page.full .su-head { margin-top: 44px; font-size: 32px; line-height: 1.04; letter-spacing: -0.03em; }
-.su-full { display: contents; }
-.su-wait { position: relative; max-width: 460px; margin: 18px 0 0; font-size: 15px; line-height: 1.5; color: var(--site-bg-text, #c7c7cc); }
-.su-wait b { font-weight: 600; color: #fff; overflow-wrap: anywhere; }
-.su-out { position: relative; margin: auto 0 0; padding-top: 32px; text-align: center; font-size: 14px; font-weight: 600; }
-.su-out a { color: var(--site-bg-text, #c7c7cc); text-decoration: none; }
-@media (hover: hover) { .su-out a:hover { color: #fff; } }
 @media (min-width: 900px) {
   .su-page { display: grid; grid-template-columns: minmax(380px, 42%) minmax(0, 1fr); }
   .su-page .su-band { position: sticky; top: 0; height: 100vh; height: 100dvh; padding: calc(var(--sat, 0px) + 36px) 48px 44px max(48px, env(safe-area-inset-left, 0px)); }
@@ -21046,12 +21037,6 @@ html.kb-open .su-page { padding-bottom: var(--kb, 0px); }
   .su-form { max-width: 360px; margin: auto; padding: 32px 0; }
   .su-title { display: block; margin: 0 0 22px; font-size: 26px; font-weight: 600; line-height: 1.2; letter-spacing: -0.015em; }
   .su-legal { margin-top: 0; padding-top: 0; }
-  .su-page.full { grid-template-columns: minmax(0, 1fr); }
-  .su-page.full .su-band { position: relative; height: auto; min-height: 100vh; min-height: 100dvh; padding: 36px 64px 44px; }
-  .su-page.full .su-band::before { width: 900px; height: 864px; right: -260px; top: -300px; }
-  .su-page.full .su-head { display: block; max-width: 12em; margin-top: auto; font-size: clamp(40px, 4.4vw, 64px); line-height: 1.02; letter-spacing: -0.035em; }
-  .su-wait { margin-top: 24px; font-size: 17px; }
-  .su-out { text-align: left; }
 }
 
 /* Every event wears its ring (27 Oct, Alex): one still to come a thin ring in its category's colour at the row's

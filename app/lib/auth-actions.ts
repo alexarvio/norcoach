@@ -30,6 +30,7 @@ import { sendCoachApprovedEmail } from "./mail";
 import { cookies } from "next/headers";
 import { clerkIdentity, clerkOn } from "./clerk";
 import { applySignUpDetails } from "./queries";
+import { letCoachIn } from "./coachSignUp";
 
 // Server actions for logging in and out, and for the coach handing a client
 // their credentials. Kept separate from actions.ts so the auth surface is
@@ -283,8 +284,9 @@ export async function declineCoachAction(formData: FormData) {
 
 /**
  * The "About you" step after a coach signs up through Clerk: makes their
- * account, which waits for the owner (their name and business ride on it
- * until then). Only for someone signed in to Clerk with no account here.
+ * account and lets them straight in (17 Nov, Alex: no approval; letCoachIn),
+ * on to the subscribe screen while coaches pay, then the welcome steps.
+ * Only for someone signed in to Clerk with no account here.
  */
 export async function finishCoachSignUpAction(formData: FormData) {
   if (!clerkOn()) redirect("/login");
@@ -295,7 +297,7 @@ export async function finishCoachSignUpAction(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim().slice(0, 80);
   const business = String(formData.get("business") ?? "").trim().slice(0, 120) || null;
   if (!name) redirect("/auth/coach-details?error=name");
-  if (!findUserByEmail(email)) createPasswordlessUser(email, "coach", null, { name, business });
+  if (!findUserByEmail(email)) letCoachIn(createPasswordlessUser(email, "coach", null, { name, business }).id);
   (await cookies()).delete("ironline_intent");
-  redirect("/auth/waiting");
+  redirect("/auth/continue");
 }

@@ -21,8 +21,6 @@ export function flows(firstClientId: number | null): Flow[] {
         { name: "Create a coach account", screen: "coach-signup" },
         { name: "The code from the email", screen: "code-coach" },
         { name: "About you", screen: "coach-details" },
-        { name: "Waiting for approval", screen: "waiting" },
-        { name: "The owner approves", screen: "approvals", note: "Your side, as owner" },
         { name: "First view", src: "/admin/redesign", note: "Yours; a new coach's has no clients" },
       ],
     },
