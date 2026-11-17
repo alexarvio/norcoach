@@ -291,11 +291,28 @@ function TypePicker({ value, onPick }: { value: EventTypeId; onPick: (id: EventT
       {EVENT_TYPES.map((x) => {
         const on = x.id === value;
         return (
-          <button key={x.id} type="button" role="radio" aria-checked={on} className={`evs-type${on ? " on" : ""}`} style={{ "--tc": x.color, "--trgb": x.rgb } as React.CSSProperties} onClick={() => onPick(x.id)}>
+          <button
+            key={x.id}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            className={`evs-type${on ? " on" : ""}`}
+            style={{ "--tc": x.color, "--trgb": x.rgb } as React.CSSProperties}
+            // Typing, the tiles step aside and the picked one is a slim row with Change (17 Nov, Alex: "why does it lock into
+            // one category"): a tap puts the keyboard away and every tile comes back.
+            onClick={() => {
+              if (document.documentElement.classList.contains("kb-open")) {
+                (document.activeElement as HTMLElement | null)?.blur?.();
+                return;
+              }
+              onPick(x.id);
+            }}
+          >
             <span className="evs-type-disc">
               <TypeIcon path={x.icon} fill={x.fill} size={20} stroke={2} />
             </span>
             {x.label}
+            {on && <span className="evs-type-change">Change</span>}
           </button>
         );
       })}
