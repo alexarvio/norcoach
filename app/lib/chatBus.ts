@@ -58,6 +58,34 @@ export function onChatChange(fn: Listener): () => void {
   return () => void bus.listeners.delete(fn);
 }
 
+// The open streams themselves (17 Nov, the safety net): on SIGTERM every one is ended (app/lib/shutdown.ts), else
+// these never-ending answers keep the server from closing and the last save from running. The screens open their
+// line again by themselves, on the new server. Kept beside the bus on globalThis (a bus from before has none yet).
+const streams = ((g as unknown as { __norcoachChatStreams?: Set<() => void> }).__norcoachChatStreams ??= new Set());
+const closing = g as unknown as { __norcoachChatClosing?: boolean };
+
+/** An open stream, with how to end it; returns the way to forget it once it ends by itself. */
+export function onChatStreamOpen(end: () => void): () => void {
+  streams.add(end);
+  return () => void streams.delete(end);
+}
+
+/** The server is shutting down: no new stream is opened. */
+export const chatStreamsClosing = () => !!closing.__norcoachChatClosing;
+
+/** Ends every open stream and refuses new ones; how many were ended. */
+export function endChatStreams(): number {
+  closing.__norcoachChatClosing = true;
+  const open = [...streams];
+  streams.clear();
+  for (const end of open) {
+    try {
+      end();
+    } catch {}
+  }
+  return open.length;
+}
+
 /** Still current: the screen already holds this revision, so nothing needs sending. */
 export const chatCurrent = (clientId: number, known: string | null | undefined) => !!known && known === chatRev(clientId);
 

@@ -15,6 +15,12 @@ export async function register() {
   // any request; in JSON mode this does nothing.
   const { initStore } = await import("./app/lib/pg/runtime");
   await initStore();
+  // On SIGTERM / SIGINT: save at once, end the chat streams, and hold the exit until the last save is in (17 Nov).
+  // Not in `next build`'s prerender workers (which run register too): Ctrl+C there must not wait 12 s.
+  if (process.env.NEXT_PHASE !== "phase-production-build") {
+    const { registerShutdown } = await import("./app/lib/shutdown");
+    registerShutdown();
+  }
   // Storage bucket on (UPLOADS_STORE=bucket): copy any files the bucket does
   // not have yet, in the background so the server starts straight away.
   const { copyDiskUploadsToBucket } = await import("./app/lib/storage");
@@ -59,7 +65,11 @@ export async function register() {
   const run = async (why: string) => {
     try {
       const r = await runBackup();
-      if (r) console.log(`[backup] ${why}: ${r.snapshot}, uploads +${r.uploadsCopied} (${r.uploadsSkipped} already there), pruned ${r.pruned}`);
+      if (r)
+        console.log(
+          `[backup] ${why}: ${r.snapshot}, uploads +${r.uploadsCopied} (${r.uploadsSkipped} already there), pruned ${r.pruned}` +
+            (r.pg ? `; Postgres ${r.pg.prefix}: ${r.pg.tables} tables, ${r.pg.rows} rows, pruned ${r.pg.pruned}` : "")
+        );
     } catch (e) {
       console.error(`[backup] ${why} failed:`, e instanceof Error ? e.message : e);
     }

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getRequestUser } from "../../lib/auth";
 import { memoryReport, timingReport } from "../../lib/timing";
 import { bucketProbe, storageStats } from "../../lib/storage";
+import { STORE_MODE } from "../../lib/db";
+import { storeHealth } from "../../lib/pg/health";
 
 // The admin screens' server render times (23 Oct; app/lib/timing.ts): the last 200 renders newest first, and per
 // screen and per label the count, median and p90 ms. Any signed-in coach (23 Oct: the owner's email on Railway is not the
@@ -18,5 +20,9 @@ export async function GET(request: Request) {
   // How far the uploads bucket is, asked now (25 Oct): its host and three small asks in ms.
   const bucket = await bucketProbe().catch(() => null);
   // The process's and the container's memory, in MB (4 Nov, Alex: memory is most of the bill; app/lib/timing.ts).
-  return NextResponse.json({ memory: memoryReport(), bucket, storage: await storageStats(), ...timingReport() }, { headers: { "Cache-Control": "no-store" } });
+  // How the Postgres saves are doing (17 Nov): failures in a row, the last save that went through, a retry waiting.
+  return NextResponse.json(
+    { memory: memoryReport(), bucket, storage: await storageStats(), store: { mode: STORE_MODE, ...storeHealth() }, ...timingReport() },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }

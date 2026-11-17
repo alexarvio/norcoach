@@ -738,3 +738,11 @@ export const COLLECTIONS = [
   { name: "client_reports", table: client_reports, key: ["id"] },
   { name: "client_preferences", table: client_preferences, key: ["client_id"] },
 ] as const;
+
+/**
+ * Names that are tables, never a key in `kv` (17 Nov): a kv row named like a collection would replace that collection
+ * on the next boot (kv loads after the tables). The collections are added to this by store.ts; here are the tables
+ * outside COLLECTIONS, and kv itself. A collection that ever leaves COLLECTIONS (to be queried directly) keeps its name
+ * on this list, so a stray copy of it is never written to kv either.
+ */
+export const TABLE_NAMES_NOT_IN_KV = ["kv", "push_subscriptions", "password_resets"] as const;

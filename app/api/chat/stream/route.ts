@@ -1,5 +1,5 @@
 import { getRequestUser } from "../../../lib/auth";
-import { onChatChange } from "../../../lib/chatBus";
+import { chatStreamsClosing, onChatChange, onChatStreamOpen } from "../../../lib/chatBus";
 import { coachOwnsClient } from "../../../lib/tenancy";
 
 // Chats in real time (27 Oct, Alex): one open line a screen (server-sent events). It says which chat changed and its
@@ -16,6 +16,11 @@ export async function GET(request: Request) {
   // From the request: the proxy does not run here, so Clerk's auth() cannot (12 Oct).
   const user = await getRequestUser(request);
   if (!user || user.must_change_password || user.pending) return new Response("Not found", { status: 404 });
+  // Shutting down (17 Nov): a line that ends at once, so the screen opens it again in a few seconds, on the new server
+  // (an error answer would make the browser give up on it).
+  if (chatStreamsClosing()) {
+    return new Response(`retry: 3000\n\n`, { headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform" } });
+  }
   const hears = user.role === "coach" ? (clientId: number) => coachOwnsClient(user.id, clientId) : (clientId: number) => clientId === user.client_id;
 
   const encoder = new TextEncoder();
@@ -23,11 +28,13 @@ export async function GET(request: Request) {
   // once (27 Oct: writing to a line already closed threw outside the request).
   let closed = false;
   let off = () => {};
+  let forget = () => {};
   let beat: ReturnType<typeof setInterval> | null = null;
   const end = () => {
     if (closed) return;
     closed = true;
     off();
+    forget();
     if (beat) clearInterval(beat);
   };
   const stream = new ReadableStream<Uint8Array>({
@@ -46,6 +53,16 @@ export async function GET(request: Request) {
         if (hears(clientId)) say(`data: ${JSON.stringify(typing ? { c: clientId, r: rev, t: typing } : { c: clientId, r: rev })}\n\n`);
       });
       beat = setInterval(() => say(`: beat\n\n`), BEAT_MS);
+      // The server shutting down ends the line, so it can close (17 Nov; app/lib/shutdown.ts).
+      forget = onChatStreamOpen(() => {
+        const was = closed;
+        end();
+        if (!was) {
+          try {
+            controller.close();
+          } catch {}
+        }
+      });
       request.signal.addEventListener("abort", () => {
         const was = closed;
         end();
