@@ -317,10 +317,6 @@ html.cph-locked .cph-stage { touch-action: none; }
 .cph-ent > .cph-ent-foot { position: sticky; bottom: 0; z-index: 2; margin-top: auto; background: #fff; }
 .cph-ent { display: flex; flex-direction: column; padding: 2px 12px 4px; }
 .cph-ent-title { margin: 0 4px 6px; font-size: 18px; font-weight: 600; }
-/* With on a Client call or Training alone, Link on a Client call alone; on any other category the row goes and what is
-   under it moves up (25 Oct, Alex: "instead of… having that blank space, just rearrange the rest of the screen"). */
-.cph-ent-withrow { display: flex; flex-direction: column; }
-.cph-ent-withrow.off { display: none; }
 .cph-ent-label { display: block; margin: 14px 4px 6px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #5b6474; }
 .cph-ent-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .cph-ent-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-width: 0; height: 60px; padding: 0 4px; border-radius: 14px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; font-size: 12.5px; color: #141a24; transition: background 0.2s ease, color 0.2s ease; }
@@ -337,14 +333,45 @@ html.cph-locked .cph-stage { touch-action: none; }
 .cph-ent-box[aria-invalid="true"] { box-shadow: inset 0 0 0 1px #b8471f; }
 .cph-ent-labelrow { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .cph-ent-bad { font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; color: #b8471f; }
-.cph-ent-with b { flex: 1; min-width: 0; overflow: hidden; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
-.cph-ent-with > .cph-ico { color: #98A2B3; }
-.cph-ent-quiet { color: #98A2B3; }
-.cph-ent-act { flex: none; font-size: 13px; font-weight: 600; color: #5b6474; }
-.cph-ent-pick { font-variant-numeric: tabular-nums; }
-.cph-ent-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
-.cph-ent-times-row { display: grid; grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr); align-items: end; gap: 6px; }
-.cph-ent-arrow { display: flex; justify-content: center; height: 46px; align-items: center; color: #C9CFD8; }
+/* Title with the client and the link as 46px squares on its row (17 Nov, Alex: option 2 of
+   docs/boards/coach-entry-title-mockup.html), one height, radius and hairline; ink-edged once set. A square not offered
+   is gone and the title takes the row. One grey line under the row once either is set. */
+.cph-ent-titlerow { display: flex; gap: 8px; }
+.cph-ent-titlerow > input { flex: 1; }
+.cph-ent-sq.cph-ent-sq { flex: none; justify-content: center; width: 46px; padding: 0; color: #8b93a1; }
+.cph-ent-sq.set { box-shadow: inset 0 0 0 1.5px #141a24; color: #141a24; }
+.cph-ent-sq[data-bad] { box-shadow: inset 0 0 0 1.5px #b8471f; color: #b8471f; }
+.cph-ent-sq:active { background: #F5F6F8; }
+.cph-ent-setline { min-height: 17px; margin: 8px 4px 0; overflow: hidden; font-size: 12.5px; line-height: 17px; color: #8b93a1; white-space: nowrap; text-overflow: ellipsis; }
+.cph-ent-setline .cph-ent-bad { font-size: 12.5px; }
+/* When (17 Nov, Alex: B of docs/boards/coach-entry-mockup.html): the date box (the calendar on its icon, typed in the
+   rest) and All day as a switch on its row; the switch's knob eases 250ms on the shared curve (design rules 6). */
+.cph-ent-whenrow { display: flex; align-items: center; gap: 14px; }
+.cph-ent-date { flex: 1; gap: 2px; padding: 0 12px 0 2px; font-variant-numeric: tabular-nums; }
+.cph-ent-date:focus-within { box-shadow: inset 0 0 0 1px #141a24; }
+.cph-ent-date.bad { box-shadow: inset 0 0 0 1px #b8471f; }
+.cph-ent-date input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: none; font: inherit; font-size: 16px; color: #141a24; }
+.cph-ent-date input::placeholder { color: #98A2B3; }
+.cph-ent-cal { display: flex; flex: none; align-items: center; justify-content: center; width: 40px; height: 44px; color: #8b93a1; }
+.cph-ent-allday { display: flex; flex: none; align-items: center; gap: 10px; height: 46px; padding: 0 2px; font-size: 14px; color: #3a4250; }
+.cph-ent .cph-switch { transition: background 0.25s ease, box-shadow 0.25s ease; }
+.cph-ent .cph-switch i { transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), background 0.25s ease; }
+/* The times as big light numerals, the arrow faint between; the lengths' capsule under them. */
+.cph-ent-timefold .so-fold-in { display: flex; flex-direction: column; }
+.so-fold.so-fold.cph-ent-timefold.still, .cph-ent-timefold.still * { transition: none; }
+/* The lengths' capsule at the app's capsule size (36px, 3px of air; B of docs/boards/coach-entry-mockup.html). */
+.cph-ent .cph-seg { height: 36px; padding: 3px; }
+.cph-ent .cph-seg button { height: 30px; }
+.cph-ent-range { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 4px 10px; }
+.cph-ent-end { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; padding: 0; text-align: left; color: #141a24; }
+.cph-ent-end.right { align-items: flex-end; text-align: right; }
+.cph-ent-end small { font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #8b93a1; }
+.cph-ent-end b { font-size: 34px; font-weight: 300; line-height: 1.05; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.cph-ent-end:active b { color: #5b6474; }
+.cph-ent-arrow { display: flex; align-items: center; justify-content: center; padding-top: 16px; color: #C9CFD8; }
+/* The link's own page of the sheet. */
+.cph-ent-page { display: flex; flex-direction: column; padding: 0 12px 4px; }
+.cph-ent-page > .cph-ent-label:first-child { margin-top: 4px; }
 /* Choices in a row: white with the hairline, the chosen one ink (design rules 6). */
 .cph-seg { display: flex; gap: 2px; height: 46px; padding: 4px; box-sizing: border-box; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; }
 .cph-seg button { flex: 1; min-width: 0; height: 38px; border-radius: 999px; font-size: 13px; font-weight: 600; color: #5b6474; white-space: nowrap; transition: background 0.2s ease, color 0.2s ease; }

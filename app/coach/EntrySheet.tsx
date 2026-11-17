@@ -8,9 +8,10 @@ import { callLink, isClientCall, takesClient } from "../lib/calendarKinds";
 import { dayMonth } from "../lib/dayMonth";
 import { newOnceKey } from "../lib/onceKey";
 import { MonthRange } from "../admin/redesign/MonthRange";
+import { maskDate, typedDate } from "../admin/redesign/DateText";
 import { paletteOf, type Category } from "../admin/redesign/palette";
 import type { PhoneEntry } from "./calendar";
-import { Avatar, Icon, Sheet } from "./parts";
+import { Avatar, Facts, Icon, Sheet } from "./parts";
 
 // The Calendar's entry on the phone, added or changed (22 Oct): the laptop's
 // entry pop-up (calendar/EntryDialog.tsx) for a thumb, written with the same
@@ -26,6 +27,10 @@ import { Avatar, Icon, Sheet } from "./parts";
 // on any other category the row keeps its room unseen, and no client is saved.
 // Link is a call's alone (25 Oct, Alex), the link the Meetings tab's Join opens: typed on a Client call, its room
 // kept unseen on the rest as With's, and saved with the entry (none on any other category).
+// 17 Nov, Alex (docs/boards/coach-entry-mockup.html B, coach-entry-title-mockup.html 2): Title with the client and
+// the link as two square buttons on its row (each its own page of the sheet), one grey line under it once either is
+// set; When the date typed or picked with All day as a switch beside it; the start and end as big light numerals, the
+// length as the capsule under them, Other for an end of its own; All day folds the times away on the shared fold.
 
 /** A preset category's icon, its placeholder and its usual length, as the laptop's pop-up has them. A coach's own category wears the tag. */
 export const ENTRY_PRESET: Record<string, { icon: string; placeholder: string; length: number }> = {
@@ -70,7 +75,34 @@ export function CatIcon({ d, size = 18 }: { d: string; size?: number }) {
 
 export type EntryOpen = { entry: PhoneEntry | null; date: string; time: string };
 type Client = { id: number; name: string; avatarPath: string | null };
-type Page = "form" | "with" | "date" | "start" | "end";
+type Page = "form" | "with" | "link" | "date" | "start" | "end";
+/** The day as the field shows it while typing: dd/mm/yyyy (DateText's format). */
+const typedShown = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+/** The day typed: a whole date, or dd/mm alone in the year that puts it nearest the day it held (05/01 typed over
+ *  28/12/2026 is 05/01/2027, never almost a year back). */
+const dayTyped = (raw: string, held: string): string | null => {
+  const whole = typedDate(raw);
+  if (whole) return whole;
+  const r = /^\s*(\d{1,2})[/.\- ](\d{1,2})[/.\- ]?\s*$/.exec(raw);
+  if (!r) return null;
+  const y = Number(held.slice(0, 4));
+  const at = new Date(`${held}T12:00:00`).getTime();
+  const near = [y - 1, y, y + 1]
+    .map((yy) => typedDate(`${r[1]}/${r[2]}/${yy}`))
+    .filter((d): d is string => d != null)
+    .sort((a, b) => Math.abs(new Date(`${a}T12:00:00`).getTime() - at) - Math.abs(new Date(`${b}T12:00:00`).getTime() - at));
+  return near[0] ?? null;
+};
+/** A link's site alone, never the URL (25 Oct, Alex): meet.google.com. */
+const linkHost = (url: string | null) => {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+};
+const PERSON_ICON = "M12 12a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM5 19.5c1.2-3.3 3.8-5 7-5s5.8 1.7 7 5";
 
 export default function EntrySheet({
   open,
@@ -110,6 +142,11 @@ export default function EntrySheet({
   const [note, setNote] = useState(e?.note ?? "");
   const [link, setLink] = useState(e?.link ?? "");
   const [page, setPage] = useState<Page>("form");
+  // The date being typed (DateText's way: digits, the slashes filling in); null shows the day it holds.
+  const [dateTyping, setDateTyping] = useState<string | null>(null);
+  // A date typed that can't be read, left on the field: it stays on screen in rust and holds Add back, so the entry
+  // never saves on the old day without a word.
+  const [dateUnread, setDateUnread] = useState(false);
   const [q, setQ] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -135,12 +172,27 @@ export default function EntrySheet({
     setFullH(form.current.scrollHeight);
     setMeasuring(false);
   }, [measuring]);
+  // The times' fold is drawn as it was left (design rules 7): no easing while it is measured open and set back, only
+  // a tap on All day eases it. Two frames, so the closed fold is painted before its transition comes back.
+  const [still, setStill] = useState(true);
+  useEffect(() => {
+    if (measuring) return;
+    let b = 0;
+    const a = requestAnimationFrame(() => (b = requestAnimationFrame(() => setStill(false))));
+    return () => (cancelAnimationFrame(a), cancelAnimationFrame(b));
+  }, [measuring]);
   const linkBad = withLink && !!link.trim() && callLink(link) == null;
-  const ok = !!date && (allDay || !!time) && !linkBad;
+  const ok = !!date && (allDay || !!time) && !linkBad && !dateUnread;
   // A client picked with no title yet: the laptop's suggestion, kept when nothing is typed.
   // Words alone, as the laptop's (16 Nov, Alex: the audit): `Call with Anna`, `Training with Anna`.
   const suggested = client && !topic.trim() ? `${!current || isClientCall(current.id) ? "Call" : current.label} with ${first(client.name)}` : null;
   const title = topic.trim() || suggested || "";
+  const host = withLink ? linkHost(callLink(link)) : null;
+  // The one grey line under the title's row, once a client or a link is set: `With Alex Arvio | meet.google.com`.
+  const setLine = [client ? `With ${client.name}` : null, host, linkBad ? <span className="cph-ent-bad">Not a link yet</span> : null];
+  const hasSetLine = setLine.some(Boolean);
+  const dateComplete = dateTyping != null && dateTyping.replace(/\D/g, "").length >= 8;
+  const dateBad = dateUnread || (dateComplete && typedDate(dateTyping) == null);
 
   // Overlaps with the day's other entries, as a warning only (the laptop's line).
   const overlap = useMemo(() => {
@@ -161,6 +213,8 @@ export default function EntrySheet({
   const failedAdd = useRef<{ what: string; key: string } | null>(null);
   const save = async () => {
     if (!ok || !title || saving) return;
+    // A date still being typed that can't be read never saves on the old day.
+    if (dateTyping != null && dateTyping.trim() && dayTyped(dateTyping, date) == null) return void setDateUnread(true);
     setSaving(true);
     setError(null);
     // The time is in this phone's timezone, as every time on the Calendar reads.
@@ -229,6 +283,51 @@ export default function EntrySheet({
       </Sheet>
     );
 
+  // The link, pasted on a page of its own (17 Nov, Alex: the chain on the title's row); one not a link yet says so on
+  // its label's line and rings the box rust, and Done waits for a real one (or none).
+  if (page === "link" && withLink)
+    return (
+      <Sheet onClose={onClose} label="Link">
+        <div className="cph-ent-sub">
+          {back}
+          <h2>Link</h2>
+        </div>
+        <div className="cph-ent-page">
+          <label className="cph-ent-label cph-ent-labelrow" htmlFor="cph-ent-link">
+            Link
+            {linkBad && <span className="cph-ent-bad">Not a link yet</span>}
+          </label>
+          <input
+            id="cph-ent-link"
+            className="cph-ent-box"
+            type="url"
+            inputMode="url"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            autoFocus
+            value={link}
+            onChange={(x) => setLink(x.target.value)}
+            onKeyDown={(x) => x.key === "Enter" && !linkBad && setPage("form")}
+            placeholder="https://meet.google.com/abc-defg-hij"
+            maxLength={500}
+            enterKeyHint="done"
+            aria-invalid={linkBad || undefined}
+          />
+          <div className="cph-ent-foot">
+            {link.trim() && (
+              <button type="button" className="cph-text-btn" onClick={() => setLink("")}>
+                Clear
+              </button>
+            )}
+            <button type="button" className="cph-pill ink small" disabled={linkBad} onClick={() => setPage("form")}>
+              Done
+            </button>
+          </div>
+        </div>
+      </Sheet>
+    );
+
   if (page === "date")
     return (
       <Sheet onClose={onClose} label="Date">
@@ -242,6 +341,8 @@ export default function EntrySheet({
             to={date}
             onPick={(d) => {
               setDate(d);
+              setDateTyping(null);
+              setDateUnread(false);
               setCursor(d.slice(0, 7));
               setPage("form");
             }}
@@ -258,8 +359,9 @@ export default function EntrySheet({
 
   if (page === "start" || page === "end") {
     const isEnd = page === "end";
-    const list = isEnd ? QUARTERS.filter((t) => toMin(t) > toMin(time)) : QUARTERS;
-    const on = isEnd ? hhmm(endMin) : time;
+    // The ends run to midnight (24:00, read 00:00), so a late start always has one to pick and the page is never empty.
+    const list = isEnd ? [...QUARTERS.map(toMin), 24 * 60].filter((m) => m > toMin(time)) : QUARTERS.map(toMin);
+    const on = isEnd ? endMin : toMin(time);
     return (
       <Sheet onClose={onClose} label={isEnd ? "Ends" : "Starts"} className="tall">
         <div className="cph-ent-sub">
@@ -267,20 +369,24 @@ export default function EntrySheet({
           <h2>{isEnd ? "Ends" : "Starts"}</h2>
         </div>
         <div className="cph-ent-scroll cph-ent-times">
-          {list.map((t) => (
+          {list.map((m) => (
             <button
-              key={t}
-              ref={t === on ? pickedTime : undefined}
+              key={m}
+              ref={m === on ? pickedTime : undefined}
               type="button"
-              className={`cph-ent-time${t === on ? " on" : ""}`}
-              aria-pressed={t === on}
+              className={`cph-ent-time${m === on ? " on" : ""}`}
+              aria-pressed={m === on}
               onClick={() => {
-                if (isEnd) setLength(toMin(t) - toMin(time));
-                else setTime(t);
+                if (isEnd) {
+                  // An end of its own is Other, unless it lands on one of the lengths.
+                  const l = m - toMin(time);
+                  setLength(l);
+                  setCustomLength(!LENGTHS.includes(l));
+                } else setTime(hhmm(m));
                 setPage("form");
               }}
             >
-              {t}
+              {hhmm(m)}
             </button>
           ))}
         </div>
@@ -307,111 +413,121 @@ export default function EntrySheet({
         </div>
 
         <label className="cph-ent-label" htmlFor="cph-ent-what">
-          What
+          Title
         </label>
-        <input id="cph-ent-what" className="cph-ent-box" value={topic} onChange={(x) => setTopic(x.target.value)} placeholder={suggested ?? ENTRY_PRESET[cat]?.placeholder ?? "What is it?"} maxLength={80} enterKeyHint="done" />
+        {/* Title with the client and the link as square buttons on its row (17 Nov, Alex: option 2 of
+            docs/boards/coach-entry-title-mockup.html). The client only on a Client call or Training (23 Oct, Alex), the
+            link only on a Client call (25 Oct, Alex); a square not offered goes and the title takes its room. */}
+        <div className="cph-ent-titlerow">
+          <input id="cph-ent-what" className="cph-ent-box" value={topic} onChange={(x) => setTopic(x.target.value)} placeholder={suggested ?? ENTRY_PRESET[cat]?.placeholder ?? "What is it?"} maxLength={80} enterKeyHint="done" />
+          {withClient && (
+            <button type="button" className={`cph-ent-box cph-ent-sq${client ? " set" : ""}`} onClick={() => setPage("with")} aria-label={client ? `With ${client.name}` : "Pick a client"}>
+              {client ? <Avatar name={client.name} src={client.avatarPath} size={26} /> : <CatIcon d={PERSON_ICON} />}
+            </button>
+          )}
+          {withLink && (
+            <button type="button" className={`cph-ent-box cph-ent-sq${host ? " set" : ""}`} onClick={() => setPage("link")} aria-label={linkBad ? "Link, not a link yet" : host ? `Link, ${host}` : "Add a link"} data-bad={linkBad || undefined}>
+              <Icon name="link" size={18} />
+            </button>
+          )}
+        </div>
+        {/* Only once set; its room kept while the sheet is measured, so it never makes the sheet grow. */}
+        {(hasSetLine || measuring) && (
+          <p className="cph-ent-setline">
+            <Facts parts={setLine} />
+            {!hasSetLine && " "}
+          </p>
+        )}
 
-        {/* With on a Client call or Training alone (23 Oct, Alex); on any other category it keeps its room unseen (not
-            read out, not reached), so tapping tiles never makes the sheet jump, as the laptop's pop-up. */}
-        <div className={`cph-ent-withrow${withClient || measuring ? "" : " off"}`} aria-hidden={withClient ? undefined : true} inert={!withClient}>
-          <span className="cph-ent-label">With</span>
-          <button type="button" className="cph-ent-box cph-ent-with" onClick={() => setPage("with")}>
-            {client ? (
-              <>
-                <Avatar name={client.name} src={client.avatarPath} size={26} />
-                <b>{client.name}</b>
-                <span className="cph-ent-act">Change</span>
-              </>
-            ) : (
-              <>
-                <Icon name="search" small />
-                <span className="cph-ent-quiet">Pick a client</span>
-              </>
-            )}
+        {/* When (17 Nov, Alex: B of docs/boards/coach-entry-mockup.html): the date typed or picked, the calendar on its
+            icon (DatePick's way), and All day as a switch beside it, no Timed | All day. */}
+        <span className="cph-ent-label">When</span>
+        <div className="cph-ent-whenrow">
+          <div className={`cph-ent-box cph-ent-date${dateBad ? " bad" : ""}`}>
+            <button type="button" className="cph-ent-cal" onClick={() => setPage("date")} aria-label="Pick the date">
+              <Icon name="calendar" size={18} />
+            </button>
+            <input
+              value={dateTyping ?? shortDay(date)}
+              inputMode="numeric"
+              placeholder="dd/mm/yyyy"
+              aria-label="Date"
+              aria-invalid={dateBad || undefined}
+              enterKeyHint="done"
+              onFocus={(x) => {
+                const el = x.currentTarget;
+                // A date left unread comes back as it was typed, to fix; else the day it holds.
+                if (!dateUnread) setDateTyping(typedShown(date));
+                requestAnimationFrame(() => el.select());
+              }}
+              onChange={(x) => {
+                const next = maskDate(x.target.value, dateTyping ?? "");
+                setDateTyping(next);
+                const d = typedDate(next);
+                if (d) {
+                  setDate(d);
+                  setCursor(d.slice(0, 7));
+                  setDateUnread(false);
+                }
+              }}
+              onBlur={() => {
+                const typed = dateTyping?.trim() ?? "";
+                const d = typed ? dayTyped(typed, date) : null;
+                if (d) {
+                  setDate(d);
+                  setCursor(d.slice(0, 7));
+                }
+                // Read, or emptied: the day it holds shows again. Typed and not a day: it stays, in rust, holding Add.
+                setDateUnread(!!typed && !d);
+                if (d || !typed) setDateTyping(null);
+              }}
+              onKeyDown={(x) => x.key === "Enter" && x.currentTarget.blur()}
+            />
+          </div>
+          <button type="button" role="switch" aria-checked={allDay} className="cph-ent-allday" onClick={() => setAllDay((v) => !v)}>
+            All day
+            <span className={`cph-switch${allDay ? " on" : ""}`} aria-hidden="true">
+              <i />
+            </span>
           </button>
         </div>
 
-        {/* Link on a Client call alone (25 Oct, Alex), its room kept unseen on the rest as With's. One not a link yet says
-            so on its label's line and rings the box rust, so nothing under it moves. */}
-        <div className={`cph-ent-withrow${withLink || measuring ? "" : " off"}`} aria-hidden={withLink ? undefined : true} inert={!withLink}>
-          <label className="cph-ent-label cph-ent-labelrow" htmlFor="cph-ent-link">
-            Link
-            {linkBad && <span className="cph-ent-bad">Not a link yet</span>}
-          </label>
-          <input
-            id="cph-ent-link"
-            className="cph-ent-box"
-            type="url"
-            inputMode="url"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            value={link}
-            onChange={(x) => setLink(x.target.value)}
-            placeholder="https://meet.google.com/abc-defg-hij"
-            maxLength={500}
-            enterKeyHint="done"
-            aria-invalid={linkBad || undefined}
-          />
-        </div>
-
-        <div className="cph-ent-two">
-          <div>
-            <span className="cph-ent-label">Date</span>
-            <button type="button" className="cph-ent-box cph-ent-pick" onClick={() => setPage("date")} aria-label={`Date, ${shortDay(date)}`}>
-              {shortDay(date)}
-            </button>
-          </div>
-          <div>
-            <span className="cph-ent-label">When</span>
-            <div className="cph-seg" role="radiogroup" aria-label="Timed or all day">
-              <button type="button" role="radio" aria-checked={!allDay} className={allDay ? "" : "on"} onClick={() => setAllDay(false)}>
-                Timed
+        {/* The times, big: the start and end as light numerals, a tap on either picks it; the lengths as the capsule
+            under them, Other for an end of its own. All day folds them away on the shared fold (open while measured). */}
+        <div className={`so-fold cph-ent-timefold${!allDay || measuring ? " open" : ""}${still ? " still" : ""}`} aria-hidden={allDay && !measuring ? true : undefined} inert={allDay && !measuring}>
+          <div className="so-fold-in">
+            <div className="cph-ent-range">
+              <button type="button" className="cph-ent-end" onClick={() => setPage("start")} aria-label={`Starts, ${time}`}>
+                <small>Starts</small>
+                <b>{time}</b>
               </button>
-              <button type="button" role="radio" aria-checked={allDay} className={allDay ? "on" : ""} onClick={() => setAllDay(true)}>
-                All day
+              <span className="cph-ent-arrow" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 12h14M13 6l6 6-6 6" />
+                </svg>
+              </span>
+              <button type="button" className="cph-ent-end right" onClick={() => setPage("end")} aria-label={`Ends, ${hhmm(endMin)}`}>
+                <small>Ends</small>
+                <b>{hhmm(endMin)}</b>
               </button>
             </div>
-          </div>
-        </div>
-
-        {/* All day keeps the times and the lengths, quiet, so the sheet never changes height (the laptop's, 14 Oct). */}
-        <div className="cph-ent-times-row">
-          <div>
-            <span className="cph-ent-label">Starts</span>
-            <button type="button" className="cph-ent-box cph-ent-pick" disabled={allDay} onClick={() => setPage("start")} aria-label={allDay ? "All day" : `Starts, ${time}`}>
-              {allDay ? "All day" : time}
-            </button>
-          </div>
-          <span className="cph-ent-arrow" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M5 12h14M13 6l6 6-6 6" />
-            </svg>
-          </span>
-          <div>
-            <span className="cph-ent-label">Ends</span>
-            <button type="button" className={`cph-ent-box cph-ent-pick${customLength ? "" : " still"}`} disabled={allDay || !customLength} onClick={() => setPage("end")} aria-label={allDay ? "All day" : `Ends, ${hhmm(endMin)}`}>
-              {allDay ? "—" : hhmm(endMin)}
-            </button>
-          </div>
-        </div>
-
-        <span className="cph-ent-label">Length</span>
-        <div className="cph-seg" role="radiogroup" aria-label="Length" aria-disabled={allDay}>
-          {LENGTHS.map((m) => {
-            const on = !allDay && !customLength && length === m;
-            return (
-              <button key={m} type="button" role="radio" disabled={allDay} aria-checked={on} className={on ? "on" : ""} onClick={() => (setLength(m), setCustomLength(false))}>
-                {lengthLabel(m)}
+            <div className="cph-seg" role="radiogroup" aria-label="Length">
+              {LENGTHS.map((m) => {
+                const on = !customLength && length === m;
+                return (
+                  <button key={m} type="button" role="radio" aria-checked={on} className={on ? "on" : ""} onClick={() => (setLength(m), setCustomLength(false))}>
+                    {lengthLabel(m)}
+                  </button>
+                );
+              })}
+              <button type="button" role="radio" aria-checked={customLength} className={customLength ? "on" : ""} onClick={() => setPage("end")}>
+                Other
               </button>
-            );
-          })}
-          <button type="button" role="radio" disabled={allDay} aria-checked={!allDay && customLength} className={!allDay && customLength ? "on" : ""} onClick={() => setCustomLength(true)}>
-            Custom
-          </button>
+            </div>
+            {/* Always a line, so an overlap appearing never moves the sheet. */}
+            <small className="cph-ent-overlap">{overlap ?? " "}</small>
+          </div>
         </div>
-        {/* Always a line, so an overlap appearing never moves the sheet. */}
-        <small className="cph-ent-overlap">{overlap ?? " "}</small>
 
         <label className="cph-ent-label" htmlFor="cph-ent-note">
           Note
