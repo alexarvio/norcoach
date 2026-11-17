@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { PutObjectCommand, HeadObjectCommand, ListObjectsV2Command, DeleteObjectsCommand, S3Client } from "@aws-sdk/client-s3";
-import { DATA_DIR, getData } from "./db";
+import { DATA_DIR, getData, STORE_MODE } from "./db";
 import { deleteAllUnder } from "./storage";
 
 // Nightly copy of everything on the volume to a bucket that is not the
@@ -15,6 +15,16 @@ import { deleteAllUnder } from "./storage";
 //   uploads/<same path as on the volume>  written once, skipped after
 //   latest.json                           the newest snapshot again, for
 //                                         an import script to find
+//   pg/YYYY-MM-DD/<run>/                  Postgres mode: the database read
+//                                         from Postgres itself, a gzip
+//                                         NDJSON file a table and its
+//                                         manifest.json (pg/backup.ts); put
+//                                         back with scripts/restore-pg-backup.mjs.
+//                                         <run> is when the run started
+//                                         (2026-11-17T03-15-00-000Z): every
+//                                         boot runs one too, and a run cut off
+//                                         must never mix its parts with an
+//                                         earlier run's under that manifest
 
 const KEEP_SNAPSHOTS = 30;
 
@@ -70,7 +80,14 @@ function walk(dir: string): string[] {
   return out;
 }
 
-export type BackupResult = { snapshot: string; uploadsCopied: number; uploadsSkipped: number; pruned: number };
+export type BackupResult = {
+  snapshot: string;
+  uploadsCopied: number;
+  uploadsSkipped: number;
+  pruned: number;
+  /** The database's own backup (Postgres mode): where, how many tables and rows, and files pruned. */
+  pg: { prefix: string; tables: number; rows: number; pruned: number } | null;
+};
 
 /** One full run. Throws on a failure the caller should log. */
 export async function runBackup(): Promise<BackupResult | null> {
@@ -116,7 +133,72 @@ export async function runBackup(): Promise<BackupResult | null> {
     }
   }
 
-  return { snapshot, uploadsCopied: copied, uploadsSkipped: skipped, pruned };
+  // 4. Postgres mode: the database's own backup, read from Postgres (17 Nov; pg/backup.ts), under
+  //    pg/YYYY-MM-DD/<run>/, the last KEEP_SNAPSHOTS days kept as the snapshots are. Last, so a failure here never
+  //    costs the rest.
+  let pg: BackupResult["pg"] = null;
+  if (STORE_MODE === "postgres") {
+    const { pg: connection } = await import("./pg/direct");
+    const { dumpPostgres } = await import("./pg/backup");
+    const db = await connection();
+    if (db) {
+      const prefix = `pg/${day}/${new Date().toISOString().replace(/[:.]/g, "-")}/`;
+      const manifest = await dumpPostgres(db, async (name, body, type) => {
+        await s3.send(new PutObjectCommand({ Bucket: bucket, Key: prefix + name, Body: body, ContentType: type }));
+      });
+      // Listed in pages: a month of days is far more than one listing's 1000 keys.
+      const keys: string[] = [];
+      let token: string | undefined;
+      do {
+        const page = await s3.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: "pg/", ContinuationToken: token }));
+        for (const o of page.Contents ?? []) if (o.Key) keys.push(o.Key);
+        token = page.IsTruncated ? page.NextContinuationToken : undefined;
+      } while (token);
+      const gone = pgBackupsToPrune(keys);
+      for (let i = 0; i < gone.length; i += 1000) {
+        await s3.send(new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: gone.slice(i, i + 1000).map((Key) => ({ Key })) } }));
+      }
+      pg = { prefix, tables: manifest.tables.length, rows: manifest.tables.reduce((n, t) => n + t.rows, 0), pruned: gone.length };
+    }
+  }
+
+  return { snapshot, uploadsCopied: copied, uploadsSkipped: skipped, pruned, pg };
+}
+
+/**
+ * The Postgres backups' keys that can go (pg/<day>/<run>/<file>). A run is finished once its manifest.json is there.
+ * In a day, every run older than its newest finished one goes, finished or not (a newer one may still be running);
+ * across days, the last KEEP_SNAPSHOTS days that hold a finished run are kept, and every day before them goes, so a
+ * string of failed days never pushes a good backup out.
+ */
+function pgBackupsToPrune(keys: string[]): string[] {
+  const days = new Map<string, Map<string, { keys: string[]; finished: boolean }>>();
+  for (const key of keys) {
+    const [, day, run, ...rest] = key.split("/");
+    if (!day || !run) continue;
+    // pg/<day>/<file>, from before runs had folders, as a run of its own named "" (older than any other).
+    const runId = rest.length ? run : "";
+    const file = rest.length ? rest.join("/") : run;
+    let runs = days.get(day);
+    if (!runs) days.set(day, (runs = new Map()));
+    let entry = runs.get(runId);
+    if (!entry) runs.set(runId, (entry = { keys: [], finished: false }));
+    entry.keys.push(key);
+    if (file === "manifest.json") entry.finished = true;
+  }
+  const gone = new Set<string>();
+  for (const runs of days.values()) {
+    const finished = [...runs].filter(([, r]) => r.finished).map(([id]) => id).sort();
+    const newest = finished[finished.length - 1];
+    if (newest === undefined) continue;
+    for (const [id, r] of runs) if (id < newest) for (const key of r.keys) gone.add(key);
+  }
+  const goodDays = [...days].filter(([, runs]) => [...runs.values()].some((r) => r.finished)).map(([day]) => day).sort();
+  if (goodDays.length > KEEP_SNAPSHOTS) {
+    const oldestKept = goodDays[goodDays.length - KEEP_SNAPSHOTS];
+    for (const [day, runs] of days) if (day < oldestKept) for (const r of runs.values()) for (const key of r.keys) gone.add(key);
+  }
+  return [...gone];
 }
 
 /** When the next 03:15 (server local time) falls, in ms from now. */
