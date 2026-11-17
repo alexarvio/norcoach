@@ -1,0 +1,28 @@
+/* The website's dark background, kept in one place (17 Nov, Alex: "if I change the background of the website, then this
+   changes as well, so I don't have to do both"). The site's dark areas (the hero, No AI, the closing band, the footer)
+   and the app's coach sign-up (app/login/SignInScreens.tsx imports this file) all wear it. Change the background here,
+   never in styles.css or the app, and both follow (the app on its next deploy). Picture paths are relative to this file. */
+
+/* The two greys for words over the dark, secondary lines then the quietest; styles.css reads them as --dark-text and
+   --dark-muted. Change them with the background. */
+:root {
+  --site-bg-text: #c7c7cc;
+  --site-bg-muted: #8e8e93;
+}
+
+.site-bg {
+  background: #1c1c1e;
+  color: #fff;
+}
+
+/* The logo's star, huge and very faint, cropped off the top right, as on the app's Home. Each place sets its size and
+   where it sits (width, height, right, top); the drawing is here. */
+.site-bg-mark { position: relative; overflow: hidden; }
+.site-bg-mark::before {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  background: url("img/mark.svg") no-repeat center / contain;
+  filter: invert(1);
+  opacity: 0.05;
+}

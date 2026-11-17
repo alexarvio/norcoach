@@ -94,7 +94,7 @@ export default async function OnboardingScreen({ params }: { params: Promise<{ s
     case "code-coach":
       return (
         <DemoFrame>
-          <CodeScreen email="new.coach@example.com" />
+          <CodeScreen email="new.coach@example.com" title="Confirm your email" look="site" />
         </DemoFrame>
       );
     case "coach-signup":
