@@ -8,6 +8,8 @@ body:has(.cph) { background: #F5F6F8; }
 .cph :focus-visible { outline: 2px solid #141a24; outline-offset: 2px; }
 /* A field shows it has the keyboard by its own ink edge or underline, never a ring round it (17 Nov, Alex). */
 .cph :is(input, textarea, select):focus-visible { outline: none; }
+/* A sheet takes the focus when it opens, so a screen reader starts in it; it never wears a ring for that (17 Nov, Alex). */
+.cph [tabindex="-1"]:focus, .cph [tabindex="-1"]:focus-visible { outline: none; }
 .cph-ico { flex: none; display: block; }
 .cph-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .cph-sep { display: inline-block; flex: none; width: 1.5px; height: 0.85em; margin: 0 0.55em; border-radius: 1px; background: #b0b7c3; vertical-align: -0.1em; }
