@@ -282,14 +282,17 @@ export default function CheckInDialog({
   // The ring: a segment a metric, clockwise, a 6° gap between them.
   const seg = total > 0 ? 360 / total : 360;
   const gap = total > 1 ? 6 : 0;
+  // Filled clockwise from the top, whichever rows are done (17 Nov, Alex: "always filled in clockwise, like a clock"):
+  // the first so many segments green, the rest sand, never a gap where an earlier row is still to do.
+  const filledCount = rows.filter(isFilled).length;
   const ring =
     total === 0
       ? `rgba(${SAND_RGB},0.15)`
       : `conic-gradient(${rows
-          .map((r, i) => {
+          .map((_, i) => {
             const a0 = i * seg + gap / 2;
             const a1 = (i + 1) * seg - gap / 2;
-            const c = isFilled(r) ? GREEN.hex : `rgba(${SAND_RGB},0.15)`;
+            const c = i < filledCount ? GREEN.hex : `rgba(${SAND_RGB},0.15)`;
             return `transparent ${i * seg}deg ${a0}deg, ${c} ${a0}deg ${a1}deg, transparent ${a1}deg ${(i + 1) * seg}deg`;
           })
           .join(", ")})`;

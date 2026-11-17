@@ -21855,7 +21855,9 @@ html.zoomed .cki-live > i::after { animation: none; }
    a soft grey block reaching 14px past the form on both sides, so inside it the heart and the names start where the form's
    names do (the rows' 2px + the 14px), the figures end on the form's figure edge (the 136px figure box, its 26px unit
    column). Read-only. */
-.cki-auto { margin: 14px -14px 0; padding: 12px 16px 6px; border-radius: 16px; background: #F5F6F8; }
+/* 6px past the form, not 14 (17 Nov, Alex: too close to the pop-up's own edge); the padding moves with it so the names and
+   figures stay on the form's edges. */
+.cki-auto { margin: 14px -6px 0; padding: 12px 8px 6px; border-radius: 16px; background: #F5F6F8; }
 .cki-auto-head { display: flex; align-items: center; gap: 7px; margin-bottom: 2px; font-size: 10px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #8b93a1; }
 .cki-auto-head svg { flex: none; width: 14px; height: 14px; color: #d6455d; }
 .cki-auto-row { display: flex; align-items: center; min-height: 38px; }
