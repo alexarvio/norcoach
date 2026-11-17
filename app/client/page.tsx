@@ -136,7 +136,7 @@ import AppShell, { AppTab, type Arrival, type PhoneScreen } from "./AppShell";
 import { ownTab } from "../lib/tabMemory";
 import NativeCoachRedirect from "../coach/NativeCoachRedirect";
 import OpeningSplash from "./OpeningSplash";
-import { QUIET_COOKIE } from "../lib/quietLoad";
+import { NATIVE_COOKIE, QUIET_COOKIE } from "../lib/quietLoad";
 import AvatarUpload from "./AvatarUpload";
 import { phaseCovers, phaseLastDay } from "../lib/phases";
 import { defaultPhaseCover } from "../lib/phaseCovers";
@@ -1308,6 +1308,9 @@ export default async function ClientPage({
   // Only the client themselves sees their private "My notes", never a coach
   // previewing the app.
   const viewer = await getSessionUser();
+  // A coach in the phone app goes to its coach screens before anything draws (17 Nov, Alex; NativeCoachRedirect stays as
+  // the fallback for a phone that has not marked itself yet).
+  if (viewer?.role === "coach" && !phone && jar.get(NATIVE_COOKIE)?.value === "1") redirect("/coach");
   const viewerIsClient = viewer?.role === "client";
   // A coach sees whose app this is, and can switch to another of theirs.
   const preview =

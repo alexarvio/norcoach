@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { NATIVE_SCRIPT } from "./lib/quietLoad";
 import localFont from "next/font/local";
 import "./globals.css";
 import { applyDueClientReminders } from "./lib/queries";
@@ -107,6 +108,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="en" className={`${libreBaskerville.variable} ${archivo.variable} ${kirana.variable} ${bricolage.variable}`}>
       {/* Sign-in through Clerk, when it is switched on (lib/clerk.ts). */}
       <body style={await bgMark()}>
+        {/* The phone app marks itself before anything draws (17 Nov): the server then sends a coach to /coach. */}
+        <script dangerouslySetInnerHTML={{ __html: NATIVE_SCRIPT }} />
         {clerkOn() ? <ClerkProvider signInUrl="/login" signUpUrl="/signup" signInFallbackRedirectUrl="/auth/continue" signUpFallbackRedirectUrl="/auth/continue" afterSignOutUrl="/login">{children}</ClerkProvider> : children}
         {/* Every capsule's pill slides (28 Oct, Alex). */}
         <SlidePills />

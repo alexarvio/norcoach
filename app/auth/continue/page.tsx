@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { clerkIdentity, clerkOn } from "../../lib/clerk";
 import { findUserByEmail, getSessionUser } from "../../lib/auth";
+import { NATIVE_COOKIE } from "../../lib/quietLoad";
 
 // Every sign-in through Clerk ends here: our own account for this person,
 // and where it lives. Someone who came through the coach sign-up and has no
@@ -22,7 +23,9 @@ export default async function ContinuePage({ searchParams }: { searchParams: Pro
   if (!clerkOn()) redirect("/login");
   const { next } = await searchParams;
   const user = await getSessionUser();
-  if (user) redirect(user.pending ? "/auth/waiting" : (backTo(next, user.role) ?? (user.role === "client" ? "/client" : "/admin/redesign")));
+  // A coach signing in inside the phone app goes straight to its coach screens (17 Nov, Alex: the admin showed first).
+  const inApp = (await cookies()).get(NATIVE_COOKIE)?.value === "1";
+  if (user) redirect(user.pending ? "/auth/waiting" : (backTo(next, user.role) ?? (user.role === "client" ? "/client" : inApp ? "/coach" : "/admin/redesign")));
 
   const who = await clerkIdentity();
   if (!who) redirect("/login");
