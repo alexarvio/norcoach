@@ -21,6 +21,21 @@ export async function register() {
     const { registerShutdown } = await import("./app/lib/shutdown");
     registerShutdown();
   }
+  // The clients' check-in reminders (17 Nov, mission 2): they ran inside the root layout's render, so every request paid
+  // for them; now once ~20 s after start and every minute, so one still comes in within the minute its day, week or
+  // photo period opens, and goes once it is no longer due. Not in `next build`'s prerender workers.
+  if (process.env.NEXT_PHASE !== "phase-production-build") {
+    const { applyDueClientReminders } = await import("./app/lib/queries");
+    const remindCheckIns = () => {
+      try {
+        applyDueClientReminders();
+      } catch (e) {
+        console.error("[reminders] check-in reminders failed:", e instanceof Error ? e.message : e);
+      }
+    };
+    setInterval(remindCheckIns, 60_000).unref?.();
+    setTimeout(remindCheckIns, 20_000).unref?.();
+  }
   // Storage bucket on (UPLOADS_STORE=bucket): copy any files the bucket does
   // not have yet, in the background so the server starts straight away.
   const { copyDiskUploadsToBucket } = await import("./app/lib/storage");

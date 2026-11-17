@@ -6,7 +6,7 @@
 // and walk the lists, never sort or edit them in place.
 
 import { cache } from "react";
-import { getActivityFeed, getClientHome, listClients, trainingIndex, type FeedEvent, type HomeAction } from "./queries";
+import { clientHomeRows, getActivityFeed, getClientHome, listClients, trainingIndex, type FeedEvent, type HomeAction } from "./queries";
 import { sub } from "./timing";
 
 export type CoachNeeds = {
@@ -30,10 +30,18 @@ export const coachNeeds = cache((coachId: number): CoachNeeds => {
     const feedOf = new Map<number, FeedEvent[]>(list.map((c) => [c.id, []]));
     for (const e of feed) feedOf.get(e.clientId)?.push(e);
     const ix = trainingIndex(list.map((c) => c.id));
+    // Their chat, video and call asks and invoices grouped once too (17 Nov, mission 2: each client's Home walked them all).
+    // A bad row there fails each client's Home as it always did, not the whole read.
+    let own: ReturnType<typeof clientHomeRows> | undefined;
+    try {
+      own = clientHomeRows(list.map((c) => c.id));
+    } catch {
+      own = undefined;
+    }
     const out: CoachNeeds["homes"] = new Map();
     for (const c of list) {
       try {
-        out.set(c.id, { actions: getClientHome(c.id, feedOf.get(c.id) ?? [], ix).actions });
+        out.set(c.id, { actions: getClientHome(c.id, feedOf.get(c.id) ?? [], ix, own).actions });
       } catch (error) {
         out.set(c.id, { error });
       }

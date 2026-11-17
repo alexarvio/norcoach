@@ -27,7 +27,7 @@ import {
   chatQuoteOf,
   chatUnread,
   chatFirstUnread,
-  chatUnreadCount,
+  chatListRows,
   syncClientLoginEmail,
   getMetricEntries,
   getCoachProfile,
@@ -1450,12 +1450,16 @@ export function loadInvoices(coachId: number, clientId: number): DraftInvoices {
  *  "" for a photo, video, voice message or file sent without any (`ChatLastLine` then names the kind, 22 Oct). */
 export type DockChat = { id: number; name: string; avatarPath: string | null; unread: boolean; unreadCount?: number; last: { text: string; at: number; mine: boolean; media?: "image" | "video" | "audio" | "file" | null } | null };
 export function loadChatDock(coach: { id: number }): DockChat[] {
-  return getData()
-    .clients.filter((c) => c.coach_id === coach.id)
+  const clients = getData().clients.filter((c) => c.coach_id === coach.id);
+  // Every client's messages and unread count from one walk of the chat (17 Nov, mission 2: it walked every message
+  // twice a client), each as listChatMessages and chatUnreadCount give them.
+  const rows = chatListRows(clients.map((c) => c.id));
+  return clients
     .map((c) => {
-      const m = listChatMessages(c.id).filter((x) => x.text.trim() || x.media_path).at(-1) ?? null;
+      const row = rows.get(c.id);
+      const m = (row?.messages ?? []).filter((x) => x.text.trim() || x.media_path).at(-1) ?? null;
       const at = m ? new Date(m.created_at.includes("T") ? m.created_at : m.created_at.replace(" ", "T")).getTime() : 0;
-      const unreadCount = chatUnreadCount(c.id);
+      const unreadCount = row?.unreadCount ?? 0;
       return { id: c.id, name: c.name, avatarPath: c.avatar_path ?? null, unread: unreadCount > 0, unreadCount, last: m ? { text: m.text.trim(), at, mine: m.sender === "coach", media: m.media_path ? m.media_type ?? "image" : null } : null };
     })
     .sort((x, y) => (y.last?.at ?? 0) - (x.last?.at ?? 0) || x.name.localeCompare(y.name));
