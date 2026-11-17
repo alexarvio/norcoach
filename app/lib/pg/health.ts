@@ -19,12 +19,19 @@ export type StoreHealth = {
   skipped: Record<string, number>;
   /** The server is shutting down (SIGTERM / SIGINT). */
   shuttingDown: boolean;
+  /** What a save's snapshot and compare cost, the latest and the dearest since start (17 Nov, mission 2): measured
+   *  only, so we know when the per-save cost starts to matter. */
+  saveCost: { last: SaveCost | null; max: SaveCost | null; saves: number };
 };
+
+/** One save's work before its transaction: every row stringified (snapshotMs), then compared with the last save's
+ *  (diffMs), ms; `rows` the rows and kv values compared, `changed` those that differed or went. */
+export type SaveCost = { at: string; ms: number; snapshotMs: number; diffMs: number; rows: number; changed: number };
 
 const g = globalThis as unknown as { __norcoachStoreHealth?: StoreHealth; __norcoachStoreReported?: Set<string> };
 
 export function health(): StoreHealth {
-  return (g.__norcoachStoreHealth ??= {
+  const h = (g.__norcoachStoreHealth ??= {
     failures: 0,
     lastCommitAt: null,
     lastOkAt: null,
@@ -34,13 +41,25 @@ export function health(): StoreHealth {
     stuckAlerted: false,
     skipped: {},
     shuttingDown: false,
+    saveCost: { last: null, max: null, saves: 0 },
   });
+  // A record made before saveCost existed (a dev server kept across a reload) gets it.
+  h.saveCost ??= { last: null, max: null, saves: 0 };
+  return h;
+}
+
+/** A save's snapshot and compare, measured (store.ts). */
+export function noteSaveCost(cost: SaveCost) {
+  const c = health().saveCost;
+  c.last = cost;
+  c.saves++;
+  if (!c.max || cost.ms > c.max.ms) c.max = cost;
 }
 
 /** A copy for /api/timing. */
 export function storeHealth(): StoreHealth & { skippedTotal: number } {
   const h = health();
-  return { ...h, skipped: { ...h.skipped }, skippedTotal: Object.values(h.skipped).reduce((a, b) => a + b, 0) };
+  return { ...h, skipped: { ...h.skipped }, saveCost: { ...h.saveCost }, skippedTotal: Object.values(h.skipped).reduce((a, b) => a + b, 0) };
 }
 
 /**

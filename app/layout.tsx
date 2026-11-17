@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { NATIVE_SCRIPT } from "./lib/quietLoad";
 import localFont from "next/font/local";
 import "./globals.css";
-import { applyDueClientReminders } from "./lib/queries";
 import { applyDueProgramDeploymentsSometimes } from "./lib/dueJobs";
 import { startTiming } from "./lib/timing";
 import { ClerkProvider } from "@clerk/nextjs";
@@ -90,14 +89,12 @@ async function bgMark(): Promise<React.CSSProperties | undefined> {
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  // No background job runner in this app — a plan the coach scheduled for
-  // e.g. Monday 6am goes live the moment anyone next loads any page after
-  // that time, checked here since every route passes through this layout.
-  // Timed as "layout" (23 Oct, Alex: the admin felt slow): every request pays for these two, before any screen.
+  // A plan the coach scheduled for e.g. Monday 6am goes live the moment anyone next loads any page after that time,
+  // checked here since every route passes through this layout. Timed as "layout" (23 Oct, Alex: the admin felt slow).
+  // The check-in reminders that rode here too run on a timer since 17 Nov (instrumentation.ts, mission 2).
   const timer = startTiming("layout");
   // At most once a minute (dueJobs.ts): it took ~220 ms on every page (23 Oct).
   timer.time("applyDueProgramDeployments", () => applyDueProgramDeploymentsSometimes());
-  timer.time("applyDueClientReminders", () => applyDueClientReminders());
   timer.end(null);
 
   // Colours are fixed to the design's palette (see the tokens at the top of

@@ -1,6 +1,6 @@
 import { and, eq, getTableColumns, inArray, sql } from "drizzle-orm";
 import type { PgColumn as Column, PgDatabase, PgTable } from "drizzle-orm/pg-core";
-import { reportSkipped, health } from "./health";
+import { reportSkipped, health, noteSaveCost } from "./health";
 import { COLLECTIONS, kv, TABLE_NAMES_NOT_IN_KV } from "./schema";
 
 // Loads the whole store from Postgres and saves changes back (phase 1).
@@ -292,7 +292,10 @@ export class PgStoreWriter {
         await new Promise<void>((resolve) => setImmediate(resolve));
         do {
           this.again = false;
-          await this.writeDiff(snapshotOf(getData()));
+          // Timed (17 Nov, mission 2): what each save costs before its transaction, on /api/timing (noteSaveCost).
+          const started = performance.now();
+          const next = snapshotOf(getData());
+          await this.writeDiff(next, started, performance.now());
         } while (this.again);
       } finally {
         this.running = null;
@@ -301,8 +304,11 @@ export class PgStoreWriter {
     return this.running;
   }
 
-  private async writeDiff(next: Snapshot) {
+  private async writeDiff(next: Snapshot, started = performance.now(), snapped = started) {
     const work: ((tx: AnyDb) => Promise<unknown>)[] = [];
+    // Rows and kv values compared, and those that differed or went: measured only (noteSaveCost).
+    let compared = 0;
+    let changed = 0;
 
     for (const c of COLLECTIONS) {
       const before = this.last.rows.get(c.name) ?? new Map<string, string>();
@@ -318,6 +324,8 @@ export class PgStoreWriter {
       const upserts: Row[] = [];
       for (const [key, json] of after) if (before.get(key) !== json) upserts.push(JSON.parse(json));
       const deletes = [...before.keys()].filter((key) => !after.has(key));
+      compared += after.size;
+      changed += upserts.length + deletes.length;
 
       const setClause = Object.fromEntries(
         Object.keys(columns)
@@ -357,13 +365,28 @@ export class PgStoreWriter {
       if (was !== undefined && !next.kv.has(key)) next.kv.set(key, was);
     }
     for (const [key, json] of next.kv) {
+      compared++;
       if (this.last.kv.get(key) === json) continue;
+      changed++;
       const value = JSON.parse(json);
       work.push((tx) => tx.insert(kv).values({ key, value }).onConflictDoUpdate({ target: kv.key, set: { value } }));
     }
     for (const key of this.last.kv.keys()) {
-      if (!next.kv.has(key)) work.push((tx) => tx.delete(kv).where(eq(kv.key, key)));
+      if (!next.kv.has(key)) {
+        changed++;
+        work.push((tx) => tx.delete(kv).where(eq(kv.key, key)));
+      }
     }
+
+    const done = performance.now();
+    noteSaveCost({
+      at: new Date().toISOString(),
+      ms: Math.round((done - started) * 10) / 10,
+      snapshotMs: Math.round((snapped - started) * 10) / 10,
+      diffMs: Math.round((done - snapped) * 10) / 10,
+      rows: compared,
+      changed,
+    });
 
     if (work.length === 0) return;
     await this.db.transaction(async (tx) => {
