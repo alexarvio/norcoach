@@ -21870,4 +21870,9 @@ html.zoomed .cki-live > i::after { animation: none; }
    keyboard; with the keyboard down the tiles are all back. */
 html.kb-open .evs .evs-types { grid-template-columns: 1fr; }
 html.kb-open .evs .evs-types .evs-type:not(.on) { display: none; }
-html.kb-open .evs .evs-types .evs-type.on { flex-direction: row; justify-content: center; gap: 10px; height: 44px; min-height: 0; }
+/* The picked one, slim and light while typing (17 Nov, Alex: the big black row read as locked): white with a hairline, its
+   icon in its colour, Change in words on the right; a tap puts the keyboard away. */
+html.kb-open .evs .evs-types .evs-type.on { flex-direction: row; justify-content: flex-start; gap: 8px; height: 40px; min-height: 0; padding: 0 14px; border-radius: 12px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; color: #141a24; font-size: 14px; font-weight: 600; }
+html.kb-open .evs .evs-types .evs-type.on .evs-type-disc { width: 20px; height: 20px; color: var(--tc); }
+.evs-type-change { display: none; }
+html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: auto; font-size: 13px; font-weight: 600; color: #5b6474; }
