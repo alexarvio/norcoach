@@ -356,45 +356,66 @@ function EntryRead({ e, cats, avatar, onClose, onChat, onEdit, onRemoved }: { e:
         </div>
       ) : (
         <>
+          {/* Read back as New entry draws it (17 Nov, Alex: A of docs/boards/coach-entry-view-mockup.html): the category, the
+              title, the times as light numerals with the day and length under them, the client with a chat button, the
+              note; Join the one ink pill; Remove in red words and Edit at the foot. */}
           <div className="cph-read">
-            <h2>{title}</h2>
             <span className="cph-read-cat" style={{ color: c.ink }}>
               <CatIcon d={entryIcon(catId)} size={14} />
               {cat?.label ?? "Other"}
             </span>
+            <h2>{title}</h2>
+            {e.allDay || !e.time ? (
+              <span className="cph-read-times">
+                <span className="cph-read-num">All day</span>
+              </span>
+            ) : (
+              <span className="cph-read-times" aria-label={when ?? undefined}>
+                <span className="cph-read-num">{e.time}</span>
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M5 12h14M13 6l6 6-6 6" />
+                </svg>
+                <span className="cph-read-num">{hhmm(toMin(e.time) + e.durationMinutes)}</span>
+              </span>
+            )}
             <p className="cph-read-facts">
-              <Facts parts={[shortDay(e.date), when, e.allDay ? null : lengthLabel(e.durationMinutes), e.status === "completed" ? "Done" : null]} />
+              <Facts parts={[shortDay(e.date), e.allDay ? null : lengthLabel(e.durationMinutes), e.status === "completed" ? "Done" : null]} />
             </p>
             {e.clashes.length > 0 && <p className="cph-read-clash">Overlaps {e.clashes.join(", ")}</p>}
             {e.clientId != null && (
               <span className="cph-read-with">
-                <Avatar name={e.clientName} src={avatar} size={28} />
-                {e.clientName}
+                <Avatar name={e.clientName} src={avatar} size={40} />
+                <b>{e.clientName}</b>
+                <button type="button" className="cph-round" onClick={onChat} aria-label={`Chat with ${first}`}>
+                  <Icon name="chat" />
+                  <RingEdge size={44} />
+                </button>
               </span>
             )}
-            {e.note && <p className="cph-read-note">{e.note}</p>}
+            {e.note && (
+              <div className="cph-read-notebox">
+                <span className="cph-read-label">Note</span>
+                <p className="cph-read-note">{e.note}</p>
+              </div>
+            )}
           </div>
-          {/* The call's link as an action alone, never its URL (25 Oct, Alex), opening outside the app. */}
-          {e.link && (
-            <a className="cph-sheet-row" href={e.link} target="_blank" rel="noopener noreferrer">
-              <CatIcon d={entryIcon("call")} size={20} />
-              Join call
-            </a>
-          )}
-          {e.clientId != null && (
-            <button type="button" className="cph-sheet-row" onClick={onChat}>
-              <Icon name="chat" />
-              Chat with {first}
-            </button>
-          )}
-          <button type="button" className="cph-sheet-row" onClick={onEdit}>
-            <Icon name="edit" />
-            Edit
-          </button>
-          <button type="button" className="cph-sheet-row danger" onClick={() => setConfirm(true)}>
-            <Icon name="trash" />
-            Remove
-          </button>
+          <div className="cph-read-foot">
+            {/* The call's link as an action alone, never its URL (25 Oct, Alex), opening outside the app. */}
+            {e.link && (
+              <a className="cph-pill ink cph-read-join" href={e.link} target="_blank" rel="noopener noreferrer">
+                <CatIcon d={entryIcon("call")} size={18} />
+                Join call
+              </a>
+            )}
+            <div className="cph-read-acts">
+              <button type="button" className="cph-text-btn danger" onClick={() => setConfirm(true)}>
+                Remove
+              </button>
+              <button type="button" className="cph-pill white small" onClick={onEdit}>
+                Edit
+              </button>
+            </div>
+          </div>
         </>
       )}
     </Sheet>
