@@ -5,6 +5,7 @@ import { useUser } from "@clerk/nextjs";
 import { setPasswordAction } from "../lib/accountActions";
 import PasswordInput from "../login/PasswordInput";
 import { usePasswordsOn } from "../login/usePasswordsOn";
+import { offerToSavePassword } from "../lib/savePassword";
 import SettingsFold from "./SettingsFold";
 
 // Settings' Password (17 Nov, Alex: "Settings row"): everyone who signs in with an emailed code can add a password and
@@ -39,6 +40,8 @@ export default function PasswordSettings({ passwordsHint = null }: { passwordsHi
             const r = await setPasswordAction(next, has ? current : null).catch(() => ({ ok: false, error: "Not saved. Try again." }));
             if (!r.ok) return setError(r.error ?? "Not saved. Try again.");
             await user.reload().catch(() => {});
+            // The iPhone's own "Save password?" for the new one (18 Nov), so Face ID fills it at the next sign-in.
+            await offerToSavePassword(email, next, { always: true });
             clear();
             close();
           });
