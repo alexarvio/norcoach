@@ -4,12 +4,12 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { clerkClient } from "@clerk/nextjs/server";
 import { clerkIdentity, clerkOn } from "./clerk";
-import { createPasswordlessUser, findUserByEmail, getSessionUser, isOwner, requireCoach } from "./auth";
+import { createPasswordlessUser, findUserByEmail, getSessionUser, requireCoach } from "./auth";
 import { getData, persistNow } from "./db";
-import { createClient, getCoachProfileView, patchClientProfile, removeClient } from "./queries";
+import { createClient, patchClientProfile, removeClient } from "./queries";
 import { once } from "./once";
 import { pushCoachJoin } from "./coachPush";
-import { coachCard, coachCardByCode, createJoinRequest, declinedBy, forgetRequestsOf, joinRequestById, latestRequestFor, pushedToday, requestsToday, setJoinCode, settleJoinRequest, tooManyTries, withdrawJoinRequest, type CoachCard } from "./joinRequests";
+import { coachCard, coachCardByCode, createJoinRequest, declinedBy, forgetRequestsOf, joinRequestById, latestRequestFor, pushedToday, requestsToday, settleJoinRequest, tooManyTries, withdrawJoinRequest, type CoachCard } from "./joinRequests";
 
 // The client's side of joining a coach by their code (18 Nov, Alex; lib/joinRequests.ts) and the coach's Accept and
 // Decline. The client's actions are for someone signed in to Clerk with no account here yet, and answer nothing else.
@@ -152,13 +152,4 @@ export async function declineJoinRequestAction(id: number): Promise<{ ok: boolea
   settleJoinRequest(r.id, "declined");
   revalidatePath("/admin");
   return { ok: true };
-}
-
-/** Settings, Profile, Your code: a new code. The owner may change another coach's, named by coachId. */
-export async function setJoinCodeAction(code: string, coachId?: number): Promise<{ ok: true; code: string } | { ok: false; error: string }> {
-  const coach = await requireCoach();
-  const target = isOwner(coach) && Number.isInteger(coachId) && coachId! > 0 && coachId !== coach.id && getCoachProfileView(coachId!) ? coachId! : coach.id;
-  const result = setJoinCode(target, String(code ?? ""));
-  if (result.ok) revalidatePath("/admin/redesign/settings");
-  return result;
 }

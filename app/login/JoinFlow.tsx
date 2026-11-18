@@ -5,6 +5,7 @@ import { SiteShell } from "./SignInScreens";
 import { Bars } from "../client/Bars";
 import { leaveWithDarkClock } from "../client/NativeStatusBar";
 import { deleteJoinAccountAction, joinStatusAction, lookupCoachCodeAction, sendJoinRequestAction, withdrawJoinRequestAction } from "../lib/joinActions";
+import { norcode, NORCODE_LENGTH, typedNorcode } from "../lib/norcode";
 import type { CoachCard } from "../lib/joinRequests";
 
 // Joining a coach (18 Nov, Alex: docs/boards/client-signup-mockup.html, its Motion section): About you (first and last
@@ -41,7 +42,6 @@ function dobValue(shown: string): string | null {
 
 const fromValue = (v: string) => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v.slice(8)} / ${v.slice(5, 7)} / ${v.slice(0, 4)}` : "");
 const reduced = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-const cleanCode = (raw: string) => raw.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20);
 const newKey = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 
 /** The coach's face: their picture, else their initial on a pale disc. */
@@ -117,14 +117,15 @@ export default function JoinFlow({
   const [fly, setFly] = useState<{ coach: CoachCard; from: DOMRect } | null>(null);
   const [flyTo, setFlyTo] = useState<DOMRect | null>(null);
 
-  // The code looked up as it is typed, a moment after the last key: the coach once it is theirs, else Not a valid code.
+  // The Norcode looked up once all eight characters are in (18 Nov), a moment after the last key: the coach once it is
+  // theirs, else Not a valid code. Nothing is said while it is still being typed.
   const lookup = useRef(0);
   useEffect(() => {
     const want = code.trim();
     setFound(null);
     setNoCoach(false);
     const ask = ++lookup.current;
-    if (want.length < 3) return;
+    if (want.length < NORCODE_LENGTH) return;
     const t = window.setTimeout(async () => {
       const r = await lookupCoachCodeAction(want).catch(() => ({ ok: false as const }));
       if (ask !== lookup.current) return;
@@ -292,7 +293,7 @@ export default function JoinFlow({
         }}
       >
         <label className="auth-field">
-          <span>Coach code</span>
+          <span>Your coach&rsquo;s Norcode</span>
           <input
             className="jn-code"
             name="code"
@@ -300,8 +301,9 @@ export default function JoinFlow({
             autoCapitalize="characters"
             autoCorrect="off"
             spellCheck={false}
-            value={code}
-            onChange={(e) => (setCode(cleanCode(e.target.value)), setCoachError(null))}
+            // Always NC- and what is typed after it: the NC- can’t be deleted, and one typed by hand joins it.
+            value={norcode(code)}
+            onChange={(e) => (setCode(typedNorcode(e.target.value)), setCoachError(null))}
           />
         </label>
         <div className="jn-slot">
