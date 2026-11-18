@@ -83,7 +83,7 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
   // Needs you: something owed, or a new client still to set up (22 Oct, Alex).
   const needsMe = (c: RailClient) => c.total > 0;
   const needsYou = rail.clients.filter(needsMe).length;
-  const feedOwed = rail.clients.reduce((n, c) => n + c.owed, 0);
+  const feedOwed = rail.clients.reduce((n, c) => n + c.owed, 0) + (rail.joinRequests ?? 0);
   // What the Phases screen lists (2 Nov, Alex: "if anyone is missing a phase have the notification appear there just like in
   // feed where there is a number").
   const phasesOwed = rail.clients.reduce((n, c) => n + c.phases, 0);

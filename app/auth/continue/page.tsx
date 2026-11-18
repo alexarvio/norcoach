@@ -4,10 +4,13 @@ import { clerkIdentity, clerkOn } from "../../lib/clerk";
 import { findUserByEmail, getSessionUser } from "../../lib/auth";
 import { NATIVE_COOKIE } from "../../lib/quietLoad";
 import { letCoachIn } from "../../lib/coachSignUp";
+import { latestRequestFor } from "../../lib/joinRequests";
 
 // Every sign-in through Clerk ends here: our own account for this person,
 // and where it lives. Someone who came through the coach sign-up and has no
-// account yet says who they are next (About you), and is in.
+// account yet says who they are next (About you), and is in. Anyone else with
+// no account yet joins a coach by their code (18 Nov, Alex: /auth/join), the
+// screen they wait on until the coach says yes.
 export const dynamic = "force-dynamic";
 
 // The page they were sent to sign in from (?next=, proxy.ts), when it fits the account (26 Oct, Alex: the coach phone
@@ -41,7 +44,11 @@ export default async function ContinuePage({ searchParams }: { searchParams: Pro
     intent = null;
   }
   const email = who.emails[0];
+  // Waiting on a coach, or told no: their join screen, whatever an old sign-up cookie says.
+  const asked = latestRequestFor(who.userId);
+  if (email && (asked?.status === "open" || asked?.status === "declined")) redirect("/auth/join");
   // A coach sign-up: who they are, next.
   if (intent?.coach && email && !findUserByEmail(email)) redirect("/auth/coach-details");
-  redirect("/auth/no-account");
+  // Everyone else: a client joining a coach, About you and the coach's code, or the request they are waiting on.
+  redirect(email ? "/auth/join" : "/auth/no-account");
 }

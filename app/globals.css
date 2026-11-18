@@ -21963,3 +21963,121 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
 .cph-thread-inner.cph-thread-inner { padding-bottom: 34px; }
 .cm-body.cm-body { padding-bottom: 34px; }
 .rm-thread.rm-thread { padding-bottom: 34px; }
+
+/* ---- Joining a coach (18 Nov, Alex: docs/boards/client-signup-mockup.html, its Motion section; app/login/JoinFlow.tsx).
+   Never a jump from screen to screen: between steps the dark head and the paper stay put, the title fades up into the
+   next one and the form slides out to one side as the next slides in (380ms on the fold's curve); on Send the paper
+   drops away, the page goes dark under it, the coach's picture lifts out of its row into its place (.jn-fly), and the
+   wait's lines come in one after another; while waiting a faint ring breathes out of the picture; on the yes the ring
+   goes green with a check, the line becomes You're in, and the paper rises over the dark into the app. Prefix jn-. */
+.au-two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.au-two > .auth-field { min-width: 0; }
+.su-aside-line { display: block; }
+.su-aside-line + .su-aside-line { margin-top: 6px; }
+.jn { --jn-ease: cubic-bezier(.22, 1, .36, 1); transition: background-color .45s var(--jn-ease); }
+/* The title in white: .su-head greys its spans (the head's second line). */
+.su-head span.jn-title, .su-title span.jn-title { display: inline-block; color: inherit; animation: jn-title-in .36s cubic-bezier(.22, 1, .36, 1) both; }
+@keyframes jn-title-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.jn-pages { position: relative; }
+.jn-page.in { animation: jn-in-next .38s var(--jn-ease) both; }
+.jn-page.in.d-1 { animation-name: jn-in-back; }
+.jn-page.out { position: absolute; inset: 0 0 auto; pointer-events: none; animation: jn-out-next .38s var(--jn-ease) both; }
+.jn-page.out.d-1 { animation-name: jn-out-back; }
+@keyframes jn-in-next { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+@keyframes jn-in-back { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+@keyframes jn-out-next { to { opacity: 0; transform: translateX(-28px); } }
+@keyframes jn-out-back { to { opacity: 0; transform: translateX(28px); } }
+/* The code: its letters spaced, as a code reads. */
+.su-form input.jn-code { letter-spacing: .14em; font-weight: 600; text-transform: uppercase; }
+/* The coach, once the code is theirs: their picture, name and business, fading in and settling. */
+.jn-found { display: flex; align-items: center; gap: 12px; margin: 2px 0 4px; animation: jn-found-in .34s var(--jn-ease) both; }
+@keyframes jn-found-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.jn-found b { display: block; font-size: 15px; font-weight: 600; color: #141a24; }
+.jn-found small { display: block; margin-top: 2px; font-size: 12.5px; font-weight: 500; color: #8b93a1; }
+.jn-none { margin: 2px 0 4px; animation: jn-found-in .26s var(--jn-ease) both; }
+.jn-face { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; overflow: hidden; border-radius: 999px; background: #efede6; font-size: 16px; font-weight: 600; color: #141a24; }
+.jn-face img { width: 100%; height: 100%; object-fit: cover; }
+.jn-face.flown, .jn-face.hold { visibility: hidden; }
+/* Send request: three soft dots while it goes. */
+.jn-send.sending:disabled { opacity: 1; }
+.jn-dots { display: inline-flex; gap: 5px; }
+.jn-dots i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: jn-dot 1s cubic-bezier(.22, 1, .36, 1) infinite; }
+.jn-dots i:nth-child(2) { animation-delay: .15s; }
+.jn-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes jn-dot { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+/* Sent: the page goes the dark's colour and the paper drops away down the screen. */
+.su-page.jn-sent { background-color: #1c1c1e; }
+.su-page.jn .su-paper { transition: transform .56s var(--jn-ease); }
+.su-page.jn-sent .su-paper { transform: translateY(105vh); }
+.su-page.jn .su-head { transition: opacity .26s var(--jn-ease); }
+.su-page.jn-sent .su-head { opacity: 0; }
+.su-page.jn-now, .su-page.jn-now .su-paper, .su-page.jn-now .su-head { transition: none; }
+/* The wait, drawn on the dark itself, over everything; its lines come in one after another. */
+.jn-wait { --jn-ease: cubic-bezier(.22, 1, .36, 1); position: fixed; inset: 0; z-index: 40; pointer-events: none; color: #fff; font-family: var(--font-archivo), system-ui, sans-serif; }
+.jn-wait.in { pointer-events: auto; }
+.jn-wait-in { position: absolute; left: max(24px, env(safe-area-inset-left, 0px)); right: max(24px, env(safe-area-inset-right, 0px)); top: calc(max(var(--sat, 0px), env(safe-area-inset-top, 0px)) + 92px); bottom: calc(env(safe-area-inset-bottom, 0px) + 28px); display: flex; flex-direction: column; }
+.jn-wait-in > * { opacity: 0; transform: translateY(10px); transition: opacity .42s var(--jn-ease), transform .52s var(--jn-ease); }
+.jn-wait.in .jn-wait-in > * { opacity: 1; transform: none; }
+.jn-wait.in .jn-wait-in > :nth-child(1) { transition-delay: .12s; }
+.jn-wait.in .jn-wait-in > :nth-child(2) { transition-delay: .26s; }
+.jn-wait.in .jn-wait-in > :nth-child(3) { transition-delay: .42s; }
+.jn-wait.in .jn-wait-in > :nth-child(4) { transition-delay: .64s; }
+.jn-wait.now .jn-wait-in > * { transition: none; }
+.jn-face-wrap { position: relative; align-self: flex-start; width: 56px; height: 56px; }
+.jn-face.big { width: 56px; height: 56px; font-size: 22px; }
+.jn-ring { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; }
+.jn-ring::after { content: ""; position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .55); opacity: 0; animation: jn-breathe 2.2s var(--jn-ease) 1s infinite; }
+@keyframes jn-breathe { 0% { transform: scale(1); opacity: .9; } 100% { transform: scale(1.55); opacity: 0; } }
+.jn-wait.yes .jn-ring::after { animation: none; transform: none; opacity: 1; box-shadow: 0 0 0 2px #2f7a3f; }
+.jn-tick { position: absolute; right: -6px; bottom: -4px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: #2f7a3f; color: #fff; transform: scale(0); transition: transform .4s var(--jn-ease); }
+.jn-wait.yes .jn-tick { transform: scale(1); }
+.jn-sent-title { margin: 22px 0 0; font-size: 26px; font-weight: 600; line-height: 1.1; letter-spacing: -0.03em; color: #fff; }
+.jn-sent-title span { display: block; color: var(--site-bg-muted, #8e8e93); animation: jn-title-in .36s var(--jn-ease) both; }
+.jn-wait.yes .jn-sent-title span { color: #fff; }
+.jn-wait.now .jn-sent-title span { animation: none; }
+.jn-facts { margin: 14px 0 0; font-size: 13px; font-weight: 500; color: var(--site-bg-text, #c7c7cc); }
+.jn-facts b { font-weight: 600; color: #fff; }
+.jn-bottom { margin-top: auto; display: flex; flex-direction: column; align-items: stretch; gap: 14px; width: 100%; max-width: 400px; align-self: center; text-align: center; }
+.jn-ghost { height: 44px; border: 0; border-radius: 999px; background: none; box-shadow: inset 0 0 0 1px #48484c; font: inherit; font-size: 14px; font-weight: 600; color: #fff; cursor: pointer; }
+@media (hover: hover) { .jn-ghost:hover { box-shadow: inset 0 0 0 1px #8e8e93; } }
+.jn-out { font-size: 13px; font-weight: 600; color: var(--site-bg-muted, #8e8e93); text-decoration: none; }
+/* The picture on its way from its row to its place on the wait. */
+.jn-fly { position: fixed; z-index: 45; border-radius: 50%; overflow: hidden; pointer-events: none; transition: left .62s cubic-bezier(.22, 1, .36, 1), top .62s cubic-bezier(.22, 1, .36, 1), width .62s cubic-bezier(.22, 1, .36, 1), height .62s cubic-bezier(.22, 1, .36, 1); }
+.jn-fly .jn-face { width: 100%; height: 100%; font-size: 40%; }
+/* Into the app: the paper rising over the dark. */
+.jn-home { position: fixed; inset: 0; z-index: 50; background: #f8f9fb; pointer-events: none; clip-path: inset(100% 0 0 0 round 22px 22px 0 0); transition: clip-path .7s cubic-bezier(.22, 1, .36, 1); }
+.jn-home.in { clip-path: inset(0 0 0 0 round 0); }
+@media (min-width: 900px) {
+  .jn-wait-in { left: 50%; right: auto; width: 400px; margin-left: -200px; top: 28vh; bottom: 8vh; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .jn, .jn *, .jn-wait, .jn-wait *, .jn-fly, .jn-home { animation: none !important; transition: none !important; }
+  .jn-ring::after { opacity: 0; }
+}
+/* The join screens' fixes (18 Nov, the review): the dropped paper never makes the page scroll; the picture's place on
+   the wait never shifted, so its flight lands where it stays; the face white with the hairline when it has no picture;
+   the coach's row (or the line saying why) in room kept for it; on a laptop the form held where it starts; the star
+   whole once the paper has gone; Delete account and Back in words. */
+.su-page.jn { overflow: clip; }
+.jn-wait .jn-wait-in > .jn-face-wrap { transform: none; }
+.au-card .btn.auth-submit.jn-send.sending:disabled { opacity: 1; }
+.jn-fly .jn-face { font-size: inherit; }
+.jn-face { background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; }
+.jn-face:has(img) { background: none; box-shadow: none; }
+.jn-slot { min-height: 52px; display: flex; flex-direction: column; justify-content: center; }
+.su-page.jn-sent .su-band { overflow: visible; }
+.jn-back { margin-top: 14px; text-align: center; }
+.jn-word { padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: inherit; cursor: pointer; }
+.jn-word.danger { color: #b8471f; }
+.jn-ask { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 10px; }
+.jn-out .jn-word, .jn-out a { color: var(--site-bg-muted, #8e8e93); text-decoration: none; }
+.jn-out .jn-word.danger { color: #b8471f; }
+.jn-ask.dark { color: #fff; }
+@media (min-width: 900px) {
+  .su-page.jn .su-form { margin: 16vh auto auto; }
+}
+/* The wait already on at load: its second line drawn still, whatever happens after (no blink once the load passes). Sent,
+   the page holds the screen height, so the dropped paper never leaves room to scroll; the initial grows with the face. */
+.jn-sent-title span.still { animation: none; }
+.su-page.jn-sent { height: 100vh; height: 100dvh; max-height: 100dvh; }
+.jn-fly { transition-property: left, top, width, height, font-size; }

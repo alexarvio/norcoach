@@ -448,16 +448,19 @@ export function SignInFlow({ notice, passwordsHint = null, app = null }: { notic
  * server, so it is there from the first frame); until then an email gets a
  * code alone, as before.
  */
-export function CoachSignUpFlow({ passwordsHint = null }: { passwordsHint?: boolean | null }) {
+export function CoachSignUpFlow({ passwordsHint = null, client = false, code = "" }: { passwordsHint?: boolean | null; /** The client's own sign-up (ClientSignUpFlow). */ client?: boolean; /** A coach's code from their link, carried to the join screens. */ code?: string }) {
   const f = useEmailCode();
   const passwords = usePasswordsOn(passwordsHint);
+  // Where they were going, through Apple's and Google's round trips too: /auth/continue reads it.
   const remember = () => {
-    document.cookie = `${INTENT}=${encodeURIComponent(JSON.stringify({ coach: true }))}; path=/; max-age=3600; samesite=lax`;
+    const intent = client ? { client: true, ...(code ? { code } : {}) } : { coach: true };
+    document.cookie = `${INTENT}=${encodeURIComponent(JSON.stringify(intent))}; path=/; max-age=3600; samesite=lax`;
   };
   // The coach sign-up's frame on every step (17 Nov, Alex: B); a second code on a sign-in that took over keeps it too.
   if (f.step) return <CodeScreen key={f.step.via} email={f.step.email} title={titleOf(f.step.via)} look="site" onVerify={f.verify} onResend={f.resend} onBack={f.back} busy={f.busy} error={f.error} />;
   return (
     <CoachSignUpScreen
+      client={client}
       busy={f.busy}
       error={f.error}
       askPassword={passwords === true}
@@ -476,6 +479,15 @@ export function CoachSignUpFlow({ passwordsHint = null }: { passwordsHint?: bool
       }}
     />
   );
+}
+
+/**
+ * /join and /join/<code>: a client makes their own account (18 Nov, Alex: docs/boards/client-signup-mockup.html):
+ * Apple, Google, or an email and a password, the email confirmed by a code; then About you and their coach's code on
+ * /auth/join. The coach sign-up's frame, its title `Create your account` and no coach pitch.
+ */
+export function ClientSignUpFlow({ passwordsHint = null, code = "" }: { passwordsHint?: boolean | null; code?: string }) {
+  return <CoachSignUpFlow passwordsHint={passwordsHint} client code={code} />;
 }
 
 /**

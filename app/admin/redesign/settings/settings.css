@@ -165,3 +165,12 @@ body:has(.rd.rst) .rd-picker-menu [data-slot="dropdown-menu-item"] small { font-
 .rd.rst .rst-titled { display: inline-flex; align-items: center; gap: 8px; }
 .rd.rst .rst-titled [data-slot="help-tip"] { width: 18px; height: 18px; border: 0; box-shadow: inset 0 0 0 1px #DCE1E8; background: #fff; font-size: 11px; font-weight: 600; letter-spacing: 0; color: #8b93a1; text-transform: none; }
 .rd.rst .rst-titled [data-slot="help-tip"]:hover, .rd.rst .rst-titled [data-slot="help-tip"][data-state="open"] { box-shadow: inset 0 0 0 1px #141a24; color: #141a24; }
+/* Your code (18 Nov, Alex; profile/JoinCode.tsx): the code spaced as a code reads; Change types a new one in place on its
+   row, Cancel in words and the ink Save on its right, as a plan's row. */
+.rd.rst .rjc-code { letter-spacing: .14em; }
+.rd.rst .rjc-edit { gap: 16px; }
+.rd.rst .rjc-input { flex: 1; min-width: 0; max-width: 260px; letter-spacing: .14em; font-weight: 600; }
+.rd.rst .rjc-err { flex: none; }
+.rd.rst .rjc-edit .rst-plan-foot { margin-left: auto; }
+/* Your code sits over Account with the room the profile parts keep between them (profile.css .rpf-details). */
+.rd.rst .rjc-part { margin-bottom: 22px; }

@@ -7,6 +7,7 @@ import CoachProfileScreen from "../../../client/CoachProfileScreen";
 import AvatarCropDialog from "../../AvatarCropDialog";
 import { PlusIcon } from "../../../components/icons";
 import ProfileDetails, { type ProfileDetailsData } from "./ProfileDetails";
+import JoinCode from "./JoinCode";
 import { publishCoachProfileAction, removeCoachPhotoAction, saveCoachProfileAction, uploadCoachPhotoAction } from "../../../lib/actions";
 import { COACH_PROFILE_LIMITS as LIMIT, type CoachProfileView, type CoachRole, type CoachStudy } from "../../../lib/coachProfileView";
 import Picker from "../Picker";
@@ -69,7 +70,7 @@ function Section({ title, fact, children }: { title: string; fact?: React.ReactN
   );
 }
 
-export default function ProfileEditor({ profile, coaches, details, countries }: { profile: CoachProfileView; /** The owner's Whose profile picker: every coach; else none. */ coaches: { id: number; email: string }[]; /** Your details: email, phone, address (the other tab). */ details: ProfileDetailsData; countries: { code: string; name: string }[] }) {
+export default function ProfileEditor({ profile, coaches, details, countries, joinCode = "" }: { profile: CoachProfileView; /** The owner's Whose profile picker: every coach; else none. */ coaches: { id: number; email: string }[]; /** Your details: email, phone, address (the other tab). */ details: ProfileDetailsData; countries: { code: string; name: string }[]; /** The code clients join with (18 Nov; lib/joinRequests.ts). */ joinCode?: string }) {
   const router = useRouter();
   const initialFields: Fields = {
     displayName: profile.published || profile.updatedAt ? profile.displayName : "",
@@ -201,6 +202,7 @@ export default function ProfileEditor({ profile, coaches, details, countries }: 
       </div>
 
       <div role="tabpanel" id="rpf-panel-details" aria-labelledby="rpf-tab-details" hidden={tab !== "details"}>
+        <JoinCode coachId={profile.coachId} code={joinCode} />
         <ProfileDetails coachId={profile.coachId} data={details} countries={countries} />
       </div>
       <div role="tabpanel" id="rpf-panel-public" aria-labelledby="rpf-tab-public" hidden={tab !== "public"}>

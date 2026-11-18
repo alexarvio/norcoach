@@ -6,6 +6,10 @@ import { Popover as PopoverPrimitive } from "radix-ui";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { dismissHomeActionAction } from "../../../lib/actions";
+import { acceptJoinRequestAction, declineJoinRequestAction } from "../../../lib/joinActions";
+import { Dialog, DialogClose, DialogContent, DialogTitle } from "../../../components/ui/dialog";
+import { ConfirmText } from "../ConfirmParts";
+import { SepJoin } from "../Sep";
 import { Toaster } from "../../../components/ui/toast";
 import { CalendarIcon, ChatIcon, CheckIcon, EyeIcon, LockIcon, PencilIcon, PhaseFlagIcon, PlayIcon, PlusIcon } from "../../../components/icons";
 import { byNeedCat, NeedAction, NeedFace, NeedGroup } from "../NeedGroups";
@@ -14,7 +18,7 @@ import KindMark from "../KindMark";
 import { logDate, logDateWidth } from "../../../lib/dayMonth";
 import { pic } from "../../../lib/pic";
 // Types only: feedBoard.ts re-exports the server's reader, which must never reach the browser.
-import type { ActivityKind, ActivityRow, FeedBoard, NeedRow } from "../../../lib/feedBoard";
+import type { ActivityKind, ActivityRow, FeedBoard, JoinRow, NeedRow } from "../../../lib/feedBoard";
 
 // The coach's Feed (21 Oct, Alex: built from the Feed mockup, root "rd trn rls rh rfd"): every client at once, clear at a
 // glance. Training's header (no Since line: 24 Oct, Alex), then
@@ -68,7 +72,7 @@ export default function FeedDraft({ board, now, kind }: { board: FeedBoard; /** 
         </div>
       </header>
 
-      <NeedsYou needs={board.needs} now={now} />
+      <NeedsYou needs={board.needs} joins={board.joins} now={now} />
       <Activity rows={board.activity} kind={kind} clients={board.clients} />
       <Toaster />
     </div>
@@ -124,7 +128,14 @@ function waitOf(n: NeedRow, now: number): { text: string; late: boolean } {
   return { text: `${d} ${d === 1 ? "day" : "days"}`, late: true };
 }
 
-export function NeedsYou({ needs, now }: { needs: NeedRow[]; now: number }) {
+/** Join requests' actions (18 Nov, Alex): Accept a check, Decline a cross, each its icon alone, the word its tooltip. */
+const CrossIcon = () => (
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+    <path d="M6.5 6.5l11 11M17.5 6.5l-11 11" />
+  </svg>
+);
+
+export function NeedsYou({ needs, now, joins = [] }: { needs: NeedRow[]; now: number; /** Asking to join with the coach's code (the Feed's alone). */ joins?: JoinRow[] }) {
   const router = useRouter();
   const open = useRowOpen();
   const [, start] = useTransition();
@@ -132,7 +143,10 @@ export function NeedsYou({ needs, now }: { needs: NeedRow[]; now: number }) {
   const [out, setOut] = useState<ReadonlySet<string>>(() => new Set());
   const [gone, setGone] = useState<ReadonlySet<string>>(() => new Set());
   const rows = needs.filter((n) => !gone.has(n.key));
-  const left = rows.filter((n) => !out.has(n.key)).length;
+  // Join requests (18 Nov, Alex): Accept makes them a client at once, Decline asks first; either way the row fades and goes.
+  const asking = joins.filter((j) => !gone.has(`join:${j.id}`));
+  const [declining, setDeclining] = useState<JoinRow | null>(null);
+  const left = rows.filter((n) => !out.has(n.key)).length + asking.filter((j) => !out.has(`join:${j.id}`)).length;
   const without = (key: string) => (s: ReadonlySet<string>) => {
     const next = new Set(s);
     next.delete(key);
@@ -155,8 +169,24 @@ export function NeedsYou({ needs, now }: { needs: NeedRow[]; now: number }) {
     });
   };
 
+  const settle = (j: JoinRow, act: () => Promise<{ ok: boolean; error?: string; gone?: boolean }>) => {
+    const key = `join:${j.id}`;
+    setOut((s) => new Set(s).add(key));
+    window.setTimeout(() => setGone((s) => new Set(s).add(key)), 220);
+    start(async () => {
+      const r = await act().catch(() => ({ ok: false, error: "Not saved. Try again.", gone: false }));
+      // Done, or no longer there to answer (withdrawn, answered on another screen): the row stays gone.
+      if (r.ok || r.gone) return router.refresh();
+      setOut(without(key));
+      setGone(without(key));
+      toast.error(r.error ?? "Not saved. Try again.");
+    });
+  };
+  const accept = (j: JoinRow) => settle(j, () => acceptJoinRequestAction(j.id, `${j.id}-${Date.now()}`));
+  const decline = (j: JoinRow) => settle(j, () => declineJoinRequestAction(j.id));
+
   // Every row's date in one column width, the whole list's (logDateWidth).
-  const dateW = logDateWidth(rows.filter((n) => n.since).map((n) => new Date(n.since!)));
+  const dateW = logDateWidth([...rows.filter((n) => n.since).map((n) => new Date(n.since!)), ...asking.map((j) => new Date(j.since))]);
 
   return (
     <section className="rls-section" aria-label="Needs you">
@@ -165,13 +195,42 @@ export function NeedsYou({ needs, now }: { needs: NeedRow[]; now: number }) {
           {left > 0 ? left : null}
         </Titled>
       </div>
-      {rows.length === 0 ? (
+      {rows.length === 0 && asking.length === 0 ? (
         <div className="rls-card rfd-card">
           <p className="rls-none">None</p>
         </div>
       ) : (
         // By category (3 Nov, Alex: option C of docs/boards/needs-rows-mockup.html): a head and a card a group.
-        <div className={`nd-groups owed${rows.some((n) => n.since) ? "" : " nodate"}`} style={{ "--nd-date": `${dateW}px` } as CSSProperties}>
+        // Two actions on a join request: every row's actions column as wide as two, so the columns line up group to group.
+        <div className={`nd-groups owed${rows.some((n) => n.since) || asking.length ? "" : " nodate"}`} style={{ "--nd-date": `${dateW}px`, ...(asking.length ? { "--nd-acts": "64px" } : {}) } as CSSProperties}>
+          {asking.length > 0 && (
+            <NeedGroup cat="join" count={asking.filter((j) => !out.has(`join:${j.id}`)).length}>
+              {asking.map((j) => {
+                const w = waitOf({ since: j.since } as NeedRow, now);
+                return (
+                  <div key={j.id} className={`nd-row nd-join${out.has(`join:${j.id}`) ? " out" : ""}`}>
+                    <span className="rd-logdate">{logDate(new Date(j.since))}</span>
+                    <span className="nd-who">
+                      <NeedFace name={j.name} src={null} />
+                      <span className="nd-name">{j.name}</span>
+                    </span>
+                    <span className="nd-thing">
+                      <span className="nd-what">Wants to join</span>
+                      <span className="nd-words">
+                        <SepJoin parts={[j.age != null ? String(j.age) : null, j.email]} />
+                      </span>
+                    </span>
+                    <span className={`nd-wait${w.late ? " late" : ""}`}>{w.text}</span>
+                    <span className="nd-acts">
+                      <NeedAction label="Accept" icon={<CheckIcon />} onClick={() => accept(j)} />
+                      <NeedAction label="Decline" icon={<CrossIcon />} onClick={() => setDeclining(j)} />
+                    </span>
+                    <span className="nd-more" />
+                  </div>
+                );
+              })}
+            </NeedGroup>
+          )}
           {byNeedCat(rows, (n) => n.cat).map(([cat, group]) => (
             <NeedGroup key={cat} cat={cat} count={group.filter((n) => !out.has(n.key)).length}>
               {group.map((n) => {
@@ -216,6 +275,35 @@ export function NeedsYou({ needs, now }: { needs: NeedRow[]; now: number }) {
           ))}
         </div>
       )}
+      {/* Decline asks first (nothing taken away on one click): the confirm anatomy, the red pill. */}
+      <Dialog open={declining != null} onOpenChange={(o) => !o && setDeclining(null)}>
+        {declining && (
+          <DialogContent className="dlh" aria-describedby="decline-join-text">
+            <div className="dlh-head">
+              <DialogTitle className="dlh-title">Decline {declining.name}?</DialogTitle>
+              <DialogClose className="dlh-x" aria-label="Close">
+                ✕
+              </DialogClose>
+            </div>
+            <ConfirmText id="decline-join-text">They can send their request to another coach.</ConfirmText>
+            <div className="dlh-foot">
+              <DialogClose className="dlh-cancel">Cancel</DialogClose>
+              <button
+                type="button"
+                className="dlh-danger"
+                autoFocus
+                onClick={() => {
+                  const j = declining;
+                  setDeclining(null);
+                  decline(j);
+                }}
+              >
+                Decline
+              </button>
+            </div>
+          </DialogContent>
+        )}
+      </Dialog>
     </section>
   );
 }

@@ -19,6 +19,18 @@ import { TrackIcon } from "./plan/PlanDraft";
 const CALL = meetingTypeOf("checkin");
 
 export const NEED_LOOK: Record<NeedCat, { label: string; color: string; icon: ReactNode }> = {
+  // Someone asking to join with the coach's code (18 Nov, Alex): a person with a plus, in ink.
+  join: {
+    label: "Join requests",
+    color: "#141a24",
+    icon: (
+      <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="9.5" cy="8" r="3.5" />
+        <path d="M3 19.5c.7-3.4 3.3-5.4 6.5-5.4s5.8 2 6.5 5.4" />
+        <path d="M18.5 8.5v5M16 11h5" />
+      </svg>
+    ),
+  },
   messages: { label: "Messages", color: "#5b6474", icon: <ChatIcon /> },
   lifestyle: { label: "Lifestyle", color: TRACK_ACCENT.lifestyle, icon: <TrackIcon track="lifestyle" size={14} /> },
   training: { label: "Training", color: TRACK_ACCENT.training, icon: <TrackIcon track="training" size={14} /> },

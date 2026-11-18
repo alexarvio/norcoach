@@ -69,6 +69,9 @@ export type ActivityRow = {
   isNew: boolean;
 };
 
+/** Someone asking to join the coach (18 Nov): as they gave it, their age from the birthdate. */
+export type JoinRow = { id: number; name: string; age: number | null; email: string; since: string };
+
 export type FeedBoard = {
   today: string;
   /** Since the coach's previous visit to the Feed (feed_looked.prev; 30 minutes apart is a new visit), across every
@@ -77,6 +80,9 @@ export type FeedBoard = {
   since: { from: string; sessions: number; checkIns: number; foodDays: number; messages: number; shapeUpdates: number } | null;
   /** Blockers first (an empty week, a lockout), then today's calls by time, then the longest wait. */
   needs: NeedRow[];
+  /** Asking to join with the coach's code (18 Nov, Alex; lib/joinRequests.ts), oldest first: no client yet, so not a
+      NeedRow; Accept or Decline on the row. */
+  joins: JoinRow[];
   /** Newest first: each kind's newest 200. */
   activity: ActivityRow[];
   /** The coach's clients A to Z, for Activity's client filter (26 Oct, Alex). */

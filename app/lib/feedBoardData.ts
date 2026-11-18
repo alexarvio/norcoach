@@ -3,6 +3,7 @@
 // before this one. Never throws: a coach with no clients, no logs and no calls gets nulls, zeros and empty lists.
 
 import type { ActivityKind, ActivityRow, FeedBoard, NeedRow } from "./feedBoard";
+import { ageOf, openJoinRequestsFor } from "./joinRequests";
 import { needCatOfHref } from "./needCats";
 import { getData, persist, type Data } from "./db";
 import {
@@ -213,7 +214,7 @@ function safe<T>(part: string, fn: () => T, fallback: T): T {
 
 export function getFeedBoard(coachId: number): FeedBoard {
   const today = localDateStr();
-  const empty: FeedBoard = { today, since: null, needs: [], activity: [], clients: [] };
+  const empty: FeedBoard = { today, since: null, needs: [], joins: [], activity: [], clients: [] };
   let ctx: Ctx;
   try {
     ctx = context(coachId, today);
@@ -225,6 +226,7 @@ export function getFeedBoard(coachId: number): FeedBoard {
     today,
     since: safe("since", () => sinceOf(ctx), null),
     needs: safe("needs", () => needsOf(ctx), []),
+    joins: safe("joins", () => openJoinRequestsFor(coachId).map((r) => ({ id: r.id, name: `${r.first_name} ${r.last_name}`.trim(), age: ageOf(r.birthdate), email: r.email, since: r.created_at })), []),
     activity: safe("activity", () => activityOf(ctx), []),
     clients: ctx.clients
       .map((c) => ({ id: c.id, name: c.name ?? "Client", avatarPath: c.avatar_path ?? null }))
