@@ -20131,7 +20131,7 @@ span.lw-saved.lw-saved.refused { cursor: default; }
 .evs-date.empty b { font-weight: 500; color: #98A2B3; }
 .evs-arrow { background: #fff; box-shadow: none; --ring: #E1E5EB; color: #5b6474; }
 .evs-note textarea { border-radius: 14px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; color: #141a24; }
-.evs-note textarea:focus { box-shadow: inset 0 0 0 1.5px #141a24; }
+.evs-note textarea:focus { box-shadow: inset 0 0 0 1px #141a24; }
 .evs-note textarea::placeholder { color: #98A2B3; }
 .evs-save { height: 50px; border-radius: 999px; background: #141a24; box-shadow: none; font-weight: 600; }
 .evs-save:disabled { background: #C9CFD8; }
@@ -20195,7 +20195,7 @@ span.lw-saved.lw-saved.refused { cursor: default; }
 .gpk-note { font-weight: 500; color: #8b93a1; }
 .gpk-label { font-size: 10px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #5b6474; }
 .gpk-input-box { background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; }
-.gpk-input-box:focus-within, .gpk-input-box.valid { box-shadow: inset 0 0 0 1.5px #141a24; }
+.gpk-input-box:focus-within, .gpk-input-box.valid { box-shadow: inset 0 0 0 1px #141a24; }
 .gpk-input { font-weight: 500; color: #141a24; }
 .gpk-input::placeholder { font-weight: 500; color: #98A2B3; }
 .gpk-error { font-weight: 600; color: #b8471f; }
@@ -20300,7 +20300,7 @@ span.lw-saved.lw-saved.refused { cursor: default; }
 .wo-sheet-title { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; color: #141a24; }
 .wo-sheet-sub { font-size: 13.5px; font-weight: 500; color: #8b93a1; }
 .wo-sheet-input { border: 0; border-radius: 14px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; font-weight: 500; color: #141a24; }
-.wo-sheet-input:focus { border: 0; background: #fff; box-shadow: inset 0 0 0 1.5px #141a24; }
+.wo-sheet-input:focus { border: 0; background: #fff; box-shadow: inset 0 0 0 1px #141a24; }
 .wo-sheet-input::placeholder { color: #98A2B3; }
 .wo-sheet-btn { height: 50px; border-radius: 999px; background: #141a24; font-weight: 600; }
 .wo-sheet-btn:disabled { background: #C9CFD8; }
@@ -20310,7 +20310,7 @@ span.lw-saved.lw-saved.refused { cursor: default; }
 .wo-sheet .wo-sheet-title { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; color: #141a24; }
 .wo-sheet .wo-sheet-sub { font-weight: 500; color: #8b93a1; }
 .wo-sheet .wo-sheet-input { border: 0; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; font-weight: 500; color: #141a24; }
-.wo-sheet .wo-sheet-input:focus { border: 0; background: #fff; box-shadow: inset 0 0 0 1.5px #141a24; }
+.wo-sheet .wo-sheet-input:focus { border: 0; background: #fff; box-shadow: inset 0 0 0 1px #141a24; }
 .wo-sheet .wo-sheet-btn { height: 50px; border-radius: 999px; background: #141a24; font-weight: 600; }
 .wo-sheet .wo-sheet-btn:disabled { background: #C9CFD8; }
 .wo-sheet .wo-sheet-text { font-weight: 600; color: #141a24; }
@@ -20536,7 +20536,7 @@ span.lw-saved.lw-saved.refused { cursor: default; }
 .vr-sheet .vr-sheet-note span { font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; color: #5b6474; }
 .vr-sheet .vr-sheet-note p { font-size: 14px; font-weight: 500; color: #3a4250; }
 .vr-sheet .vr-sheet-note-in { border-radius: 14px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; color: #141a24; }
-.vr-sheet .vr-sheet-note-in:focus { outline: none; box-shadow: inset 0 0 0 1.5px #141a24; }
+.vr-sheet .vr-sheet-note-in:focus { outline: none; box-shadow: inset 0 0 0 1px #141a24; }
 .vr-sheet .vr-sheet-note-in::placeholder { color: #98A2B3; }
 .vr-sheet .vr-sheet-send { min-height: 48px; border-radius: 999px; background: #141a24; font-weight: 600; }
 .vr-sheet .vr-sheet-send:disabled { background: #C9CFD8; }
@@ -20637,7 +20637,7 @@ span.lw-saved.lw-saved.refused { cursor: default; }
 .fdi-panel.fdi-panel .fdi-mode { min-height: 38px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; font-weight: 600; color: #141a24; }
 .fdi-panel.fdi-panel .fdi-mode.on { background: #141a24; box-shadow: none; color: #fff; }
 .fdi-panel.fdi-panel .fdi-search, .fdi-panel.fdi-panel .fdi-scan-btn { border: 0; border-radius: 14px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; color: #8b93a1; }
-.fdi-panel.fdi-panel .fdi-search:focus-within { box-shadow: inset 0 0 0 1.5px #141a24; }
+.fdi-panel.fdi-panel .fdi-search:focus-within { box-shadow: inset 0 0 0 1px #141a24; }
 .fdi-panel.fdi-panel .fdi-scan-btn { color: #141a24; }
 .fdi-panel.fdi-panel .fdi-search input { font-weight: 500; color: #141a24; }
 .fdi-panel.fdi-panel .fdi-search input::placeholder { color: #98A2B3; }
@@ -20652,7 +20652,7 @@ span.lw-saved.lw-saved.refused { cursor: default; }
 .fdi-panel.fdi-panel .fdi-hint, .fdi-panel.fdi-panel .fdi-empty { font-weight: 500; color: #8b93a1; }
 .fdi-panel.fdi-panel .fdi-food-name { font-size: 16px; font-weight: 600; color: #141a24; }
 .fdi-panel.fdi-panel .fdi-amount input, .fdi-panel.fdi-panel .fdi-unit select { border: 0; border-radius: 14px; background-color: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; font-weight: 500; color: #141a24; }
-.fdi-panel.fdi-panel .fdi-amount input:focus, .fdi-panel.fdi-panel .fdi-unit select:focus { box-shadow: inset 0 0 0 1.5px #141a24; outline: none; }
+.fdi-panel.fdi-panel .fdi-amount input:focus, .fdi-panel.fdi-panel .fdi-unit select:focus { box-shadow: inset 0 0 0 1px #141a24; outline: none; }
 .fdi-panel.fdi-panel .fdi-primary, .fdi-scan.fdi-scan .fdi-primary { min-height: 48px; border-radius: 999px; background: #141a24; font-weight: 600; color: #fff; }
 .fdi-panel.fdi-panel .fdi-primary:disabled { background: #C9CFD8; color: #fff; }
 .fdi-panel.fdi-panel .fdi-secondary, .fdi-scan.fdi-scan .fdi-secondary { border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; font-weight: 600; color: #141a24; }
@@ -20664,7 +20664,7 @@ span.lw-saved.lw-saved.refused { cursor: default; }
 .fdi-scan.fdi-scan .fdi-scan-view { border-radius: 14px; background: #141a24; }
 .fdi-scan.fdi-scan .fdi-scan-error { font-weight: 500; color: #b8471f; }
 .fdi-scan.fdi-scan .fdi-scan-typed input { border: 0; border-radius: 14px; box-shadow: inset 0 0 0 1px #E1E5EB; font-weight: 500; color: #141a24; }
-.fdi-scan.fdi-scan .fdi-scan-typed input:focus { box-shadow: inset 0 0 0 1.5px #141a24; }
+.fdi-scan.fdi-scan .fdi-scan-typed input:focus { box-shadow: inset 0 0 0 1px #141a24; }
 .fdi-scan.fdi-scan .fdi-scan-typed input::placeholder { color: #98A2B3; }
 /* The unit dropdown the same (17 Oct): a white hairline field, ink edge while open; the list white with the hairline, the chosen unit ink at 600. */
 .fdi-pick .fdi-pick-btn.fdi-pick-btn { border: 0; border-radius: 14px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; font-weight: 500; color: #141a24; }
@@ -20837,7 +20837,7 @@ select.st-details-input.st-details-input.st-details-input.empty { color: #98A2B3
 .fa-title { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.01em; color: #141a24; }
 .fa-sub { margin: 0; font-size: 13px; font-weight: 500; color: #8b93a1; }
 .fa-search { width: 100%; box-sizing: border-box; height: 46px; padding: 0 16px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; font: inherit; font-size: 16px; font-weight: 500; color: #141a24; outline: none; }
-.fa-search:focus { box-shadow: inset 0 0 0 1.5px #141a24; }
+.fa-search:focus { box-shadow: inset 0 0 0 1px #141a24; }
 .fa-search::placeholder { color: #98A2B3; }
 .fa-problem { margin: 0; font-size: 13px; font-weight: 500; color: #b8471f; }
 .fa-own { display: flex; align-items: center; gap: 12px; padding: 12px 2px; border: 0; border-bottom: 1px solid #E1E5EB; background: none; font: inherit; text-align: left; color: #141a24; cursor: pointer; }
@@ -20971,7 +20971,7 @@ select.st-details-input.st-details-input.st-details-input.empty { color: #98A2B3
 .au-card .auth-field span { font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #5b6474; }
 .au-card .auth-field input { height: 44px; padding: 0 14px; border: 0; border-radius: 12px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; font: inherit; font-size: 16px; font-weight: 500; color: #141a24; }
 .au-card .auth-field input::placeholder { color: #98A2B3; }
-.au-card .auth-field input:focus { outline: none; box-shadow: inset 0 0 0 1.5px #141a24; }
+.au-card .auth-field input:focus { outline: none; box-shadow: inset 0 0 0 1px #141a24; }
 .au-card .au-provider { height: 44px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; font: inherit; font-size: 14.5px; font-weight: 600; color: #141a24; }
 .au-card .au-provider:hover { background: #fafbfd; }
 .au-card .au-provider.apple { box-shadow: inset 0 0 0 1px #E1E5EB; background: #fff; color: #141a24; } /* Apple the white hairline pill too (3 Nov, Alex). */
@@ -20989,7 +20989,7 @@ select.st-details-input.st-details-input.st-details-input.empty { color: #98A2B3
 /* Privacy policy | Support parted by the shared bar (Bars, .cl-sep; 3 Nov, Alex): the row's gap is its air. */
 .au-card .auth-legal > .cl-sep { flex: none; margin: 0; }
 .au-card .au-code input { height: 52px; border: 0; border-radius: 12px; box-shadow: inset 0 0 0 1px #E1E5EB; font-weight: 600; color: #141a24; }
-.au-card .au-code input:focus { outline: none; box-shadow: inset 0 0 0 1.5px #141a24; }
+.au-card .au-code input:focus { outline: none; box-shadow: inset 0 0 0 1px #141a24; }
 .au-card .auth-error { border: 0; background: none; padding: 0; color: #b8471f; font-size: 13px; font-weight: 500; }
 .au-card .auth-ok { border: 0; background: none; padding: 0; color: #2f7a3f; font-size: 13px; font-weight: 500; }
 .au-card .au-coach { background: #141a24; }
