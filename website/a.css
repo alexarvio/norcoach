@@ -564,8 +564,19 @@ html:not(.js) .tt { position: static; opacity: 1; visibility: visible; grid-area
 .bk-row b { font-weight: 600; color: #202124; letter-spacing: .02em; }
 .bk-row span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bk-row em { font-style: normal; font-weight: 600; color: #1e8e3e; font-variant-numeric: tabular-nums; }
+/* Beside the words (18 Nov, Alex: "too big, have the text on the left and the drawing on the right"): the same picture, small. */
+.hero-grid .swap { margin-top: 0; padding: 18px; gap: 0 12px; grid-template-columns: minmax(0, 1fr) 26px minmax(0, 1fr); border-radius: 22px; }
+.hero-grid .swap-panel { border-radius: 16px; }
+.hero-grid .swap-head { height: 40px; padding: 0 14px; }
+.hero-grid .swap-head.c1 { padding-left: 2px; }
+.hero-grid .swap-from, .hero-grid .swap-from.alt { width: 100%; max-width: none; padding: 7px 0; }
+.hero-grid .wk-arrow { width: 26px; height: 12px; }
+.hero-grid .swap-to { grid-template-columns: 20px minmax(0, 1fr); gap: 1px 10px; padding: 0 14px; }
+.hero-grid .swap-to svg { width: 19px; height: 19px; }
+.hero-grid .swap-to b { font-size: 15px; }
+.hero-grid .swap-to span { font-size: 12.5px; line-height: 1.35; }
 @media (max-width: 760px) {
-  .swap { grid-template-columns: minmax(0, 1fr); gap: 0; border-radius: 22px; }
+  .swap, .hero-grid .swap { grid-template-columns: minmax(0, 1fr); gap: 0; border-radius: 22px; }
   .swap > * { grid-row: auto; grid-column: 1 !important; }
   .swap-panel, .swap-arrow, .swap-head.c1 { display: none; }
   .swap-head.c3 { order: -1; height: 36px; padding: 0 2px; }
