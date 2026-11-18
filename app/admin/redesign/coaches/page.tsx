@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { isOwner, requireCoach } from "../../../lib/auth";
-import { getCoachProfileView, listCoachAccounts, listCoachEmails } from "../../../lib/queries";
+import { getCoachProfileView, getCoachSettings, listCoachAccounts, listCoachEmails } from "../../../lib/queries";
+import { ensureJoinCode } from "../../../lib/joinRequests";
 import { fetchCoachChat, fetchCoachPageChat } from "../../../lib/chat/rows";
 import { listSupportThreads } from "../../../lib/support";
 import { billingOn, billingView } from "../../../lib/billing";
@@ -37,7 +38,9 @@ export default async function CoachesPage() {
     listCoachAccounts(everyCoach)
       .map((c) => {
         const b = billingView(c.id, c.id === coach.id);
-        return { ...c, name: getCoachProfileView(c.id)?.displayName ?? c.email, owner: c.id === coach.id, pays: b.required, billing: b.pill };
+        const view = getCoachProfileView(c.id);
+        // To find a coach by (18 Nov): their business, their Norcode (made here if they have none yet) and their face.
+        return { ...c, name: view?.displayName ?? c.email, business: getCoachSettings(c.id).business?.business_name?.trim() ?? "", code: ensureJoinCode(c.id), photo: view?.avatarPath ?? null, owner: c.id === coach.id, pays: b.required, billing: b.pill };
       }),
   );
   return t.end(
