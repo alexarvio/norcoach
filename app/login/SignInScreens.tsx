@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import Link from "next/link";
 import DoneCheck from "../components/DoneCheck";
 import { nativePlatform } from "../lib/native";
 import { NorCoachLogo } from "../components/NorCoachLogo";
@@ -86,9 +87,11 @@ export function SiteShell({ title, children, aside, pitch = true, className, ste
   );
 }
 
+// Sign in and Create an account change in place (18 Nov, Alex: the boxes "jumped a little bit"): a link inside the
+// app, never a whole page loaded again, and the two screens keep every box where it was.
 const SignInLink = () => (
   <>
-    Already have an account? <a href="/login">Sign in</a>
+    Already have an account? <Link href="/login">Sign in</Link>
   </>
 );
 
@@ -189,7 +192,7 @@ export function SignInScreen({
       aside={
         <>
           <span className="su-aside-line">
-            New here? <a href="/join">Create an account</a>
+            New here? <Link href="/join">Create an account</Link>
           </span>
           {!inApp && (
             <span className="su-aside-line">

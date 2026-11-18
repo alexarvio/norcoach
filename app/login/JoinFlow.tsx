@@ -44,6 +44,31 @@ const fromValue = (v: string) => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v.slice(8)}
 const reduced = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 const newKey = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 
+/** The coach's picture fetched and ready to draw before their name shows (18 Nov, Alex: the name came, the picture half
+ *  a second after: "have… both kind of appear at the same time smoothly"). At most 2.5 s, then they show as they come. */
+function pictureReady(src: string | null): Promise<void> {
+  if (!src || typeof Image === "undefined") return Promise.resolve();
+  return new Promise((resolve) => {
+    const img = new Image();
+    const done = () => resolve();
+    img.onload = () => (typeof img.decode === "function" ? img.decode().then(done, done) : done());
+    img.onerror = done;
+    img.src = src;
+    window.setTimeout(done, 2500);
+  });
+}
+
+/** On a phone, a field being typed in when a step is left: the keyboard is put away first and the step changes once it
+ *  is down (18 Nov, Alex: "whenever it changes screen… it jumps a little bit"), so the form never slides while the
+ *  keyboard is still moving the screen. With a mouse, or with no field in use, at once. */
+function afterKeyboard(then: () => void) {
+  const el = document.activeElement as HTMLElement | null;
+  const typing = !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA");
+  el?.blur?.();
+  if (typing && window.matchMedia?.("(pointer: coarse)").matches && !reduced()) window.setTimeout(then, 280);
+  else then();
+}
+
 /** The coach's face: their picture, else their initial on a pale disc. */
 function Face({ coach, faceRef, className = "" }: { coach: CoachCard; faceRef?: React.Ref<HTMLSpanElement>; className?: string }) {
   return (
@@ -129,8 +154,11 @@ export default function JoinFlow({
     const t = window.setTimeout(async () => {
       const r = await lookupCoachCodeAction(want).catch(() => ({ ok: false as const }));
       if (ask !== lookup.current) return;
-      if (r.ok) setFound(r.coach);
-      else setNoCoach(true);
+      if (!r.ok) return setNoCoach(true);
+      // Their picture first, so the name and the face come in together.
+      await pictureReady(r.coach.photo);
+      if (ask !== lookup.current) return;
+      setFound(r.coach);
     }, 350);
     return () => window.clearTimeout(t);
   }, [code]);
@@ -139,7 +167,7 @@ export default function JoinFlow({
     if (!first.trim() || !last.trim()) return setAboutError("Add your first and last name.");
     if (!dobValue(dob)) return setAboutError("Check your date of birth.");
     setAboutError(null);
-    go("coach");
+    afterKeyboard(() => go("coach"));
   };
 
   // Into the app once the coach says yes: the ring green and You're in, then the paper rising over the dark.
@@ -332,7 +360,7 @@ export default function JoinFlow({
           )}
         </button>
         <p className="auth-note jn-back">
-          <button type="button" className="au-link" onClick={() => go("about")}>
+          <button type="button" className="au-link" onClick={() => afterKeyboard(() => go("about"))}>
             Back
           </button>
         </p>
@@ -352,15 +380,19 @@ export default function JoinFlow({
         }
         aside={accountLine("paper")}
       >
+        {/* Both steps are always there, one over the other in the same room (18 Nov, Alex: "it jumps a little bit"): the
+            room is as tall as the taller one, so nothing under the form moves when the step changes; the one not on is
+            unseen and can't be reached. */}
         <div className="jn-pages" inert={!!waiting}>
-          {pages.prev && (
-            <div className={`jn-page out d${pages.dir}`} aria-hidden="true" inert>
-              {page(pages.prev)}
-            </div>
-          )}
-          <div key={pages.cur} className={`jn-page${pages.prev ? ` in d${pages.dir}` : ""}`}>
-            {page(pages.cur)}
-          </div>
+          {(Object.keys(ORDER) as Step[]).map((s) => {
+            const on = pages.cur === s;
+            const look = on ? (pages.prev ? ` in d${pages.dir}` : "") : pages.prev === s ? ` out d${pages.dir}` : " off";
+            return (
+              <div key={s} className={`jn-page${look}`} aria-hidden={!on} inert={!on}>
+                {page(s)}
+              </div>
+            );
+          })}
         </div>
       </SiteShell>
 
