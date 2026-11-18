@@ -9,6 +9,7 @@ import { callNative, nativePlatform } from "../lib/native";
 import { leaveWithDarkClock } from "../client/NativeStatusBar";
 import { usePasswordsOn } from "./usePasswordsOn";
 import { isReviewEmail } from "../lib/reviewAccount";
+import { offerToSavePassword } from "../lib/savePassword";
 
 // Clerk behind the sign-in screens (26 Sep). One way in for everyone: an
 // email code, or Apple or Google. An email Clerk doesn't know yet (anyone
@@ -44,6 +45,9 @@ const notFound = (error: unknown) => isClerkAPIResponseError(error) && error.err
 const exists = (error: unknown) => isClerkAPIResponseError(error) && error.errors.some((e) => e.code === "form_identifier_exists");
 const signedIn = (error: unknown) => isClerkAPIResponseError(error) && error.errors.some((e) => e.code === "session_exists");
 /** A password tried on an account that has none (it signs in with a code). */
+/** A wrong password for the email. */
+const wrongPassword = (error: unknown) => isClerkAPIResponseError(error) && error.errors.some((e) => e.code === "form_password_incorrect");
+
 const noPassword = (error: unknown) => isClerkAPIResponseError(error) && error.errors.some((e) => e.code === "strategy_for_user_invalid" || e.code === "no_password_set");
 /** Clerk refused a password because passwords aren't on for the instance. */
 const passwordOff = (error: unknown) =>
@@ -97,10 +101,21 @@ function useEmailCode() {
     waiting.current = w;
     setHeld(true);
   };
+  // The password this sign-in is going through with, for the iPhone's "Save password?" once it is in (18 Nov,
+  // lib/savePassword.ts): `always` for one just made (a new account, a reset), a sign-in's once an email on the phone.
+  const saving = useRef<{ email: string; password: string; always: boolean } | null>(null);
+  // Emails a wrong password was tried for here: the one that then works is likely new (changed on another device), so
+  // the phone is offered it even where it was asked before, never to keep filling the old one.
+  const wrongFor = useRef(new Set<string>());
 
   /** Where a sign-in stands after a step: in, or one more code to the same email, or what Clerk still wants named. */
   const finish = async (done: SignInResource | SignUpResource, email: string) => {
     if (done.status === "complete" && done.createdSessionId) {
+      // Asked before the session is made active: setting it starts the page's own refresh, which would move on behind
+      // the phone's question.
+      const s = saving.current;
+      saving.current = null;
+      if (s) await offerToSavePassword(s.email, s.password, { always: s.always });
       await setActive?.({ session: done.createdSessionId });
       land();
       return true;
@@ -132,6 +147,7 @@ function useEmailCode() {
   /** A code to the address: signing in if Clerk knows it, signing up if not. `why` a fact for the code screen. */
   const sendCode = async (email: string, why: string | null = null) => {
     if (!ready) return hold({ kind: "code", email, why });
+    saving.current = null;
     setNote(why);
     if (isReviewEmail(email)) {
       setError(null);
@@ -171,10 +187,12 @@ function useEmailCode() {
     setBusy(true);
     setError(null);
     try {
+      saving.current = { email, password: pw, always: wrongFor.current.has(email.trim().toLowerCase()) };
       const done = await signIn.create({ strategy: "password", identifier: email, password: pw });
       if (await finish(done, email)) return;
     } catch (e) {
       if (signedIn(e)) return land();
+      if (wrongPassword(e)) wrongFor.current.add(email.trim().toLowerCase());
       // Not in Clerk yet: the account is made with the password typed, its email then confirmed by a code.
       if (notFound(e)) {
         setBusy(false);
@@ -230,6 +248,7 @@ function useEmailCode() {
     setBusy(true);
     setError(null);
     try {
+      saving.current = { email: step.email, password: pw, always: true };
       const done = await signIn.attemptFirstFactor({ strategy: "reset_password_email_code", code, password: pw });
       if (await finish(done, step.email)) return;
     } catch (e) {
@@ -247,6 +266,7 @@ function useEmailCode() {
     setBusy(true);
     setError(null);
     try {
+      saving.current = { email, password: pw, always: true };
       await signUp.create({ emailAddress: email, password: pw });
       await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
       setStep({ email, via: "up" });
@@ -263,6 +283,7 @@ function useEmailCode() {
         return;
       }
       try {
+        saving.current = { email, password: pw, always: false };
         const done = await signIn.create({ strategy: "password", identifier: email, password: pw });
         if (await finish(done, email)) return;
       } catch {
@@ -391,7 +412,7 @@ function useEmailCode() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as Clerk comes in
   }, [ready]);
 
-  return { step, busy: busy || held, error, note, sendCode, signInWithPassword, forgotFor, resend, verify, reset, signUpWithPassword, oauth, back: () => (setStep(null), setError(null), setNote(null)) };
+  return { step, busy: busy || held, error, note, sendCode, signInWithPassword, forgotFor, resend, verify, reset, signUpWithPassword, oauth, back: () => ((saving.current = null), setStep(null), setError(null), setNote(null)) };
 }
 
 /** /login: Apple, Google, or the email and its password together, or a code to the email (17 Nov, Alex), in the coach

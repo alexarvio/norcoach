@@ -1,6 +1,7 @@
 import UIKit
 import Capacitor
 import AuthenticationServices
+import Security
 import WebKit
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
@@ -67,6 +68,7 @@ public class NorcoachAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticatio
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "openSignIn", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "signInWithApple", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "savePassword", returnType: CAPPluginReturnPromise),
     ]
 
     private let site = "app.norcoachapp.com"
@@ -143,6 +145,22 @@ public class NorcoachAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticatio
             "firstName": credential.fullName?.givenName ?? "",
             "lastName": credential.fullName?.familyName ?? "",
         ])
+    }
+
+    /// The phone's own "Save password?" for a password just signed in with or set (18 Nov, Alex: "it did not offer to
+    /// save"): inside the app's web view the iPhone fills a saved password but doesn't offer to save a new one, so the page
+    /// asks here once a password sign-in has gone through (app/lib/savePassword.ts). Shared Web Credentials for the site the
+    /// app is linked to (webcredentials in App.entitlements and the site's apple-app-site-association), so Face ID fills it
+    /// after, in the app and in Safari. Resolves with whether it was saved; Not Now is the person's to choose.
+    @objc func savePassword(_ call: CAPPluginCall) {
+        guard let account = call.getString("email"), !account.isEmpty,
+              let password = call.getString("password"), !password.isEmpty else {
+            call.reject("No email or password")
+            return
+        }
+        SecAddSharedWebCredential(site as CFString, account as CFString, password as CFString) { error in
+            call.resolve(["saved": error == nil])
+        }
     }
 
     public func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
