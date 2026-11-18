@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth, useClerk } from "@clerk/nextjs";
 import { useSignIn, useSignUp } from "@clerk/nextjs/legacy";
 import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
-import { AuthShell, CodeScreen, CoachSignUpScreen, InviteWelcomeScreen, ResetPasswordScreen, SignInScreen } from "./SignInScreens";
+import { AuthShell, CodeScreen, CoachSignUpScreen, InviteWelcomeScreen, ResetPasswordScreen, SignInScreen, type InApp } from "./SignInScreens";
 import { callNative, nativePlatform } from "../lib/native";
 import { leaveWithDarkClock } from "../client/NativeStatusBar";
 import { usePasswordsOn } from "./usePasswordsOn";
@@ -64,6 +64,9 @@ const land = () => {
  *  check (Clerk's Client Trust), said by the title, not as an error. */
 const titleOf = (via: string) => (via === "up" ? "Confirm your email" : via === "in2" ? "One more check" : "Check your email");
 
+/** A step tapped before Clerk had loaded, sent once it has. */
+type Waiting = { kind: "code"; email: string; why: string | null } | { kind: "password" | "signup"; email: string; pw: string } | { kind: "forgot"; email: string };
+
 type SignInResource = Awaited<ReturnType<NonNullable<ReturnType<typeof useSignIn>["signIn"]>["create"]>>;
 type SignUpResource = Awaited<ReturnType<NonNullable<ReturnType<typeof useSignUp>["signUp"]>["create"]>>;
 
@@ -86,6 +89,14 @@ function useEmailCode() {
   // A fact over the code's own line (a password tried on an account that has none yet).
   const [note, setNote] = useState<string | null>(null);
   const ready = inLoaded && upLoaded;
+  // A tap before Clerk has loaded waits for it (18 Nov: the password box is drawn with the page now, so a password the
+  // phone fills in can be sent within the first second): the step is kept, "One moment…" shows, and it goes once Clerk is in.
+  const waiting = useRef<Waiting | null>(null);
+  const [held, setHeld] = useState(false);
+  const hold = (w: Waiting) => {
+    waiting.current = w;
+    setHeld(true);
+  };
 
   /** Where a sign-in stands after a step: in, or one more code to the same email, or what Clerk still wants named. */
   const finish = async (done: SignInResource | SignUpResource, email: string) => {
@@ -120,7 +131,7 @@ function useEmailCode() {
 
   /** A code to the address: signing in if Clerk knows it, signing up if not. `why` a fact for the code screen. */
   const sendCode = async (email: string, why: string | null = null) => {
-    if (!ready) return;
+    if (!ready) return hold({ kind: "code", email, why });
     setNote(why);
     if (isReviewEmail(email)) {
       setError(null);
@@ -154,7 +165,7 @@ function useEmailCode() {
   /** The email and its password together. An account with no password yet, or an email Clerk doesn't know, gets the
    *  code instead, as before passwords; a wrong password says so. */
   const signInWithPassword = async (email: string, pw: string) => {
-    if (!ready) return;
+    if (!ready) return hold({ kind: "password", email, pw });
     setNote(null);
     if (isReviewEmail(email)) return sendCode(email);
     setBusy(true);
@@ -180,7 +191,7 @@ function useEmailCode() {
 
   /** Forgot password: a code to the address, then the code and a new password (ResetPasswordScreen). */
   const forgotFor = async (email: string) => {
-    if (!ready) return;
+    if (!ready) return hold({ kind: "forgot", email });
     setNote(null);
     setBusy(true);
     setError(null);
@@ -231,7 +242,7 @@ function useEmailCode() {
   /** A coach signing up by email: the account with its password, then a code to confirm the address. An email that has
    *  an account already (a sign-up left before About you, say) signs in with the password given instead. */
   const signUpWithPassword = async (email: string, pw: string) => {
-    if (!ready) return;
+    if (!ready) return hold({ kind: "signup", email, pw });
     setNote(null);
     setBusy(true);
     setError(null);
@@ -367,19 +378,34 @@ function useEmailCode() {
   };
 
   // Busy only while something is on its way; before Clerk has loaded a tap simply waits.
-  return { step, busy, error, note, sendCode, signInWithPassword, forgotFor, resend, verify, reset, signUpWithPassword, oauth, back: () => (setStep(null), setError(null), setNote(null)) };
+  // The step a tap kept, sent with this render's Clerk once it has loaded.
+  useEffect(() => {
+    const w = waiting.current;
+    if (!ready || !w) return;
+    waiting.current = null;
+    setHeld(false);
+    if (w.kind === "code") void sendCode(w.email, w.why);
+    else if (w.kind === "password") void signInWithPassword(w.email, w.pw);
+    else if (w.kind === "forgot") void forgotFor(w.email);
+    else void signUpWithPassword(w.email, w.pw);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as Clerk comes in
+  }, [ready]);
+
+  return { step, busy: busy || held, error, note, sendCode, signInWithPassword, forgotFor, resend, verify, reset, signUpWithPassword, oauth, back: () => (setStep(null), setError(null), setNote(null)) };
 }
 
 /** /login: Apple, Google, or the email and its password together, or a code to the email (17 Nov, Alex), in the coach
- *  sign-up's dark frame, its code and reset screens too. */
-export function SignInFlow({ notice }: { notice?: string | null }) {
+ *  sign-up's dark frame, its code and reset screens too. `passwordsHint`: whether Clerk takes passwords, read by the
+ *  server with the page, so the password box is there from the first frame (lib/clerkPasswords.ts). */
+export function SignInFlow({ notice, passwordsHint = null, app = null }: { notice?: string | null; passwordsHint?: boolean | null; /** The phone app the page is in, as the server tells it (InApp). */ app?: InApp }) {
   const f = useEmailCode();
-  const passwords = usePasswordsOn();
+  const passwords = usePasswordsOn(passwordsHint);
   if (f.step?.via === "reset") return <ResetPasswordScreen email={f.step.email} look="site" onSubmit={f.reset} onResend={f.resend} onBack={f.back} busy={f.busy} error={f.error} />;
   if (f.step) return <CodeScreen key={f.step.via} email={f.step.email} title={titleOf(f.step.via)} note={f.note} look="site" onVerify={f.verify} onResend={f.resend} onBack={f.back} busy={f.busy} error={f.error} />;
   return (
     <SignInScreen
       passwords={passwords === true}
+      app={app}
       onEmail={(email) => f.sendCode(email)}
       onPassword={f.signInWithPassword}
       onForgot={f.forgotFor}
@@ -397,12 +423,13 @@ export function SignInFlow({ notice }: { notice?: string | null }) {
  * /signup: a coach makes their own account. First only how they sign in; a
  * short-lived cookie tells /auth/continue this was a coach sign-up, and it
  * asks who they are next (/auth/coach-details), whichever way they came. The
- * password field shows once Clerk takes passwords; until then an email gets
- * a code alone, as before.
+ * password field shows once Clerk takes passwords (`passwordsHint` from the
+ * server, so it is there from the first frame); until then an email gets a
+ * code alone, as before.
  */
-export function CoachSignUpFlow() {
+export function CoachSignUpFlow({ passwordsHint = null }: { passwordsHint?: boolean | null }) {
   const f = useEmailCode();
-  const passwords = usePasswordsOn();
+  const passwords = usePasswordsOn(passwordsHint);
   const remember = () => {
     document.cookie = `${INTENT}=${encodeURIComponent(JSON.stringify({ coach: true }))}; path=/; max-age=3600; samesite=lax`;
   };

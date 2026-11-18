@@ -20,6 +20,7 @@ import PlansSettings from "./PlansSettings";
 import { listCoachPlans, planClientCounts } from "../../../lib/coachPlans";
 import { DataSettings, NotificationsSettings, PreferencesSettings } from "./MoreSettings";
 import { loadAccountSecurity } from "../../../lib/accountSecurity";
+import { passwordsOnHint } from "../../../lib/clerkPasswords";
 import ProfileEditor from "../profile/ProfileEditor";
 import SettingsBoard, { type SettingsSection } from "./SettingsBoard";
 import { SepJoin } from "../Sep";
@@ -94,7 +95,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const invoicing = settings.invoicing ?? {};
   const support = t.time("support", () => loadSupportSection(coach));
   // Account & security's logins and devices, from Clerk (27 Oct); null with Clerk off or not answering.
-  const security = await t.time("security", () => loadAccountSecurity());
+  const [security, passwordsHint] = await Promise.all([t.time("security", () => loadAccountSecurity()), clerkOn() ? passwordsOnHint() : null]);
   const notify = settings.notify ?? {};
   const units = settings.units === "lbs" ? "lbs" : "kg";
   const timezone = settings.timezone || process.env.TZ || "Europe/Amsterdam";
@@ -133,7 +134,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       tag: profile && <span className={`trn-state${profile.published ? " good" : ""}`}>{profile.published ? "Published" : "Not published"}</span>,
       body: profile ? <ProfileEditor key={coachId} profile={profile} coaches={coaches} details={details} countries={countries} /> : <p className="rpf-empty">No coach profile</p>,
     },
-    { key: "account", fact: facts.account, body: <AccountSettings email={coach.email} passwordless={clerkOn()} security={security} /> },
+    { key: "account", fact: facts.account, body: <AccountSettings email={coach.email} passwordless={clerkOn()} security={security} passwordsHint={passwordsHint} /> },
     {
       key: "business",
       fact: facts.business,

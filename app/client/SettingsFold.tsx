@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { ChevronRightIcon } from "../components/icons";
 import "./gyms.css";
 
@@ -20,9 +20,16 @@ const subscribe = (l: () => void) => {
 };
 
 // A Settings section, one row until pressed (9 Nov, Alex; every section since 10 Nov, the title in the sections' caps): the shared fold, its chevron turning as every row's.
-// What is in it can be given as a function, to fold itself shut (Your details' Cancel and Save).
-export default function SettingsFold({ title, children }: { title: string; children: ReactNode | ((close: () => void) => ReactNode) }) {
+// What is in it can be given as a function, to fold itself shut (Your details' Cancel and Save). `wait`: what is in it isn't
+// ready yet (Password while Clerk's account loads, 18 Nov), so a tap opens it the moment it is, never onto nothing.
+export default function SettingsFold({ title, children, wait = false }: { title: string; children: ReactNode | ((close: () => void) => ReactNode); wait?: boolean }) {
   const open = useSyncExternalStore(subscribe, () => openTitle, () => null) === title;
+  const [asked, setAsked] = useState(false);
+  useEffect(() => {
+    if (wait || !asked) return;
+    setAsked(false);
+    setOpenTitle(title);
+  }, [wait, asked, title]);
   // Leaving Settings shuts it, so it opens with every section folded.
   useEffect(
     () => () => {
@@ -35,7 +42,7 @@ export default function SettingsFold({ title, children }: { title: string; child
   };
   return (
     <section className="home-dark-section st-fold">
-      <button type="button" className="st-fold-head" aria-expanded={open} onClick={() => setOpenTitle(open ? null : title)}>
+      <button type="button" className="st-fold-head" aria-expanded={open} onClick={() => (wait ? setAsked(true) : setOpenTitle(open ? null : title))}>
         <span className="home-dark-section-title">{title}</span>
         <span className={`st-fold-chev${open ? " open" : ""}`} aria-hidden="true">
           <ChevronRightIcon />

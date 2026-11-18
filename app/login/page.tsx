@@ -1,10 +1,21 @@
 import { redirect } from "next/navigation";
+import { cookies, headers } from "next/headers";
+import { NATIVE_COOKIE } from "../lib/quietLoad";
+import type { InApp } from "./SignInScreens";
 import { resetsAvailable } from "../lib/passwordReset";
 import { ensureCoachFromEnv, ensureOwnerFromEnv, getSessionUser, resetCoachFromEnv, resetWorkspaceFromEnv } from "../lib/auth";
 import { LoginCard } from "./AuthCards";
 import { clerkIdentity, clerkOn } from "../lib/clerk";
+import { passwordsOnHint } from "../lib/clerkPasswords";
 import { SignInFlow } from "./ClerkFlows";
-import ForgetKeptChats from "./ForgetKeptChats";
+import ForgetKept from "./ForgetKept";
+
+/** The phone app this page is in, from the app's own cookie (set before anything draws, lib/quietLoad.ts) and the phone's
+ *  name, so the sign-in is drawn as the app shows it from the first frame (18 Nov). */
+async function inApp(): Promise<InApp> {
+  if ((await cookies()).get(NATIVE_COOKIE)?.value !== "1") return null;
+  return /iPhone|iPad|iPod/.test((await headers()).get("user-agent") ?? "") ? "ios" : "android";
+}
 
 export default async function LoginPage({
   searchParams,
@@ -30,22 +41,23 @@ export default async function LoginPage({
   }
 
   const { error, deleted, reset } = await searchParams;
-  // Sign-in through Clerk: no passwords (lib/clerk.ts).
+  // Sign-in through Clerk (lib/clerk.ts).
   // Signed in to Clerk with no account of ours behind it: /auth/continue says
   // so (and offers another email), where this form would only answer
   // "You're already signed in".
   if (clerkOn() && (await clerkIdentity())) redirect("/auth/continue");
-  // Signed out (every Sign out lands here): the chats the coach's phone kept on this device go (ForgetKeptChats).
+  // Signed out (every Sign out lands here): what this device kept for the last account goes, the coach's phone's chats
+  // and where the client app was, so signing in lands on Home (ForgetKept).
   if (clerkOn())
     return (
       <>
-        <ForgetKeptChats />
-        <SignInFlow notice={deleted ? "Your account and everything in it has been deleted." : null} />
+        <ForgetKept />
+        <SignInFlow notice={deleted ? "Your account and everything in it has been deleted." : null} passwordsHint={await passwordsOnHint()} app={await inApp()} />
       </>
     );
   return (
     <>
-      <ForgetKeptChats />
+      <ForgetKept />
       <LoginCard error={error} deleted={deleted} reset={reset} canReset={resetsAvailable()} />
     </>
   );

@@ -25,7 +25,7 @@ const RETURN = "/admin/redesign/settings#account";
  *  16 Nov, Alex: the audit, no copy of its own). */
 const lastSeen = (at: number) => lastActiveWords(new Date(at).toISOString());
 
-export default function ClerkAccount({ email, security }: { email: string; security: AccountSecurity | null }) {
+export default function ClerkAccount({ email, security, passwordsHint = null }: { email: string; security: AccountSecurity | null; passwordsHint?: boolean | null }) {
   const [busy, start] = useTransition();
   const [gone, setGone] = useState<string[]>([]);
   const { user } = useUser();
@@ -116,7 +116,7 @@ export default function ClerkAccount({ email, security }: { email: string; secur
           )}
         </div>
       </Section>
-      <ClerkPassword />
+      <ClerkPassword email={email} passwordsHint={passwordsHint} hasPassword={security?.hasPassword ?? null} />
       {security ? (
         <Section
           title="Devices"
@@ -149,22 +149,24 @@ export default function ClerkAccount({ email, security }: { email: string; secur
 
 /** Password (17 Nov, Alex: "Settings row"): a coach who signs in with an emailed code sets one here and can sign in
  *  with it after, the code still working; one who has one changes it, the current one checked first. Saved at once
- *  through Clerk's server (lib/accountActions.ts), not on the page's bar, as the email above. */
-function ClerkPassword() {
-  const passwords = usePasswordsOn();
+ *  through Clerk's server (lib/accountActions.ts), not on the page's bar, as the email above. Drawn with the page
+ *  (18 Nov, Alex: the password box came in a second late): whether Clerk takes passwords and whether this account has one
+ *  are read by the server (`passwordsHint`, `hasPassword`), Clerk's own account in the browser winning once loaded. */
+function ClerkPassword({ email, passwordsHint, hasPassword }: { email: string; passwordsHint: boolean | null; hasPassword: boolean | null }) {
+  const passwords = usePasswordsOn(passwordsHint);
   const { isLoaded, user } = useUser();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [error, setError] = useState("");
   const [busy, start] = useTransition();
-  if (passwords !== true || !isLoaded || !user) return null;
-  const has = user.passwordEnabled;
+  const has = user ? user.passwordEnabled : isLoaded ? null : hasPassword;
+  if (passwords !== true || has === null) return null;
   const ready = !!next && (!has || !!current);
   const save = () =>
     start(async () => {
       const r = await setPasswordAction(next, has ? current : null).catch(() => ({ ok: false, error: "Not saved. Try again." }));
       if (!r.ok) return setError(r.error ?? "Not saved. Try again.");
-      await user.reload().catch(() => {});
+      await user?.reload().catch(() => {});
       setCurrent("");
       setNext("");
       setError("");
@@ -180,7 +182,7 @@ function ClerkPassword() {
             if (ready && !busy) save();
           }}
         >
-          <input className="sr-only" type="email" name="email" autoComplete="username" value={user.primaryEmailAddress?.emailAddress ?? ""} readOnly tabIndex={-1} aria-hidden="true" />
+          <input className="sr-only" type="email" name="email" autoComplete="username" value={user?.primaryEmailAddress?.emailAddress ?? email} readOnly tabIndex={-1} aria-hidden="true" />
           {has && (
             <Field label="Current password">
               <input className="dlh-line" type="password" value={current} onChange={(e) => (setCurrent(e.target.value), setError(""))} autoComplete="current-password" />

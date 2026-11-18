@@ -88,11 +88,15 @@ const APPLE_ON = process.env.NEXT_PUBLIC_APPLE_SIGNIN !== "off";
 
 const noSubscribe = () => () => {};
 
+/** Which phone app the page is in, as the server tells it from the app's own cookie (NATIVE_COOKIE) and the phone's name
+ *  (18 Nov: the sign-in drew "Coaching others?" and then took it away in the app); null in a browser or when it can't tell. */
+export type InApp = "ios" | "android" | null;
+
 /** Apple and Google, then "or", then the email box. */
-function Providers({ verb = "Continue", onApple, onGoogle, busy }: Oauth & { verb?: string; busy?: boolean }) {
+function Providers({ verb = "Continue", onApple, onGoogle, busy, app = null }: Oauth & { verb?: string; busy?: boolean; app?: InApp }) {
   // In the iPhone app Sign in with Apple is Apple's own sheet (11 Nov, Alex), so it shows there even while the website's
-  // is off; known after the first paint, as the server can't tell the app from Safari.
-  const iosApp = useSyncExternalStore(noSubscribe, () => nativePlatform() === "ios", () => false);
+  // is off: drawn with the page where the server can tell the app (`app`, from its cookie; 18 Nov), else once it has drawn.
+  const iosApp = useSyncExternalStore(noSubscribe, () => nativePlatform() === "ios", () => app === "ios");
   return (
     <div className="au-providers">
       {(APPLE_ON || iosApp) && (
@@ -134,6 +138,7 @@ export function SignInScreen({
   notice,
   signupHref = "/signup",
   passwords = false,
+  app = null,
 }: Oauth &
   Busy & {
     /** A code to the email. */
@@ -143,12 +148,14 @@ export function SignInScreen({
     notice?: string | null;
     signupHref?: string;
     passwords?: boolean;
+    /** The phone app the page is in, as the server can tell it (InApp). */
+    app?: InApp;
   }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [needEmail, setNeedEmail] = useState(false);
   const emailBox = useRef<HTMLInputElement>(null);
-  const inApp = useSyncExternalStore(noSubscribe, () => nativePlatform() != null, () => false);
+  const inApp = useSyncExternalStore(noSubscribe, () => nativePlatform() != null, () => app != null);
   /** A link that needs the email: it asks for it first. */
   const withEmail = (go?: (email: string) => void) => {
     const e = email.trim();
@@ -174,10 +181,13 @@ export function SignInScreen({
     >
       {notice && <p className="auth-ok">{notice}</p>}
       <ErrorLine error={needEmail ? "Add your email first." : error} />
-      <Providers onApple={onApple && (() => (setNeedEmail(false), onApple()))} onGoogle={onGoogle && (() => (setNeedEmail(false), onGoogle()))} busy={busy} />
+      <Providers onApple={onApple && (() => (setNeedEmail(false), onApple()))} onGoogle={onGoogle && (() => (setNeedEmail(false), onGoogle()))} busy={busy} app={app} />
       <Or />
+      {/* POST (18 Nov): a Sign in tapped before the page has taken over sends what was typed in the request's body, never
+          in the address, where a password would show and be logged. */}
       <form
         className="auth-form"
+        method="post"
         onSubmit={(e) => {
           e.preventDefault();
           const em = email.trim();
@@ -386,8 +396,10 @@ export function CoachSignUpScreen({ onEmail, onApple, onGoogle, busy, error, ask
       <ErrorLine error={error} />
       <Providers onApple={onApple} onGoogle={onGoogle} busy={busy} />
       <Or />
+      {/* POST, as Sign in's (18 Nov): an early tap never puts the password in the address. */}
       <form
         className="auth-form"
+        method="post"
         onSubmit={(e) => {
           e.preventDefault();
           if (email.trim() && (password || !askPassword)) onEmail?.(email.trim(), askPassword ? password : "");
