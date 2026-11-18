@@ -24,7 +24,7 @@ export type CardMetric = {
   source: "daily" | "weekly";
 };
 
-const BACKGROUNDS = ["/img/lifestyle-head.jpg", "/img/session-head.jpg", "/img/nutrition-head.jpg"];
+const BACKGROUNDS = ["/img/lifestyle-shore.jpg", "/img/training-gym.jpg"];
 
 export default function CheckInCard({ clientId, today, metrics, streak }: { clientId: number; today: string; metrics: CardMetric[]; streak: number }) {
   const router = useRouter();

@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { addClientPhaseAction, removeClientPhaseAction, saveAndDeployPhaseNowFormAction, saveAndSchedulePhaseAction, schedulePhaseAction, setPhaseCoverAction, updateClientPhaseAction, uploadPhaseCoverAction } from "../lib/actions";
 import { newOnceKey } from "../lib/onceKey";
-import { defaultPhaseCover, PHASE_COVERS, PHASE_OBJECTIVE_CHARS, PHASE_OBJECTIVES_MAX } from "../lib/phaseCovers";
+import { defaultPhaseCover, liveCover, PHASE_COVERS, PHASE_OBJECTIVE_CHARS, PHASE_OBJECTIVES_MAX } from "../lib/phaseCovers";
 import type { ClientPhase, PhaseTrack } from "../lib/db";
 import { FEATURES } from "../lib/features";
 import PhaseCalendar, { isoWeek, mondayOf, monthOf, type CalMonth, type PlannedRange } from "./PhaseCalendar";
@@ -683,7 +683,7 @@ function PhaseObjectivesField({ value, onChange }: { value: string[]; onChange: 
 // The picture on the client's Home card: an upload, one of the stock ones,
 // or the track's default. Saved as it is picked, not with the form.
 function PhaseCoverField({ phase, track }: { phase: ClientPhase; track: PhaseTrack }) {
-  const [cover, setCover] = useState<string | null>(phase.cover_path ?? null);
+  const [cover, setCover] = useState<string | null>(liveCover(phase.cover_path));
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const shown = cover ?? defaultPhaseCover(track, phase.id);

@@ -142,7 +142,7 @@ import OpeningSplash from "./OpeningSplash";
 import { NATIVE_COOKIE, QUIET_COOKIE } from "../lib/quietLoad";
 import AvatarUpload from "./AvatarUpload";
 import { phaseCovers, phaseLastDay } from "../lib/phases";
-import { defaultPhaseCover } from "../lib/phaseCovers";
+import { defaultPhaseCover, liveCover } from "../lib/phaseCovers";
 import { CardPicturesRows } from "./CardPictureSheet";
 import { isGymColor } from "../lib/gymColors";
 import { SERVER_TZ, hourIn, isTimezone, meetingLabelsIn, zonedToUtc } from "../lib/timezones";
@@ -455,8 +455,8 @@ function HomeTab({ CLIENT_ID, chat, photos, food, phoneTz }: { CLIENT_ID: number
         start: ph.start_week,
         // No end (26 Oct): the card says the week it is in, no countdown.
         end: ph.open_ended ? null : phaseLastDay(ph.end_week),
-        coverUrl: ph.cover_path ?? defaultPhaseCover(track, ph.id),
-        coachCover: !!ph.cover_path,
+        coverUrl: liveCover(ph.cover_path) ?? defaultPhaseCover(track, ph.id),
+        coachCover: !!liveCover(ph.cover_path),
         objectives: FEATURES.phaseGoals ? ph.objectives ?? [] : [],
         note: ph.nutrition?.coach_notes?.trim() || null,
         // The scheduled phase after this one on the track (9 Oct): the card names it, and charges up in its last week.
@@ -640,7 +640,7 @@ const coachMessagesFor = chatThreadViews;
 function bannerPictures(clientId: number, track: "training" | "nutrition" | "lifestyle"): string[] {
   const own = getClientCardPictures(clientId)[track];
   if (own?.length) return own;
-  const cover = getCurrentPhase(clientId, track)?.cover_path;
+  const cover = liveCover(getCurrentPhase(clientId, track)?.cover_path);
   return cover ? [cover] : [];
 }
 
@@ -1120,9 +1120,9 @@ function SettingsTab({ CLIENT_ID, own = false, passwordsHint = null }: { CLIENT_
             rows={(["lifestyle", "training", "nutrition"] as const).map((track) => {
               const ph = getCurrentPhase(CLIENT_ID, track);
               const own = getClientCardPictures(CLIENT_ID)[track] ?? [];
-              const coach = ph ? (ph.cover_path ?? defaultPhaseCover(track, ph.id)) : defaultPhaseCover(track, 0);
+              const coach = ph ? (liveCover(ph.cover_path) ?? defaultPhaseCover(track, ph.id)) : defaultPhaseCover(track, 0);
               // A stock cover the coach never chose is the default, not theirs (22 Oct).
-              return { track, own, coach, coachChose: !!ph?.cover_path };
+              return { track, own, coach, coachChose: !!liveCover(ph?.cover_path) };
             })}
           />
         </div>
