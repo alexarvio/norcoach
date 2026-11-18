@@ -3,7 +3,9 @@ import { requireCoach } from "../../../../../lib/auth";
 import { inviteEmail, mailConfigured } from "../../../../../lib/mail";
 import { resetsAvailable } from "../../../../../lib/passwordReset";
 import { ChangePasswordCard, LoginCard } from "../../../../../login/AuthCards";
-import { CodeScreen, CoachDetailsScreen, CoachSignUpScreen, InviteEmailScreen, InviteWelcomeScreen, SignInScreen } from "../../../../../login/SignInScreens";
+import { CodeScreen, CoachSignUpScreen, InviteEmailScreen, InviteWelcomeScreen, SignInScreen } from "../../../../../login/SignInScreens";
+import CoachSetupFlow from "../../../../../login/CoachSetupFlow";
+import { COUNTRIES } from "../../../../../lib/countries";
 import CoachesPanel from "../../../../CoachesPanel";
 import { loadRail } from "../../../loaders";
 import DemoFrame, { DialogScreen } from "../../DemoFrame";
@@ -106,7 +108,7 @@ export default async function OnboardingScreen({ params }: { params: Promise<{ s
     case "coach-details":
       return (
         <DemoFrame>
-          <CoachDetailsScreen name="Robin de Vries" email="new.coach@example.com" />
+          <CoachSetupFlow data={{ start: "about", email: "new.coach@example.com", first: "Robin", last: "de Vries", birthdate: "", title: "", photo: null, business: "", countryCode: "", countries: COUNTRIES.map((c) => ({ code: c.code, name: c.name, currency: c.currency, tax: c.tax, rate: c.rate })) }} />
         </DemoFrame>
       );
     case "invite-email-new":

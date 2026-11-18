@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import DoneCheck from "../components/DoneCheck";
 import { nativePlatform } from "../lib/native";
 import { NorCoachLogo } from "../components/NorCoachLogo";
 import { Bars } from "../client/Bars";
@@ -45,7 +46,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
  * The title is drawn in the head on a phone and over the form on a laptop, one of the two hidden at a time. `pitch`:
  * the website's coach line beside the form on a laptop (default), none on the client's screens (18 Nov).
  */
-export function SiteShell({ title, children, aside, pitch = true, className }: { title: ReactNode; children?: ReactNode; aside?: ReactNode; pitch?: boolean; className?: string }) {
+export function SiteShell({ title, children, aside, pitch = true, className, steps }: { title: ReactNode; children?: ReactNode; aside?: ReactNode; pitch?: boolean; className?: string; /** The coach sign-up's steps, listed on the dark on a laptop in place of the pitch (18 Nov, Alex): done ticked green, the one on screen white. */ steps?: { labels: string[]; now: number } }) {
   useKeyboardReveal();
   return (
     <div className={`su-page${className ? ` ${className}` : ""}`}>
@@ -53,7 +54,17 @@ export function SiteShell({ title, children, aside, pitch = true, className }: {
       <NativeStatusBar leaveDark />
       <div className="su-band site-bg site-bg-mark" data-clock="dark">
         <NorCoachLogo className="su-logo" />
-        {pitch && (
+        {steps && (
+          <ol className="su-steps" aria-label="Steps">
+            {steps.labels.map((label, i) => (
+              <li key={label} className={i < steps.now ? "done" : i === steps.now ? "now" : undefined} aria-current={i === steps.now ? "step" : undefined}>
+                {i < steps.now ? <DoneCheck size={24} className="su-step-done" /> : <i aria-hidden="true" />}
+                <span>{label}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+        {pitch && !steps && (
           <p className="su-pitch" aria-hidden="true">
             Scale the quality <span>of your online coaching.</span>
           </p>
@@ -297,7 +308,10 @@ function CodeBoxes({ digits, setDigits, onFull, autoFocus = true }: { digits: st
 const SIX = ["", "", "", "", "", ""];
 
 /** The six digits from the email; the last digit sends. In the coach sign-up's frame with `look="site"` (17 Nov). */
-export function CodeScreen({ email, title = "Check your email", note, onVerify, onResend, onBack, busy, error, look = "card" }: Busy & { email: string; title?: string; /** A fact over the code's line: "No password on this account yet." */ note?: string | null; onVerify?: (code: string) => void; onResend?: () => void; onBack?: () => void; look?: "card" | "site" }) {
+/** The coach sign-up's steps on the dark of a laptop (CoachSetupFlow keeps the same list). */
+export const COACH_STEPS = ["Account", "About you", "Your business"];
+
+export function CodeScreen({ email, title = "Check your email", note, onVerify, onResend, onBack, busy, error, look = "card", steps }: Busy & { email: string; title?: string; /** A fact over the code's line: "No password on this account yet." */ note?: string | null; onVerify?: (code: string) => void; onResend?: () => void; onBack?: () => void; look?: "card" | "site"; /** The coach sign-up's steps on the dark (SiteShell). */ steps?: { labels: string[]; now: number } }) {
   const [digits, setDigits] = useState<string[]>(SIX);
   const body = (
     <>
@@ -335,7 +349,7 @@ export function CodeScreen({ email, title = "Check your email", note, onVerify, 
       </p>
     </>
   );
-  if (look === "site") return <SiteShell title={title}>{body}</SiteShell>;
+  if (look === "site") return <SiteShell title={title} steps={steps}>{body}</SiteShell>;
   return (
     <AuthShell>
       <h1 className="auth-title">{title}</h1>
