@@ -55,8 +55,6 @@ import {
   coachOwnsMeeting,
   coachOwnsMetricTemplate,
   coachOwnsMetricTemplateItem,
-  coachOwnsReportTemplate,
-  coachOwnsReportTemplateSection,
   meetingIdForNote,
 } from "./tenancy";
 import {
@@ -110,16 +108,9 @@ import {
   setPhotoInstructions,
   setPhotoStartDate,
   setPhotoSlotPaused,
-  addReportTemplateSection,
   addSkinfoldEntry,
   applyMetricTemplateToClient,
-  approveReport,
-  computeReportSections,
   createClient,
-  createDraftReport,
-  createReportTemplate,
-  deleteReport,
-  deleteReportTemplate,
   createProgram,
   deployProgram,
   getClient,
@@ -130,13 +121,11 @@ import {
   setVideoReplyFile,
   chatUsesFile,
   setEngagementParts,
-  getReportTemplate,
   renameProgram,
   removeProgram,
   removeProgramWeek,
   scheduleProgramDeploy,
   updateProgramTotalWeeks,
-  listReportTemplateSections,
   listWeekNumbers,
   listMeasurementFields,
   listMetricDefinitions,
@@ -145,15 +134,11 @@ import {
   markAllNotificationsRead,
   markCoachNotesRead,
   markNotificationRead,
-  markReportOpened,
   listCoachVideos,
   logSet,
   setExerciseRows,
   setAssignmentUnit,
   OTHER_ITEMS,
-  removeReportTemplateSection,
-  sendReport,
-  updateReportSummary,
   removeAssignment,
   removeClient,
   removeClientGoal,
@@ -285,7 +270,6 @@ import {
   publishWeek,
   getClientIdForPhotoSlot,
   getClientIdForNotification,
-  getClientIdForReport,
   markExerciseNoteRead,
   setExerciseNoteKind,
   setAssignmentDemoUrl,
@@ -420,7 +404,6 @@ import {
   saveCoachProfile,
   setCoachProfilePublished,
 } from "./queries";
-import { writeReportNarrative } from "./reportAi";
 import { COACH_PROFILE_LIMITS } from "./coachProfileView";
 import { deleteUpload, fitPhoto, keyOf, prepareChatMedia, putUpload, putUploadFromDisk, warmSmallCopies, webVideo } from "./storage";
 import fs from "fs";
@@ -450,7 +433,6 @@ import { isTimezone, SERVER_TZ, tzShort, zonedToUtc } from "./timezones";
 import { askedWeightUnit, removeWeightGoal, saveWeightGoal, type WeightGoalFields, type WeightGoalRefusal } from "./queries";
 import { goalWeightText } from "./weightGoal";
 import { inZone } from "./viewZone";
-import type { ReportSectionType } from "./reportSectionTypes";
 import { clientPlanId, clientPlanSeries } from "./coachPlans";
 
 // OWNERSHIP RULE for every coach action below: a coach may only touch their
@@ -2882,153 +2864,6 @@ export async function markAllNotificationsReadAction(formData: FormData) {
   revalidatePath("/client");
 }
 
-// ---- Reports ----
-
-export async function createReportTemplateAction(formData: FormData) {
-  const coach = await requireCoach();
-  const name = String(formData.get("name") || "").trim();
-  if (!name) return;
-  createReportTemplate(coach.id, name);
-  revalidatePath("/admin");
-}
-
-export async function deleteReportTemplateAction(formData: FormData) {
-  const coach = await requireCoach();
-  const id = Number(formData.get("id"));
-  if (!coachOwnsReportTemplate(coach.id, id)) return;
-  deleteReportTemplate(id);
-  revalidatePath("/admin");
-}
-
-export async function addReportTemplateSectionAction(formData: FormData) {
-  const coach = await requireCoach();
-  const templateId = Number(formData.get("templateId"));
-  if (!coachOwnsReportTemplate(coach.id, templateId)) return;
-  const type = String(formData.get("type") || "training") as
-    | "training"
-    | "nutrition"
-    | "measurements"
-    | "tracker_metric"
-    | "photos"
-    | "goals";
-  const label = String(formData.get("label") || "").trim();
-  const metricName = String(formData.get("metricName") || "").trim() || null;
-  if (!label) return;
-  addReportTemplateSection(templateId, type, label, type === "tracker_metric" ? metricName : null);
-  revalidatePath("/admin");
-}
-
-export async function removeReportTemplateSectionAction(formData: FormData) {
-  const coach = await requireCoach();
-  const id = Number(formData.get("id"));
-  if (!coachOwnsReportTemplateSection(coach.id, id)) return;
-  removeReportTemplateSection(id);
-  revalidatePath("/admin");
-}
-
-// The one action that calls the AI — pulls real data for the period, hands
-// it to writeReportNarrative (falls back to a plain templated summary if
-// ANTHROPIC_API_KEY isn't set), and stores the result as a new draft.
-// Two ways in: pick a saved template (templateId), or skip templates
-// entirely and build a one-off section list right here for this client
-// (customSections, a JSON array from GenerateReportForm's "Custom" mode) —
-// a coach with no templates yet, or a client who just needs one different
-// report, isn't blocked on building a template first.
-export async function generateReportAction(formData: FormData) {
-  const clientId = Number(formData.get("clientId"));
-  const coach = await coachForClient(clientId);
-  const periodStart = String(formData.get("periodStart") || "");
-  const periodEnd = String(formData.get("periodEnd") || "");
-  const client = getClient(clientId);
-  if (!coach || !client || !periodStart || !periodEnd) return;
-
-  const templateIdRaw = formData.get("templateId");
-  const templateId = templateIdRaw ? Number(templateIdRaw) : null;
-  if (templateId != null && !coachOwnsReportTemplate(coach.id, templateId)) return;
-  const customSectionsRaw = String(formData.get("customSections") || "");
-
-  let sectionsToRun: { id: number; template_id: number; type: ReportSectionType; label: string; metric_name: string | null; order_index: number }[] = [];
-  let templateName = "Custom";
-
-  if (templateId) {
-    const template = getReportTemplate(templateId);
-    if (!template) return;
-    templateName = template.name;
-
-    // Per-client customization for this one generation: the coach can drop
-    // any of the template's sections and/or bolt on one extra tracker metric
-    // that isn't in the shared template — without editing the template itself.
-    // Checkboxes are checked by default in the UI, so an empty includedIds
-    // (e.g. a non-JS form submit) falls back to running every section.
-    const includedIds = formData.getAll("sectionId").map(Number);
-    const allSections = listReportTemplateSections(templateId);
-    sectionsToRun = includedIds.length > 0 ? allSections.filter((s) => includedIds.includes(s.id)) : allSections;
-
-    const extraMetricName = String(formData.get("extraMetricName") || "").trim();
-    if (extraMetricName) {
-      const extraLabel = String(formData.get("extraMetricLabel") || "").trim() || extraMetricName;
-      sectionsToRun.push({
-        id: -1,
-        template_id: templateId,
-        type: "tracker_metric",
-        label: extraLabel,
-        metric_name: extraMetricName,
-        order_index: sectionsToRun.length,
-      });
-    }
-  } else if (customSectionsRaw) {
-    try {
-      const parsed = JSON.parse(customSectionsRaw) as { type: ReportSectionType; label: string; metricName: string | null }[];
-      sectionsToRun = parsed.map((s, i) => ({
-        id: -1 - i,
-        template_id: 0,
-        type: s.type,
-        label: s.label,
-        metric_name: s.metricName || null,
-        order_index: i,
-      }));
-    } catch {
-      return;
-    }
-  }
-  if (sectionsToRun.length === 0) return;
-
-  const sectionsData = computeReportSections(clientId, sectionsToRun, periodStart, periodEnd);
-  const { summary, aiGenerated } = await writeReportNarrative(client.name, periodStart, periodEnd, sectionsData);
-  createDraftReport(clientId, templateId, templateName, periodStart, periodEnd, summary, aiGenerated, sectionsData);
-  revalidatePath("/admin");
-}
-
-export async function updateReportSummaryAction(formData: FormData) {
-  const id = Number(formData.get("id"));
-  if (!(await coachForClient(getClientIdForReport(id)))) return;
-  const summary = String(formData.get("summary") || "");
-  updateReportSummary(id, summary);
-  revalidatePath("/admin");
-}
-
-export async function approveReportAction(formData: FormData) {
-  const id = Number(formData.get("id"));
-  if (!(await coachForClient(getClientIdForReport(id)))) return;
-  approveReport(id);
-  revalidatePath("/admin");
-}
-
-export async function sendReportAction(formData: FormData) {
-  const id = Number(formData.get("id"));
-  if (!(await coachForClient(getClientIdForReport(id)))) return;
-  sendReport(id);
-  revalidatePath("/admin");
-  revalidatePath("/client");
-}
-
-export async function deleteReportAction(formData: FormData) {
-  const id = Number(formData.get("id"));
-  if (!(await coachForClient(getClientIdForReport(id)))) return;
-  deleteReport(id);
-  revalidatePath("/admin");
-}
-
 // Coach-side switch for whether a metric/measurement column is deployed to
 // the client's check-in screen. History is untouched either way — hiding a
 // metric stops it being asked for, it doesn't delete what's already logged.
@@ -3234,14 +3069,6 @@ export async function markExerciseNoteReadAction(assignmentId: number) {
   const owner = getClientIdForAssignment(assignmentId);
   if (owner == null || !(await canAccessClient(owner))) return;
   markExerciseNoteRead(assignmentId);
-  revalidatePath("/client");
-}
-
-export async function markReportOpenedAction(id: number) {
-  if (await coachLooking()) return;
-  const owner = getClientIdForReport(id);
-  if (owner == null || !(await canAccessClient(owner))) return;
-  markReportOpened(id);
   revalidatePath("/client");
 }
 

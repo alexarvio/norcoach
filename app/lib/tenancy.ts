@@ -37,16 +37,6 @@ export function coachOwnsMetricTemplateItem(coachId: number, itemId: number): bo
   return !!item && coachOwnsMetricTemplate(coachId, item.template_category_id);
 }
 
-export function coachOwnsReportTemplate(coachId: number, templateId: number | null | undefined): boolean {
-  if (templateId == null) return false;
-  return getData().report_templates.find((t) => t.id === templateId)?.coach_id === coachId;
-}
-
-export function coachOwnsReportTemplateSection(coachId: number, sectionId: number): boolean {
-  const section = getData().report_template_sections.find((s) => s.id === sectionId);
-  return !!section && coachOwnsReportTemplate(coachId, section.template_id);
-}
-
 /** A client meeting belongs to the client's coach; a personal block to its coach. */
 export function coachOwnsMeeting(coachId: number, meetingId: number): boolean {
   const meeting = getData().meetings.find((m) => m.id === meetingId);

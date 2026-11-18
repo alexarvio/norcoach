@@ -7,5 +7,5 @@ export const LEGAL = {
   // The address people write to about their data or for help. Empty until
   // one is chosen: the pages then say so rather than guess.
   contactEmail: "",
-  updated: "25 September 2026",
+  updated: "18 November 2026",
 };
