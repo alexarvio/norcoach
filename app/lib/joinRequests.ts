@@ -1,9 +1,12 @@
 import "server-only";
+import { randomInt } from "crypto";
 import { allocId, getData, persist, type JoinRequest } from "./db";
+import { isNorcode, NORCODE_ALPHABET, NORCODE_LENGTH, typedNorcode } from "./norcode";
 import { getCoachProfileView, getCoachSettings } from "./queries";
 
 // A client asking to join a coach by the coach's code (18 Nov, Alex: docs/boards/client-signup-mockup.html). Each coach
-// has a code, their first name by default (FINLAY), changed in Settings, Profile; a client who signs up types it, sees
+// has a Norcode, NC- and eight letters and digits (lib/norcode.ts), made for them and shown in Settings, Profile (the
+// first day's codes were the coach's first name, FINLAY: a link shared with one still works); a client who signs up types it, sees
 // the coach's picture, name and business, and sends a request; the coach accepts or declines it from the Feed's Needs
 // you. Until Accept the person has a Clerk account and nothing of ours, so the request is kept by that Clerk account
 // (Data.join_requests, in `kv`), never as a users row: a client row with no client loops between /client and /login.
@@ -26,7 +29,8 @@ export function tooManyTries(userId: string): boolean {
   return recent.length > 40;
 }
 
-/** The code as typed, as kept: letters and digits only, upper case, accents taken off ("Fínlay 1" is FINLAY1). */
+/** A code as typed or carried by a link: letters and digits only, upper case, accents taken off. The NC in front of a
+ *  Norcode is left to the lookup, which tries the code with and without it. */
 export function normaliseCode(raw: string): string {
   return raw
     .normalize("NFKD")
@@ -38,41 +42,62 @@ export function normaliseCode(raw: string): string {
 
 const coaches = () => getData().users.filter((u) => u.role === "coach" && !u.pending);
 
-/** The coach with this code, if any. */
+/** The code a link carried, as the field shows it: a Norcode as it is; an older name code as the Norcode of the coach it
+ *  was (looked up within the same limit as every other try), else what was given. */
+export function codeFromLink(raw: string, userId: string): string {
+  const given = normaliseCode(raw);
+  const shaped = typedNorcode(given);
+  if (!given || isNorcode(shaped)) return shaped;
+  return (tooManyTries(userId) ? null : coachCardByCode(given)?.code) ?? shaped;
+}
+
+/** The coach with this code, if any: their Norcode, typed with or without its NC, or the name code they had before it. */
 function coachIdByCode(code: string): number | null {
   const want = normaliseCode(code);
   if (want.length < CODE_MIN) return null;
-  return coaches().find((u) => u.coach_settings?.join_code === want)?.id ?? null;
+  ensureJoinCodes();
+  const tries = want.startsWith("NC") && want.length === NORCODE_LENGTH + 2 ? [want, want.slice(2)] : [want];
+  for (const t of tries) {
+    const hit = coaches().find((u) => u.coach_settings?.join_code === t || u.coach_settings?.join_code_old === t);
+    if (hit) return hit.id;
+  }
+  return null;
 }
 
-const taken = (code: string, but: number) => coaches().some((u) => u.id !== but && u.coach_settings?.join_code === code);
+const taken = (code: string, but: number) => coaches().some((u) => u.id !== but && (u.coach_settings?.join_code === code || u.coach_settings?.join_code_old === code));
 
-/** The coach's code, made the first time it is asked for: their first name, else COACH, a number after it while another
- *  coach has it (FINLAY2). Kept, so renaming the coach never changes a link they have shared. */
+/** Eight characters no other coach has, never starting with NC (so an NC typed in front of it is always the prefix). */
+function newNorcode(coachId: number): string {
+  for (;;) {
+    let code = "";
+    for (let i = 0; i < NORCODE_LENGTH; i++) code += NORCODE_ALPHABET[randomInt(NORCODE_ALPHABET.length)];
+    if (!code.startsWith("NC") && !taken(code, coachId)) return code;
+  }
+}
+
+/** Every coach has a Norcode: made here for any who has none yet (or still has the first day's name code, kept as the
+ *  one a shared link may carry). Returns whether anything was made. */
+function ensureJoinCodes(): void {
+  let made = false;
+  for (const u of coaches()) {
+    const kept = u.coach_settings?.join_code;
+    if (kept && u.coach_settings?.join_code_made && isNorcode(kept)) continue;
+    u.coach_settings = { ...(u.coach_settings ?? {}), join_code: newNorcode(u.id), join_code_made: true, ...(kept && !u.coach_settings?.join_code_old ? { join_code_old: kept } : {}) };
+    made = true;
+  }
+  if (made) persist();
+}
+
+/** The coach's Norcode (its eight characters), made the first time it is asked for and kept for good. */
 export function ensureJoinCode(coachId: number): string {
   const user = getData().users.find((u) => u.id === coachId && u.role === "coach");
   if (!user) return "";
   const kept = user.coach_settings?.join_code;
-  if (kept) return kept;
-  const first = normaliseCode((getCoachProfileView(coachId)?.displayName ?? "").split(/\s+/)[0] ?? "");
-  const base = first.length >= CODE_MIN ? first.slice(0, CODE_MAX - 3) : "COACH";
-  let code = base;
-  for (let n = 2; taken(code, coachId); n++) code = `${base}${n}`;
-  user.coach_settings = { ...(user.coach_settings ?? {}), join_code: code };
+  if (kept && user.coach_settings?.join_code_made && isNorcode(kept)) return kept;
+  const code = newNorcode(coachId);
+  user.coach_settings = { ...(user.coach_settings ?? {}), join_code: code, join_code_made: true, ...(kept && !user.coach_settings?.join_code_old ? { join_code_old: kept } : {}) };
   persist();
   return code;
-}
-
-/** A new code for the coach (Settings, Profile, Your code): the reason in words when it can't be. */
-export function setJoinCode(coachId: number, raw: string): { ok: true; code: string } | { ok: false; error: string } {
-  const user = getData().users.find((u) => u.id === coachId && u.role === "coach");
-  if (!user) return { ok: false, error: "Not saved. Try again." };
-  const code = normaliseCode(raw);
-  if (code.length < CODE_MIN) return { ok: false, error: `At least ${CODE_MIN} letters or numbers` };
-  if (taken(code, coachId)) return { ok: false, error: "Another coach has this code" };
-  user.coach_settings = { ...(user.coach_settings ?? {}), join_code: code };
-  persist();
-  return { ok: true, code };
 }
 
 /** What a client sees of a coach once their code is typed: the name, the business, and whether there is a picture

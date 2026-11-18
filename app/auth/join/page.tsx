@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { currentUser } from "@clerk/nextjs/server";
 import { clerkIdentity, clerkOn } from "../../lib/clerk";
 import { getSessionUser } from "../../lib/auth";
-import { coachCard, latestRequestFor, normaliseCode } from "../../lib/joinRequests";
+import { coachCard, codeFromLink, latestRequestFor } from "../../lib/joinRequests";
 import JoinFlow from "../../login/JoinFlow";
 
 // Joining a coach (18 Nov, Alex: docs/boards/client-signup-mockup.html): for someone signed in to Clerk with no account
@@ -36,7 +36,8 @@ export default async function JoinCoachPage({ searchParams }: { searchParams: Pr
       first={sent?.first_name ?? clerk?.firstName ?? ""}
       last={sent?.last_name ?? clerk?.lastName ?? ""}
       birthdate={sent?.birthdate ?? ""}
-      code={normaliseCode(asked || fromIntent || "")}
+      // The code a link carried, as the coach's Norcode (a first-day link still names them by their old code).
+      code={codeFromLink(asked || fromIntent || "", who.userId)}
       waitingFor={waiting}
       declined={latest?.status === "declined"}
     />

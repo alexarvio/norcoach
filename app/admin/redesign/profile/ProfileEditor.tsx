@@ -202,7 +202,7 @@ export default function ProfileEditor({ profile, coaches, details, countries, jo
       </div>
 
       <div role="tabpanel" id="rpf-panel-details" aria-labelledby="rpf-tab-details" hidden={tab !== "details"}>
-        <JoinCode coachId={profile.coachId} code={joinCode} />
+        <JoinCode code={joinCode} />
         <ProfileDetails coachId={profile.coachId} data={details} countries={countries} />
       </div>
       <div role="tabpanel" id="rpf-panel-public" aria-labelledby="rpf-tab-public" hidden={tab !== "public"}>
