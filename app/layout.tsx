@@ -21,6 +21,9 @@ export const metadata: Metadata = {
   // name, icons and standalone display for Android/Chrome; iOS ignores most
   // of the manifest and reads these apple-specific tags instead.
   manifest: "/manifest.webmanifest",
+  // The browser tab's icon: the star alone, no square behind it (18 Nov, Alex: as the website's tab). The home-screen
+  // icons keep their paper (public/icon.png, app/apple-icon.png).
+  icons: { icon: [{ url: "/brand/mark.svg", type: "image/svg+xml" }], apple: [{ url: "/apple-icon.png", sizes: "180x180" }] },
   appleWebApp: {
     capable: true,
     title: "NORCOACH", // the name under the home-screen icon, in capitals (24 Oct, Alex)

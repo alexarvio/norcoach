@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 
 // Lets a client "Add to Home Screen" and get a real app icon and name, opened
 // full-screen without browser chrome. Colours follow the design tokens at the
-// top of globals.css (--paper / --accent). Icons are app/icon.png (512) and
+// top of globals.css (--paper / --accent). Icons are public/icon.png (512) and
 // app/apple-icon.png (180), both cut from the source logo onto the paper
 // colour; the mark used inside the app is app/components/NorCoachLogo.tsx
 // (public/brand/mark.svg where an <img> needs it).
