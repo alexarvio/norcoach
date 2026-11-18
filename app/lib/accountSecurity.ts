@@ -7,7 +7,7 @@ import { clerkOn } from "./clerk";
 
 export type LinkedLogin = { id: string; provider: string; email: string };
 export type SignedInDevice = { id: string; current: boolean; device: string; browser: string; place: string; lastActive: number };
-export type AccountSecurity = { logins: LinkedLogin[]; devices: SignedInDevice[] };
+export type AccountSecurity = { logins: LinkedLogin[]; devices: SignedInDevice[]; /** Whether the account has a password already (18 Nov), so Settings draws its Password section right at once. */ hasPassword: boolean };
 
 /** "oauth_google" → "google". */
 const providerOf = (p: string) => p.replace(/^oauth_/, "");
@@ -29,7 +29,7 @@ export async function loadAccountSecurity(): Promise<AccountSecurity | null> {
       })
       // This device first, then the most recent.
       .sort((x, y) => Number(y.current) - Number(x.current) || y.lastActive - x.lastActive);
-    return { logins, devices };
+    return { logins, devices, hasPassword: user.passwordEnabled };
   } catch (error) {
     console.error("[account] could not read sign-in from Clerk:", error instanceof Error ? error.message : error);
     return null;

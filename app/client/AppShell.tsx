@@ -1,6 +1,7 @@
 "use client";
 
 import { ownTab } from "../lib/tabMemory";
+import { RESUME_KEY, TAB_COOKIE, TAB_KEY } from "../lib/appMemory";
 import { ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, useTransition, type SyntheticEvent } from "react";
 import { QUIET_COOKIE } from "../lib/quietLoad";
 import { pic } from "../lib/pic";
@@ -67,8 +68,8 @@ export type AppTab = {
 };
 
 type PushView = "notifications" | "checkin" | "photos" | "coach" | "messages" | "meetings" | "invoices" | "settings" | "events" | null;
-// The screen on top kept on the phone as the app leaves the screen, to open on again (17 Nov).
-const RESUME_KEY = "ironline.client.resume";
+// The screen on top kept on the phone as the app leaves the screen, to open on again (17 Nov; RESUME_KEY, lib/appMemory.ts,
+// forgotten on the sign-in page, so signing in always lands on Home).
 const RESUME_MS = 10 * 60 * 1000;
 const RESUMABLE = new Set<PushView>(["notifications", "checkin", "photos", "messages", "meetings", "invoices", "settings", "events"]);
 /** The screens the coach's phone preview can be asked for (21 Oct): the three tabs, and the pushed screens. */
@@ -87,14 +88,12 @@ const stopEvent = (e: SyntheticEvent) => {
 // pull-to-refresh, the home-screen app being reopened — would otherwise drop
 // the client back on Home mid-workout. Read through useSyncExternalStore so
 // the server render and the first client render agree (first tab), then the
-// remembered tab applies.
-const TAB_KEY = "ironline.client.tab";
+// remembered tab applies (TAB_KEY, lib/appMemory.ts; forgotten on the sign-in page).
 // The pushed food diary was kept across a reload under this key; the diary is the Nutrition tab now (12 Nov), whose
 // tab memory brings it back, so the key is only cleared.
 const OLD_PUSH_KEY = "ironline.client.push";
 const TAB_EVENT = "ironline:tab";
-/** The tab, for the server (page.tsx reads it). */
-export const TAB_COOKIE = "ironline_tab";
+// The tab, for the server (page.tsx reads it): TAB_COOKIE, lib/appMemory.ts.
 
 // Whose tab it is: kept as "{client}:{tab}", only the signed-in client's own read back (lib/tabMemory.ts).
 let tabOwner: number | null = null;

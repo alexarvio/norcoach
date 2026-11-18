@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDownIcon } from "../components/icons";
 import { PhotoViewer } from "./PhotoPeriodHistoryRow";
 import RingEdge from "../components/RingEdge";
-import { dayWords, monthWords } from "../lib/clientDates";
+import { dayWords } from "../lib/clientDates";
 
 // The client's Compare on the Shape update screen (23 Oct, Alex): the phone twin of the coach's
 // (admin/redesign/pictures/CompareDialog.tsx), in the client's hairline voice, flat on the page.
@@ -37,11 +37,10 @@ const apartLabel = (days: number) => {
   return `${months} month${months === 1 ? "" : "s"} apart`;
 };
 
-// A sheet named short, so a pill never cuts two sheets to the same words: `19 Nov` ("Sheet of 19 Nov")
-// or `Sep` ("September sheet"), the year after it when it isn't this one.
+// A shape update by its name, `Shape update 3`, as Entries and the coach's Compare name it (18 Nov, Alex: "I don't know
+// why they're by date… number 1, 2, 3"), its day only if it came without one.
 function nameOf(s: CompareSheet) {
-  if (!/ sheet$/.test(s.title)) return dayWords(s.period);
-  return monthWords(s.period, { short: true, year: Number(s.period.slice(0, 4)) !== new Date().getFullYear() });
+  return s.title || dayWords(s.period);
 }
 
 function readView(): View {

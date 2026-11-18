@@ -74,8 +74,8 @@ export function useDraft<T extends Record<string, unknown>>(initial: T, save: (v
 }
 
 // ---- Account & security
-export function AccountSettings({ email, passwordless = false, security = null }: { email: string; /** Sign-in through Clerk (26 Oct): no password here, and the email can be changed. */ passwordless?: boolean; /** The linked logins and devices, from Clerk (27 Oct). */ security?: AccountSecurity | null }) {
-  if (passwordless) return <ClerkAccount email={email} security={security} />;
+export function AccountSettings({ email, passwordless = false, security = null, passwordsHint = null }: { email: string; /** Sign-in through Clerk (26 Oct): no password here, and the email can be changed. */ passwordless?: boolean; /** The linked logins and devices, from Clerk (27 Oct). */ security?: AccountSecurity | null; /** Whether Clerk takes passwords, read with the page (lib/clerkPasswords.ts). */ passwordsHint?: boolean | null }) {
+  if (passwordless) return <ClerkAccount email={email} security={security} passwordsHint={passwordsHint} />;
   return <AccountPassword email={email} />;
 }
 

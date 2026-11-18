@@ -132,6 +132,7 @@ import MyDetailsCard from "./MyDetailsCard";
 import GymSettings from "./GymSettings";
 import SettingsFold from "./SettingsFold";
 import PasswordSettings from "./PasswordSettings";
+import { passwordsOnHint } from "../lib/clerkPasswords";
 import ClientWeekSwitcher from "./ClientWeekSwitcher";
 import AppShell, { AppTab, type Arrival, type PhoneScreen } from "./AppShell";
 import { ownTab } from "../lib/tabMemory";
@@ -1061,7 +1062,7 @@ function NutritionTab({ CLIENT_ID, diary, readOnly = false }: { CLIENT_ID: numbe
   );
 }
 
-function SettingsTab({ CLIENT_ID, own = false }: { CLIENT_ID: number; /** The client in their own app: a coach looking (the phone preview, a coach on ?client=) never sees their own sign-in here. */ own?: boolean }) {
+function SettingsTab({ CLIENT_ID, own = false, passwordsHint = null }: { CLIENT_ID: number; /** The client in their own app: a coach looking (the phone preview, a coach on ?client=) never sees their own sign-in here. */ own?: boolean; /** Whether Clerk takes passwords, read with the page (lib/clerkPasswords.ts), so the Password row is there from the first frame. */ passwordsHint?: boolean | null }) {
   const client = getClient(CLIENT_ID);
   const coach = getCoachProfileForClient(CLIENT_ID);
   const profile = getClientProfile(CLIENT_ID);
@@ -1105,7 +1106,7 @@ function SettingsTab({ CLIENT_ID, own = false }: { CLIENT_ID: number; /** The cl
       />
 
       {/* A password to sign in with (17 Nov, Alex: "Settings row"), once Clerk takes passwords; the code still works. */}
-      {own && clerkOn() && <PasswordSettings />}
+      {own && clerkOn() && <PasswordSettings passwordsHint={passwordsHint} />}
 
       <GymSettings clientId={CLIENT_ID} gyms={gymDashboards(CLIENT_ID)} />
 
@@ -1577,7 +1578,7 @@ export default async function ClientPage({
       }}
       chatUnread={getNotifications(CLIENT_ID).some((n) => n.kind === "coach_note" && !n.read)}
       // Settings left the bottom nav for the burger (7 Oct): the chat has its tab.
-      settingsContent={<SettingsTab CLIENT_ID={CLIENT_ID} own={viewerIsClient} />}
+      settingsContent={<SettingsTab CLIENT_ID={CLIENT_ID} own={viewerIsClient} passwordsHint={viewerIsClient ? await passwordsOnHint() : null} />}
       events={homeEvents(CLIENT_ID)}
       helpEmail={getCoachEmail(CLIENT_ID)}
       coachProfile={getCoachProfileForClient(CLIENT_ID)}
