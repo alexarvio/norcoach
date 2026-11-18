@@ -1,0 +1,208 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Client sign-up</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600&display=swap" rel="stylesheet"><style>
+  :root { --ink:#141a24; --body:#3a4250; --sec:#5b6474; --faint:#8b93a1; --label:#98A2B3; --line:#E1E5EB; --btnline:#DCE1E8; --page:#F5F6F8; --rust:#b8471f; --green:#2f7a3f; --dark:#1c1c1e; --dark-text:#c7c7cc; --dark-muted:#8e8e93; }
+  * { box-sizing:border-box; margin:0; }
+  body { font-family:Archivo,system-ui,sans-serif; font-weight:500; color:var(--ink); background:#f4f7fc; padding:28px 24px 80px; -webkit-font-smoothing:antialiased; }
+  .board-head h1 { font-size:20px; font-weight:600; margin-bottom:6px; }
+  .board-head ul { color:var(--sec); font-size:13.5px; line-height:1.6; max-width:900px; margin:0 0 34px 18px; padding:0; }
+  .board-head li + li { margin-top:4px; }
+  .board-head b { color:var(--ink); font-weight:600; }
+  .opt { margin-bottom:60px; }
+  .opt > h2 { font-size:16px; font-weight:600; margin-bottom:4px; }
+  .opt > .why { font-size:13px; color:var(--faint); line-height:1.55; max-width:900px; margin-bottom:16px; }
+  .frames { display:flex; flex-wrap:wrap; gap:22px; align-items:flex-start; }
+  figure { margin:0; }
+  figcaption.cap { margin-top:8px; font-size:12px; color:var(--faint); max-width:300px; line-height:1.45; }
+  svg.icon { fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+  .bar { display:inline-block; width:1px; height:.8em; margin:0 .6em; background:#c9cfd8; vertical-align:-.08em; }
+
+  /* A phone, 300 × 620; the dark head is the website's (website/site-bg.css), the form on paper under it. */
+  .phone { position:relative; width:300px; height:620px; border-radius:30px; overflow:hidden; background:var(--page); box-shadow:0 24px 48px -28px rgba(16,24,40,.45), 0 0 0 1px var(--line); }
+  .phone .sb { position:absolute; top:0; left:0; right:0; height:44px; display:flex; align-items:center; justify-content:space-between; padding:0 26px; font-size:13px; font-weight:600; z-index:5; pointer-events:none; }
+  .phone .sb.white { color:#fff; }
+  .sys { display:flex; align-items:center; gap:5px; } .sys svg { display:block; fill:currentColor; }
+  .ghost { position:absolute; color:#fff; opacity:.05; pointer-events:none; }
+  .logo { display:flex; align-items:center; gap:.5em; height:1em; line-height:1; color:#fff; }
+  .logo .m { flex:none; height:1em; width:1.0423em; } .logo .w { flex:none; height:1em; width:5.6818em; }
+  .ph { position:absolute; inset:0; background:var(--dark); color:#fff; overflow:hidden; }
+  .ph .ghost { width:330px; height:317px; right:-118px; top:-92px; }
+  .ph .logo { position:absolute; left:22px; top:57px; font-size:15px; }
+  .ph .eb { position:absolute; left:22px; top:109px; font-size:10px; font-weight:600; letter-spacing:.18em; text-transform:uppercase; color:var(--dark-muted); }
+  .ph h3.h { position:absolute; left:22px; right:18px; top:122px; font-size:23px; font-weight:600; line-height:1.15; letter-spacing:-.02em; color:#fff; white-space:nowrap; }
+  .sheet { position:absolute; left:0; right:0; top:172px; bottom:0; border-radius:22px 22px 0 0; background:var(--page); color:var(--ink); padding:24px 22px 0; }
+  .pill { display:flex; align-items:center; justify-content:center; gap:9px; height:38px; border-radius:999px; background:#fff; box-shadow:inset 0 0 0 1px var(--line); font-size:13px; font-weight:600; color:var(--ink); }
+  .pill svg { width:15px; height:15px; translate:0 -.5px; } .pill + .pill { margin-top:8px; }
+  .or { text-align:center; font-size:11px; color:var(--faint); margin:11px 0; }
+  .lbl { font-size:10px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--sec); margin-bottom:6px; }
+  .fld { position:relative; display:flex; align-items:center; height:38px; padding:0 12px; border-radius:11px; background:#fff; box-shadow:inset 0 0 0 1px var(--line); font-size:14px; color:var(--ink); white-space:nowrap; overflow:hidden; font-variant-numeric:tabular-nums; }
+  .fld.on { box-shadow:inset 0 0 0 1px var(--ink); }
+  .fld + .lbl, .two + .lbl { margin-top:13px; }
+  .fld.pw .eye { position:absolute; right:10px; width:16px; height:16px; color:var(--faint); }
+  .fld .ph-rest { color:var(--label); }
+  .codefld { letter-spacing:.14em; font-weight:600; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .caret { display:inline-block; width:1.5px; height:1.15em; margin-left:1px; background:var(--ink); animation:blink 1.06s steps(1) infinite; }
+  @keyframes blink { 50% { opacity:0; } } @media (prefers-reduced-motion: reduce) { .caret { animation:none; } }
+  .ink { display:flex; align-items:center; justify-content:center; height:38px; border-radius:999px; background:var(--ink); color:#fff; font-size:13px; font-weight:600; margin-top:14px; }
+  .ink.dim { opacity:.35; }
+  .note { text-align:center; font-size:11.5px; line-height:1.5; color:var(--faint); margin-top:14px; } .note b { color:var(--sec); font-weight:600; }
+  .legal { position:absolute; left:0; right:0; bottom:22px; display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--faint); }
+  .lead { font-size:12.5px; line-height:1.5; color:var(--sec); margin-bottom:16px; } .lead b { color:var(--ink); font-weight:600; }
+  .code { display:grid; grid-template-columns:repeat(6,1fr); gap:7px; }
+  .code i { position:relative; height:46px; border-radius:10px; background:#fff; box-shadow:inset 0 0 0 1px var(--line); display:flex; align-items:center; justify-content:center; font-style:normal; font-size:18px; font-weight:600; }
+  .code i.on { box-shadow:inset 0 0 0 1px var(--ink); } .code .caret { height:20px; margin:0; }
+  .face { flex:none; display:grid; place-items:center; width:40px; height:40px; border-radius:50%; font-size:16px; font-weight:600; color:var(--ink); background:#fff; box-shadow:inset 0 0 0 1px var(--line); }
+  .face.f { background:#d9cfbf; box-shadow:none; color:#3a3328; }
+  .face.a { width:24px; height:24px; font-size:11px; }
+  .found { display:flex; align-items:center; gap:12px; margin-top:16px; }
+  .found div b { display:block; font-size:15px; font-weight:600; } .found div span { display:block; font-size:12px; color:var(--faint); margin-top:2px; }
+  .rust { margin-top:12px; font-size:12.5px; line-height:1.45; font-weight:600; color:var(--rust); }
+  /* Waiting: the dark fills the screen. */
+  .ph.full .ghost { width:430px; height:413px; right:-150px; top:-120px; }
+  .waitface { position:absolute; left:22px; top:112px; } .waitface .face { width:56px; height:56px; font-size:22px; }
+  .ph h3.big { position:absolute; left:22px; right:20px; top:186px; font-size:26px; font-weight:600; line-height:1.08; letter-spacing:-.03em; color:#fff; }
+  .ph h3.big span { display:block; color:var(--dark-muted); }
+  .ph .wait { position:absolute; left:22px; right:20px; top:262px; font-size:13px; color:var(--dark-text); } .ph .wait b { color:#fff; font-weight:600; }
+  .ph .wait .bar { background:#5a5a5e; }
+  .ph .bottom { position:absolute; left:22px; right:22px; bottom:30px; text-align:center; }
+  .ghostpill { display:flex; align-items:center; justify-content:center; height:38px; border-radius:999px; box-shadow:inset 0 0 0 1px #48484c; font-size:13px; font-weight:600; color:#fff; }
+  .ph .out { margin-top:14px; font-size:12.5px; font-weight:600; color:var(--dark-muted); }
+  /* A lock screen and its push. */
+  .lock { position:absolute; inset:0; background:linear-gradient(170deg,#3b3f4a,#1d2027 70%); color:#fff; text-align:center; }
+  .lk-date { position:absolute; left:0; right:0; top:70px; font-size:14px; font-weight:500; opacity:.85; }
+  .lk-time { position:absolute; left:0; right:0; top:86px; font-size:68px; font-weight:300; letter-spacing:-.02em; }
+  .push { position:absolute; left:12px; right:12px; top:250px; padding:11px 13px 12px; border-radius:18px; background:rgba(245,245,247,.82); color:var(--ink); text-align:left; }
+  .push-app { display:flex; align-items:center; gap:7px; font-size:10.5px; font-weight:600; letter-spacing:.06em; color:#4a4f5a; margin-bottom:5px; }
+  .push-app em { margin-left:auto; font-style:normal; font-weight:500; letter-spacing:0; color:#7a7f88; }
+  .push-icon { display:grid; place-items:center; width:20px; height:20px; border-radius:5px; background:#f8f9fb; box-shadow:inset 0 0 0 1px #e1e5eb; color:var(--ink); } .push-icon svg { width:12px; height:12px; }
+  .push b { display:block; font-size:13.5px; font-weight:600; } .push > span { display:block; font-size:13px; color:#3a4250; margin-top:1px; }
+  .push-acts { position:absolute; left:12px; right:12px; top:340px; display:grid; gap:1px; border-radius:14px; overflow:hidden; background:rgba(255,255,255,.12); }
+  .push-acts span { display:block; padding:11px 14px; background:rgba(245,245,247,.82); color:var(--ink); font-size:13.5px; text-align:left; }
+  .push-acts span + span { color:#b42318; }
+
+  /* The coach's laptop cards, in the admin's voice. */
+  .admin { width:640px; padding:22px 24px 24px; border-radius:14px; background:#f4f7fc; box-shadow:0 24px 48px -28px rgba(16,24,40,.35), 0 0 0 1px var(--line); }
+  .a-head { display:flex; align-items:center; gap:8px; margin-bottom:12px; } .a-head h4 { font-size:20px; font-weight:600; }
+  .rpill { display:inline-grid; place-items:center; min-width:22px; height:22px; padding:0 7px; border-radius:999px; background:var(--rust); color:#fff; font-size:11.5px; font-weight:600; }
+  .needs { border-radius:14px; background:rgba(184,71,31,.08); box-shadow:inset 0 0 0 1.5px var(--rust); padding:12px 14px 6px; }
+  .n-group { display:flex; align-items:center; gap:7px; font-size:10.5px; font-weight:600; letter-spacing:.16em; color:var(--rust); margin-bottom:6px; } .n-group svg { width:15px; height:15px; } .n-group em { font-style:normal; color:var(--rust); }
+  .n-row { display:flex; align-items:center; gap:10px; height:52px; font-size:13.5px; }
+  .n-date { width:84px; color:var(--body); font-variant-numeric:tabular-nums; } .n-row b { font-size:15px; font-weight:600; }
+  .n-what { color:var(--faint); flex:1; min-width:0; white-space:nowrap; } .n-wait { color:var(--sec); width:30px; text-align:center; }
+  .n-btn { display:grid; place-items:center; width:30px; height:30px; border-radius:50%; background:#fff; box-shadow:inset 0 0 0 1px var(--btnline); color:var(--ink); } .n-btn svg { width:15px; height:15px; }
+  .n-btn.ok { color:var(--green); } .n-btn + .n-btn { margin-left:-6px; }
+  .codecard { border-radius:18px; background:#fff; box-shadow:inset 0 0 0 1px var(--line); }
+  .codecard > div { display:flex; align-items:center; gap:14px; min-height:56px; padding:0 18px; }
+  .codecard > div + div { border-top:1px solid #eef0f3; }
+  .cc-lbl { width:80px; font-size:10.5px; font-weight:600; letter-spacing:.16em; color:var(--sec); }
+  .cc-code b { font-size:22px; font-weight:600; letter-spacing:.14em; flex:1; }
+  .cc-url { display:flex; align-items:center; gap:8px; flex:1; font-size:14px; color:var(--body); } .cc-url svg { width:15px; height:15px; color:var(--faint); }
+  .cc-act { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 10px; border-radius:8px; font-size:13px; font-weight:600; color:var(--ink); } .cc-act svg { width:15px; height:15px; }
+  .cc-qr { padding:14px 18px !important; } .qr { width:72px; height:72px; flex:none; margin-right:auto; border-radius:6px; background:
+      conic-gradient(from 90deg at 30% 30%, #141a24 25%, transparent 0) 0 0/14.4px 14.4px,
+      repeating-linear-gradient(90deg, #141a24 0 3px, transparent 3px 7px), #fff; box-shadow:inset 0 0 0 1px var(--line); opacity:.85; }
+</style></head><body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="nc-mark" viewBox="197.07 200.13 640.9 614.88"><g fill="currentColor"><path d="M829.97,514.19L593.43,553.12L561.88,484.19Z"/><path d="M447.37,447.42L407.36,208.13L523.47,456.35Z"/><path d="M205.07,514.47L475.5,554.53A11.63,11.63 0 0 1 484.17,560.78L609.01,807.01L533.83,482.9Z"/></g></symbol>
+  <symbol id="nc-word" viewBox="0 0 2000 352"><g fill="currentColor">
+  
+  <path fill-rule="evenodd" d="M 1366.5 1.2 C 1366.2 1.9, 1362.4 21.4, 1358.0 44.5 C 1353.5 67.6, 1346.3 104.7, 1341.9 127 C 1337.6 149.2, 1332.0 178.0, 1329.6 191 C 1327.1 203.9, 1321.7 231.8, 1317.6 253 C 1305.0 317.5, 1299 349.0, 1299 350.5 L 1299 352.0 1324.7 351.7 L 1350.5 351.5 1352.1 342 C 1352.9 336.7, 1355.4 321.8, 1357.4 308.7 L 1361.2 285 1394.1 285 L 1427 285 1427 286.2 C 1427 289.3, 1436.2 347.7, 1437.0 349.7 L 1437.9 352 1462.9 352 L 1487.8 352 1488.4 351.0 C 1488.7 350.5, 1485.6 332.4, 1481.4 310.8 C 1477.3 289.1, 1469.4 248.1, 1463.9 219.5 C 1458.4 190.9, 1449.4 144.3, 1444.0 116 C 1438.5 87.6, 1431.5 51, 1428.4 34.5 C 1425.2 18, 1422.3 3.4, 1421.8 2.2 L 1421.0 0 1393.9 0 L 1366.9 0 1366.5 1.2 M 0.2 176.2 L 0.5 351.5 26 351.5 L 51.5 351.5 51.7 253.5 L 52.0 155.5 51.0 147.0 C 50.4 142.4, 50.1 138.5, 50.3 138.3 C 50.6 138.0, 56.0 152.0, 82.6 222 C 89.4 239.8, 98.8 264.4, 103.4 276.5 C 108.0 288.6, 116.1 309.9, 121.5 324 C 126.8 338.0, 131.7 350.0, 132.2 350.7 L 133.2 352.0 155.3 351.7 L 177.5 351.5 177.7 176.2 L 178.0 1 152.5 1 L 127 1 127.0 99.7 L 127.0 198.5 127.9 204.4 C 128.5 207.7, 128.7 210.5, 128.5 210.7 C 128.1 211.1, 128.0 210.9, 80.3 88 C 75.1 74.5, 66.8 53.3, 62.0 41 C 57.2 28.6, 51.7 14.5, 49.9 9.7 L 46.7 1 23.3 1 L -0.0 1 0.2 176.2 M 284.3 2.8 C 281.4 3.8, 277.5 5.8, 275.6 7.3 L 272.1 9.9 269.3 15.7 L 266.5 21.5 266.1 173.5 L 265.8 325.5 266.9 330.6 C 268.9 339.9, 274.5 346.1, 284.2 349.8 L 288.5 351.5 350 351.8 L 411.5 352.1 417.8 350.9 C 429.9 348.9, 436.7 343.8, 440.7 333.9 L 442.5 329.5 442.7 180.5 L 443.0 31.5 441.9 25.1 C 440.0 13.9, 435.7 8.0, 426.5 3.8 L 421.5 1.5 355.5 1.2 L 289.5 1.0 284.3 2.8 M 530.2 176.2 L 530.5 351.5 556.5 351.5 L 582.5 351.5 582.7 198.7 L 583.0 45.9 615.7 46.2 L 648.5 46.5 648.5 101.5 L 648.5 156.5 622.7 156.7 L 597 157.0 597 172.5 L 597 188.0 605.0 210.7 C 609.4 223.2, 615.7 240.9, 618.9 250 C 630.9 283.2, 645.3 323.8, 649.6 336.4 C 652.1 343.6, 654.6 350.0, 655.2 350.7 L 656.2 352 682.4 352 C 696.8 352, 708.9 351.7, 709.2 351.3 C 709.6 351.0, 708.5 347.1, 706.8 342.6 C 696.8 315.6, 653 194.7, 653 194.1 C 653 193.6, 658.2 193.0, 664.7 192.6 C 671.2 192.3, 678.8 191.4, 681.7 190.6 C 691.4 188.1, 697.1 182.4, 699.6 172.7 L 701 167.5 701 96.4 L 701 25.3 699.5 20.3 C 698.6 17.5, 696.6 13.5, 695.0 11.2 L 692.1 7.2 686.3 4.3 L 680.5 1.5 605.2 1.2 L 529.9 0.9 530.2 176.2 M 806.3 2.8 C 803.5 3.8, 800.0 5.3, 798.6 6.3 C 794.4 9.0, 790.2 15.6, 788.9 21.3 L 787.8 26.5 788.1 179 L 788.5 331.5 791.3 337.2 C 794.4 343.5, 798.2 346.9, 805.0 349.7 L 809.5 351.5 873 351.5 L 936.5 351.5 941.9 349.6 L 947.3 347.7 951.9 343.1 L 956.5 338.4 958.2 332.4 L 960 326.3 960 279.6 L 960 233 934 233 L 908 233 908 269.5 L 908 306 873.9 306 L 839.9 306 840.2 176.2 L 840.5 46.5 874 46.5 L 907.5 46.5 907.7 80.7 L 908.0 115 934.0 115 L 960.0 115 959.7 68.2 L 959.5 21.5 956.6 15.7 L 953.8 9.9 949.5 7.0 C 947.1 5.3, 942.5 3.3, 939.3 2.5 L 933.5 1 872.5 1.0 L 811.5 1.0 806.3 2.8 M 1065.3 2.8 C 1062.4 3.8, 1058.5 5.8, 1056.6 7.3 L 1053.1 9.9 1050.3 15.7 L 1047.5 21.5 1047.5 176.5 L 1047.5 331.5 1049.2 335.2 C 1051.6 340.3, 1056.6 345.7, 1060.9 347.9 C 1062.9 348.9, 1067.2 350.3, 1070.4 350.9 L 1076.3 352 1135.4 351.9 L 1194.5 351.9 1201.4 350.4 C 1209.8 348.7, 1215.1 345.3, 1218.9 339.3 L 1221.8 334.8 1222.9 328.1 L 1224.1 321.5 1223.8 172 L 1223.5 22.5 1221.1 17.3 C 1218.3 11.0, 1214.0 6.8, 1207.5 3.8 L 1202.5 1.5 1136.5 1.2 L 1070.5 1.0 1065.3 2.8 M 1583.8 2.3 C 1575.0 4.7, 1569.0 10.4, 1565.9 19.5 L 1564.5 23.5 1564.5 177 L 1564.5 330.5 1567.5 336.5 L 1570.5 342.5 1574.7 345.7 C 1577.1 347.4, 1580.7 349.4, 1582.7 350.1 L 1586.5 351.4 1646 351.7 L 1705.5 352.0 1712 350.9 C 1715.5 350.3, 1720.7 348.6, 1723.5 347.1 L 1728.5 344.4 1731.5 339.8 L 1734.6 335.2 1735.8 329.4 L 1737 323.6 1737 278.3 L 1737 233 1710.5 233 L 1684 233 1684 269.5 L 1684 306 1650.5 306 L 1617 306 1617 176 L 1617 46 1650.5 46 L 1684 46 1684 80.5 L 1684 115 1710.5 115 L 1737.1 115 1736.8 68.7 L 1736.5 22.5 1734.1 17.3 C 1731.3 11.0, 1727.0 6.8, 1720.5 3.8 L 1715.5 1.5 1652 1.3 L 1588.5 1.1 1583.8 2.3 M 1824 176.5 L 1824 352 1849.9 352 L 1875.9 352 1876.2 273.2 L 1876.5 194.5 1911.5 194.5 L 1946.5 194.5 1947 273 L 1947.5 351.5 1973.7 351.7 L 2000 352.0 2000 176.5 L 2000 1 1973.5 1 L 1947 1 1947 73 L 1947 145 1911.5 145 L 1876 145 1876 73 L 1876 1 1850 1 L 1824 1 1824 176.5 M 319 176 L 319 306 354.5 306 L 390 306 390 176 L 390 46 354.5 46 L 319 46 319 176 M 1100 176 L 1100 306 1135.5 306 L 1171 306 1171 176 L 1171 46 1135.5 46 L 1100 46 1100 176 M 1392.6 89.5 C 1392.3 91.7, 1387.2 122.5, 1381.5 158 C 1375.7 193.4, 1370.3 226.2, 1369.6 230.7 C 1368.9 235.2, 1368.5 239.2, 1368.8 239.4 C 1369.1 239.7, 1380.5 240, 1394.2 240 L 1419.1 240 1418.5 237.2 C 1418.2 235.7, 1415.9 221.4, 1413.5 205.5 C 1404.8 150.0, 1394.8 89.4, 1394.0 87.5 L 1393.2 85.5 1392.6 89.5" />
+</g></symbol>
+  <symbol id="g-apple" viewBox="0 0 24 24"><path fill="currentColor" d="M16.37 12.57c-.02-2.2 1.8-3.26 1.88-3.31-1.02-1.5-2.62-1.7-3.19-1.72-1.36-.14-2.65.8-3.34.8-.69 0-1.75-.78-2.88-.76-1.48.02-2.85.86-3.61 2.19-1.54 2.67-.39 6.62 1.11 8.79.73 1.06 1.6 2.25 2.75 2.2 1.1-.04 1.52-.71 2.85-.71 1.33 0 1.71.71 2.88.69 1.19-.02 1.94-1.08 2.67-2.14.84-1.23 1.19-2.42 1.21-2.48-.03-.01-2.32-.89-2.33-3.55zM14.18 6.1c.61-.74 1.02-1.76.91-2.78-.88.04-1.94.59-2.57 1.32-.56.65-1.06 1.69-.93 2.69.98.08 1.98-.5 2.59-1.23z"/></symbol>
+  <symbol id="g-google" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.76h3.56c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.56-2.76c-.98.66-2.23 1.06-3.72 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 14.11A6.6 6.6 0 0 1 5.5 12c0-.73.13-1.44.34-2.11V7.05H2.18A11 11 0 0 0 1 12c0 1.78.43 3.46 1.18 4.95l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.05l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"/></symbol>
+</svg>
+
+<div class="board-head">
+  <h1>Client sign-up with a coach code</h1>
+  <ul>
+    <li><b>Client:</b> create account (Apple, Google, or email + password) → confirm email (email only) → name and date of birth → coach code → waiting until the coach says yes. Phone and the rest come later.</li>
+    <li><b>Coach code:</b> one per coach, their name by default (FINLAY), changeable. Also a link and QR (app.norcoachapp.com/join/finlay) that fills the code in, for an Instagram bio.</li>
+    <li><b>Coach:</b> a push "Alex Arvio wants to join you", and a Join requests row in the Feed's Needs you. Accept makes them a client with their name, birthdate and email filled in; Decline lets them try another code.</li>
+    <li><b>The coach's invite link stays</b>, for coaches who add the client first. The code is for when the client finds the coach.</li>
+    <li><b>Coach sign-up:</b> first and last name, business name. No date of birth: nothing uses it, and Stripe asks for its own when they get paid.</li>
+  </ul>
+</div>
+
+<section class="opt">
+  <h2>The client</h2>
+  <p class="why">The coach sign-up's dark head over the paper. The code shows who it is before sending, so a typo never lands with the wrong coach.</p>
+  <div class="frames">
+    <figure><div class="phone"><div class="sb white"><span>9:41</span><span class="sys"><svg width="16" height="10" viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg><svg width="14" height="10" viewBox="0 0 16 12"><path d="M8 11.5l2.4-2.6a3.4 3.4 0 0 0-4.8 0zM3.6 6.9a6.2 6.2 0 0 1 8.8 0l1.5-1.6a8.4 8.4 0 0 0-11.8 0zM.6 3.7a10.4 10.4 0 0 1 14.8 0L16 3A11.4 11.4 0 0 0 0 3z"/></svg><svg width="22" height="11" viewBox="0 0 27 13"><rect x=".5" y=".5" width="23" height="12" rx="3.5" fill="none" stroke="currentColor" opacity=".4"/><rect x="2.5" y="2.5" width="16" height="8" rx="2"/><path d="M25 4.5v4a2 2 0 0 0 0-4z" opacity=".45"/></svg></span></div><div class="ph"><svg class="ghost" aria-hidden="true"><use href="#nc-mark"/></svg><div class="logo"><svg class="m"><use href="#nc-mark"/></svg><svg class="w"><use href="#nc-word"/></svg></div><h3 class="h">Create your account</h3><div class="sheet"><div class="pill"><svg><use href="#g-apple"/></svg>Continue with Apple</div>
+   <div class="pill"><svg><use href="#g-google"/></svg>Continue with Google</div>
+   <div class="or">or</div>
+   <div class="lbl">Email</div><div class="fld">alex@arvio.com</div>
+   <div class="lbl">Password</div><div class="fld on pw">••••••••••<i class="caret"></i><svg class="icon eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></div>
+   <div class="ink">Create account</div>
+   <p class="note">Have an account? <b>Sign in</b></p>
+   <div class="legal">Privacy policy<i class="bar"></i>Support</div></div></div></div><figcaption class="cap">1 · Create the account. Apple and Google skip step 2.</figcaption></figure>
+    <figure><div class="phone"><div class="sb white"><span>9:41</span><span class="sys"><svg width="16" height="10" viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg><svg width="14" height="10" viewBox="0 0 16 12"><path d="M8 11.5l2.4-2.6a3.4 3.4 0 0 0-4.8 0zM3.6 6.9a6.2 6.2 0 0 1 8.8 0l1.5-1.6a8.4 8.4 0 0 0-11.8 0zM.6 3.7a10.4 10.4 0 0 1 14.8 0L16 3A11.4 11.4 0 0 0 0 3z"/></svg><svg width="22" height="11" viewBox="0 0 27 13"><rect x=".5" y=".5" width="23" height="12" rx="3.5" fill="none" stroke="currentColor" opacity=".4"/><rect x="2.5" y="2.5" width="16" height="8" rx="2"/><path d="M25 4.5v4a2 2 0 0 0 0-4z" opacity=".45"/></svg></span></div><div class="ph"><svg class="ghost" aria-hidden="true"><use href="#nc-mark"/></svg><div class="logo"><svg class="m"><use href="#nc-mark"/></svg><svg class="w"><use href="#nc-word"/></svg></div><h3 class="h">Confirm your email</h3><div class="sheet"><p class="lead">We sent a 6-digit code to <b>alex@arvio.com</b>.</p>
+   <div class="code"><i>4</i><i>8</i><i>1</i><i class="on"><span class="caret"></span></i><i></i><i></i></div>
+   <div class="ink">Continue</div>
+   <p class="note"><b>Send a new code</b></p></div></div></div><figcaption class="cap">2 · Confirm the email</figcaption></figure>
+    <figure><div class="phone"><div class="sb white"><span>9:41</span><span class="sys"><svg width="16" height="10" viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg><svg width="14" height="10" viewBox="0 0 16 12"><path d="M8 11.5l2.4-2.6a3.4 3.4 0 0 0-4.8 0zM3.6 6.9a6.2 6.2 0 0 1 8.8 0l1.5-1.6a8.4 8.4 0 0 0-11.8 0zM.6 3.7a10.4 10.4 0 0 1 14.8 0L16 3A11.4 11.4 0 0 0 0 3z"/></svg><svg width="22" height="11" viewBox="0 0 27 13"><rect x=".5" y=".5" width="23" height="12" rx="3.5" fill="none" stroke="currentColor" opacity=".4"/><rect x="2.5" y="2.5" width="16" height="8" rx="2"/><path d="M25 4.5v4a2 2 0 0 0 0-4z" opacity=".45"/></svg></span></div><div class="ph"><svg class="ghost" aria-hidden="true"><use href="#nc-mark"/></svg><div class="logo"><svg class="m"><use href="#nc-mark"/></svg><svg class="w"><use href="#nc-word"/></svg></div><h3 class="h">About you</h3><div class="sheet"><div class="two"><div><div class="lbl">First name</div><div class="fld">Alex</div></div><div><div class="lbl">Last name</div><div class="fld">Arvio</div></div></div>
+   <div class="lbl">Date of birth</div><div class="fld on">14 / 03 / 19<i class="caret"></i><span class="ph-rest">YY</span></div>
+   <div class="ink">Continue</div></div></div></div><figcaption class="cap">3 · About you</figcaption></figure>
+    <figure><div class="phone"><div class="sb white"><span>9:41</span><span class="sys"><svg width="16" height="10" viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg><svg width="14" height="10" viewBox="0 0 16 12"><path d="M8 11.5l2.4-2.6a3.4 3.4 0 0 0-4.8 0zM3.6 6.9a6.2 6.2 0 0 1 8.8 0l1.5-1.6a8.4 8.4 0 0 0-11.8 0zM.6 3.7a10.4 10.4 0 0 1 14.8 0L16 3A11.4 11.4 0 0 0 0 3z"/></svg><svg width="22" height="11" viewBox="0 0 27 13"><rect x=".5" y=".5" width="23" height="12" rx="3.5" fill="none" stroke="currentColor" opacity=".4"/><rect x="2.5" y="2.5" width="16" height="8" rx="2"/><path d="M25 4.5v4a2 2 0 0 0 0-4z" opacity=".45"/></svg></span></div><div class="ph"><svg class="ghost" aria-hidden="true"><use href="#nc-mark"/></svg><div class="logo"><svg class="m"><use href="#nc-mark"/></svg><svg class="w"><use href="#nc-word"/></svg></div><h3 class="h">Your coach</h3><div class="sheet"><div class="lbl">Coach code</div><div class="fld on codefld">FINLAY<i class="caret"></i></div>
+   <div class="found"><span class="face f">F</span><div><b>Finlay Chedd</b><span>Full Potential Coaching</span></div></div>
+   <div class="ink">Send request</div></div></div></div><figcaption class="cap">4 · The code finds the coach as it is typed</figcaption></figure>
+    <figure><div class="phone"><div class="sb white"><span>9:41</span><span class="sys"><svg width="16" height="10" viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg><svg width="14" height="10" viewBox="0 0 16 12"><path d="M8 11.5l2.4-2.6a3.4 3.4 0 0 0-4.8 0zM3.6 6.9a6.2 6.2 0 0 1 8.8 0l1.5-1.6a8.4 8.4 0 0 0-11.8 0zM.6 3.7a10.4 10.4 0 0 1 14.8 0L16 3A11.4 11.4 0 0 0 0 3z"/></svg><svg width="22" height="11" viewBox="0 0 27 13"><rect x=".5" y=".5" width="23" height="12" rx="3.5" fill="none" stroke="currentColor" opacity=".4"/><rect x="2.5" y="2.5" width="16" height="8" rx="2"/><path d="M25 4.5v4a2 2 0 0 0 0-4z" opacity=".45"/></svg></span></div><div class="ph full"><svg class="ghost" aria-hidden="true"><use href="#nc-mark"/></svg><div class="logo"><svg class="m"><use href="#nc-mark"/></svg><svg class="w"><use href="#nc-word"/></svg></div>
+   <div class="waitface"><span class="face f">F</span></div>
+   <h3 class="big">Request sent<span>Waiting for Finlay</span></h3>
+   <p class="wait"><b>Finlay Chedd</b><i class="bar"></i>Full Potential Coaching</p>
+   <div class="bottom"><div class="ghostpill">Use another code</div><p class="out">Sign out</p></div>
+ </div></div><figcaption class="cap">5 · Waiting, every time the app opens until the coach says yes</figcaption></figure>
+    <figure><div class="phone"><div class="sb white"><span>9:41</span><span class="sys"><svg width="16" height="10" viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg><svg width="14" height="10" viewBox="0 0 16 12"><path d="M8 11.5l2.4-2.6a3.4 3.4 0 0 0-4.8 0zM3.6 6.9a6.2 6.2 0 0 1 8.8 0l1.5-1.6a8.4 8.4 0 0 0-11.8 0zM.6 3.7a10.4 10.4 0 0 1 14.8 0L16 3A11.4 11.4 0 0 0 0 3z"/></svg><svg width="22" height="11" viewBox="0 0 27 13"><rect x=".5" y=".5" width="23" height="12" rx="3.5" fill="none" stroke="currentColor" opacity=".4"/><rect x="2.5" y="2.5" width="16" height="8" rx="2"/><path d="M25 4.5v4a2 2 0 0 0 0-4z" opacity=".45"/></svg></span></div><div class="lock">
+   <p class="lk-time">9:41</p><p class="lk-date">Wednesday 18 November</p>
+   <div class="push"><div class="push-app"><span class="push-icon"><svg><use href="#nc-mark"/></svg></span>NORCOACH<em>now</em></div><b>Finlay accepted you</b><span>Open Norcoach to start.</span></div>
+ </div></div><figcaption class="cap">6 · Accepted: a push, and the app opens on Home</figcaption></figure>
+    <figure><div class="phone"><div class="sb white"><span>9:41</span><span class="sys"><svg width="16" height="10" viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg><svg width="14" height="10" viewBox="0 0 16 12"><path d="M8 11.5l2.4-2.6a3.4 3.4 0 0 0-4.8 0zM3.6 6.9a6.2 6.2 0 0 1 8.8 0l1.5-1.6a8.4 8.4 0 0 0-11.8 0zM.6 3.7a10.4 10.4 0 0 1 14.8 0L16 3A11.4 11.4 0 0 0 0 3z"/></svg><svg width="22" height="11" viewBox="0 0 27 13"><rect x=".5" y=".5" width="23" height="12" rx="3.5" fill="none" stroke="currentColor" opacity=".4"/><rect x="2.5" y="2.5" width="16" height="8" rx="2"/><path d="M25 4.5v4a2 2 0 0 0 0-4z" opacity=".45"/></svg></span></div><div class="ph"><svg class="ghost" aria-hidden="true"><use href="#nc-mark"/></svg><div class="logo"><svg class="m"><use href="#nc-mark"/></svg><svg class="w"><use href="#nc-word"/></svg></div><h3 class="h">Your coach</h3><div class="sheet"><div class="lbl">Coach code</div><div class="fld codefld">FINLAY</div>
+   <p class="rust">Finlay didn't accept.<br />Try another code.</p>
+   <div class="ink dim">Send request</div></div></div></div><figcaption class="cap">If the coach declines: back to 4, the fact in rust</figcaption></figure>
+  </div>
+</section>
+
+<section class="opt">
+  <h2>The coach</h2>
+  <p class="why">The request is a Needs you row like every other: Accept and Decline as icons, the words their tooltips. The code lives in Settings, Profile.</p>
+  <div class="frames">
+    <figure><div class="admin">
+  <div class="a-head"><h4>Needs you</h4><span class="rpill">1</span></div>
+  <div class="needs">
+    <div class="n-group"><svg class="icon" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.4"/><path d="M3 19.5c.7-3.3 3.2-5.2 6-5.2s5.3 1.9 6 5.2"/><path d="M17.5 8.5v5M15 11h5"/></svg>JOIN REQUESTS<em>1</em></div>
+    <div class="n-row">
+      <span class="n-date">Wed, 18 Nov</span><span class="face a">A</span><b>Alex Arvio</b>
+      <span class="n-what">Wants to join<i class="bar"></i>28<i class="bar"></i>alex@arvio.com</span>
+      <span class="n-wait">2 h</span>
+      <span class="n-btn ok" title="Accept"><svg class="icon" viewBox="0 0 24 24"><path d="M5 12.5l4.2 4.2L19 7"/></svg></span><span class="n-btn" title="Decline"><svg class="icon" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
+    </div>
+  </div>
+</div><figcaption class="cap">Feed · Needs you</figcaption></figure>
+    <figure><div class="admin">
+  <div class="a-head"><h4>Your code</h4></div>
+  <div class="codecard">
+    <div class="cc-code"><span class="cc-lbl">CODE</span><b>FINLAY</b><span class="cc-act"><svg class="icon" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Copy</span><span class="cc-act">Change</span></div>
+    <div class="cc-link"><span class="cc-lbl">LINK</span><span class="cc-url"><svg class="icon" viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg>app.norcoachapp.com/join/finlay</span><span class="cc-act"><svg class="icon" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Copy</span></div>
+    <div class="cc-qr"><span class="cc-lbl">QR CODE</span><div class="qr"></div><span class="cc-act">Download</span></div>
+  </div>
+</div><figcaption class="cap">Settings · Profile · Your code</figcaption></figure>
+    <figure><div class="phone"><div class="sb white"><span>9:41</span><span class="sys"><svg width="16" height="10" viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg><svg width="14" height="10" viewBox="0 0 16 12"><path d="M8 11.5l2.4-2.6a3.4 3.4 0 0 0-4.8 0zM3.6 6.9a6.2 6.2 0 0 1 8.8 0l1.5-1.6a8.4 8.4 0 0 0-11.8 0zM.6 3.7a10.4 10.4 0 0 1 14.8 0L16 3A11.4 11.4 0 0 0 0 3z"/></svg><svg width="22" height="11" viewBox="0 0 27 13"><rect x=".5" y=".5" width="23" height="12" rx="3.5" fill="none" stroke="currentColor" opacity=".4"/><rect x="2.5" y="2.5" width="16" height="8" rx="2"/><path d="M25 4.5v4a2 2 0 0 0 0-4z" opacity=".45"/></svg></span></div><div class="lock">
+   <p class="lk-time">9:41</p><p class="lk-date">Wednesday 18 November</p>
+   <div class="push"><div class="push-app"><span class="push-icon"><svg><use href="#nc-mark"/></svg></span>NORCOACH<em>now</em></div><b>Alex Arvio</b><span>Wants to join you</span></div>
+   <div class="push-acts"><span>Accept</span><span>Decline</span></div>
+ </div></div><figcaption class="cap">The coach's phone: the push, and Accept or Decline from it (long press)</figcaption></figure>
+  </div>
+</section>
+
+<section class="opt">
+  <h2>Coach sign-up · About you</h2>
+  <p class="why">Today's screen with the name in two parts. Business details, country and payments come after, in Settings.</p>
+  <div class="frames">
+    <figure><div class="phone"><div class="sb white"><span>9:41</span><span class="sys"><svg width="16" height="10" viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg><svg width="14" height="10" viewBox="0 0 16 12"><path d="M8 11.5l2.4-2.6a3.4 3.4 0 0 0-4.8 0zM3.6 6.9a6.2 6.2 0 0 1 8.8 0l1.5-1.6a8.4 8.4 0 0 0-11.8 0zM.6 3.7a10.4 10.4 0 0 1 14.8 0L16 3A11.4 11.4 0 0 0 0 3z"/></svg><svg width="22" height="11" viewBox="0 0 27 13"><rect x=".5" y=".5" width="23" height="12" rx="3.5" fill="none" stroke="currentColor" opacity=".4"/><rect x="2.5" y="2.5" width="16" height="8" rx="2"/><path d="M25 4.5v4a2 2 0 0 0 0-4z" opacity=".45"/></svg></span></div><div class="ph"><svg class="ghost" aria-hidden="true"><use href="#nc-mark"/></svg><div class="logo"><svg class="m"><use href="#nc-mark"/></svg><svg class="w"><use href="#nc-word"/></svg></div><h3 class="h">About you</h3><div class="sheet">
+   <p class="lead">Signed up as <b>finlay@fullpotential.coach</b>.</p>
+   <div class="two"><div><div class="lbl">First name</div><div class="fld">Finlay</div></div><div><div class="lbl">Last name</div><div class="fld">Chedd</div></div></div>
+   <div class="lbl">Business name</div><div class="fld on">Full Potential Coa<i class="caret"></i></div>
+   <div class="ink">Continue</div>
+ </div></div></div><figcaption class="cap">About you, after the email is confirmed</figcaption></figure>
+  </div>
+</section>
+</body></html>
