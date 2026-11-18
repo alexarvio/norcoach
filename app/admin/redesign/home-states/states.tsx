@@ -67,9 +67,9 @@ export function homeProps(state: StateId): HomeProps {
     upcoming: { link: null, provider: "Google Meet", startingNow: false, monthCap: "OCT", dayNumber: "10", weekdayCap: "SAT", topic: "Mid-block check", inLabel: "In 2 days", whenLabel: "Saturday 10:00 · 30 min", startIso: "2026-10-10T08:00:00.000Z", durationMinutes: 30 },
     phases: [
       // Every phase ends this week with the next one scheduled: the cards name it and charge up (9 Oct).
-      { id: 1, track: "training", name: "Strength block", start: "2026-09-07", end: "2026-10-11", coverUrl: "/img/session-head.jpg", objectives: ["Squat 100 kg for 5", "Train 4 days a week"], note: null, next: { name: "Strength block 2", start: "2026-10-12" } },
+      { id: 1, track: "training", name: "Strength block", start: "2026-09-07", end: "2026-10-11", coverUrl: "/img/training-gym.jpg", objectives: ["Squat 100 kg for 5", "Train 4 days a week"], note: null, next: { name: "Strength block 2", start: "2026-10-12" } },
       { id: 2, track: "nutrition", name: "Lean bulk", start: "2026-09-07", end: "2026-10-11", coverUrl: "/img/nutrition-head.jpg", objectives: ["2,800 kcal a day", "180 g protein"], note: null, next: { name: "Lean bulk 2", start: "2026-10-12" } },
-      { id: 3, track: "lifestyle", name: "Sleep and steps", start: "2026-09-07", end: "2026-10-11", coverUrl: "/img/lifestyle-head.jpg", objectives: ["8 hours a night", "10,000 steps"], note: null, next: { name: "Sleep and steps 2", start: "2026-10-12" } },
+      { id: 3, track: "lifestyle", name: "Sleep and steps", start: "2026-09-07", end: "2026-10-11", coverUrl: "/img/lifestyle-shore.jpg", objectives: ["8 hours a night", "10,000 steps"], note: null, next: { name: "Sleep and steps 2", start: "2026-10-12" } },
     ],
     checkInCount: { done: 1, total: 4 },
     weekDone: null,

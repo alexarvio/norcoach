@@ -16407,8 +16407,9 @@ body:has(.nc-scrim) [data-radix-popper-content-wrapper] { z-index: 110 !importan
 .so-stat + .so-stat { border-left-color: #EEEEEE; }
 /* Done on the overview head: green letters, no pill, like the tab rows. */
 .so-pill.done { padding: 5px 0; background: transparent; color: #2E7D32; }
-/* Trying a photo behind the overview head: the kettlebell, darkened, with the words in white. */
-.so-head { position: relative; background: #222222 url("/img/session-head.jpg") center 40% / cover no-repeat; color: #fff; }
+/* A photo behind the overview head, darkened, with the words in white: the gym (18 Nov, Alex: only pictures known to
+   be free to use; the kettlebell had no source on record). */
+.so-head { position: relative; background: #222222 url("/img/training-gym.jpg") center 40% / cover no-repeat; color: #fff; }
 .so-head::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(8, 12, 20, 0.55) 0%, rgba(8, 12, 20, 0.35) 55%, rgba(8, 12, 20, 0.75) 100%); pointer-events: none; }
 .so-head > * { position: relative; }
 .so-back { background: rgba(255, 255, 255, 0.14); border-color: rgba(255, 255, 255, 0.25); color: #fff; }
@@ -16419,8 +16420,8 @@ body:has(.nc-scrim) [data-radix-popper-content-wrapper] { z-index: 110 !importan
 .so-pill.done { color: #7fd68f; }
 .so-pill.live { background: rgba(255, 255, 255, 0.16); color: #fff; }
 .so-stats { background: rgba(255, 255, 255, 0.94); box-shadow: none; }
-/* The Training banner over the kettlebell photo: dark fade, white words, chips as frosted glass. */
-.tr-banner { position: relative; background: #222222 url("/img/session-head.jpg") center 45% / cover no-repeat; color: #fff; }
+/* The Training banner over the gym photo (18 Nov, as the overview head): dark fade, white words, chips as frosted glass. */
+.tr-banner { position: relative; background: #222222 url("/img/training-gym.jpg") center 45% / cover no-repeat; color: #fff; }
 .tr-banner::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(8, 12, 20, 0.6) 0%, rgba(8, 12, 20, 0.35) 45%, rgba(8, 12, 20, 0.8) 100%); pointer-events: none; }
 .tr-banner > * { position: relative; }
 .tr-kicker { color: rgba(255, 255, 255, 0.72); }
@@ -16989,7 +16990,7 @@ button.pp-row { cursor: zoom-in; }
 .ci-screen.ci-one { --topbar-h: 105px; padding: 0; gap: 0; }
 @media (max-width: 480px), (max-height: 760px) { .ci-screen.ci-one { --topbar-h: 67px; } }
 .ci-one .ci-scroll { margin: 0; padding: 0 0 140px; }
-.tr-banner.ci-banner { background: #222222 url("/img/lifestyle-head.jpg") center 62% / cover no-repeat; }
+.tr-banner.ci-banner { background: #222222 url("/img/lifestyle-shore.jpg") center 58% / cover no-repeat; }
 /* The top row sits before the banner in the scroll and sticks to its top: it
    rides over the photo (pulled back up by its own height), and once the
    banner has scrolled by it turns into a frosted bar in the page's colours. */
