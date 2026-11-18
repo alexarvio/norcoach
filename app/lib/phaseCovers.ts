@@ -11,10 +11,16 @@ export const PHASE_COVERS: Record<PhaseTrack, string[]> = {
   // /four-clear-plastic-bowls-with-vegetables-CJdZ800-Fbs, /meal-prep-containers-with-healthy-food-lMcRyBx4G50,
   // /cooked-food-on-tray-sosOqjx31Go.
   nutrition: ["/img/nutrition-spread.jpg", "/img/nutrition-bowl.jpg", "/img/nutrition-bowls.jpg", "/img/nutrition-prep.jpg", "/img/nutrition-tray.jpg"],
-  // The gym (13 Nov, Alex: the photo on docs/boards/reopen-session-mockup.html; Unsplash, free to use).
-  training: ["/img/training-gym.jpg"],
+  // Five, taking turns (18 Nov, Alex: 1, 2, 3, 8 and 7 of docs/boards/track-pictures-mockup.html; Unsplash, free to
+  // use). The gym first (13 Nov, the photo on docs/boards/reopen-session-mockup.html), then images.unsplash.com/
+  // photo-1689877020200-403d8542d95d, photo-1757924284732-4189190321cf, photo-1593079831268-3381b0db4a77 and
+  // photo-1761971976282-b2bb051a5474.
+  training: ["/img/training-gym.jpg", "/img/training-machines.jpg", "/img/training-windows.jpg", "/img/training-floor.jpg", "/img/training-bikes.jpg"],
   // Walking on the shore (14 Nov, Alex: number 7 of docs/boards/lifestyle-picture-mockup.html; Unsplash, free to use).
-  lifestyle: ["/img/lifestyle-shore.jpg"],
+  // With four more since 18 Nov (Alex: 1, 4, 5, 11 and 13 of the same board; Unsplash, free to use):
+  // images.unsplash.com/photo-1699890968439-a5141afaeb29, photo-1604502130010-22a9eb4c77a8,
+  // photo-1552650272-b8a34e21bc4b and photo-1493224533326-630c89563300.
+  lifestyle: ["/img/lifestyle-shore.jpg", "/img/lifestyle-path.jpg", "/img/lifestyle-field.jpg", "/img/lifestyle-stretch.jpg", "/img/lifestyle-morning.jpg"],
 };
 
 // Stock pictures taken out (18 Nov, Alex: only pictures known to be free to use; the kettlebell, the water bottle and

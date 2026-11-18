@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Training and lifestyle pictures: options</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600&display=swap">
+<!--
+  18 Nov 2026, Alex: "Let’s also have 5 for lifestyle and 5 for training, so pull up 5 from each from Unsplash." Free
+  pictures (the Unsplash licence, not Unsplash+), shown straight from Unsplash; the ones picked are saved to public/img
+  with their sources beside them in phaseCovers.ts.
+-->
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Archivo,system-ui,sans-serif;font-weight:500;background:#F5F6F8;color:#141a24;padding:32px 28px 60px;-webkit-font-smoothing:antialiased}
+h1{font-size:22px;font-weight:600;letter-spacing:-.01em}
+.lead{margin-top:6px;font-size:14px;color:#5b6474;max-width:60em}
+.grid{margin-top:28px;display:grid;grid-template-columns:repeat(auto-fill,minmax(560px,1fr));gap:28px 24px}
+.opt{display:grid;grid-template-columns:auto 1fr;gap:10px 14px;align-items:start}
+.opt h2{grid-column:1/-1;display:flex;align-items:baseline;gap:10px;font-size:15px;font-weight:600}
+.opt h2 b{font-size:26px;font-weight:300;font-variant-numeric:tabular-nums}
+.opt h2 a{margin-left:auto;font-size:12px;font-weight:500;color:#8b93a1;text-decoration:none}
+.banner{position:relative;width:390px;height:231px;border-radius:18px 18px 0 0;overflow:hidden;background:#222;color:#fff}
+.banner img,.card img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.banner::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,12,20,.6) 0%,rgba(8,12,20,.35) 45%,rgba(8,12,20,.8) 100%)}
+.banner>div{position:absolute;inset:0;z-index:1}
+.eye{position:absolute;left:22px;top:54px;font-size:10.5px;font-weight:600;letter-spacing:.18em;color:rgba(255,255,255,.78)}
+.ttl{position:absolute;left:22px;top:72px;font-size:26px;font-weight:600;letter-spacing:-.02em}
+.day{position:absolute;left:22px;top:108px;font-size:13px;color:rgba(255,255,255,.88)}
+.week{position:absolute;left:22px;right:22px;top:140px;display:flex;justify-content:space-between;font-size:12px;font-variant-numeric:tabular-nums;color:rgba(255,255,255,.85)}
+.week span{display:grid;place-items:center;width:28px;height:28px;border-radius:50%}
+.week .on{background:#fff;color:#141a24;font-weight:600}
+.tabs{position:absolute;left:22px;right:22px;bottom:0;height:30px;display:flex;justify-content:center;gap:36px;border-bottom:1px solid rgba(255,255,255,.22);font-size:11px;font-weight:600;letter-spacing:.14em;color:rgba(255,255,255,.6)}
+.tabs span{position:relative;height:30px}
+.tabs .on{color:#fff}
+.tabs .on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:#fff}
+.card{position:relative;width:150px;height:167px;border-radius:14px;overflow:hidden;background:#15171c;color:#fff}
+.card::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,12,16,.5) 0%,rgba(10,12,16,.12) 34%,rgba(10,12,16,.3) 60%,rgba(10,12,16,.72) 100%)}
+.card i{position:absolute;z-index:1;left:6px;top:6px;padding:3px 7px;border-radius:999px;background:rgba(40,42,48,.55);box-shadow:inset 0 0 0 1px rgba(255,255,255,.28);font-style:normal;font-size:6.5px;font-weight:600;letter-spacing:.16em}
+.card p{position:absolute;z-index:1;left:5px;right:5px;bottom:5px;height:62px;padding:9px 8px;border-radius:10px;background:rgba(92,98,112,.5);box-shadow:inset 0 0 0 1px rgba(255,255,255,.22);backdrop-filter:blur(8px);font-size:10px;font-weight:600}
+.card p small{display:block;margin-top:18px;font-size:6px;letter-spacing:.14em;color:rgba(255,255,255,.8)}
+</style>
+</head>
+<body>
+<h1>Training and lifestyle pictures</h1>
+<p class="lead">Free to use (Unsplash). Each is shown as the screen’s banner and, small, as the phase card on Home. Pick five for each; the first of each row is the one in the app now.</p>
+<h1 style="margin-top:36px">Training</h1>
+<div class="grid" id="g-t"></div>
+<h1 style="margin-top:48px">Lifestyle</h1>
+<div class="grid" id="g-l"></div>
+<script>
+var NOW = { t: "../../public/img/training-gym.jpg", l: "../../public/img/lifestyle-shore.jpg" };
+var SETS = { t: { eye: "PROGRAMME", ttl: "Upper strength", chip: "TRAINING", now: "/public/img/training-gym.jpg", ids: ["1689877020200-403d8542d95d","1757924284732-4189190321cf","1671970922029-0430d2ae122c","1761971974992-6df33df97c3a","1651340048650-9bb75627f3de","1761971976282-b2bb051a5474","1593079831268-3381b0db4a77","1542766788-a2f588f447ee","1517836357463-d25dfeac3438","1554284126-aa88f22d8b74","1521805103424-d8f8430e8933","1556817411-31ae72fa3ea0","1541534741688-6078c6bfb5c5","1517838277536-f5f99be501cd","1519311965067-36d3e5f33d39"] }, l: { eye: "CHECK-IN", ttl: "Thursday 19 November", chip: "LIFESTYLE", now: "/public/img/lifestyle-shore.jpg", ids: ["1640700667769-52e702c972d9","1790878489642-4e99f730094c","1699890968439-a5141afaeb29","1604502130010-22a9eb4c77a8","1710389874687-f8f234cf5e58","1757217704386-ef035a4ff352","1619575285727-a8b6764e6f7c","1696279976107-4d80eb0a7d82","1556833232-52da3e4bd5d8","1552650272-b8a34e21bc4b","1748369830391-24179871732a","1493224533326-630c89563300","1531403939386-c08a16cd7eef","1748369829322-27725fcffa24"] } };
+Object.keys(SETS).forEach(function (k) {
+  var set = SETS[k], grid = document.getElementById("g-" + k);
+  [null].concat(set.ids).forEach(function (id, i) {
+    var src = id ? "https://images.unsplash.com/photo-" + id + "?w=900&q=75&auto=format&fit=crop" : NOW[k];
+    var el = document.createElement("section");
+    el.className = "opt";
+    el.innerHTML = "<h2><b>" + (k.toUpperCase()) + (i + 1) + "</b>" + (id ? "" : "In the app now") + "</h2>" +
+      "<div class=\"banner\"><img src=\"" + src + "\" alt=\"\"><div><p class=\"eye\">" + set.eye + "</p><p class=\"ttl\">" + set.ttl + "</p></div></div>" +
+      "<div class=\"card\"><img src=\"" + src + "\" alt=\"\"><i>" + set.chip + "</i><p>" + (k === "t" ? "Upper strength" : "Sleep and steps") + "<small>WEEK 4 OF 6</small></p></div>";
+    grid.appendChild(el);
+  });
+});
+</script>
+</body>
+</html>
