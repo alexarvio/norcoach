@@ -2,7 +2,7 @@ import { allocId, getData, persist } from "./db";
 import { deleteBackupUploads } from "./backup";
 import { removeAllSubscriptions } from "./push";
 import { removeClient } from "./queries";
-import { deleteUploadFolder } from "./storage";
+import { deleteTrashOf, deleteUploadFolder } from "./storage";
 import { deleteClerkUser } from "./clerk";
 import { clientStartDay } from "./businessBoardData";
 
@@ -55,11 +55,13 @@ export async function eraseClient(clientId: number, opts: { selfDeleted: boolean
     }
   };
   await attempt(() => removeAllSubscriptions(userIds));
-  for (const kind of CLIENT_UPLOAD_KINDS) {
-    const folder = `${kind}/${clientId}/`;
-    await attempt(() => deleteUploadFolder(folder));
+  const folders = CLIENT_UPLOAD_KINDS.map((kind) => `${kind}/${clientId}/`);
+  for (const folder of folders) {
+    // Their files in trash after, all nine folders in one listing of the bucket's trash (deleteTrashOf).
+    await attempt(() => deleteUploadFolder(folder, { trash: false }));
     await attempt(() => deleteBackupUploads(folder));
   }
+  await attempt(() => deleteTrashOf(folders));
   if (failures.length) {
     // The account is deleted; some files may not be. Loud, so they can be
     // removed by hand: the client was promised everything goes.

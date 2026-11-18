@@ -1486,7 +1486,8 @@ export type Data = {
   // The coaches' threads with the company (23 Oct, lib/support.ts). Not a Postgres table of its own: kept in `kv`.
   support_messages?: SupportMessage[];
   // Saves already taken, by their one-time key (6 Nov, lib/once.ts): a save sent again after the signal dropped answers
-  // as the first did instead of adding twice. Kept a day. Not a Postgres table of its own: kept in `kv`.
+  // as the first did instead of adding twice. Kept a day. A Postgres table of its own since 18 Nov (pg/onceKeys.ts),
+  // with a copy in `kv` for a rollback.
   once_keys?: OnceKey[];
   _seq: Record<string, number>;
 };
@@ -1771,10 +1772,22 @@ export function installStore(data: Data, pgSave: (data: Data) => Promise<void>) 
   globalForDb._pgSave = pgSave;
 }
 
+/**
+ * Postgres mode: where the tables with a sequence draw their ids (18 Nov, step 4: pg/ids.ts). Given the table and its
+ * `_seq`, an id above it, or null to count from `_seq` as before.
+ */
+export function installIdSource(take: (table: string, counter: number) => number | null) {
+  (globalForDb as { _takeId?: typeof take })._takeId = take;
+}
+
 function nextId(table: string): number {
   const data = getData();
-  data._seq[table] = (data._seq[table] ?? 0) + 1;
-  return data._seq[table];
+  const counter = data._seq[table] ?? 0;
+  const id = (globalForDb as { _takeId?: (table: string, counter: number) => number | null })._takeId?.(table, counter) ?? counter + 1;
+  // Always raised to the id handed out, whichever gave it: a build that counts from `_seq` alone (a rollback) never
+  // hands it out again.
+  data._seq[table] = Math.max(counter, id);
+  return id;
 }
 
 export function getData(): Data {

@@ -25,7 +25,8 @@
 //      made with first;
 //   5. inserts every row, in one transaction, as Postgres wrote it (row_to_json in, json_populate_recordset out), into
 //      the backup's own columns alone, so a column a newer migration added takes its default;
-//   6. sets each serial column's sequence past its highest id (push_subscriptions, password_resets);
+//   6. sets each serial column's sequence past its highest id (push_subscriptions, password_resets), and each id
+//      sequence of step 4 (<table>_id_seq) past its table's highest id and its _seq counter;
 //   7. counts every table against the manifest, and rolls everything back when one differs.
 // drizzle.__drizzle_migrations is not copied: step 3 writes it for the migrations it ran, and step 4 checks that the
 // backup's are among them.
@@ -248,6 +249,23 @@ try {
     for (const { t, c } of serials) {
       await db.query(`SELECT setval(pg_get_serial_sequence($1, $2), COALESCE((SELECT MAX(${q(c)}) FROM public.${q(t)}), 0) + 1, false)`, [`public.${q(t)}`, c]);
     }
+    // The id sequences of step 4 (app/lib/pg/ids.ts, migration 0015: "<table>_id_seq", owned by no column) past their
+    // table's highest id and its _seq counter in kv, as the boot raises them; the boot raises them again before any id
+    // is handed out, so this is for anything that reads them before a boot.
+    const counters = (await db.query(`SELECT value FROM public.kv WHERE key = '_seq'`)).rows[0]?.value ?? {};
+    const idSeqs = (
+      await db.query(
+        `SELECT s.sequencename AS seq, c.table_name AS t FROM pg_sequences s
+         JOIN information_schema.columns c ON c.table_schema = 'public' AND c.column_name = 'id' AND s.sequencename = c.table_name || '_id_seq'
+         WHERE s.schemaname = 'public' AND (c.column_default IS NULL OR c.column_default NOT LIKE 'nextval(%')`
+      )
+    ).rows;
+    for (const { seq, t } of idSeqs) {
+      const { rows } = await db.query(`SELECT COALESCE(MAX(id), 0)::bigint AS m FROM public.${q(t)}`);
+      const floor = Math.max(Number(rows[0].m), Number(counters?.[t] ?? 0) || 0);
+      if (floor > 0) await db.query(`SELECT setval($1::regclass, $2::bigint, true)`, [`public.${q(seq)}`, floor]);
+    }
+    if (idSeqs.length) say(`${idSeqs.length} id sequences set past their table's highest id and _seq`);
     const wrong = [];
     for (const t of data) {
       const { rows } = await db.query(`SELECT count(*)::int AS n FROM public.${q(t.name)}`);

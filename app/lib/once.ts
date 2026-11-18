@@ -8,8 +8,10 @@ import { getData, persist, type OnceKey } from "./db";
 // (lib/onceKey.ts), and the server answers a key it has taken as it did the first time, adding nothing. A save that
 // sets a value (a set, a check-in answer, a note) needs none: sent twice it lands in the same place.
 //
-// Kept in the store (`once_keys`, in Postgres's kv), so a save sent again after a restart or a deploy is still known;
-// a day is plenty, a save goes again within minutes. A save with no key (a page from before this) runs as it always did.
+// Kept in the store (`once_keys`), so a save sent again after a restart or a deploy is still known; a day is plenty, a
+// save goes again within minutes. A save with no key (a page from before this) runs as it always did. In Postgres a
+// table of its own since 18 Nov (step 4B, pg/onceKeys.ts), written by the mirror in the same transaction as the rows
+// of the save that took the key; this file works on the in-memory list as before.
 
 const DAY_MS = 86_400_000;
 const MAX_KEPT = 5000;

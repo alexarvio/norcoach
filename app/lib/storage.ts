@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { DeleteObjectCommand, DeleteObjectsCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { CopyObjectCommand, DeleteObjectCommand, DeleteObjectsCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { DATA_DIR, getData, persist } from "./db";
 import { loadSharp } from "./sharpSetup";
@@ -70,7 +70,19 @@ export function keyOf(publicPath: string): string | null {
 // Keys known to be in the bucket, so a photo is checked once per server start.
 const inBucket = new Set<string>();
 
+// Keys on their way to the bucket's trash (step 4D): the copy runs behind the action that let the file go, so nobody
+// waits on it (a client's 128 MB video copied before their new one is filed). Whatever reads or writes the same key
+// in the bucket waits for it first, so a file saved again under the same name is never the one moved, and a read sees
+// what the delete before step 4 left: nothing.
+const toTrash = new Map<string, Promise<void>>();
+/** Once a move of this key to trash under way has finished (at once when there is none). */
+async function trashDone(key: string): Promise<void> {
+  const pending = toTrash.get(key);
+  if (pending) await pending;
+}
+
 async function exists(b: Bucket, key: string): Promise<boolean> {
+  await trashDone(key);
   if (inBucket.has(key)) return true;
   try {
     await b.s3.send(new HeadObjectCommand({ Bucket: b.bucket, Key: key }));
@@ -100,6 +112,7 @@ export async function putUpload(publicPath: string | null | undefined, body: Buf
   const b = bucket();
   const key = publicPath ? keyOf(publicPath) : null;
   if (!b || !key) return;
+  await trashDone(key);
   try {
     await b.s3.send(new PutObjectCommand({ Bucket: b.bucket, Key: key, Body: body, ContentType: contentType || mimeFor(key) }));
     stats.puts++;
@@ -124,6 +137,7 @@ export async function putUploadFromDisk(publicPath: string, filePath: string, co
   const b = bucket();
   const key = keyOf(publicPath);
   if (!b || !key) return;
+  await trashDone(key);
   try {
     const size = fs.statSync(filePath).size;
     await b.s3.send(
@@ -143,6 +157,199 @@ export async function putUploadFromDisk(publicPath: string, filePath: string, co
   }
 }
 
+// ---- Trash (18 Nov, step 4 of docs/database-plan.md, part D). While tables move out of memory, the check that says
+// a file is no longer shown reads a table that is changing hands; a wrong answer would delete a client's photo or video
+// for good. So a deleted upload is not deleted: it moves to trash, `trash/<day>/<ms>/<its key>`, in the bucket (copied
+// there, then the original deleted, behind the action that let it go (toTrash); a copy that fails leaves the original
+// where it is) and on the disk (moved under
+// <data>/trash, outside the uploads the /uploads route serves; with the bucket on, carried up to the bucket's trash and
+// off the disk, so the volume never fills). The nightly prune deletes days older than TRASH_DAYS. Nothing the app
+// shows changes: what goes to trash is what nothing shows any more. Small copies and posters (made again from the
+// original) are still deleted. Erasing a client (deleteUploadFolder) deletes for good, their trash with it.
+const TRASH_DAYS = 30;
+const TRASH_DIR = path.join(DATA_DIR, "trash");
+const trashDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+/** Where a key goes in trash now (the same in the bucket and, under TRASH_DIR, on the disk). */
+const trashPath = (key: string, now = Date.now()) => `${trashDay(now)}/${now}/${key}`;
+
+/** "progress/9/a b.jpg" as CopyObject's CopySource wants it: the bucket, then the key, each part URL-encoded. */
+const copySource = (bucketName: string, key: string) => `${bucketName}/${key.split("/").map(encodeURIComponent).join("/")}`;
+
+/** Moves one key into the bucket's trash. False when it couldn't be copied there: the original then stays. */
+async function trashInBucket(b: Bucket, key: string): Promise<boolean> {
+  try {
+    await b.s3.send(new CopyObjectCommand({ Bucket: b.bucket, Key: `trash/${trashPath(key)}`, CopySource: copySource(b.bucket, key) }));
+  } catch (error) {
+    const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+    const name = (error as { name?: string }).name;
+    // Not there (already gone): nothing to keep, nothing to delete.
+    if (status === 404 || name === "NoSuchKey" || name === "NotFound") return true;
+    console.error(`[uploads] could not move ${key} to trash; kept where it is:`, error instanceof Error ? error.message : error);
+    return false;
+  }
+  try {
+    await b.s3.send(new DeleteObjectCommand({ Bucket: b.bucket, Key: key }));
+  } catch {
+    /* already gone */
+  }
+  return true;
+}
+
+/** trashInBucket behind the caller, in toTrash until done (after any move of the same key already under way). */
+function queueTrash(b: Bucket, key: string): Promise<void> {
+  const before = toTrash.get(key);
+  const run: Promise<void> = (async () => {
+    if (before) await before;
+    await trashInBucket(b, key);
+    // A read while it ran may have seen the old file; the bucket's answer now is the one to keep.
+    inBucket.delete(key);
+    linkCache.delete(key);
+  })()
+    .catch((error) => console.error(`[uploads] moving ${key} to trash failed; kept where it is:`, error instanceof Error ? error.message : error))
+    .finally(() => {
+      if (toTrash.get(key) === run) toTrash.delete(key);
+    });
+  toTrash.set(key, run);
+  return run;
+}
+
+/** Every move to the bucket's trash under way finished (those under `prefix` alone, when given). */
+export async function trashSettled(prefix = ""): Promise<void> {
+  await Promise.all([...toTrash].filter(([key]) => key.startsWith(prefix)).map(([, p]) => p));
+}
+
+/**
+ * A file on the disk moved into trash instead of deleted (step 4D): for every place that took an upload off the disk.
+ * Synchronous, never throws; a file that can't be moved stays where it is. A path outside the uploads is removed as
+ * before.
+ */
+export function trashFile(file: string): void {
+  const root = path.join(DATA_DIR, "uploads");
+  const rel = path.relative(root, file);
+  if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
+    try {
+      fs.rmSync(file, { force: true });
+    } catch {
+      /* as before */
+    }
+    return;
+  }
+  try {
+    if (!fs.statSync(file).isFile()) return;
+  } catch {
+    return; // not on the disk
+  }
+  const key = rel.split(path.sep).join("/");
+  // Already in the bucket: the disk copy is dead weight and goes as before; the bucket's copy is the one kept (by
+  // deleteUpload's move to trash, or where it is), so trash never holds the file twice.
+  if (bucket() && inBucket.has(key)) {
+    dropDiskCopy(key);
+    return;
+  }
+  const to = path.join(TRASH_DIR, ...trashPath(key).split("/"));
+  try {
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    try {
+      fs.renameSync(file, to);
+    } catch {
+      fs.copyFileSync(file, to);
+      fs.rmSync(file, { force: true });
+    }
+  } catch (error) {
+    console.error(`[uploads] could not move ${rel} to trash; kept where it is:`, error instanceof Error ? error.message : error);
+    return;
+  }
+  if (bucket()) {
+    const t = setTimeout(() => void trashToBucket(), 2000);
+    t.unref?.();
+  }
+}
+
+/** A stored path's file on the disk moved into trash (trashFile). */
+export const trashUploadFile = (publicPath: string | null | undefined) => {
+  const key = publicPath ? keyOf(publicPath) : null;
+  if (key) trashFile(path.join(DATA_DIR, "uploads", ...key.split("/")));
+};
+
+function filesUnder(dir: string): string[] {
+  const out: string[] = [];
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const e of entries) {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) out.push(...filesUnder(full));
+    else if (e.isFile()) out.push(full);
+  }
+  return out;
+}
+
+const trashing = globalThis as unknown as { _trashToBucket?: Promise<number> | null };
+/** With the bucket on: the disk's trash carried up to the bucket's, each file off the disk once it is there. How many. */
+export function trashToBucket(): Promise<number> {
+  const b = bucket();
+  if (!b) return Promise.resolve(0);
+  if (trashing._trashToBucket) return trashing._trashToBucket;
+  const run = (async () => {
+    let moved = 0;
+    for (const file of filesUnder(TRASH_DIR)) {
+      const key = `trash/${path.relative(TRASH_DIR, file).split(path.sep).join("/")}`;
+      try {
+        const size = fs.statSync(file).size;
+        await b.s3.send(new PutObjectCommand({ Bucket: b.bucket, Key: key, Body: fs.createReadStream(file), ContentLength: size, ContentType: mimeFor(file) }));
+        fs.rmSync(file, { force: true });
+        moved++;
+      } catch (error) {
+        console.error(`[uploads] could not carry ${key} up to the bucket's trash; it stays on the disk:`, error instanceof Error ? error.message : error);
+      }
+    }
+    return moved;
+  })()
+    .catch(() => 0)
+    .finally(() => {
+      trashing._trashToBucket = null;
+    });
+  trashing._trashToBucket = run;
+  return run;
+}
+
+/** Days in trash older than TRASH_DAYS deleted, the disk's and the bucket's (the nightly job). How many files went. */
+export async function pruneTrash(now = Date.now()): Promise<number> {
+  const cutoff = trashDay(now - TRASH_DAYS * 86_400_000);
+  const isDay = (name: string) => /^\d{4}-\d{2}-\d{2}$/.test(name);
+  let gone = 0;
+  let days: string[] = [];
+  try {
+    days = fs.readdirSync(TRASH_DIR);
+  } catch {
+    /* no trash on the disk */
+  }
+  for (const day of days) {
+    if (!isDay(day) || day >= cutoff) continue;
+    const dir = path.join(TRASH_DIR, day);
+    gone += filesUnder(dir).length;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  await trashToBucket();
+  const b = bucket();
+  if (!b) return gone;
+  let token: string | undefined;
+  const old: string[] = [];
+  do {
+    const listed = await b.s3.send(new ListObjectsV2Command({ Bucket: b.bucket, Prefix: "trash/", Delimiter: "/", ContinuationToken: token }));
+    for (const p of listed.CommonPrefixes ?? []) {
+      const day = p.Prefix?.slice("trash/".length, -1) ?? "";
+      if (isDay(day) && day < cutoff) old.push(`trash/${day}/`);
+    }
+    token = listed.IsTruncated ? listed.NextContinuationToken : undefined;
+  } while (token);
+  for (const prefix of old) gone += await deleteAllUnder(b.s3, b.bucket, prefix);
+  return gone;
+}
+
 export async function deleteUpload(publicPath: string | null | undefined) {
   const b = bucket();
   const key = publicPath ? keyOf(publicPath) : null;
@@ -157,7 +364,11 @@ export async function deleteUpload(publicPath: string | null | undefined) {
   // And from the server's memory (4 Nov: a meal's photo replaced under the same name showed the old one's copy).
   for (const k of smalls) forget(k);
   if (!b) return;
-  for (const k of [key, ...smalls]) {
+  // The file itself to trash (18 Nov, step 4D), behind the action (toTrash); kept where it is when it can't go there.
+  inBucket.delete(key);
+  linkCache.delete(key);
+  queueTrash(b, key);
+  for (const k of smalls) {
     inBucket.delete(k);
     linkCache.delete(k);
     try {
@@ -298,6 +509,7 @@ export async function readUpload(key: string): Promise<Buffer | null> {
   lastSource.set(key, "bucket");
   const b = bucket();
   if (!b) return null;
+  await trashDone(key);
   try {
     const r = await b.s3.send(new GetObjectCommand({ Bucket: b.bucket, Key: key }));
     const bytes = await (r.Body as { transformToByteArray: () => Promise<Uint8Array> } | undefined)?.transformToByteArray();
@@ -732,11 +944,17 @@ export const webChatVideo = (publicPath: string, opts: { dropOriginal?: boolean 
 
 /** Whether a message or an exercise row still shows this file (a client's video, a coach's review, a chat file). */
 function fileShown(publicPath: string): boolean {
-  const data = getData();
-  return (
-    data.chat_messages.some((m) => m.media_path === publicPath) ||
-    (data.video_requests ?? []).some((r) => r.file_path === publicPath || r.reply_file_path === publicPath)
-  );
+  // A check that fails says shown (18 Nov, step 4D): the file is kept.
+  try {
+    const data = getData();
+    return (
+      data.chat_messages.some((m) => m.media_path === publicPath) ||
+      (data.video_requests ?? []).some((r) => r.file_path === publicPath || r.reply_file_path === publicPath)
+    );
+  } catch (error) {
+    console.error(`[uploads] could not check whether ${publicPath} is shown; kept:`, error instanceof Error ? error.message : error);
+    return true;
+  }
 }
 
 /** A client's exercise videos pointed at the web copy, as swapChatMedia does a chat's. */
@@ -788,7 +1006,7 @@ async function makeWebVideo(publicPath: string, key: string) {
     // Nothing shows the copy (the message deleted, the exercise's video replaced or taken back meanwhile, and the
     // original gone with it): the copy goes too, so it never sits in the bucket unseen.
     if (!fileShown(webPath)) {
-      dropDiskCopy(webKey);
+      trashUploadFile(webPath);
       await deleteUpload(webPath);
       return;
     }
@@ -858,7 +1076,7 @@ export function dropDueOriginals(): Promise<void> {
         // Its copy shown by nothing either (the exercise's video replaced or taken back, the message deleted, in that
         // hour): nothing needs the original, it goes.
         if (key && !fileShown(d.path) && (!fileShown(d.web) || (await fileThere(d.web)))) {
-          dropDiskCopy(key);
+          trashUploadFile(d.path);
           await deleteUpload(d.path);
           console.log(`[uploads] original dropped for its web copy: ${key}`);
         }
@@ -898,13 +1116,55 @@ export async function deleteAllUnder(s3: S3Client, bucketName: string, prefix: s
  * Deletes a folder of uploads ("progress/9/") everywhere it lives: the disk
  * and the bucket. For erasing a client; one file at a time is deleteUpload.
  */
-export async function deleteUploadFolder(folder: string) {
-  if (!/^[a-z]+\/\d+\/$/.test(folder)) throw new Error(`Not a client upload folder: ${folder}`);
+const UPLOAD_FOLDER = /^[a-z]+\/\d+\/$/;
+
+/**
+ * `trash: false` leaves the folder's files in trash, for a caller that clears several folders' trash in one go
+ * (deleteTrashOf: erase.ts, one listing of the bucket's trash for all nine kinds rather than one each).
+ */
+export async function deleteUploadFolder(folder: string, opts: { trash?: boolean } = {}) {
+  if (!UPLOAD_FOLDER.test(folder)) throw new Error(`Not a client upload folder: ${folder}`);
   fs.rmSync(path.join(DATA_DIR, "uploads", folder), { recursive: true, force: true });
   const b = bucket();
+  if (b) {
+    for (const key of inBucket) if (key.startsWith(folder)) inBucket.delete(key);
+    await deleteAllUnder(b.s3, b.bucket, folder);
+  }
+  if (opts.trash !== false) await deleteTrashOf([folder]);
+}
+
+/**
+ * The files of these upload folders in trash deleted, on the disk and in the bucket (18 Nov, step 4D): an erase
+ * deletes for good. trash/<day>/<ms>/<folder>… Waits first for moves to trash of theirs still under way (a delete's
+ * copy, the disk's trash being carried up), so none lands after the listing. One listing of the bucket's trash.
+ */
+export async function deleteTrashOf(folders: string[]) {
+  for (const folder of folders) if (!UPLOAD_FOLDER.test(folder)) throw new Error(`Not a client upload folder: ${folder}`);
+  if (!folders.length) return;
+  const removeOnDisk = () => {
+    for (const day of fs.existsSync(TRASH_DIR) ? fs.readdirSync(TRASH_DIR) : []) {
+      for (const at of fs.existsSync(path.join(TRASH_DIR, day)) ? fs.readdirSync(path.join(TRASH_DIR, day)) : []) {
+        for (const folder of folders) {
+          fs.rmSync(path.join(TRASH_DIR, day, at, ...folder.split("/").filter(Boolean)), { recursive: true, force: true });
+        }
+      }
+    }
+  };
+  removeOnDisk();
+  const b = bucket();
   if (!b) return;
-  for (const key of inBucket) if (key.startsWith(folder)) inBucket.delete(key);
-  await deleteAllUnder(b.s3, b.bucket, folder);
+  await Promise.all(folders.map((folder) => trashSettled(folder)));
+  if (trashing._trashToBucket) await trashing._trashToBucket.catch(() => 0);
+  removeOnDisk(); // what a carry-up that failed left on the disk
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const inTrash = new RegExp(`^trash/[^/]+/[^/]+/(?:${folders.map(escape).join("|")})`);
+  let token: string | undefined;
+  do {
+    const listed = await b.s3.send(new ListObjectsV2Command({ Bucket: b.bucket, Prefix: "trash/", ContinuationToken: token }));
+    const keys = (listed.Contents ?? []).filter((o) => o.Key && inTrash.test(o.Key)).map((o) => ({ Key: o.Key! }));
+    if (keys.length) await b.s3.send(new DeleteObjectsCommand({ Bucket: b.bucket, Delete: { Objects: keys, Quiet: true } }));
+    token = listed.IsTruncated ? listed.NextContinuationToken : undefined;
+  } while (token);
 }
 
 /** A link into the bucket that expires, or null to serve the file from the disk. */
@@ -933,6 +1193,7 @@ function stampSeconds(v: string | null | undefined): number {
 export async function bucketLink(key: string, v?: string | null): Promise<string | null> {
   const b = bucket();
   if (!b) return null;
+  if (toTrash.has(key)) await trashDone(key);
   const start = windowStart();
   if (start !== linkCacheWindow) {
     linkCache.clear();
@@ -973,6 +1234,7 @@ export const LINK_CACHE_SECONDS = 60 * 60;
 export async function streamUpload(key: string, range: string | null): Promise<Response | null> {
   const b = bucket();
   if (!b || fs.existsSync(path.join(DATA_DIR, "uploads", key))) return null;
+  await trashDone(key);
   let r;
   try {
     r = await b.s3.send(new GetObjectCommand({ Bucket: b.bucket, Key: key, ...(range ? { Range: range } : {}) }));

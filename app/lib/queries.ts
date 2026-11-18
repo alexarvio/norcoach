@@ -26,7 +26,7 @@ import { DEFAULT_WORKOUT_QUESTIONS, EARLIER_DEFAULT_QUESTIONS, MAX_QUESTION_LENG
 import { colourOfGroup, groupColour } from "./categoryColors";
 import { PHASE_OBJECTIVE_CHARS, PHASE_OBJECTIVES_MAX } from "./phaseCovers";
 import { cleanRepeat, openEnd, type EventRepeat } from "./eventRepeat";
-import { deleteUpload } from "./storage";
+import { deleteUpload, trashFile } from "./storage";
 import { setsDue } from "./setsDue";
 import { assistedRow, beforeStop, copiedWeights, isReset, laneKg, laneOfGym, laneTypedAt, laterSlot, liftOf, raisedTo, repWindow, setsSinceReset, stopAfter, writeLane, type Lane } from "./targetRule";
 import { FEATURES } from "./features";
@@ -584,7 +584,7 @@ export function removeCoachVideo(coachId: number, videoId: number): string | nul
   if (!u || !video) return null;
   u.video_library = (u.video_library ?? []).filter((v) => v.id !== videoId);
   for (const e of data.exercises) if (e.coach_id === coachId && e.video_url === video.path) e.video_url = null;
-  fs.rmSync(path.join(DATA_DIR, video.path.replace(/^\/+/, "")), { force: true });
+  trashFile(path.join(DATA_DIR, video.path.replace(/^\/+/, "")));
   persist();
   return video.path;
 }
@@ -5744,7 +5744,7 @@ export function saveDemoVideoUpload(
   // Drop any previous upload for this assignment whatever its extension —
   // otherwise switching from .mov to .mp4 leaves the old file orphaned.
   for (const existing of fs.readdirSync(dir)) {
-    if (existing.startsWith(`${assignmentId}.`)) fs.rmSync(path.join(dir, existing), { force: true });
+    if (existing.startsWith(`${assignmentId}.`)) trashFile(path.join(dir, existing));
   }
 
   const filename = `${assignmentId}.${ext}`;
@@ -5788,7 +5788,7 @@ export function savePhotoUpload(
     if (existing.file_path.split("?")[0] !== base) {
       gone = existing.file_path;
       try {
-        fs.rmSync(path.join(DATA_DIR, gone.split("?")[0].replace(/^\//, "")), { force: true });
+        trashFile(path.join(DATA_DIR, gone.split("?")[0].replace(/^\//, "")));
       } catch {
         /* not on the disk */
       }
@@ -5821,7 +5821,7 @@ export function removePhotoUpload(clientId: number, slotId: number, period: stri
   const [gone] = data.photo_uploads.splice(i, 1);
   persist();
   try {
-    fs.rmSync(path.join(DATA_DIR, gone.file_path.split("?")[0].replace(/^\//, "")), { force: true });
+    trashFile(path.join(DATA_DIR, gone.file_path.split("?")[0].replace(/^\//, "")));
   } catch {
     /* not on the disk */
   }
@@ -7068,7 +7068,7 @@ function chatFileLeft(mediaPath: string | null): string | null {
   if (data.video_requests.some((r) => r.file_path === mediaPath || r.reply_file_path === mediaPath)) return null;
   const clean = mediaPath.split("?")[0];
   if (!clean.startsWith("/uploads/")) return null;
-  fs.rmSync(path.join(DATA_DIR, clean.replace(/^\//, "")), { force: true });
+  trashFile(path.join(DATA_DIR, clean.replace(/^\//, "")));
   return mediaPath;
 }
 
@@ -9720,7 +9720,7 @@ export function savePhaseCover(phaseId: number, buffer: Buffer, mimeType: string
   const prevFile = previous?.startsWith("/uploads/phases/") ? previous.split("?")[0].split("/").pop() : null;
   if (prevFile && prevFile !== filename) {
     try {
-      fs.unlinkSync(path.join(dir, prevFile));
+      trashFile(path.join(dir, prevFile));
     } catch {
       /* already gone */
     }
@@ -9741,7 +9741,7 @@ export function setPhaseCoverPath(phaseId: number, cover: string | null): string
   persist();
   if (!previous?.startsWith("/uploads/phases/")) return null;
   try {
-    fs.unlinkSync(path.join(DATA_DIR, previous.split("?")[0].slice(1)));
+    trashFile(path.join(DATA_DIR, previous.split("?")[0].slice(1)));
   } catch {
     /* already gone */
   }
@@ -10467,7 +10467,7 @@ export function saveGymLogo(gymId: number, buffer: Buffer, mimeType: string): { 
   const old = previous?.split("?")[0].split("/").pop();
   if (old && old !== filename) {
     try {
-      fs.unlinkSync(path.join(dir, old));
+      trashFile(path.join(dir, old));
     } catch {
       /* already gone */
     }
@@ -11813,7 +11813,7 @@ export function saveLibraryVideoUpload(exerciseId: number, buffer: Buffer, mimeT
   const dir = path.join(DATA_DIR, "uploads", "library");
   fs.mkdirSync(dir, { recursive: true });
   for (const existing of fs.readdirSync(dir)) {
-    if (existing.startsWith(`${exerciseId}.`)) fs.rmSync(path.join(dir, existing), { force: true });
+    if (existing.startsWith(`${exerciseId}.`)) trashFile(path.join(dir, existing));
   }
   const filename = `${exerciseId}.${ext}`;
   fs.writeFileSync(path.join(dir, filename), buffer);
@@ -12990,7 +12990,7 @@ export function getClientCardCovers(clientId: number): Partial<Record<PhaseTrack
 const coverFile = (publicPath: string) => path.join(DATA_DIR, publicPath.split("?")[0].slice(1));
 const unlinkQuietly = (file: string) => {
   try {
-    fs.unlinkSync(file);
+    trashFile(file);
   } catch {
     /* already gone */
   }
@@ -13097,7 +13097,7 @@ export function saveClientAvatar(clientId: number, buffer: Buffer, mimeType: str
   const previous = client.avatar_path?.split("?")[0].split("/").pop();
   if (previous && previous !== filename) {
     try {
-      fs.unlinkSync(path.join(dir, previous));
+      trashFile(path.join(dir, previous));
     } catch {
       /* already gone */
     }
@@ -13113,7 +13113,7 @@ export function removeClientAvatar(clientId: number) {
   const previous = client.avatar_path?.split("?")[0].split("/").pop();
   if (previous) {
     try {
-      fs.unlinkSync(path.join(DATA_DIR, "uploads", "avatars", String(clientId), previous));
+      trashFile(path.join(DATA_DIR, "uploads", "avatars", String(clientId), previous));
     } catch {
       /* already gone */
     }
@@ -13251,7 +13251,7 @@ export function saveCoachPhoto(coachId: number, kind: CoachPhotoKind, buffer: Bu
   const previous = profile[field]?.split("?")[0].split("/").pop();
   if (previous && previous !== filename) {
     try {
-      fs.unlinkSync(path.join(dir, previous));
+      trashFile(path.join(dir, previous));
     } catch {
       /* already gone */
     }
@@ -13272,7 +13272,7 @@ export function removeCoachPhoto(coachId: number, kind: CoachPhotoKind): string 
   const file = previous?.split("?")[0].split("/").pop();
   if (file) {
     try {
-      fs.unlinkSync(path.join(DATA_DIR, "uploads", "coaches", String(coachId), file));
+      trashFile(path.join(DATA_DIR, "uploads", "coaches", String(coachId), file));
     } catch {
       /* already gone */
     }
@@ -13897,7 +13897,7 @@ function savedMealOfSlot(clientId: number, date: string, meal: string): SavedMea
 function dropUnusedMealPictures(paths: (string | null | undefined)[]): string[] {
   const data = getData();
   const gone = [...new Set(paths.filter((p): p is string => !!p))].filter((p) => !data.saved_meals.some((s) => s.picture === p) && !data.meal_photos.some((m) => m.file_path === p) && !data.saved_days.some((d) => d.picture === p || d.cards?.some((c) => c.picture === p)));
-  for (const p of gone) fs.rmSync(path.join(DATA_DIR, p.startsWith("/") ? p.slice(1) : p), { force: true });
+  for (const p of gone) trashFile(path.join(DATA_DIR, p.startsWith("/") ? p.slice(1) : p));
   return gone;
 }
 
@@ -14375,7 +14375,7 @@ export function saveRequestedVideo(id: number, buffer: Buffer, mimeType: string)
   const previous = row.file_path;
   if (previous) {
     const old = path.join(DATA_DIR, previous.replace(/^\//, ""));
-    if (old.startsWith(path.join(DATA_DIR, "uploads"))) fs.rmSync(old, { force: true });
+    if (old.startsWith(path.join(DATA_DIR, "uploads"))) trashFile(old);
   }
   row.file_path = `/uploads/videos/${row.client_id}/${filename}`;
   row.submitted_at = new Date().toISOString();
@@ -15772,7 +15772,7 @@ export function removeExerciseVariation(exerciseId: number, variationId: number)
   for (const other of data.exercises) for (const s of other.substitutes ?? []) if (s.exercise_id === exerciseId && s.variation_id === variationId) delete s.variation_id;
   if (v.video_url && v.video_url.startsWith("/uploads/")) {
     const old = path.join(DATA_DIR, v.video_url.slice(1));
-    if (old.startsWith(path.join(DATA_DIR, "uploads"))) fs.rmSync(old, { force: true });
+    if (old.startsWith(path.join(DATA_DIR, "uploads"))) trashFile(old);
   }
   persist();
   return v;
