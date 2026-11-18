@@ -297,7 +297,7 @@ export async function finishCoachSignUpAction(formData: FormData) {
   // First and last name (18 Nov, Alex), one name as the coach's profile keeps it; "name" from a page before that.
   const name = [formData.get("first"), formData.get("last")].map((v) => String(v ?? "").trim()).filter(Boolean).join(" ").slice(0, 80) || String(formData.get("name") ?? "").trim().slice(0, 80);
   const business = String(formData.get("business") ?? "").trim().slice(0, 120) || null;
-  if (!name) redirect("/auth/coach-details?error=name");
+  if (!name) redirect("/auth/coach-setup");
   if (!findUserByEmail(email)) letCoachIn(createPasswordlessUser(email, "coach", null, { name, business }).id);
   (await cookies()).delete("ironline_intent");
   redirect("/auth/continue");

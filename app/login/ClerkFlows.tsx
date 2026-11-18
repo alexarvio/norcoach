@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth, useClerk } from "@clerk/nextjs";
 import { useSignIn, useSignUp } from "@clerk/nextjs/legacy";
 import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
-import { AuthShell, CodeScreen, CoachSignUpScreen, InviteWelcomeScreen, ResetPasswordScreen, SignInScreen, type InApp } from "./SignInScreens";
+import { AuthShell, COACH_STEPS, CodeScreen, CoachSignUpScreen, InviteWelcomeScreen, ResetPasswordScreen, SignInScreen, type InApp } from "./SignInScreens";
 import { callNative, nativePlatform } from "../lib/native";
 import { leaveWithDarkClock } from "../client/NativeStatusBar";
 import { usePasswordsOn } from "./usePasswordsOn";
@@ -454,10 +454,10 @@ export function CoachSignUpFlow({ passwordsHint = null, client = false, code = "
   // Where they were going, through Apple's and Google's round trips too: /auth/continue reads it.
   const remember = () => {
     const intent = client ? { client: true, ...(code ? { code } : {}) } : { coach: true };
-    document.cookie = `${INTENT}=${encodeURIComponent(JSON.stringify(intent))}; path=/; max-age=3600; samesite=lax`;
+    document.cookie = `${INTENT}=${encodeURIComponent(JSON.stringify(intent))}; path=/; max-age=${client ? 3600 : 604800}; samesite=lax`;
   };
   // The coach sign-up's frame on every step (17 Nov, Alex: B); a second code on a sign-in that took over keeps it too.
-  if (f.step) return <CodeScreen key={f.step.via} email={f.step.email} title={titleOf(f.step.via)} look="site" onVerify={f.verify} onResend={f.resend} onBack={f.back} busy={f.busy} error={f.error} />;
+  if (f.step) return <CodeScreen key={f.step.via} email={f.step.email} title={titleOf(f.step.via)} look="site" steps={client ? undefined : { labels: COACH_STEPS, now: 0 }} onVerify={f.verify} onResend={f.resend} onBack={f.back} busy={f.busy} error={f.error} />;
   return (
     <CoachSignUpScreen
       client={client}

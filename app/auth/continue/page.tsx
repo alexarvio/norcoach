@@ -48,7 +48,7 @@ export default async function ContinuePage({ searchParams }: { searchParams: Pro
   const asked = latestRequestFor(who.userId);
   if (email && (asked?.status === "open" || asked?.status === "declined")) redirect("/auth/join");
   // A coach sign-up: who they are, next.
-  if (intent?.coach && email && !findUserByEmail(email)) redirect("/auth/coach-details");
+  if (intent?.coach && email && !findUserByEmail(email)) redirect("/auth/coach-setup");
   // Everyone else: a client joining a coach, About you and the coach's code, or the request they are waiting on.
   redirect(email ? "/auth/join" : "/auth/no-account");
 }

@@ -793,7 +793,7 @@ export function loadDots(clientId: number): DotTrail {
 /** The left rail's data: every client with whether they need the coach, and the coach at the foot. */
 export function loadRail(coach: { id: number; email: string; role: "coach" | "client" }): RailData {
   // A new coach sees the welcome steps first; every redesign page reads the rail, so this is the one gate.
-  if (getData().users.find((u) => u.id === coach.id)?.onboarding) redirect("/welcome");
+  if (getData().users.find((u) => u.id === coach.id)?.onboarding) redirect("/auth/coach-setup");
   // The coach's feed and every client's Needs you, read once a request and shared with the Feed, the Phases screen and
   // the dot trail (4 Nov, Alex: "just a tiny bit slow"; coachNeeds.ts). Timed as rail.feed and rail.needsYou when the
   // rail reads it first.

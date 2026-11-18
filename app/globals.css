@@ -22081,3 +22081,47 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
 .jn-sent-title span.still { animation: none; }
 .su-page.jn-sent { height: 100vh; height: 100dvh; max-height: 100dvh; }
 .jn-fly { transition-property: left, top, width, height, font-size; }
+
+/* ---- The coach's setup (18 Nov, Alex: docs/boards/coach-flow-mockup.html; app/login/CoachSetupFlow.tsx), in the
+   sign-up's frame and the join screens' motion (.jn-). On a laptop the dark lists the steps in place of the pitch: done
+   ticked green with a small pop, the one on screen white, the rest grey; on a phone the step's name is the head's title.
+   Prefix cs- (and su-steps on SiteShell). */
+.su-steps { display: none; }
+@media (min-width: 900px) {
+  .su-steps { position: relative; display: block; list-style: none; margin: auto 0; padding: 0; }
+  .su-steps li { display: flex; align-items: center; gap: 14px; height: 46px; font-size: 17px; font-weight: 600; color: #5a5a5e; transition: color .35s cubic-bezier(.22, 1, .36, 1); }
+  .su-steps li i { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px #48484c; color: transparent; transition: box-shadow .35s cubic-bezier(.22, 1, .36, 1), color .35s cubic-bezier(.22, 1, .36, 1); }
+  .su-steps li i svg { width: 12px; height: 12px; }
+  .su-steps li.now { color: #fff; }
+  .su-steps li.now i { box-shadow: inset 0 0 0 1.5px #fff; }
+  .su-steps li.done { color: var(--site-bg-text, #c7c7cc); }
+  .su-steps li.done i { box-shadow: inset 0 0 0 1.5px #2f7a3f; color: #2f7a3f; animation: cs-pop .45s cubic-bezier(.22, 1, .36, 1); }
+}
+@keyframes cs-pop { 0% { transform: scale(.6); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
+/* About you: the photo clients see, the picker in one tap. */
+.cs-photo { display: flex; align-items: center; gap: 14px; margin: 0 0 16px; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.cs-avatar, .cs-face { flex: none; display: grid; place-items: center; width: 56px; height: 56px; overflow: hidden; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; color: #8b93a1; }
+.cs-avatar.has, .cs-face:has(img) { box-shadow: none; background: none; }
+.cs-avatar img, .cs-face img { width: 100%; height: 100%; object-fit: cover; }
+.cs-face { font-size: 22px; font-weight: 600; color: #141a24; }
+.cs-photo-word { font-size: 13.5px; font-weight: 600; color: #141a24; }
+@media (hover: hover) { .cs-photo:hover .cs-avatar { box-shadow: inset 0 0 0 1px #141a24; } }
+/* Your business: the country as the sign-up's own field, what it sets grey under it. */
+.au-card .cs-select.cs-select { width: 100%; height: 44px; padding: 0 14px; border: 0; border-radius: 12px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; font: inherit; font-size: 16px; font-weight: 500; color: #141a24; }
+.au-card .cs-select.cs-select[data-state="open"], .au-card .cs-select.cs-select:focus-visible { outline: none; box-shadow: inset 0 0 0 1px #141a24; }
+.cs-fact { display: block; min-height: 1.4em; margin-top: 7px; font-size: 12.5px; font-weight: 500; color: #8b93a1; }
+/* You're set: who they are, then into Norcoach, one after the other. */
+.cs-who { display: flex; align-items: center; gap: 14px; margin: 4px 0 6px; }
+.cs-who b { display: block; font-size: 16px; font-weight: 600; color: #141a24; }
+.cs-who small { display: block; margin-top: 3px; font-size: 12.5px; font-weight: 500; color: #8b93a1; }
+.cs-ready > * { animation: jn-found-in .45s cubic-bezier(.22, 1, .36, 1) both; }
+.cs-ready > :nth-child(2) { animation-delay: .22s; }
+/* The chosen country reads as a value, never as the small-caps label every .auth-field span wears. */
+.au-card .cs-country .cs-select span { margin: 0; font-size: 16px; font-weight: 500; letter-spacing: 0; text-transform: none; color: #141a24; }
+.au-card .cs-country .cs-select[data-placeholder] > span:first-child { color: #98A2B3; }
+/* The country list: the floating lists' look (the ⋯ menu's), words 600 in ink, scrolling past ten rows. */
+.cs-select-menu { max-height: 340px; padding: 5px; border: 0; border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(20, 30, 50, .16); }
+.cs-select-menu [role="option"] { min-height: 34px; border-radius: 7px; font-size: 13.5px; font-weight: 600; color: #141a24; }
+.cs-select-menu [role="option"][data-highlighted] { background: #fafbfd; }
+/* The step list's done check: the app's own (DoneCheck), 24 in its green ring. */
+.su-steps li .su-step-done { color: #2f7a3f; animation: cs-pop .45s cubic-bezier(.22, 1, .36, 1); }
