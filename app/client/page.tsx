@@ -1608,7 +1608,8 @@ function arrivalFrom(clientId: number, n: string | undefined, meeting: string | 
   const id = Number(n);
   if (!n || !Number.isInteger(id)) return null;
   const note = getNotifications(clientId, 500).find((x) => x.id === id);
-  if (!note) return null;
+  // An old push about a progress report opens the app as it is (18 Nov, Alex: reports are gone).
+  if (!note || note.kind === "report") return null;
   const category = categorize(note);
   return {
     notificationId: note.id,

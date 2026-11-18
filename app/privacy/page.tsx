@@ -82,9 +82,6 @@ export default function PrivacyPage() {
             <strong>Apple and Google push services</strong>: delivering notifications to your device.
           </li>
           <li>
-            <strong>Anthropic</strong>: when your coach creates a written progress report with AI, the figures for that period are sent to Anthropic&rsquo;s AI model to draft it. Anthropic doesn&rsquo;t use this data to train its models.
-          </li>
-          <li>
             <strong>Open Food Facts</strong>: when you search for a food or scan a barcode, the search term or barcode is looked up in this public food database. No personal data is sent.
           </li>
           <li>

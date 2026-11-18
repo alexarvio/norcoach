@@ -418,8 +418,8 @@ export default function AppShell({
       }
       return;
     }
-    // Settings left the bottom nav for the burger (7 Oct): a report notification still gets there, on its report
-    // (24 Oct, Alex: the id never reached it).
+    // Settings left the bottom nav for the burger (7 Oct): a notification about it still gets there, on its row
+    // (24 Oct, Alex: the id never reached it). Reports, which landed here, are gone (18 Nov, Alex).
     if (tab === "settings") {
       if (settingsContent) {
         setFocusRef(ref ?? null);
