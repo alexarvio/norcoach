@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import type { PhaseTrack } from "../lib/db";
+import { PHASE_COVERS } from "../lib/phaseCovers";
 import { discardCardPicturesAction, resetCardCoverAction, saveCardPicturesAction, stageCardPictureAction } from "../lib/actions";
 import { coverJpeg } from "../lib/coverJpeg";
 import { newOnceKey } from "../lib/onceKey";
@@ -283,7 +284,9 @@ type Row = {
 
 /** Settings · Card pictures (23 Oct, Alex): a row a track, its name alone
     with a chevron; a tap folds it open in place on its photos, one track at
-    a time. Add, remove and going back to the coach's picture all save at once. */
+    a time. Add, remove and going back to the coach's picture all save at once.
+    Under the client's own, the track's stock pictures (18 Nov, Alex): Default
+    pictures, each with a + that puts it among their own. */
 export function CardPicturesRows({ clientId, coachName, rows }: { clientId: number; coachName: string; rows: Row[] }) {
   const [open, setOpen] = useState<PhaseTrack | null>(null);
   // What was just saved (or cleared), until the page comes back with it.
@@ -423,6 +426,13 @@ function CardPictureFold({
   const full = own.length + going >= MAX_PICTURES;
   // None of their own: the picture the card shows instead, as the one photo.
   const standIn = !own.length && !pending.length;
+  // The track's stock pictures not on the card yet: a tap puts one among the client's own, saved at once.
+  const stock = PHASE_COVERS[track].filter((p) => !own.includes(p));
+  const addStock = (p: string) => {
+    if (full || ownRef.current.includes(p)) return;
+    const next = [...ownRef.current, p].slice(0, MAX_PICTURES);
+    commit(next, () => saveCardPicturesAction(clientId, track, next));
+  };
   const bodyId = `cv-fold-${track}`;
   return (
     <div className="cv-fold">
@@ -438,7 +448,7 @@ function CardPictureFold({
         <div className="cv-fold-clip">
           <div className="cv-fold-body">
             <div className="cv-fold-grid">
-              {standIn && coach && (
+              {standIn && coach && coachChose && (
                 <span className="cv-fold-pic stand">
                   {/* eslint-disable-next-line @next/next/no-img-element -- an upload or a public file */}
                   <img src={pic(coach, 480)} alt="" />
@@ -479,12 +489,33 @@ function CardPictureFold({
               )}
             </div>
             {standIn ? (
-              <p className="cv-fold-words">{coachChose ? `${coachName}'s picture` : "Default picture"}</p>
+              coachChose ? <p className="cv-fold-words">{`${coachName}'s picture`}</p> : null
             ) : own.length > 0 ? (
               <button type="button" className="cv-fold-reset" onClick={reset}>
                 {coachChose ? <>Use {coachName}&rsquo;s picture</> : "Use the default"}
               </button>
             ) : null}
+            {stock.length > 0 && (
+              <>
+                <p className="cv-fold-label">Default pictures</p>
+                <div className="cv-fold-grid">
+                  {stock.map((p) => (
+                    <span key={p} className="cv-fold-pic">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- a public file */}
+                      <img src={p} alt="" loading="lazy" decoding="async" />
+                      <button type="button" className="cv-fold-x" disabled={full} onClick={() => addStock(p)} aria-label="Add this picture to your own">
+                        <span aria-hidden="true">
+                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                            <path d="M5 1.5v7M1.5 5h7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                          </svg>
+                          <RingEdge size={22} />
+                        </span>
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
             <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => pick(e.target.files)} />
           </div>
         </div>

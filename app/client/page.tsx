@@ -142,7 +142,7 @@ import OpeningSplash from "./OpeningSplash";
 import { NATIVE_COOKIE, QUIET_COOKIE } from "../lib/quietLoad";
 import AvatarUpload from "./AvatarUpload";
 import { phaseCovers, phaseLastDay } from "../lib/phases";
-import { defaultPhaseCover, liveCover } from "../lib/phaseCovers";
+import { defaultPhaseCover, liveCover, PHASE_COVERS } from "../lib/phaseCovers";
 import { CardPicturesRows } from "./CardPictureSheet";
 import { isGymColor } from "../lib/gymColors";
 import { SERVER_TZ, hourIn, isTimezone, meetingLabelsIn, zonedToUtc } from "../lib/timezones";
@@ -635,13 +635,13 @@ function latestCoachActivity(clientId: number, chat: ChatThread, coachFirst: str
 const coachMessagesFor = chatThreadViews;
 
 /** Behind a track's banner (14 Oct): the client's own card pictures, taking
-    turns; else the coach's phase cover, when they chose one; else nothing,
-    and the banner keeps its own photo. */
+    turns; else the coach's phase cover, when they chose one; else the
+    track's stock pictures, taking turns as on its Home card (18 Nov). */
 function bannerPictures(clientId: number, track: "training" | "nutrition" | "lifestyle"): string[] {
   const own = getClientCardPictures(clientId)[track];
   if (own?.length) return own;
   const cover = liveCover(getCurrentPhase(clientId, track)?.cover_path);
-  return cover ? [cover] : [];
+  return cover ? [cover] : PHASE_COVERS[track];
 }
 
 function TrainingTab({
