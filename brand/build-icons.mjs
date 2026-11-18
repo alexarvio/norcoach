@@ -37,11 +37,14 @@ function ico(pngs) {
 }
 
 const STAR = 0.66; // the star's share of a full icon, inside every platform's mask
-writeFileSync("app/icon.png", await icon(512, STAR));
+// The home-screen icon lives in public/ (18 Nov): in app/ Next also made it the browser tab’s, a star in a white square.
+writeFileSync("public/icon.png", await icon(512, STAR));
 writeFileSync("app/apple-icon.png", await icon(180, STAR));
+// The browser tab's icon is the star alone, on nothing (18 Nov, Alex: no white square, "like on the first one, so
+// it's cleaner", the website's tab); the tab also gets public/brand/mark.svg (app/layout.tsx).
 // The .ico's images must carry an alpha channel, or Next can't read them.
 const rgba = async (png) => sharp(png).ensureAlpha().png().toBuffer();
-writeFileSync("app/favicon.ico", ico(await Promise.all([16, 32, 48].map(async (size) => ({ size, data: await rgba(await icon(size, 0.8)) })))));
+writeFileSync("app/favicon.ico", ico(await Promise.all([16, 32, 48].map(async (size) => ({ size, data: await rgba(await icon(size, 0.9, null)) })))));
 
 // Android's adaptive icon crops to the middle two thirds, so the foreground
 // star is smaller; the splash shows it small in the middle.
