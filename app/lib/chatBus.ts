@@ -89,9 +89,13 @@ export function endChatStreams(): number {
 /** Still current: the screen already holds this revision, so nothing needs sending. */
 export const chatCurrent = (clientId: number, known: string | null | undefined) => !!known && known === chatRev(clientId);
 
-/** A chat read, timed for /api/timing (27 Oct: "measure before and after"): how long it took and its size in KB. */
-export function timedChatRead<T>(screen: string, read: () => T): T {
-  const t0 = performance.now();
+/**
+ * A chat read, timed for /api/timing (27 Oct: "measure before and after"): how long it took and its size in KB.
+ * `startedAt` (performance.now()) when the chat's fetch came before it (Step 5, app/lib/chat/rows.ts), so the fetch's
+ * time is counted too: after the cut-over it is the database's.
+ */
+export function timedChatRead<T>(screen: string, read: () => T, startedAt?: number): T {
+  const t0 = startedAt ?? performance.now();
   const out = read();
   const ms = performance.now() - t0;
   void import("./timing").then(({ recordTiming }) => {

@@ -7,6 +7,7 @@ import { IdPools } from "./ids";
 import { onceKeysFromKvCopy } from "./onceKeys";
 import { COLLECTIONS, kv } from "./schema";
 import { derivedStale, loadStore, PgStoreWriter } from "./store";
+import { startChatShadow } from "../chat/shadow";
 
 // Starts the Postgres store (STORE=postgres). Called once from
 // instrumentation.ts, which Next awaits before the server takes requests:
@@ -174,6 +175,10 @@ async function start() {
   // so a failure stops the boot instead of surfacing later.
   if (!hasData || changed) await writer.save(() => data as unknown as Row);
   health().lastOkAt = new Date().toISOString();
+  // The chat shadow (Step 5, app/lib/chat/shadow.ts; CHAT_SHADOW, off by default): told where Postgres is and who writes
+  // to it, and in write mode its tables seeded, before any request. It catches everything itself; the boot never fails over it.
+  (globalThis as unknown as { _pgWriter?: PgStoreWriter })._pgWriter = writer;
+  await startChatShadow({ db, url: process.env.DATABASE_URL!, writer }).catch(() => {});
   if (writer.lastCommitAt) health().lastCommitAt = new Date(writer.lastCommitAt).toISOString();
 
   // Every save goes through here: persist(), the retries, and the shutdown's.

@@ -21,8 +21,12 @@ export type StoreHealth = {
   shuttingDown: boolean;
   /** What a save's snapshot and compare cost, the latest and the dearest since start (17 Nov, mission 2): measured
    *  only, so we know when the per-save cost starts to matter. */
-  saveCost: { last: SaveCost | null; max: SaveCost | null; saves: number };
+  saveCost: { last: SaveCost | null; max: SaveCost | null; saves: number; tx?: SaveTx };
 };
+
+/** The transactions' own times, ms (18 Nov, Step 5: the chat shadow must never slow the writer): the last 200, their
+ *  median and 90th percentile. */
+export type SaveTx = { last: number | null; p50: number | null; p90: number | null; n: number; ring: number[] };
 
 /** One save's work before its transaction: every row stringified (snapshotMs), then compared with the last save's
  *  (diffMs), ms; `rows` the rows and kv values compared, `changed` those that differed or went. */
@@ -56,10 +60,24 @@ export function noteSaveCost(cost: SaveCost) {
   if (!c.max || cost.ms > c.max.ms) c.max = cost;
 }
 
+/** A save's transaction, timed (store.ts). */
+export function noteSaveTx(ms: number) {
+  const c = health().saveCost;
+  const tx = (c.tx ??= { last: null, p50: null, p90: null, n: 0, ring: [] });
+  tx.last = ms;
+  tx.n++;
+  tx.ring.push(ms);
+  if (tx.ring.length > 200) tx.ring.shift();
+  const sorted = [...tx.ring].sort((a, b) => a - b);
+  tx.p50 = sorted[Math.floor(0.5 * (sorted.length - 1))];
+  tx.p90 = sorted[Math.floor(0.9 * (sorted.length - 1))];
+}
+
 /** A copy for /api/timing. */
 export function storeHealth(): StoreHealth & { skippedTotal: number } {
   const h = health();
-  return { ...h, skipped: { ...h.skipped }, saveCost: { ...h.saveCost }, skippedTotal: Object.values(h.skipped).reduce((a, b) => a + b, 0) };
+  const tx = h.saveCost.tx ? { last: h.saveCost.tx.last, p50: h.saveCost.tx.p50, p90: h.saveCost.tx.p90, n: h.saveCost.tx.n, ring: [] } : undefined;
+  return { ...h, skipped: { ...h.skipped }, saveCost: { ...h.saveCost, tx }, skippedTotal: Object.values(h.skipped).reduce((a, b) => a + b, 0) };
 }
 
 /**

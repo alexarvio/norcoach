@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getRequestUser } from "../../lib/auth";
 import { getData } from "../../lib/db";
+import { CHAT_TABLE, fetchChatExport } from "../../lib/chat/rows";
 
 // Settings, Your data (27 Oct, Alex): everything a coach's coaching holds, as one file they keep. Every row of every
 // table that belongs to one of their clients (by client_id), their own rows (by coach_id: the library, programmes,
@@ -16,10 +17,14 @@ const LEFT_OUT = new Set(["users", "login_lock_events", "support_messages", "joi
 export async function GET(request: Request) {
   const user = await getRequestUser(request);
   if (!user || user.pending || user.role !== "coach") return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const data = getData() as unknown as Record<string, unknown>;
+  const data = getData() as unknown as Record<string, unknown>; // chat-door: the chat's rows are swapped in from fetchChatExport below
   const clientIds = new Set((getData().clients ?? []).filter((c) => c.coach_id === user.id).map((c) => c.id));
+  // The chat through its door (Step 5), in its place among the tables, so the file is as it was.
+  const exported = await fetchChatExport([...clientIds], "export");
   const out: Record<string, unknown> = {};
-  for (const [table, rows] of Object.entries(data)) {
+  // chat-door: chat rows come from fetchChatExport
+  for (const [table, stored] of Object.entries(data)) {
+    const rows = table === CHAT_TABLE ? exported.rows : stored;
     if (LEFT_OUT.has(table) || !Array.isArray(rows)) continue;
     const mine = rows.filter((r) => {
       if (!r || typeof r !== "object") return false;

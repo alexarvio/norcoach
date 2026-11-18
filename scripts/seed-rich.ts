@@ -9,6 +9,7 @@
 import fs from "fs";
 import path from "path";
 import { getData, persist, allocId, DATA_DIR } from "../app/lib/db";
+import { seedChatRows } from "../app/lib/chat/rows";
 import { ensureMeasurementField } from "../app/lib/queries";
 import {
   createClient,
@@ -341,7 +342,7 @@ function seedAlex() {
   ];
   chatSeed.forEach(([daysBack, sender, text], i) => {
     const d = getData();
-    d.chat_messages.push({
+    seedChatRows(d).push({
       id: allocId("chat_messages"),
       client_id: clientId,
       sender,
@@ -437,7 +438,7 @@ function seedLightClient(name: string, opts: { weight: number; goalPhase: string
   addInvoice(clientId, "Coaching, Month 1", 180, opts.invoiceStatus);
 
   const d = getData();
-  d.chat_messages.push({
+  seedChatRows(d).push({
     id: allocId("chat_messages"),
     client_id: clientId,
     sender: "client",

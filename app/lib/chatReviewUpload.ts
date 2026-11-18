@@ -66,7 +66,7 @@ export async function receiveChatReview(request: Request, clientId: number, repl
   // 4-5 s to show in the chat): made after, it was fetched back from the bucket the copy below empties the disk for.
   await prepareChatMedia(publicPath, "video");
   await putUploadFromDisk(publicPath, file, filedType);
-  sendChatMessage(clientId, "coach", note.trim().slice(0, 4000), { path: publicPath, type: "video", name: null }, null, replyTo);
+  await sendChatMessage(clientId, "coach", note.trim().slice(0, 4000), { path: publicPath, type: "video", name: null }, null, replyTo, { path: "w.insert.review" });
   // Its size and preview onto the message, from the frame made above.
   afterResponse(() => prepareChatMedia(publicPath, "video"));
   return Response.json({ path: publicPath, bytes: total });

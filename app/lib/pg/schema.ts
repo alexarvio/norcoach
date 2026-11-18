@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { boolean, doublePrecision, index, integer, jsonb, pgSequence, pgTable, primaryKey, serial, text, timestamp } from "drizzle-orm/pg-core";
 
 // The Postgres tables behind the store (phase 1 of moving off ironline.json).
@@ -437,7 +438,7 @@ export const assignment_custom_values = pgTable("assignment_custom_values", {
   extra: extra(),
 });
 
-export const chat_messages = pgTable("chat_messages", {
+const chatColumns = () => ({
   id: id(),
   client_id: fk("client_id"),
   sender: text("sender"),
@@ -448,6 +449,26 @@ export const chat_messages = pgTable("chat_messages", {
   extra: extra(),
   created_at_tz: instant("created_at_tz"),
 });
+// The indexes the chat's queries will lean on (18 Nov, Step 5; app/lib/chat/statements.ts): a client's thread (and the
+// export); a client's messages from a time on (dockRecent, Needs you, the Feed's Since); each client's last message in
+// the thread's order (dockLast) and the coach's last by instant (coachLast), read one client at a time; a file's messages.
+export const chat_messages = pgTable("chat_messages", chatColumns(), (t) => [
+  index("chat_messages_client_id_idx").on(t.client_id, t.id),
+  index("chat_messages_client_sent_idx").on(t.client_id, t.created_at_tz).where(sql`sender = 'client'`),
+  index("chat_messages_client_text_idx").on(t.client_id, sql`(created_at COLLATE "C") DESC`, t.id.desc().nullsFirst()),
+  index("chat_messages_coach_last_idx").on(t.client_id, t.created_at_tz.desc().nullsLast(), t.id).where(sql`sender = 'coach'`),
+  index("chat_messages_media_path_idx").on(t.media_path).where(sql`${t.media_path} IS NOT NULL`),
+]);
+
+/**
+ * The chat shadow's tables (18 Nov, Step 5; app/lib/chat/shadow.ts, CHAT_SHADOW=write on staging): chat_messages' and
+ * once_keys' shape, seeded from them at boot, written by the new single-statement SQL beside the store's own saves and
+ * compared with the real tables. Not collections: never loaded into memory, never written by the store's writer.
+ */
+export const chat_messages_shadow = pgTable("chat_messages_shadow", chatColumns(), (t) => [
+  index("chat_messages_shadow_client_id_idx").on(t.client_id, t.id),
+  index("chat_messages_shadow_media_path_idx").on(t.media_path),
+]);
 
 export const client_events = pgTable("client_events", {
   id: id(),
@@ -704,7 +725,7 @@ export const video_requests = pgTable("video_requests", {
  * Kept in `kv` as well while a rollback to the builds before step 4 must keep its retry protection
  * (ROLLBACK_KV_COPIES): the boot takes the table from that copy (pg/onceKeys.ts).
  */
-export const once_keys = pgTable("once_keys", {
+const onceColumns = () => ({
   key: text("key").primaryKey(),
   at: num("at"),
   result: jsonb("result"),
@@ -712,6 +733,9 @@ export const once_keys = pgTable("once_keys", {
   extra: extra(),
   created_at: instant("created_at"),
 });
+export const once_keys = pgTable("once_keys", onceColumns());
+/** once_keys' shadow (Step 5): the chat send's once key goes in it with the shadow's message, in one statement. */
+export const once_keys_shadow = pgTable("once_keys_shadow", onceColumns());
 
 export const COLLECTIONS = [
   { name: "users", table: users, key: ["id"] },
@@ -814,4 +838,4 @@ export const program_days_id_seq = idSeq("program_days");
  * outside COLLECTIONS, and kv itself. A collection that ever leaves COLLECTIONS (to be queried directly) keeps its name
  * on this list, so a stray copy of it is never written to kv either.
  */
-export const TABLE_NAMES_NOT_IN_KV = ["kv", "push_subscriptions", "password_resets"] as const;
+export const TABLE_NAMES_NOT_IN_KV = ["kv", "push_subscriptions", "password_resets", "chat_messages_shadow", "once_keys_shadow"] as const;

@@ -1,8 +1,9 @@
 "use server";
 
-import { chatChanged, chatCurrent, chatRev, chatTyping, timedChatRead } from "./chatBus";
+import { chatChanged, chatCurrent, chatTyping, timedChatRead } from "./chatBus";
 import { once, onceKeyOf } from "./once";
 import { sendChatAs } from "./chatSend";
+import { fetchCoachChatOfClient, fetchFoodComments, fetchThread } from "./chat/rows";
 import { isDialCode, splitTypedPhone } from "./phone";
 import { isMeetingTypeId } from "./meetingTypes";
 import { isClientCall, takesClient } from "./calendarKinds";
@@ -902,7 +903,7 @@ export async function createClientWithLoginAction(
       if (clerkOn()) createPasswordlessUser(email, "client", client.id);
       else if (password) createUser(email, password, "client", client.id, true);
     } catch (error) {
-      removeClient(client.id);
+      await removeClient(client.id);
       return { ok: false, error: error instanceof Error ? error.message : "The login could not be made." };
     }
     const birthdate = s(p.birthdate);
@@ -1736,7 +1737,7 @@ export async function removeVideoReplyAction(id: number) {
   if (!Number.isInteger(id) || !(await coachForClient(getClientIdForVideoRequest(id)))) return;
   const file = removeVideoReply(id);
   // Kept while the chat still shows it (a picture reply, a recorded review posted there too).
-  if (file && !chatUsesFile(file)) await deleteUpload(file);
+  if (file && !(await chatUsesFile(file))) await deleteUpload(file);
   revalidatePath("/admin");
   revalidatePath("/client");
 }
@@ -1759,7 +1760,7 @@ export async function markVideoReplySeenAction(id: number) {
 /** The coach opened the client's note on a programme (the Training tab). */
 export async function markProgramNoteSeenAction(programId: number) {
   if (!Number.isInteger(programId) || !(await coachForClient(getClientIdForProgram(programId)))) return;
-  markProgramNoteSeen(programId);
+  markProgramNoteSeen(programId, await fetchCoachChatOfClient(getClientIdForProgram(programId) ?? 0, "action.markProgramNote"));
   revalidatePath("/admin");
 }
 
@@ -2589,7 +2590,10 @@ export async function chatThreadAction(clientId: number, known?: string | null):
   if (!id) return { rev: "", messages: [] };
   // Nothing changed since the screen's copy (27 Oct): nothing to send.
   if (chatCurrent(id, known)) return null;
-  return { rev: chatRev(id), messages: timedChatRead("chat · client", () => chatThreadViews(id)) };
+  const t0 = performance.now();
+  const thread = await fetchThread(id, "action.chatThread");
+  // The revision the rows were read under (the view's), never one read after them.
+  return { rev: thread.rev, messages: timedChatRead("chat · client", () => chatThreadViews(thread), t0) };
 }
 
 /** Typing… (27 Oct, Alex): this side is typing in the chat; nothing is saved. A coach previewing the app is the coach. */
@@ -2609,7 +2613,7 @@ export async function reactToMessageAction(clientId: number, messageId: number, 
   const id = await requireClientAccess(Number(clientId));
   if (!id) return;
   const user = await getSessionUser();
-  setChatReaction(id, Number(messageId), user?.role === "coach" ? "coach" : "client", emoji);
+  await setChatReaction(id, Number(messageId), user?.role === "coach" ? "coach" : "client", emoji);
   chatSaved(quiet === true);
 }
 
@@ -2766,7 +2770,7 @@ const bothSides = (quiet?: boolean) => chatSaved(quiet === true);
 export async function editChatMessageAction(clientId: number, messageId: number, text: string, quiet = false) {
   const id = await coachOn(clientId);
   if (!id) return;
-  editChatMessage(id, Number(messageId), String(text ?? ""));
+  await editChatMessage(id, Number(messageId), String(text ?? ""));
   bothSides(quiet);
 }
 
@@ -2774,7 +2778,7 @@ export async function deleteChatMessageAction(clientId: number, messageId: numbe
   const id = await coachOn(clientId);
   if (!id) return;
   // Its photo, video or file goes with it (21 Oct: it stayed at its address).
-  await deleteUpload(deleteChatMessage(id, Number(messageId)));
+  await deleteUpload(await deleteChatMessage(id, Number(messageId)));
   bothSides(quiet);
 }
 
@@ -2785,8 +2789,8 @@ export async function editMyChatMessageAction(clientId: number, messageId: numbe
   const id = await requireClientAccess(Number(clientId));
   if (!id) return;
   const user = await getSessionUser();
-  if (user?.role === "coach") editChatMessage(id, Number(messageId), String(text ?? ""));
-  else editClientChatMessage(id, Number(messageId), String(text ?? ""));
+  if (user?.role === "coach") await editChatMessage(id, Number(messageId), String(text ?? ""));
+  else await editClientChatMessage(id, Number(messageId), String(text ?? ""));
   bothSides(quiet);
 }
 
@@ -2794,7 +2798,7 @@ export async function deleteMyChatMessageAction(clientId: number, messageId: num
   const id = await requireClientAccess(Number(clientId));
   if (!id) return;
   const user = await getSessionUser();
-  await deleteUpload(user?.role === "coach" ? deleteChatMessage(id, Number(messageId)) : deleteClientChatMessage(id, Number(messageId)));
+  await deleteUpload(await (user?.role === "coach" ? deleteChatMessage(id, Number(messageId)) : deleteClientChatMessage(id, Number(messageId))));
   bothSides(quiet);
 }
 
@@ -2811,7 +2815,7 @@ export async function setMessageLinkAction(clientId: number, messageId: number, 
     }
     if (!link || describeMessageLink(id, link).gone) return;
   }
-  setChatMessageLink(id, Number(messageId), link);
+  await setChatMessageLink(id, Number(messageId), link);
   bothSides(quiet);
 }
 
@@ -2820,14 +2824,14 @@ export async function setMessageLinkAction(clientId: number, messageId: number, 
 export async function unpinMessageAction(clientId: number, messageId: number, quiet = false) {
   const id = await requireClientAccess(Number(clientId));
   if (!id) return;
-  setChatMessagePinned(id, Number(messageId), false);
+  await setChatMessagePinned(id, Number(messageId), false);
   bothSides(quiet);
 }
 
 export async function pinMessageAction(clientId: number, messageId: number, pinned: boolean, quiet = false) {
   const id = await coachOn(clientId);
   if (!id) return;
-  setChatMessagePinned(id, Number(messageId), !!pinned);
+  await setChatMessagePinned(id, Number(messageId), !!pinned);
   bothSides(quiet);
 }
 
@@ -2837,7 +2841,7 @@ export async function removeMealCommentAction(clientId: number, messageId: numbe
   const id = await requireClientAccess(clientId);
   const user = await getSessionUser();
   if (!id || user?.role !== "coach") return;
-  removeMealComment(id, messageId);
+  await removeMealComment(id, messageId);
   revalidatePath("/admin");
   revalidatePath("/client");
 }
@@ -2846,7 +2850,7 @@ export async function editMealCommentAction(clientId: number, messageId: number,
   const id = await requireClientAccess(clientId);
   const user = await getSessionUser();
   if (!id || user?.role !== "coach") return;
-  editMealComment(id, messageId, String(text).slice(0, 1000));
+  await editMealComment(id, messageId, String(text).slice(0, 1000));
   revalidatePath("/admin");
   revalidatePath("/client");
 }
@@ -3256,7 +3260,8 @@ export async function deleteClientAction(formData: FormData) {
 // Needs you → Mark as read (12 Oct): the item leaves Home, the Feed and the rail.
 export async function dismissHomeActionAction(clientId: number, actionId: string | string[]) {
   if (!(await coachForClient(Number(clientId)))) return;
-  dismissHomeAction(Number(clientId), Array.isArray(actionId) ? actionId.map(String) : String(actionId));
+  const chat = await fetchCoachChatOfClient(Number(clientId), "action.dismissHome");
+  dismissHomeAction(Number(clientId), Array.isArray(actionId) ? actionId.map(String) : String(actionId), chat);
   revalidatePath("/admin");
 }
 
@@ -3301,12 +3306,12 @@ export async function replyToMediaAction(id: number, text: string, onceKey?: str
       await putUpload(target.publicPath, bytes, type);
       const previous = setVideoReplyFile(id, target.publicPath, "photo");
       // The one it replaces goes, unless the chat still shows it (as a recorded review's, videoReplyUpload.ts).
-      if (previous && !chatUsesFile(previous)) await deleteUpload(previous);
+      if (previous && !(await chatUsesFile(previous))) await deleteUpload(previous);
       // Its small copies now, so the client's chat and sheet draw it at once.
       afterResponse(() => prepareChatMedia(target.publicPath, "image", bytes));
       withPicture = true;
     }
-    const ok = replyToMedia(id, String(text ?? ""), withPicture);
+    const ok = await replyToMedia(id, String(text ?? ""), withPicture);
     // A failure is thrown, never kept against the key (a plain false would answer every retry of these words).
     if (!ok) throw new Error("The reply did not save.");
     revalidatePath("/admin");
@@ -3325,8 +3330,8 @@ export async function mediaReviewClientAction(id: number): Promise<{ name: strin
 }
 export async function sendFormReviewAction(id: number, message: string, meta: { durationMs: number; annotations: number }, onceKey?: string): Promise<boolean> {
   if (!Number.isInteger(id) || !(await coachForClient(getClientIdForVideoRequest(id)))) return false;
-  return once(`sendFormReviewAction:${id}`, onceKeyOf(onceKey), () => {
-    const ok = sendFormReview(id, String(message ?? ""), { durationMs: Number(meta?.durationMs), annotations: Number(meta?.annotations) });
+  return once(`sendFormReviewAction:${id}`, onceKeyOf(onceKey), async () => {
+    const ok = await sendFormReview(id, String(message ?? ""), { durationMs: Number(meta?.durationMs), annotations: Number(meta?.annotations) });
     // The clip's size and preview onto its chat message, from the frame made as it came in (videoReplyUpload.ts).
     const clip = ok ? getData().video_requests.find((r) => r.id === id)?.reply_file_path : null;
     if (clip) afterResponse(() => prepareChatMedia(clip, "video"));
@@ -4123,7 +4128,7 @@ export async function saveCoachNoteAction(clientId: number, text: string) {
 export async function markSeenAction(clientId: number, which: { all: true } | { dayId: number } | { ids: string[] } | { tab: string }) {
   // Read marks are no change to the plan: open while read-only (28 Oct, Alex).
   if (!(await coachForClientOpen(Number(clientId)))) return;
-  markClientEventsSeen(Number(clientId), which);
+  markClientEventsSeen(Number(clientId), which, await fetchCoachChatOfClient(Number(clientId), "action.markSeen"));
   // The chat read: its unread mark goes on every open screen of it (27 Oct).
   if ("tab" in which && which.tab === "messages") chatChanged(Number(clientId));
   revalidatePath("/admin");
@@ -4226,7 +4231,11 @@ function endSessionFor(owner: number, programDayId: number, opts: { note?: strin
   // easy to miss. Once per wording, and never from a coach's preview.
   const after = getData().program_days.find((pd) => pd.id === Number(programDayId))?.session_note ?? "";
   if (after && after !== before && fromClient) {
-    sendChatMessage(owner, "client", after, undefined, { kind: "session", dayId: Number(programDayId) });
+    // Not awaited: this runs inside the workout outbox's synchronous apply. The door writes memory as it is called; the
+    // save and the stream follow a moment later. (At the cut-over this becomes an await, with the outbox's apply async.)
+    void sendChatMessage(owner, "client", after, undefined, { kind: "session", dayId: Number(programDayId) }, null, { path: "w.insert.sessionNote" }).catch((error) =>
+      console.error("[chat] the session's note did not reach the chat:", error instanceof Error ? error.message : error)
+    );
     pushCoachMessage(owner, { text: after });
   }
 }
@@ -4863,7 +4872,7 @@ export async function addFoodEntryAction(formData: FormData): Promise<FoodDiaryV
     addFoodEntry(clientId, date, meal as FoodMeal, foodId, grams, serving);
     revalidatePath("/admin");
   });
-  return getFoodDiary(clientId, date);
+  return getFoodDiary(clientId, date, await fetchFoodComments(clientId, "action.food.add"));
 }
 
 export async function updateFoodEntryAction(formData: FormData): Promise<FoodDiaryView | null> {
@@ -4875,7 +4884,7 @@ export async function updateFoodEntryAction(formData: FormData): Promise<FoodDia
   updateFoodEntry(clientId, id, grams, serving);
   revalidatePath("/admin");
   const date = String(formData.get("date") ?? "");
-  return diaryDateOk(date) ? getFoodDiary(clientId, date) : null;
+  return diaryDateOk(date) ? getFoodDiary(clientId, date, await fetchFoodComments(clientId, "action.food.update")) : null;
 }
 
 export async function removeFoodEntryAction(formData: FormData): Promise<FoodDiaryView | null> {
@@ -4885,7 +4894,7 @@ export async function removeFoodEntryAction(formData: FormData): Promise<FoodDia
   removeFoodEntry(clientId, id);
   revalidatePath("/admin");
   const date = String(formData.get("date") ?? "");
-  return diaryDateOk(date) ? getFoodDiary(clientId, date) : null;
+  return diaryDateOk(date) ? getFoodDiary(clientId, date, await fetchFoodComments(clientId, "action.food.remove")) : null;
 }
 
 /** Returns the new food's id ("custom:12") so the diary can add it straight away. */
@@ -4925,7 +4934,7 @@ export async function getFoodDiaryAction(clientId: number, date: string, opening
   // Reading reaches back a year (24 Oct, Alex: a coach's link to an older day opened today); writing keeps its 30 days.
   if (!diaryDateOk(String(date), 366)) return null;
   if (opening) releaseEmptyRestDay(owner, String(date));
-  return getFoodDiary(owner, String(date));
+  return getFoodDiary(owner, String(date), await fetchFoodComments(owner, "action.food.diary"));
 }
 
 export async function addFoodMealAction(formData: FormData): Promise<string | null> {

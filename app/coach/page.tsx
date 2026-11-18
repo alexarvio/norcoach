@@ -6,6 +6,7 @@ import { loadPhoneCalendar } from "./calendar";
 import { listPhoneVideos } from "../lib/coachPhone";
 import { nativePushReady, pushPublicKey } from "../lib/push";
 import { loadChatDock } from "../admin/redesign/loaders";
+import { fetchChatDock } from "../lib/chat/rows";
 import CoachApp from "./CoachApp";
 import "./coach.css";
 
@@ -28,6 +29,8 @@ export const viewport: Viewport = { themeColor: "#F5F6F8" };
 
 export default async function CoachPage() {
   const coach = await requireCoach();
+  // The chat list first (Step 5, app/lib/chat/rows.ts).
+  const dock = await fetchChatDock(coach.id, "page.coachPhone");
   const profile = getCoachProfile(coach.id);
   const local = coach.email.split("@")[0] ?? "";
   const name = profile?.display_name?.trim() || local.split(/[._-]+/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(" ") || "Coach";
@@ -42,7 +45,7 @@ export default async function CoachPage() {
   const deletionAsked = canAskSupport && listSupportThread(coach.id).some((m) => m.from === "coach" && m.text.trim() === "Please delete my account.");
   return (
     <CoachApp
-      inbox={{ chats: loadChatDock(coach), videos: listPhoneVideos(coach.id) }}
+      inbox={{ chats: loadChatDock(coach, dock), videos: listPhoneVideos(coach.id) }}
       calendar={loadPhoneCalendar(coach.id, localDateStr(monday), today)}
       today={today}
       coach={{

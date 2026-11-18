@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ChevronLeftIcon } from "../components/icons";
 import { feedClock, getActivityFeed, listLoginLocks, localDateStr, type FeedCategory, type FeedEvent } from "../lib/queries";
 import { pageWindow } from "../lib/pager";
+import type { ChatCoachView } from "../lib/chat/rows";
 
 // Four kinds of thing happen to a client, and the feed is read one kind at a
 // time. There is no "All": a single stream of everything was a list nobody
@@ -53,7 +54,10 @@ export default function FeedPanel({
   owner = false,
   category,
   page: pageParam,
+  chat,
 }: {
+  /** The page's chat view of the coach's clients (fetchCoachChat, app/admin/page.tsx). */
+  chat: ChatCoachView;
   coachId: number;
   coachEmail: string;
   /** The owner sees every sign-in lock, not only their own clients'. */
@@ -61,7 +65,7 @@ export default function FeedPanel({
   category?: string;
   page?: string;
 }) {
-  const all = getActivityFeed(coachId);
+  const all = getActivityFeed(coachId, chat);
   const locks = listLoginLocks({ id: coachId, email: coachEmail }, owner);
   const filter: FilterId = FILTERS.some((f) => f.id === category) ? (category as FilterId) : FILTERS[0].id;
   const events = all.filter((e) => matches(e, filter));

@@ -3,6 +3,7 @@ import path from "path";
 import { CopyObjectCommand, DeleteObjectCommand, DeleteObjectsCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { DATA_DIR, getData, persist } from "./db";
+import { chatMediaWithoutLook, chatShowsFile } from "./chat/rows";
 import { loadSharp } from "./sharpSetup";
 
 // Uploaded files (progress photos, avatars, chat media, demo videos) in the
@@ -769,7 +770,7 @@ async function keepLook(publicPath: string, bytes: Buffer | null) {
   if (!bytes) return;
   try {
     const { setChatMediaLook } = await import("./queries");
-    setChatMediaLook(publicPath.split("?")[0], await lookOf(bytes));
+    await setChatMediaLook(publicPath.split("?")[0], await lookOf(bytes));
   } catch (error) {
     console.error("[uploads] no look for", publicPath, error instanceof Error ? error.message : error);
   }
@@ -779,7 +780,7 @@ const looked = ((globalThis as unknown as { _uploadsLooked?: Set<string> })._upl
 function lookLater(key: string, bytes: Buffer | null) {
   if (!bytes || !key.startsWith("chat/") || looked.has(key)) return;
   looked.add(key);
-  void import("./queries").then(({ chatMediaLacksLook }) => (chatMediaLacksLook(`/uploads/${key}`) ? keepLook(`/uploads/${key}`, bytes) : undefined)).catch(() => {});
+  void import("./queries").then(async ({ chatMediaLacksLook }) => ((await chatMediaLacksLook(`/uploads/${key}`)) ? keepLook(`/uploads/${key}`, bytes) : undefined)).catch(() => {});
 }
 
 /**
@@ -819,11 +820,10 @@ export async function prepareAllChatMedia(): Promise<number> {
   let made = 0;
   const seen = new Set<string>();
   const items: { path: string; type: "image" | "video"; chat: boolean; card?: boolean }[] = [];
-  for (const m of data.chat_messages) {
-    if (!m.media_path || (m.media_type !== "image" && m.media_type !== "video")) continue;
-    if (m.media_thumb || seen.has(m.media_path)) continue;
-    seen.add(m.media_path);
-    items.push({ path: m.media_path, type: m.media_type, chat: true });
+  // Each chat file with no look yet, once, the first message's type (chat/pick.ts pickToPrepare, as this loop read it).
+  for (const m of await chatMediaWithoutLook("media.toPrepare")) {
+    seen.add(m.path);
+    items.push({ path: m.path, type: m.type, chat: true });
   }
   for (const v of data.video_requests ?? []) {
     if (!v.file_path || seen.has(v.file_path)) continue;
@@ -943,14 +943,12 @@ export function webVideo(publicPath: string, opts: { dropOriginal?: boolean } = 
 export const webChatVideo = (publicPath: string, opts: { dropOriginal?: boolean } = {}) => webVideo(publicPath, opts);
 
 /** Whether a message or an exercise row still shows this file (a client's video, a coach's review, a chat file). */
-function fileShown(publicPath: string): boolean {
-  // A check that fails says shown (18 Nov, step 4D): the file is kept.
+async function fileShown(publicPath: string): Promise<boolean> {
+  // A check that fails says shown (18 Nov, step 4D): the file is kept. The chat's through its door (Step 5).
   try {
+    if (await chatShowsFile(publicPath, "media.fileShown")) return true;
     const data = getData();
-    return (
-      data.chat_messages.some((m) => m.media_path === publicPath) ||
-      (data.video_requests ?? []).some((r) => r.file_path === publicPath || r.reply_file_path === publicPath)
-    );
+    return (data.video_requests ?? []).some((r) => r.file_path === publicPath || r.reply_file_path === publicPath);
   } catch (error) {
     console.error(`[uploads] could not check whether ${publicPath} is shown; kept:`, error instanceof Error ? error.message : error);
     return true;
@@ -1001,17 +999,17 @@ async function makeWebVideo(publicPath: string, key: string) {
       }
     }
     const { swapChatMedia } = await import("./queries");
-    swapChatMedia(publicPath, webPath);
+    await swapChatMedia(publicPath, webPath);
     swapExerciseVideo(publicPath, webPath);
     // Nothing shows the copy (the message deleted, the exercise's video replaced or taken back meanwhile, and the
     // original gone with it): the copy goes too, so it never sits in the bucket unseen.
-    if (!fileShown(webPath)) {
+    if (!(await fileShown(webPath))) {
       trashUploadFile(webPath);
       await deleteUpload(webPath);
       return;
     }
     await prepareChatMedia(webPath, "video");
-    if (dropWanted.has(key) && !fileShown(publicPath)) dropOriginalLater(publicPath, webPath);
+    if (dropWanted.has(key) && !(await fileShown(publicPath))) dropOriginalLater(publicPath, webPath);
   } catch (error) {
     console.error(`[uploads] no web copy of ${key}:`, error instanceof Error ? error.message : error);
   }
@@ -1075,7 +1073,7 @@ export function dropDueOriginals(): Promise<void> {
         // Still shown, or its copy shown but not there (kept, to put right by hand): the original stays, not asked again.
         // Its copy shown by nothing either (the exercise's video replaced or taken back, the message deleted, in that
         // hour): nothing needs the original, it goes.
-        if (key && !fileShown(d.path) && (!fileShown(d.web) || (await fileThere(d.web)))) {
+        if (key && !(await fileShown(d.path)) && (!(await fileShown(d.web)) || (await fileThere(d.web)))) {
           trashUploadFile(d.path);
           await deleteUpload(d.path);
           console.log(`[uploads] original dropped for its web copy: ${key}`);

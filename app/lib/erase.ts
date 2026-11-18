@@ -43,7 +43,7 @@ export async function eraseClient(clientId: number, opts: { selfDeleted: boolean
   // happens to the file clean-up below.
   // Invoices are business records the coach must keep (7 years in the
   // Netherlands): a self-delete keeps them, and so does the redesign's delete.
-  removeClient(clientId, { keepInvoices: opts.selfDeleted || !!opts.keepInvoices });
+  await removeClient(clientId, { keepInvoices: opts.selfDeleted || !!opts.keepInvoices });
   for (const id of clerkIds) await deleteClerkUser(id);
 
   const failures: unknown[] = [];

@@ -4,6 +4,7 @@ import { coachForClient, requireCoach } from "../../../lib/auth";
 import { chatCurrent, timedChatRead } from "../../../lib/chatBus";
 import { loadChatDock, loadMessages, type DockChat } from "../loaders";
 import type { DraftMessages } from "./MessagesDraft";
+import { fetchChatDock, fetchThread } from "../../../lib/chat/rows";
 
 /**
  * The coach's chat with one client, as the chat draws it (2 Oct): what it
@@ -15,7 +16,9 @@ export async function chatDraftThreadAction(clientId: number, known?: string | n
   if (!(await coachForClient(Number(clientId)))) return null;
   // Nothing changed since the screen's copy (27 Oct): nothing to send (null, as for no access: the screen keeps its own).
   if (chatCurrent(Number(clientId), known)) return null;
-  return timedChatRead("chat · laptop", () => loadMessages(Number(clientId)));
+  const t0 = performance.now();
+  const thread = await fetchThread(Number(clientId), "action.chatDraftThread");
+  return timedChatRead("chat · laptop", () => loadMessages(Number(clientId), thread), t0);
 }
 
 /**
@@ -25,5 +28,5 @@ export async function chatDraftThreadAction(clientId: number, known?: string | n
  */
 export async function chatListAction(): Promise<DockChat[]> {
   const coach = await requireCoach();
-  return loadChatDock(coach);
+  return loadChatDock(coach, await fetchChatDock(coach.id, "action.chatList"));
 }

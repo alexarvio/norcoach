@@ -4,6 +4,7 @@ import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { allocId, claimUnownedRows, getData, persist } from "./db";
+import { wipeAllChat } from "./chat/rows";
 import { clearLockoutsFor } from "./loginLockout";
 import { coachOwnsClient, seedCoachLibrary } from "./tenancy";
 import { clerkOn, clerkUserIdFromRequest, clerkUserRow, deleteClerkUser } from "./clerk";
@@ -461,7 +462,9 @@ export function resetWorkspaceFromEnv() {
   data.meeting_notes = [];
   data.training_columns = [];
   data.assignment_custom_values = [];
-  data.chat_messages = [];
+  // Through the chat's door: memory at once (this stays synchronous for the sign-in page that calls it); after the
+  // cut-over a DELETE, which app/login/page.tsx will then await (docs/database-plan.md, Step 5).
+  void wipeAllChat("w.wipe").catch(() => {});
   data.coach_activity = [];
   data.client_reports = [];
   data.training_programs = [];

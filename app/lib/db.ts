@@ -1170,6 +1170,11 @@ type ChatMessage = {
   /** The message this one answers (a WhatsApp-style reply, 2 Oct): its id. */
   reply_to?: number | null;
 };
+/** A chat row as the door (app/lib/chat/rows.ts) hands it out. */
+export type ChatRow = ChatMessage;
+declare const CHAT_DOOR: unique symbol;
+/** The store's chat list, sealed (18 Nov, Step 5): only app/lib/chat/ opens it, so tsc refuses any other reach for it. */
+export type ChatStoreRows = { readonly [CHAT_DOOR]: "app/lib/chat/rows.ts" };
 
 /** A line between a coach and the company (23 Oct, Alex: Settings' Support, the owner's inbox on Coaches;
     lib/support.ts). One thread a coach; a problem is a line with where it happened and a screenshot. */
@@ -1448,7 +1453,7 @@ export type Data = {
   meeting_notes: MeetingNote[];
   training_columns: TrainingColumn[];
   assignment_custom_values: AssignmentCustomValue[];
-  chat_messages: ChatMessage[];
+  chat_messages: ChatStoreRows;
   coach_activity: CoachActivity[];
   report_templates: ReportTemplate[];
   report_template_sections: ReportTemplateSection[];
@@ -1510,6 +1515,9 @@ export type Data = {
   // as the first did instead of adding twice. Kept a day. A Postgres table of its own since 18 Nov (pg/onceKeys.ts),
   // with a copy in `kv` for a rollback.
   once_keys?: OnceKey[];
+  // The chat shadow week's counts across restarts (18 Nov, Step 5; app/lib/chat/shadow.ts keepTotals): names and counts
+  // only, no ids or words. Not a Postgres table of its own: kept in `kv`. Written only while CHAT_SHADOW is on.
+  chat_shadow_totals?: unknown;
   _seq: Record<string, number>;
 };
 
@@ -1564,7 +1572,7 @@ function emptyData(): Data {
     meeting_notes: [],
     training_columns: [],
     assignment_custom_values: [],
-    chat_messages: [],
+    chat_messages: [] as unknown as ChatStoreRows,
     support_messages: [],
     coach_activity: [],
     report_templates: [],

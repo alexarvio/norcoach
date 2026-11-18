@@ -1,5 +1,6 @@
 import { requireCoach } from "../../../lib/auth";
 import { loadRail } from "../loaders";
+import { fetchCoachChat } from "../../../lib/chat/rows";
 import { flows, SIZE } from "./flows";
 import "../training/draft.css";
 import "./onboarding.css";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 export default async function OnboardingBoard() {
   const coach = await requireCoach();
-  const rail = loadRail(coach);
+  const rail = loadRail(coach, await fetchCoachChat([coach.id], "page.onboarding"));
   return (
     <div className="rd-page ob">
       <h1 className="ob-title">Onboarding</h1>

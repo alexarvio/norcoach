@@ -68,7 +68,7 @@ export async function receiveReplyVideo(request: Request, id: number): Promise<R
   await putUploadFromDisk(filed.publicPath, filed.filePath, filedType);
   const previous = setVideoReplyFile(id, filed.publicPath);
   // The one it replaces goes, unless the chat still shows it (a form review, 12 Oct).
-  if (previous && !chatUsesFile(previous)) {
+  if (previous && !(await chatUsesFile(previous))) {
     await deleteUpload(previous);
     const old = path.join(DATA_DIR, previous.replace(/^\//, ""));
     if (old.startsWith(path.join(DATA_DIR, "uploads"))) trashFile(old);

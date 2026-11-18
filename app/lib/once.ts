@@ -137,6 +137,11 @@ export function releaseOnce(name: string, key: string | null | undefined) {
   if (d.once_keys.length !== before) persist();
 }
 
+/** The key as takeOnce keeps it (`name:key`), or null when it would ignore it (no key, or not a one-time key's shape). */
+export function takenKeyOf(name: string, key: string | null | undefined): string | null {
+  return key && KEY.test(key) ? `${name}:${key}` : null;
+}
+
 /**
  * True the first time `key` comes for `name`, false ever after (a day): for a save that answers nothing, where a
  * second arrival should just stop (the chat's send, chatOutbox.ts). Taken the moment it is asked.

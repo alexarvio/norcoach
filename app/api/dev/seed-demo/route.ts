@@ -12,6 +12,6 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   if (process.env.NODE_ENV === "production" || process.env.RAILWAY_ENVIRONMENT) return new NextResponse("Not here.", { status: 403 });
   const coach = await requireCoach();
-  const id = buildDemoClient(coach.id, "Demo Client");
+  const id = await buildDemoClient(coach.id, "Demo Client");
   return NextResponse.json({ ok: true, clientId: id, open: `/admin?client=${id}&tab=training` });
 }

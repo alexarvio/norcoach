@@ -4,7 +4,8 @@ import { after as afterResponse } from "next/server";
 import { describeMessageLink, hasMealComment, saveChatMedia, sendChatMessage, type ChatMedia } from "./queries";
 import { fitPhoto, photoName, posterFromDevice, prepareChatMedia, putUpload, putUploadFromDisk, webVideo } from "./storage";
 import { claimUpload, discardUpload, placeUpload } from "./streamUpload";
-import { releaseOnce, takeOnce } from "./once";
+import { releaseOnce, takenKeyOf, takeOnce } from "./once";
+import { fetchFoodComments } from "./chat/rows";
 import { parseMessageLink, type MessageLink } from "./messageLinks";
 import { pushCoachMessage } from "./coachPush";
 import type { SessionUser } from "./auth";
@@ -72,13 +73,22 @@ export async function sendChatAs(user: Pick<SessionUser, "id" | "role">, clientI
     }
     if (link && sender === "client" && link.kind !== "session" && link.kind !== "exercise") link = null;
     if (link && describeMessageLink(clientId, link).gone) link = null;
-    // A meal takes one comment: a second send (two tabs, a double click) is dropped.
-    if (link?.kind === "food" && link.meal && hasMealComment(clientId, link.date, link.meal)) return false;
+    // A meal takes one comment: a second send (two tabs, a double click) is dropped. Its comments fetched, then checked and
+    // the message made with nothing awaited between (the door writes memory before it yields).
+    if (link?.kind === "food" && link.meal && hasMealComment(await fetchFoodComments(clientId, "send.mealGuard"), clientId, link.date, link.meal)) return false;
   }
 
   // A reply to one message (WhatsApp-style): sendChatMessage keeps it only if that message is in this chat.
   const replyTo = Number(formData.get("replyTo")) || null;
-  sendChatMessage(clientId, sender, text, media, link, replyTo);
+  const meal = link?.kind === "food" && link.meal ? { date: link.date, meal: link.meal } : null;
+  // The key exactly as takeOnce kept it, or none when takeOnce ignored the nonce (not a one-time key's shape).
+  const onceKey = takenKeyOf(`chat${clientId}`, nonce);
+  await sendChatMessage(clientId, sender, text, media, link, replyTo, {
+    // For the shadow to run the cut-over's statement with them; memory took the once key above (takeOnce).
+    onceKey: onceKey ? { key: onceKey, at: Date.now() } : null,
+    mealGuard: meal,
+    path: meal ? "w.insert.mealComment" : "w.insert.send",
+  });
   // The coach's phone buzzes for what a client writes (21 Oct, /coach).
   if (sender === "client") pushCoachMessage(clientId, { text, media: media?.type });
   // A video: its poster at once, then its small web copy, which the message then shows (25 Oct, Alex), the original

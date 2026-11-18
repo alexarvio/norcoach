@@ -133,7 +133,7 @@ export async function acceptJoinRequestAction(id: number, onceKey?: string | nul
         (row as typeof row & { clerk_instance?: string }).clerk_instance = (process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "").slice(-12);
       }
     } catch {
-      removeClient(client.id);
+      await removeClient(client.id);
       return { ok: false as const, error: "That email already has an account." };
     }
     patchClientProfile(client.id, { birthdate: r.birthdate, email: r.email });

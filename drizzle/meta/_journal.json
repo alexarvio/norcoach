@@ -127,6 +127,13 @@
       "when": 1794973192020,
       "tag": "0017_once_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1794985245849,
+      "tag": "0018_chat_shadow",
+      "breakpoints": true
     }
   ]
 }

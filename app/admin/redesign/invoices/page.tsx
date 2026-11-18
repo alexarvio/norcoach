@@ -1,6 +1,7 @@
 import { requireCoach } from "../../../lib/auth";
 import { touchPresence } from "../../../lib/presence";
 import { startTiming } from "../../../lib/timing";
+import { fetchClientTabChat, fetchCoachChat } from "../../../lib/chat/rows";
 import { loadHome, loadMeasurements, loadMeetings, loadMessages, loadNutrition, loadPictures, loadPlan, loadRail, loadTraining, pickClient, loadInvoices, loadDots } from "../loaders";
 import RedesignShell from "../RedesignShell";
 import { tabFromParams } from "../tabs";
@@ -30,23 +31,28 @@ export default async function InvoicesRedesignPage({ searchParams }: { searchPar
   const { client, firstName } = t.time("pickClient", () => pickClient(coach.id, params.client));
   t.client(client?.id);
   t.time("presence", () => touchPresence(coach, client ? `${firstName} · Invoices` : "Clients"));
-  if (!client) return t.end(<NoClients rail={t.time("rail", () => loadRail(coach))} />);
+  if (!client) {
+    const noClientsChat = await t.time("chat", () => fetchCoachChat([coach.id], "page.noClients.invoices"));
+    return t.end(<NoClients rail={t.time("rail", () => loadRail(coach, noClientsChat))} />);
+  }
+  // The chat first (Step 5, app/lib/chat/rows.ts): the coach's view for the rail and the dots, the client's thread.
+  const chat = await t.time("chat", () => fetchClientTabChat(coach.id, client.id, "page.tab.invoices"));
   return t.end(
     <RedesignShell
       clientId={client.id}
       clientName={client.name ?? "Client"}
       firstName={firstName}
-      rail={t.time("rail", () => loadRail(coach))}
-      dots={t.time("dots", () => loadDots(client.id))}
+      rail={t.time("rail", () => loadRail(coach, chat.coach))}
+      dots={t.time("dots", () => loadDots(client.id, chat.coach))}
       initialTab={tabFromParams(params.tab, "invoices")}
-      home={t.time("home", () => loadHome(client.id))}
-      training={t.time("training", () => loadTraining(coach.id, client.id, params))}
-      nutrition={t.time("nutrition", () => loadNutrition(client.id, params))}
+      home={t.time("home", () => loadHome(client.id, chat))}
+      training={t.time("training", () => loadTraining(coach.id, client.id, params, chat.thread))}
+      nutrition={t.time("nutrition", () => loadNutrition(client.id, params, chat.thread))}
       measurements={t.time("measurements", () => loadMeasurements(client.id, params))}
-      pictures={t.time("pictures", () => loadPictures(client.id))}
+      pictures={t.time("pictures", () => loadPictures(client.id, chat.thread))}
       meetings={t.time("meetings", () => loadMeetings(client.id))}
       plan={t.time("plan", () => loadPlan(client.id))}
-      messages={t.time("messages", () => loadMessages(client.id))}
+      messages={t.time("messages", () => loadMessages(client.id, chat.thread))}
       invoices={t.time("invoices", () => loadInvoices(coach.id, client.id))}
     />
   );

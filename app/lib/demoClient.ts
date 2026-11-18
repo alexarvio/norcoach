@@ -52,10 +52,10 @@ const rnd = (seed: number) => {
 
 type Row = { names: string[]; sets: number; reps: string; kg: number; rpe: number | null; tempo: string | null; note: string | null };
 
-export function buildDemoClient(coachId: number, name: string): number {
+export async function buildDemoClient(coachId: number, name: string): Promise<number> {
   const data = getData();
   // Only this coach's client of that name: never anyone else's.
-  for (const c of data.clients.filter((c) => c.name === name && c.coach_id === coachId)) removeClient(c.id);
+  for (const c of data.clients.filter((c) => c.name === name && c.coach_id === coachId)) await removeClient(c.id);
   const client = createClient(name, coachId);
   const id = client.id;
   const rand = rnd(id * 7 + 3);
@@ -216,11 +216,10 @@ export function buildDemoClient(coachId: number, name: string): number {
     { from: "coach", text: "Perfect, that's exactly what the swap is for.", daysAgo: 3 },
   ];
   for (const m of msgs) {
-    sendChatMessage(id, m.from, m.text);
-    const row = data.chat_messages[data.chat_messages.length - 1];
+    // Dated back as it is made (it was made now and its stamp changed after).
     const at = new Date();
     at.setDate(at.getDate() - m.daysAgo);
-    row.created_at = at.toISOString();
+    await sendChatMessage(id, m.from, m.text, undefined, null, null, { createdAt: at.toISOString(), path: "w.insert.demo" });
   }
   persist();
 
