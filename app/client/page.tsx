@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "../lib/auth";
 import { touchPresence } from "../lib/presence";
 import { getData } from "../lib/db";
+import { fetchThread, type ChatThread } from "../lib/chat/rows";
 import {
   getAssignmentsForDay,
   getFreeSessions,
@@ -387,7 +388,7 @@ function isoPlusDays(iso: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function HomeTab({ CLIENT_ID, photos, food, phoneTz }: { CLIENT_ID: number; photos: ProgressPics; food: PhaseFoodToday; phoneTz: string | null }) {
+function HomeTab({ CLIENT_ID, chat, photos, food, phoneTz }: { CLIENT_ID: number; chat: ChatThread; photos: ProgressPics; food: PhaseFoodToday; phoneTz: string | null }) {
   const client = getClient(CLIENT_ID);
   const today = localDateStr();
 
@@ -476,7 +477,7 @@ function HomeTab({ CLIENT_ID, photos, food, phoneTz }: { CLIENT_ID: number; phot
       coach={{ firstName: coachFirst, photoPath: getCoachAvatarPath(CLIENT_ID) }}
       session={session}
       progressPics={photos}
-      latestActivity={latestCoachActivity(CLIENT_ID, coachFirst, phoneTz)}
+      latestActivity={latestCoachActivity(CLIENT_ID, chat, coachFirst, phoneTz)}
       upcoming={upcoming}
       recap={getLastMeetingRecap(CLIENT_ID)}
       phases={phases}
@@ -530,9 +531,9 @@ function actionOnly(message: string): string {
 // What a comment was on, in words: "Commented on your nutrition".
 const COMMENT_ON = { nutrition: "your nutrition", checkin: "your check-in", photos: "your shape update", training: "your training" } as const;
 
-function latestCoachActivity(clientId: number, coachFirst: string, phoneTz: string | null = null): LatestActivity {
+function latestCoachActivity(clientId: number, chat: ChatThread, coachFirst: string, phoneTz: string | null = null): LatestActivity {
   const weekAgo = Date.now() - 7 * 86400000;
-  const sent = coachMessagesFor(clientId).filter((m) => !m.mine && (m.text.trim() || m.media));
+  const sent = coachMessagesFor(chat).filter((m) => !m.mine && (m.text.trim() || m.media));
   const latestMsg = sent[sent.length - 1] ?? null;
   // A coach chat message's own notification ("Your coach sent you a video")
   // is only its echo: read the message itself (17 Oct), so a form review shows
@@ -1337,6 +1338,8 @@ export default async function ClientPage({
     );
   }
   const client = getClient(CLIENT_ID);
+  // The chat first (Step 5, app/lib/chat/rows.ts): the thread, Home's latest from the coach and the diary's comments.
+  const chatThread = await fetchThread(CLIENT_ID, "page.client");
   // The Check-in screen's three sections, the measurement deltas and this
   // period's photo slots. Built here rather than in HomeTab because the
   // screen is a full-screen push view owned by AppShell.
@@ -1464,7 +1467,7 @@ export default async function ClientPage({
   })();
 
   // Today's food diary, opened from the ring on Nutrition.
-  const foodDiary = getFoodDiary(CLIENT_ID, localDateStr());
+  const foodDiary = getFoodDiary(CLIENT_ID, localDateStr(), chatThread);
 
   // The Meetings screen (9 Oct): every call still to come, then the ones that
   // happened, each with the events made from it. Cancelled calls are left out.
@@ -1515,7 +1518,7 @@ export default async function ClientPage({
 
   const tabs: AppTab[] = [
     // Draws its own light banner (name and main goal); the top bar floats over it.
-    { id: "home", label: "Home", icon: <HomeIcon />, bare: true, content: <HomeTab CLIENT_ID={CLIENT_ID} phoneTz={phoneTz} photos={homePhotos} food={{ eaten: foodDiary.eaten.kcal, target: foodDiary.target?.kcal ?? null, mealsLogged: foodDiary.meals.filter((m) => m.entries.length > 0).length, mealsTotal: foodDiary.meals.length }} /> },
+    { id: "home", label: "Home", icon: <HomeIcon />, bare: true, content: <HomeTab CLIENT_ID={CLIENT_ID} chat={chatThread} phoneTz={phoneTz} photos={homePhotos} food={{ eaten: foodDiary.eaten.kcal, target: foodDiary.target?.kcal ?? null, mealsLogged: foodDiary.meals.filter((m) => m.entries.length > 0).length, mealsTotal: foodDiary.meals.length }} /> },
     {
       id: "training",
       label: "Training",
@@ -1568,7 +1571,7 @@ export default async function ClientPage({
         coachPhoto: getCoachAvatarPath(CLIENT_ID),
         myPhoto: client?.avatar_path ?? null,
         myName: client?.name ?? "You",
-        messages: coachMessagesFor(CLIENT_ID),
+        messages: coachMessagesFor(chatThread),
         // The coach's quiet hours: the chat says they are away while they hold (27 Oct, Alex).
         quiet: coachQuietHours(CLIENT_ID),
         viewerIsClient,

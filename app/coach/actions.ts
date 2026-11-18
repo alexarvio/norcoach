@@ -6,6 +6,7 @@ import { closeVideoRequest, getClientIdForVideoRequest, localDateStr } from "../
 import { loadPhoneCalendar, type PhoneCalendar } from "./calendar";
 import { listPhoneVideos, phoneReview, type PhoneReview, type PhoneVideos } from "../lib/coachPhone";
 import { loadChatDock, loadMessages, type DockChat } from "../admin/redesign/loaders";
+import { fetchChatDock, fetchThread } from "../lib/chat/rows";
 import type { DraftMessages } from "../admin/redesign/messages/MessagesDraft";
 import { noteCoachReading } from "../lib/coachPush";
 
@@ -19,7 +20,7 @@ export type CoachInbox = { chats: DockChat[]; videos: PhoneVideos };
 
 export async function coachInboxAction(): Promise<CoachInbox> {
   const coach = await requireCoach();
-  return { chats: loadChatDock(coach), videos: listPhoneVideos(coach.id) };
+  return { chats: loadChatDock(coach, await fetchChatDock(coach.id, "action.coachInbox")), videos: listPhoneVideos(coach.id) };
 }
 
 /** One client's chat, as the laptop's thread reads it (loadMessages); asked for while it shows, which also keeps its pushes quiet (coachPush.ts). */
@@ -30,7 +31,9 @@ export async function coachThreadAction(clientId: number, known?: string | null)
   noteCoachReading(coach.id, id);
   // Nothing changed since the phone's copy (27 Oct): nothing to send.
   if (chatCurrent(id, known)) return null;
-  return timedChatRead("chat · phone", () => loadMessages(id));
+  const t0 = performance.now();
+  const thread = await fetchThread(id, "action.coachThread");
+  return timedChatRead("chat · phone", () => loadMessages(id, thread), t0);
 }
 
 /** One week of the Calendar (from its Monday), as the phone's Calendar tab draws it; today is the phone's, for the clashes still to come. */
@@ -47,11 +50,12 @@ export async function markVideoDoneAction(requestId: number): Promise<CoachInbox
   if (clientId == null || !(await coachForClient(clientId))) return null;
   closeVideoRequest(id);
   const coach = await requireCoach();
-  return { chats: loadChatDock(coach), videos: listPhoneVideos(coach.id) };
+  return { chats: loadChatDock(coach, await fetchChatDock(coach.id, "action.markVideoDone")), videos: listPhoneVideos(coach.id) };
 }
 
 export async function coachReviewAction(requestId: number): Promise<PhoneReview | null> {
   const id = Number(requestId);
-  if (!Number.isInteger(id) || !(await coachForClient(getClientIdForVideoRequest(id)))) return null;
-  return phoneReview(id);
+  const clientId = Number.isInteger(id) ? getClientIdForVideoRequest(id) : null;
+  if (clientId == null || !(await coachForClient(clientId))) return null;
+  return phoneReview(id, await fetchThread(clientId, "action.coachReview"));
 }

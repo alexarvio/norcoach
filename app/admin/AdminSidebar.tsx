@@ -2,6 +2,7 @@ import Link from "next/link";
 import { logoutAction } from "../lib/auth-actions";
 import { getUserForClient } from "../lib/auth";
 import { clientAttention, getActivityFeed, getCoachProfile, listClients } from "../lib/queries";
+import type { ChatCoachView } from "../lib/chat/rows";
 import { AccountIcon, BusinessIcon, CalendarIcon, FeedIcon, PhasesIcon } from "../components/icons";
 import ClientRoster, { type RosterClient } from "./ClientRoster";
 import { mailConfigured } from "../lib/mail";
@@ -21,7 +22,10 @@ export default function AdminSidebar({
   selectedId,
   view,
   isOwner = false,
+  chat,
 }: {
+  /** The page's chat view of the coach's clients (fetchCoachChat, app/admin/page.tsx). */
+  chat: ChatCoachView;
   coachId: number;
   coachEmail: string;
   selectedId: number | null;
@@ -30,14 +34,14 @@ export default function AdminSidebar({
   isOwner?: boolean;
 }) {
   // One walk of the store for every client on the rail.
-  const feed = getActivityFeed(coachId);
+  const feed = getActivityFeed(coachId, chat);
   const clients: RosterClient[] = listClients(coachId).map((c) => {
     const user = getUserForClient(c.id);
     return {
       id: c.id,
       name: c.name,
       avatarPath: c.avatar_path ?? null,
-      attention: clientAttention(c.id, feed),
+      attention: clientAttention(c.id, chat, feed),
       // No login yet, a temporary password never replaced, or an invite never
       // used (no password, no Clerk link): they have not signed in themselves.
       notSignedIn: !user || (!user.clerk_user_id && (user.must_change_password || !user.password_hash)),

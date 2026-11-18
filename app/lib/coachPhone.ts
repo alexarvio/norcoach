@@ -1,5 +1,6 @@
 import { getData } from "./db";
-import { getCoachAvatarPath, getCoachDisplayName, listChatMessages } from "./queries";
+import { getCoachAvatarPath, getCoachDisplayName } from "./queries";
+import type { ChatThread } from "./chat/rows";
 import type { MediaReview, ThreadItem } from "../admin/redesign/media-review/MediaReviewModal";
 
 // The coach's phone (21 Oct, Alex: answer messages and reply to videos, the
@@ -95,7 +96,7 @@ export function listPhoneVideos(coachId: number): PhoneVideos {
 }
 
 /** One photo or video as the review screen draws it; null when it is gone or has no file. */
-export function phoneReview(requestId: number): PhoneReview | null {
+export function phoneReview(requestId: number, chat: ChatThread): PhoneReview | null {
   const data = getData();
   const v = (data.video_requests ?? []).find((x) => x.id === requestId);
   if (!v || !v.file_path) return null;
@@ -108,7 +109,7 @@ export function phoneReview(requestId: number): PhoneReview | null {
   const replyNote = v.reply_note?.trim() || "";
   const clientNote = v.client_note?.trim() || "";
   const askNote = !v.from_client ? v.note?.trim() || "" : "";
-  for (const m of listChatMessages(v.client_id)) {
+  for (const m of chat.inTextOrder(v.client_id)) {
     if (m.link?.kind !== "exercise" || m.link.assignmentId !== v.assignment_id) continue;
     const mine = m.sender === "coach";
     const at = ms(m.created_at);

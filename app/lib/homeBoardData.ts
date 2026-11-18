@@ -4,6 +4,7 @@
 
 import type { ConsistencyDay, HomeBoard, MuscleGroup, MuscleWindow, PerGroup, StrengthWindow } from "./homeBoard";
 import { getData, persist, type Data, type PhaseTrack } from "./db";
+import type { ChatThread } from "./chat/rows";
 import {
   coachGroups,
   getActivityCalendar,
@@ -318,7 +319,7 @@ function safe<T>(part: string, fn: () => T, fallback: T): T {
 
 // ---- The board ------------------------------------------------------------------------
 
-export function getHomeBoard(clientId: number): HomeBoard {
+export function getHomeBoard(clientId: number, thread: ChatThread): HomeBoard {
   const today = localDateStr();
   const empty = emptyBoard(today);
   let ctx: Ctx;
@@ -337,7 +338,7 @@ export function getHomeBoard(clientId: number): HomeBoard {
     lastPaid: part("lastPaid", () => lastPaidOf(ctx), null),
     outstanding: part("outstanding", () => outstandingOf(ctx), null),
     nextInvoice: part("nextInvoice", () => nextInvoiceOf(ctx), null),
-    since: part("since", () => sinceOf(ctx), null),
+    since: part("since", () => sinceOf(ctx, thread), null),
     muscles: part("muscles", () => musclesOf(ctx), empty.muscles),
     strength: part("strength", () => strengthOf(ctx), empty.strength),
     weight: part("weight", () => weightOf(ctx), null),
@@ -522,7 +523,7 @@ function lastPaidOf(ctx: Ctx): HomeBoard["lastPaid"] {
 
 // ---- Since the coach last looked ------------------------------------------------------------
 
-function sinceOf(ctx: Ctx): HomeBoard["since"] {
+function sinceOf(ctx: Ctx, thread: ChatThread): HomeBoard["since"] {
   const prev = ctx.client?.home_looked?.prev;
   if (prev == null || !Number.isFinite(prev)) return null;
   const data = getData();
@@ -574,7 +575,7 @@ function sinceOf(ctx: Ctx): HomeBoard["since"] {
   for (const f of data.food_entries) if (f.client_id === ctx.clientId && f.date <= ctx.today && savedSince(f.logged_at, f.date)) food.add(f.date);
   for (const c of data.calorie_logs) if (c.client_id === ctx.clientId && c.source !== "health" && c.kcal > 0 && c.date <= ctx.today && savedSince(c.logged_at, c.date)) food.add(c.date);
 
-  const messages = data.chat_messages.filter((m) => m.client_id === ctx.clientId && m.sender === "client" && (m.text?.trim() || m.media_path) && stampMs(m.created_at) > prev).length;
+  const messages = thread.rows(ctx.clientId).filter((m) => m.client_id === ctx.clientId && m.sender === "client" && (m.text?.trim() || m.media_path) && stampMs(m.created_at) > prev).length;
 
   // The latest weigh-in saved since, against the reading before it that was already in; none since, no change.
   const upToToday = ctx.weights.filter((w) => w.date <= ctx.today);

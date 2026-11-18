@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { setsDue } from "../lib/setsDue";
 import { addSessionAction } from "../lib/actions";
 import OnceKeySubmit from "./OnceKeySubmit";
+import type { ChatCoachView } from "../lib/chat/rows";
 import {
   getAssignmentsForDay,
   listClientPhases,
@@ -106,8 +107,11 @@ export default function ProgramBuilder({
   clientName,
   phaseParam,
   weekLinkBase = "/admin",
+  chat,
 }: {
   clientId: number;
+  /** The coach's chat view (fetchCoachChat, app/admin/page.tsx), for the sessions' news. */
+  chat: ChatCoachView;
   clientName?: string;
   /** `?phase=` — which programme's band to open on. */
   phaseParam?: string;
@@ -166,7 +170,7 @@ export default function ProgramBuilder({
   const currentWeek = weekStart(localDateStr());
   // Sessions with news the coach has not opened yet (a finished workout, a
   // reason for missing one): the week and the session carry the dot.
-  const newDayIds = new Set(getClientHome(clientId).unseenDayIds);
+  const newDayIds = new Set(getClientHome(clientId, chat).unseenDayIds);
   const liveWeekNumber = deployedProgram ? deployedProgram.start_week + getProgramCurrentWeekIndex(deployedProgram) - 1 : null;
 
   function renderDays(days: ProgramDay[]) {

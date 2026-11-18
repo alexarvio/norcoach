@@ -1,6 +1,7 @@
 import { requireCoach } from "../../../lib/auth";
 import { startTiming } from "../../../lib/timing";
 import { loadChatDock, loadPhaseNeeds, loadRail } from "../loaders";
+import { fetchCoachPageChat } from "../../../lib/chat/rows";
 import RedesignRail from "../RedesignRail";
 import ChatDock from "../ChatDock";
 import "../messages/messages.css";
@@ -28,12 +29,14 @@ export default async function PhasesPage() {
   // Each loader timed (app/lib/timing.ts, /api/timing): measuring only, the props are what they were.
   const t = startTiming("phases");
   const coach = await t.time("auth", () => requireCoach());
+  // The chat first (Step 5, app/lib/chat/rows.ts): the rail's view and the chat list's.
+  const chat = await t.time("chat", () => fetchCoachPageChat(coach.id, "page.phases"));
   return t.end(
     <div className="rd-frame">
-      <RedesignRail rail={t.time("rail", () => loadRail(coach))} clientId={0} />
-      <ChatDock chats={t.time("chatDock", () => loadChatDock(coach))} />
+      <RedesignRail rail={t.time("rail", () => loadRail(coach, chat.coach))} clientId={0} />
+      <ChatDock chats={t.time("chatDock", () => loadChatDock(coach, chat.dock))} />
       <div className="rd-page">
-        <PhasesOverview data={t.time("phasesOverview", () => loadPhasesOverview(coach.id))} needs={t.time("phaseNeeds", () => loadPhaseNeeds(coach.id))} now={Date.now()} />
+        <PhasesOverview data={t.time("phasesOverview", () => loadPhasesOverview(coach.id))} needs={t.time("phaseNeeds", () => loadPhaseNeeds(coach.id, chat.coach))} now={Date.now()} />
       </div>
     </div>
   );

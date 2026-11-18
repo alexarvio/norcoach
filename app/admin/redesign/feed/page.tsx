@@ -2,6 +2,7 @@ import { requireCoach } from "../../../lib/auth";
 import { getFeedBoard, noteFeedLooked } from "../../../lib/feedBoard";
 import { startTiming } from "../../../lib/timing";
 import { loadChatDock, loadRail } from "../loaders";
+import { fetchCoachPageChat } from "../../../lib/chat/rows";
 import RedesignRail from "../RedesignRail";
 import ChatDock from "../ChatDock";
 import FeedDraft from "./FeedDraft";
@@ -25,16 +26,18 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
   // Each loader timed (app/lib/timing.ts, /api/timing): measuring only, the props are what they were.
   const t = startTiming("feed");
   const coach = await t.time("auth", () => requireCoach());
+  // The chat first (Step 5, app/lib/chat/rows.ts): the one view the Feed, the rail and the chat list share.
+  const chat = await t.time("chat", () => fetchCoachPageChat(coach.id, "page.feed"));
   const params = await searchParams;
   // The visit is noted first, so Since and New read from the visit before this one.
   await t.time("noteFeedLooked", () => noteFeedLooked(coach.id));
-  const board = await t.time("feedBoard", () => getFeedBoard(coach.id));
+  const board = await t.time("feedBoard", () => getFeedBoard(coach.id, chat.coach));
   // eslint-disable-next-line react-hooks/purity -- a server render reads the clock once, on purpose: the waits in Needs you count from it, the same on the server and in the browser
   const now = Date.now();
   return t.end(
     <div className="rd-frame">
-      <RedesignRail rail={t.time("rail", () => loadRail(coach))} clientId={0} />
-      <ChatDock chats={t.time("chatDock", () => loadChatDock(coach))} />
+      <RedesignRail rail={t.time("rail", () => loadRail(coach, chat.coach))} clientId={0} />
+      <ChatDock chats={t.time("chatDock", () => loadChatDock(coach, chat.dock))} />
       <div className="rd-page">
         <FeedDraft board={board} now={now} kind={params.cat ?? null} />
       </div>

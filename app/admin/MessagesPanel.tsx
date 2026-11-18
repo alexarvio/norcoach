@@ -1,4 +1,5 @@
-import { describeMessageLink, getClient, listChatMessages, listMessageLinkTargets } from "../lib/queries";
+import { describeMessageLink, getClient, listMessageLinkTargets } from "../lib/queries";
+import type { ChatThread } from "../lib/chat/rows";
 import MessagesWorkspace, { type ChatMessageView } from "./MessagesWorkspace";
 
 // The Messages tab: the conversation with the client, oldest first, and the
@@ -12,9 +13,10 @@ const when = (iso: string) => {
 };
 const dayOf = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
 
-export default function MessagesPanel({ clientId }: { clientId: number }) {
+export default function MessagesPanel({ clientId, chat }: { clientId: number; /** The client's thread (fetchThread, app/admin/page.tsx). */ chat: ChatThread }) {
   const firstName = (getClient(clientId)?.name ?? "the client").split(" ")[0];
-  const messages: ChatMessageView[] = listChatMessages(clientId)
+  const messages: ChatMessageView[] = chat
+    .inTextOrder(clientId)
     .filter((m) => m.text.trim() || m.media_path)
     .map((m) => ({
       id: m.id,

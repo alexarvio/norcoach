@@ -4,6 +4,7 @@ import { getCalendarDay, getCalendarMonth, getMeetingConflicts, listCalendarCate
 import CalendarSaveStatus from "./CalendarSaveStatus";
 import { startTiming } from "../../../lib/timing";
 import { loadChatDock, loadRail } from "../loaders";
+import { fetchCoachPageChat } from "../../../lib/chat/rows";
 import RedesignRail from "../RedesignRail";
 import ChatDock from "../ChatDock";
 import "../messages/messages.css";
@@ -45,6 +46,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   // Each loader timed (app/lib/timing.ts, /api/timing): measuring only, the props are what they were.
   const t = startTiming("calendar");
   const coach = await t.time("auth", () => requireCoach());
+  // The chat first (Step 5, app/lib/chat/rows.ts): the rail's view and the chat list's.
+  const chat = await t.time("chat", () => fetchCoachPageChat(coach.id, "page.calendar"));
   const params = await searchParams;
   const calendar = t.time("calendarMonth", () => getCalendarMonth(coach.id, params.month));
   const today = localDateStr();
@@ -101,8 +104,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
 
   return t.end(
     <div className="rd-frame">
-      <RedesignRail rail={t.time("rail", () => loadRail(coach))} clientId={0} />
-      <ChatDock chats={t.time("chatDock", () => loadChatDock(coach))} />
+      <RedesignRail rail={t.time("rail", () => loadRail(coach, chat.coach))} clientId={0} />
+      <ChatDock chats={t.time("chatDock", () => loadChatDock(coach, chat.dock))} />
       <div className="rd-page rcl-page">
         <div className="rd trn rcl">
           {/* ---- Header: Training's, bare (no fact line, so no room kept for one); the one status after the title. */}

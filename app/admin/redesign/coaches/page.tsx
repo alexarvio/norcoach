@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { isOwner, requireCoach } from "../../../lib/auth";
-import { getCoachProfileView, listCoachAccounts } from "../../../lib/queries";
+import { getCoachProfileView, listCoachAccounts, listCoachEmails } from "../../../lib/queries";
+import { fetchCoachChat, fetchCoachPageChat } from "../../../lib/chat/rows";
 import { listSupportThreads } from "../../../lib/support";
 import { billingOn, billingView } from "../../../lib/billing";
 import { startTiming } from "../../../lib/timing";
@@ -29,8 +30,11 @@ export default async function CoachesPage() {
   const t = startTiming("coaches");
   const coach = await t.time("auth", () => requireCoach());
   if (!isOwner(coach)) notFound();
+  // The chat first (Step 5, app/lib/chat/rows.ts): the rail's view and the chat list's, and every coach's for their last activity.
+  const chat = await t.time("chat", () => fetchCoachPageChat(coach.id, "page.coaches"));
+  const everyCoach = await t.time("chatAll", () => fetchCoachChat(listCoachEmails().map((c) => c.id), "page.coaches.accounts"));
   const accounts: CoachRow[] = t.time("coachAccounts", () =>
-    listCoachAccounts()
+    listCoachAccounts(everyCoach)
       .map((c) => {
         const b = billingView(c.id, c.id === coach.id);
         return { ...c, name: getCoachProfileView(c.id)?.displayName ?? c.email, owner: c.id === coach.id, pays: b.required, billing: b.pill };
@@ -38,8 +42,8 @@ export default async function CoachesPage() {
   );
   return t.end(
     <div className="rd-frame">
-      <RedesignRail rail={t.time("rail", () => loadRail(coach))} clientId={0} />
-      <ChatDock chats={t.time("chatDock", () => loadChatDock(coach))} />
+      <RedesignRail rail={t.time("rail", () => loadRail(coach, chat.coach))} clientId={0} />
+      <ChatDock chats={t.time("chatDock", () => loadChatDock(coach, chat.dock))} />
       <div className="rd-page">
         <CoachesDraft accounts={accounts} support={t.time("supportThreads", () => listSupportThreads())} billingOn={billingOn()} />
       </div>

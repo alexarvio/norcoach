@@ -14,6 +14,7 @@
 import fs from "fs";
 import path from "path";
 import { getData, persist, allocId, DATA_DIR } from "../app/lib/db";
+import { seedChatRows } from "../app/lib/chat/rows";
 import { ensureMeasurementField } from "../app/lib/queries";
 import {
   listClients,
@@ -348,7 +349,7 @@ function enrichClient(cfg: LightClientConfig) {
   // ---- Chat follow-up ----
   cfg.chatFollowUp.forEach(([daysBack, sender, text], i) => {
     const d = getData();
-    d.chat_messages.push({
+    seedChatRows(d).push({
       id: allocId("chat_messages"),
       client_id: clientId,
       sender,

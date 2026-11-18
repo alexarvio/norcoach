@@ -1,6 +1,6 @@
 import { and, eq, getTableColumns, getTableName, inArray, sql } from "drizzle-orm";
 import type { PgColumn as Column, PgDatabase, PgTable } from "drizzle-orm/pg-core";
-import { reportSkipped, health, noteSaveCost } from "./health";
+import { reportSkipped, health, noteSaveCost, noteSaveTx } from "./health";
 import { COLLECTIONS, DERIVED, kv, ROLLBACK_KV_COPIES, TABLE_NAMES_NOT_IN_KV } from "./schema";
 import { msInstant, msInstantMs, stampInstant, stampInstantMs } from "./stamps";
 
@@ -135,7 +135,7 @@ const keyOf = (c: Collection, row: Row) => c.key.map((k) => String(row[k])).join
  * A string Postgres takes: no NUL (text and jsonb refuse it), and no lone half of a surrogate pair (jsonb refuses its
  * \ud83d escape; text cut in the middle of an emoji by a .slice leaves one), which becomes U+FFFD. A whole pair stays.
  */
-const cleanText = (s: string) =>
+export const cleanText = (s: string) =>
   s.replace(/\u0000/g, "").replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[\uD800-\uDFFF]/g, (m) => (m.length === 2 ? m : "�"));
 
 /** The value with every string and key made one Postgres takes (cleanText), however deep (17 Nov). */
@@ -158,7 +158,7 @@ const NEEDS_CLEANING = /\\u(?:0000|d[89a-f])/;
  * only a value whose JSON holds one is walked (a literal backslash and u0000 typed in a note walks it for nothing and
  * comes out the same). Null when the value can't be written as JSON at all.
  */
-function cleanJson(value: unknown): string | null {
+export function cleanJson(value: unknown): string | null {
   let json: string | undefined;
   try {
     json = JSON.stringify(value);
@@ -340,14 +340,30 @@ export class PgStoreWriter {
   private again = false;
   /** When a save last committed a transaction (ms since 1970), for /api/timing. */
   lastCommitAt: number | null = null;
+  /** How many saves have committed: the chat shadow (app/lib/chat/shadow.ts) throws away a compare a save landed in. */
+  private committedSaves = 0;
 
   constructor(private db: AnyDb) {}
+
+  /** Moves on each time what the database holds moves on (a committed save, a prime). */
+  get generation(): number {
+    return this.committedSaves;
+  }
+  /** A save is running (its snapshot, compare or transaction). */
+  get saving(): boolean {
+    return this.running !== null;
+  }
+  /** What the database holds for a collection, as the last save committed it: row key → the record's JSON. Read only. */
+  committed(name: string): ReadonlyMap<string, string> | undefined {
+    return this.last.rows.get(name);
+  }
 
   /**
    * The database already holds exactly this data (just loaded or imported), but for `moved` (loadStore): lists loaded
    * from kv whose tables are empty, so the first save writes their rows into the table and deletes their kv row.
    */
   prime(data: Row, moved: readonly string[] = []) {
+    this.committedSaves++;
     this.last = snapshotOf(data);
     for (const name of moved) {
       this.last.rows.set(name, new Map());
@@ -360,6 +376,7 @@ export class PgStoreWriter {
    * one gone from the store by then is deleted, as any.
    */
   forget(stale: Map<string, Set<string>>) {
+    this.committedSaves++;
     for (const [name, keys] of stale) {
       const rows = this.last.rows.get(name);
       if (rows) for (const key of keys) if (rows.has(key)) rows.set(key, "");
@@ -481,10 +498,14 @@ export class PgStoreWriter {
     });
 
     if (work.length === 0) return;
+    const txStarted = performance.now();
     await this.db.transaction(async (tx) => {
       for (const step of work) await step(tx as unknown as AnyDb);
     });
+    // The transaction's own time (18 Nov, Step 5: the shadow week watches that the shadow never slows the writer).
+    noteSaveTx(Math.round((performance.now() - txStarted) * 10) / 10);
     this.last = next;
+    this.committedSaves++;
     this.lastCommitAt = Date.now();
   }
 }

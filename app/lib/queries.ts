@@ -2,6 +2,9 @@ import fs from "fs";
 import { sortReasons, type AttentionReason } from "./attentionReasons";
 import path from "path";
 import { chatChanged } from "./chatBus";
+import { CHAT_TABLE, chatFileLacksLook, chatShowsFile, deleteClientChat, deleteRow, editText, insertChatRow, setLink, setLook, setPinned, setReaction, swapPath, type ChatCoachView, type ChatDockView, type ChatThread } from "./chat/rows";
+import { chatNeedOf, dockLineOf, HOME_NEW_DAYS } from "./chat/pick";
+import type { ChatWritePath } from "./chat/paths";
 import { healthStoreName, healthWorkoutFacts, healthWorkoutWords } from "./healthWorkouts";
 import { allocId, DATA_DIR, DAY_NAMES_FULL, getData, persist, mergeDuplicateMetricDefinitions, CardioEntry } from "./db";
 import type { CalorieLog, CheckInNote, CustomFood, FoodDay, FoodEntry, FoodMealSlot, OffFood, SavedDay, SavedMeal, ClientEvent, ClientGym, ClientPhase, CoachProfile, CoachBusiness, CoachNotify, CoachInvoicing, CoachPayments, CoachSettings, Data, EventCategory, InvoiceEvery, InvoiceLine, InvoiceParty, InvoiceRecipient, InvoiceRepeat, InvoiceTemplate, KeptActivity, MetricAskAt, PhaseTrack, SessionAnswer, VideoRequest, WorkoutQuestion, MeetingRequest } from "./db";
@@ -291,7 +294,7 @@ export function createClient(name: string, coachId: number | null) {
  * Invoice.client_name). Files and push devices are the caller's: see
  * eraseClient in lib/erase.ts.
  */
-export function removeClient(clientId: number, opts: { keepInvoices?: boolean } = {}) {
+export async function removeClient(clientId: number, opts: { keepInvoices?: boolean } = {}) {
   const data = getData();
   const client = data.clients.find((c) => c.id === clientId);
   if (!client) return;
@@ -340,15 +343,19 @@ export function removeClient(clientId: number, opts: { keepInvoices?: boolean } 
   data.users = data.users.filter((u) => !(u.role === "client" && u.client_id === clientId));
   if (data.login_lock_events) data.login_lock_events = data.login_lock_events.filter((e) => !emails.has(e.email));
 
-  // Everything else of theirs: every collection's rows with their client_id.
+  // Everything else of theirs: every collection's rows with their client_id. Their chat through its door (memory at
+  // once; after the cut-over its DELETE), awaited once the rest is done.
+  const chatGone = deleteClientChat(clientId, "w.client.delete");
   const store = data as unknown as Record<string, unknown>;
+  // chat-door: chat rows go through deleteClientChat
   for (const [name, value] of Object.entries(store)) {
-    if (!Array.isArray(value) || name === "users" || name === "account_deletions" || name === "client_departures") continue;
+    if (!Array.isArray(value) || name === "users" || name === "account_deletions" || name === "client_departures" || name === CHAT_TABLE) continue;
     if (name === "invoices" && opts.keepInvoices) continue;
     store[name] = value.filter((row) => !(row && typeof row === "object" && (row as { client_id?: unknown }).client_id === clientId));
   }
   data.clients = data.clients.filter((c) => c.id !== clientId);
   persist();
+  await chatGone;
 }
 
 export function renameClient(id: number, name: string) {
@@ -2962,7 +2969,7 @@ export type OverviewPanel = {
 };
 
 /** feedOf: the coach's feed, when the caller reads it too (loadHome): asked for here at the same moment, built once. */
-export function getOverviewPanel(clientId: number, feedOf: () => FeedEvent[] = () => getActivityFeed(coachIdOfClient(clientId) ?? 0)): OverviewPanel {
+export function getOverviewPanel(clientId: number, feedOf: () => FeedEvent[]): OverviewPanel {
   const client = getClient(clientId);
   const profile = getClientProfile(clientId);
   const nutrition = getNutritionGoalsSummary(clientId);
@@ -3291,8 +3298,8 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const feedValue = (v: number) => String(Math.round(v * 10) / 10);
 
 /** Everything one coach's clients logged, newest first. The Feed page filters and pages it. */
-export function getActivityFeed(coachId: number): FeedEvent[] {
-  return activityFeeds([coachId]).get(coachId) ?? [];
+export function getActivityFeed(coachId: number, chat: ChatCoachView): FeedEvent[] {
+  return activityFeeds([coachId], chat).get(coachId) ?? [];
 }
 
 /**
@@ -3301,8 +3308,9 @@ export function getActivityFeed(coachId: number): FeedEvent[] {
  * in the order the walk finds them, sorted the same way. The store's rows are filtered to the coaches' clients before
  * they are grouped, so a coach's feed no longer maps every other coach's sets, food, check-ins and chat.
  */
-function activityFeeds(coachIds: readonly number[]): Map<number, FeedEvent[]> {
+function activityFeeds(coachIds: readonly number[], chat: ChatCoachView): Map<number, FeedEvent[]> {
   const data = getData();
+  chat.covers("activityFeeds", coachIds);
   const feeds = new Map<number, FeedEvent[]>(coachIds.map((id) => [id, []]));
   // Only these coaches' clients: an event for anyone else is dropped in add(), and their rows are left out before that.
   const clientsById = new Map(data.clients.filter((c) => c.coach_id != null && feeds.has(c.coach_id)).map((c) => [c.id, c] as const));
@@ -3722,7 +3730,7 @@ function activityFeeds(coachIds: readonly number[]): Map<number, FeedEvent[]> {
   // ---- Messages the client sent in the chat ----
   // Their words ride along as the note, so Home lists an unread one under
   // "Needs you" and the rail's dot says why.
-  for (const m of data.chat_messages) {
+  for (const m of chat.clientSent(clientsById.keys())) {
     if (m.sender !== "client" || !clientsById.has(m.client_id)) continue;
     const words = m.text.trim();
     if (!words && !m.media_path) continue;
@@ -3909,11 +3917,11 @@ export function feedTimeLabel(at: number, timeKnown = true): string {
  * clients the coach has and when one of them last logged something. Nothing
  * about the clients themselves.
  */
-export function listCoachAccounts() {
+export function listCoachAccounts(chat: ChatCoachView) {
   const data = getData();
   const coaches = data.users.filter((u) => u.role === "coach").sort((a, b) => a.id - b.id);
   // Every coach's feed in one walk (17 Nov, mission 2: it was built once per coach), each the list getActivityFeed gives.
-  const feeds = activityFeeds(coaches.map((u) => u.id));
+  const feeds = activityFeeds(coaches.map((u) => u.id), chat);
   return coaches
     .map((u) => {
       const latest = feeds.get(u.id)?.[0];
@@ -3925,6 +3933,14 @@ export function listCoachAccounts() {
         mustChangePassword: u.must_change_password,
       };
     });
+}
+
+/** Every coach account's id and email, in listCoachAccounts' order (the owner's "Whose profile"): no feed built for it. */
+export function listCoachEmails(): { id: number; email: string }[] {
+  return getData()
+    .users.filter((u) => u.role === "coach")
+    .sort((a, b) => a.id - b.id)
+    .map((u) => ({ id: u.id, email: u.email }));
 }
 
 // ---- Nutrition plan: coach's macro/vitamin/supplement targets for a client ----
@@ -6840,15 +6856,11 @@ export type ChatMedia = { path: string; type: ChatMediaType; name?: string | nul
 export type MediaLook = { thumb: string | null; w: number | null; h: number | null };
 
 /** The look of a chat file, onto every message that shows it (25 Oct). */
-export function setChatMediaLook(path: string, look: MediaLook) {
+export async function setChatMediaLook(path: string, look: MediaLook) {
   let n = 0;
-  for (const m of getData().chat_messages) {
-    if (m.media_path !== path) continue;
-    m.media_thumb = look.thumb;
-    m.media_w = look.w;
-    m.media_h = look.h;
+  for (const clientId of await setLook(path, look, "w.look")) {
     n++;
-    chatChanged(m.client_id);
+    chatChanged(clientId);
   }
   // A meal's picture too (10 Nov, Alex: as the chat's), on the day's photo and on any saved meal showing the same file.
   for (const p of getData().meal_photos) {
@@ -6875,7 +6887,7 @@ export function setChatMediaLook(path: string, look: MediaLook) {
   if (n) persist();
 }
 /** A chat file some message shows with no look yet. */
-export const chatMediaLacksLook = (path: string) => getData().chat_messages.some((m) => m.media_path === path && !m.media_thumb);
+export const chatMediaLacksLook = (path: string) => chatFileLacksLook(path, "media.lacksLook");
 
 /** The reactions a message can take: a short row, the same on both sides. */
 export const MESSAGE_REACTIONS = ["👍", "❤️", "💪", "🔥", "👏", "😂"] as const;
@@ -6911,10 +6923,11 @@ export function chatSeenTest(clientId: number): (m: ChatMessage) => boolean {
   return (m) => stampMs(m.created_at) <= (m.sender === "client" ? coachAt : clientAt);
 }
 
-export function chatThreadViews(clientId: number): ChatThreadView[] {
-  const all = listChatMessages(clientId);
+export function chatThreadViews(thread: ChatThread): ChatThreadView[] {
+  const clientId = thread.clientId;
+  const all = thread.inTextOrder(clientId);
   // Each reply's quote from this chat's own messages, looked up once (17 Nov).
-  const byId = new Map(all.map((m) => [m.id, m]));
+  const byId = thread.byId(clientId);
   const seen = chatSeenTest(clientId);
   // A picture or video with no look yet gets one behind this read (25 Oct).
   const lacking = all.filter((m) => m.media_path && !m.media_thumb && (m.media_type === "image" || m.media_type === "video"));
@@ -6945,51 +6958,35 @@ export function chatThreadViews(clientId: number): ChatThreadView[] {
 }
 
 /**
- * What a reply quotes: who wrote the message it answers, and its words (or
- * what was sent, for a picture or a voice message). Null when it answers
- * nothing, or the message has since been deleted.
+ * What a reply quotes: who wrote the message it answers, and its words (or what was sent, for a picture or a voice
+ * message). Null when it answers nothing, or the message has since been deleted. Of a message already found (17 Nov: a
+ * thread looks its replies up once, not the whole store per reply).
  */
-export function chatQuote(clientId: number, replyTo: number | null | undefined): { id: number; sender: "client" | "coach"; text: string } | null {
-  if (replyTo == null) return null;
-  return chatQuoteOf(getData().chat_messages.find((x) => x.id === replyTo && x.client_id === clientId));
-}
-
-/** chatQuote of a message already found (17 Nov: a thread looks its replies up once, not the whole store per reply). */
 export function chatQuoteOf(m: ChatMessage | null | undefined): { id: number; sender: "client" | "coach"; text: string } | null {
   if (!m) return null;
   const words = m.text.trim() || (m.media_type === "image" ? "📷 Photo" : m.media_type === "video" ? "🎥 Video" : m.media_type === "audio" ? "🎤 Voice message" : m.media_path ? `📄 ${m.media_name ?? "File"}` : "");
   return { id: m.id, sender: m.sender, text: words.slice(0, 160) };
 }
 
-export function listChatMessages(clientId: number): ChatMessage[] {
-  return getData()
-    .chat_messages.filter((m) => m.client_id === clientId)
-    .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id - b.id));
-}
-
-export function sendChatMessage(
+/**
+ * A message into the chat. Through the door (app/lib/chat/rows.ts): the row is in memory before this yields, then the
+ * notification, the save and the live stream, as always. `opts.path` names the caller for the shadow's counts; the
+ * once key and meal guard are for the shadow to run the cut-over's statement with them (memory takes them as before).
+ */
+export async function sendChatMessage(
   clientId: number,
   sender: "client" | "coach",
   text: string,
   media?: ChatMedia,
   link?: MessageLink | null,
   /** The message it answers, one in this chat. */
-  replyTo?: number | null
+  replyTo?: number | null,
+  opts: { createdAt?: string; onceKey?: { key: string; at: number } | null; mealGuard?: { date: string; meal: string } | null; path?: ChatWritePath } = {}
 ) {
-  const data = getData();
-  const answers = replyTo != null && data.chat_messages.some((m) => m.id === replyTo && m.client_id === clientId) ? replyTo : null;
-  data.chat_messages.push({
-    id: allocId("chat_messages"),
-    client_id: clientId,
-    sender,
-    text,
-    media_path: media?.path ?? null,
-    media_type: media?.type ?? null,
-    ...(media?.name ? { media_name: media.name } : {}),
-    created_at: new Date().toISOString(),
-    ...(link ? { link } : {}),
-    ...(answers != null ? { reply_to: answers } : {}),
-  });
+  await insertChatRow(
+    { clientId, sender, text, media: media ? { path: media.path, type: media.type, name: media.name ?? null } : null, link, replyTo, createdAt: opts.createdAt, onceKey: opts.onceKey, mealGuard: opts.mealGuard },
+    opts.path ?? "w.insert.send"
+  );
   persist();
   chatChanged(clientId);
   if (sender === "coach") {
@@ -7002,24 +6999,13 @@ export function sendChatMessage(
 }
 
 /** One side's reaction on a message: set it, swap it, or take it off (null). Only a known emoji sticks. */
-export function setChatReaction(clientId: number, messageId: number, who: "client" | "coach", emoji: string | null) {
-  const data = getData();
-  const m = data.chat_messages.find((x) => x.id === messageId && x.client_id === clientId);
-  if (!m) return;
+export async function setChatReaction(clientId: number, messageId: number, who: "client" | "coach", emoji: string | null) {
   if (emoji && !(MESSAGE_REACTIONS as readonly string[]).includes(emoji)) return;
-  const next = { ...(m.reactions ?? {}) };
-  if (emoji) next[who] = emoji;
-  else delete next[who];
-  if (Object.keys(next).length) m.reactions = next;
-  else delete m.reactions;
+  if (!(await setReaction(clientId, messageId, who, emoji, "w.react"))) return;
   persist();
   chatChanged(clientId);
 }
 
-/** The coach's own message, or nothing: only theirs can be reworded, re-pointed or taken back. */
-function coachMessage(clientId: number, messageId: number) {
-  return getData().chat_messages.find((m) => m.id === messageId && m.client_id === clientId && m.sender === "coach") ?? null;
-}
 /** The notification a coach message was logged with, in the same breath and the same words. */
 function noteFor(msg: { client_id: number; text: string; created_at: string }) {
   const sent = new Date(msg.created_at).getTime();
@@ -7030,29 +7016,28 @@ function noteFor(msg: { client_id: number; text: string; created_at: string }) {
  * Rewords a coach message, and the notification that carried it. Quietly: a
  * fixed typo is not news, so nothing new is sent; the client sees "edited".
  */
-export function editChatMessage(clientId: number, messageId: number, text: string) {
+export async function editChatMessage(clientId: number, messageId: number, text: string) {
   const clean = text.trim();
-  const msg = coachMessage(clientId, messageId);
-  if (!clean || !msg || msg.text === clean) return;
-  const note = noteFor(msg);
+  if (!clean) return;
+  // Only the coach's own message (the door matches the sender), the chat first, then the notification it carried.
+  const was = await editText(clientId, messageId, { sender: "coach", text: clean, editedAt: new Date().toISOString() }, "w.edit.coach");
+  if (!was) return;
+  const note = noteFor({ client_id: clientId, text: was.was_text, created_at: was.was_at });
   if (note) note.message = clean;
-  msg.text = clean;
-  msg.edited_at = new Date().toISOString();
   persist();
   chatChanged(clientId);
 }
 
 /** Takes a coach message back: from the chat, the client's Home and their notifications. Returns its file to delete from the bucket, when nothing else shows it (chatFileLeft). */
-export function deleteChatMessage(clientId: number, messageId: number): string | null {
+export async function deleteChatMessage(clientId: number, messageId: number): Promise<string | null> {
   const data = getData();
-  const msg = coachMessage(clientId, messageId);
-  if (!msg) return null;
-  const note = noteFor(msg);
-  data.chat_messages = data.chat_messages.filter((m) => m !== msg);
+  const gone = await deleteRow(clientId, messageId, { sender: "coach" }, "w.delete.coach");
+  if (!gone) return null;
+  const note = noteFor({ client_id: clientId, text: gone.text, created_at: gone.created_at });
   if (note) data.coach_activity = data.coach_activity.filter((a) => a !== note);
   persist();
   chatChanged(clientId);
-  return chatFileLeft(msg.media_path);
+  return chatFileLeft(gone.media_path);
 }
 
 /**
@@ -7061,10 +7046,15 @@ export function deleteChatMessage(clientId: number, messageId: number): string |
  * the caller to take out of the bucket. Null while another message or a form
  * review on an exercise still shows it.
  */
-function chatFileLeft(mediaPath: string | null): string | null {
+async function chatFileLeft(mediaPath: string | null): Promise<string | null> {
   if (!mediaPath) return null;
+  // A check that fails keeps the file (Step 5: after the cut-over this asks Postgres, after the delete committed).
+  try {
+    if (await chatShowsFile(mediaPath, "media.deleteCheck")) return null;
+  } catch {
+    return null;
+  }
   const data = getData();
-  if (data.chat_messages.some((m) => m.media_path === mediaPath)) return null;
   if (data.video_requests.some((r) => r.file_path === mediaPath || r.reply_file_path === mediaPath)) return null;
   const clean = mediaPath.split("?")[0];
   if (!clean.startsWith("/uploads/")) return null;
@@ -7073,43 +7063,33 @@ function chatFileLeft(mediaPath: string | null): string | null {
 }
 
 /** The client rewords one of their own messages (never the coach's). */
-export function editClientChatMessage(clientId: number, messageId: number, text: string) {
+export async function editClientChatMessage(clientId: number, messageId: number, text: string) {
   const clean = text.trim();
-  const msg = getData().chat_messages.find((m) => m.id === messageId && m.client_id === clientId && m.sender === "client");
-  if (!clean || !msg || msg.text === clean) return;
-  msg.text = clean;
-  msg.edited_at = new Date().toISOString();
+  if (!clean) return;
+  if (!(await editText(clientId, messageId, { sender: "client", text: clean, editedAt: new Date().toISOString() }, "w.edit.client"))) return;
   persist();
   chatChanged(clientId);
 }
 
 /** The client takes back one of their own messages (never the coach's). Returns its file to delete, as deleteChatMessage. */
-export function deleteClientChatMessage(clientId: number, messageId: number): string | null {
-  const data = getData();
-  const msg = data.chat_messages.find((m) => m.id === messageId && m.client_id === clientId && m.sender === "client");
-  if (!msg) return null;
-  data.chat_messages = data.chat_messages.filter((m) => m !== msg);
+export async function deleteClientChatMessage(clientId: number, messageId: number): Promise<string | null> {
+  const gone = await deleteRow(clientId, messageId, { sender: "client" }, "w.delete.client");
+  if (!gone) return null;
   persist();
   chatChanged(clientId);
-  return chatFileLeft(msg.media_path);
+  return chatFileLeft(gone.media_path);
 }
 
-/** Points a sent message at one thing in the client's app, or takes the link off (null). */
-export function setChatMessageLink(clientId: number, messageId: number, link: MessageLink | null) {
-  const msg = coachMessage(clientId, messageId);
-  if (!msg) return;
-  if (link) msg.link = link;
-  else delete msg.link;
+/** Points a sent message (the coach's own) at one thing in the client's app, or takes the link off (null). */
+export async function setChatMessageLink(clientId: number, messageId: number, link: MessageLink | null) {
+  if (!(await setLink(clientId, messageId, link, "w.link"))) return;
   persist();
   chatChanged(clientId);
 }
 
 /** Keeps a message (either side's) at the top of the chat, or lets it go. */
-export function setChatMessagePinned(clientId: number, messageId: number, pinned: boolean) {
-  const msg = getData().chat_messages.find((m) => m.id === messageId && m.client_id === clientId);
-  if (!msg) return;
-  if (pinned) msg.pinned = true;
-  else delete msg.pinned;
+export async function setChatMessagePinned(clientId: number, messageId: number, pinned: boolean) {
+  if (!(await setPinned(clientId, messageId, pinned, "w.pin"))) return;
   persist();
   chatChanged(clientId);
 }
@@ -7635,8 +7615,7 @@ export function getClientHeaderPlans(clientId: number): HeaderPlan[] {
 // the coach's own "seen it" kept per event so a dot can lead from the client,
 // to the tab, to the session the news is about.
 
-/** How far back an event still counts as news. Older history is never "new". */
-const HOME_NEW_DAYS = 14;
+// How far back an event still counts as news (HOME_NEW_DAYS, 14 days): chat/pick.ts holds it, the chat's fetches read it too.
 
 export type HomeAction = {
   id: string;
@@ -7669,13 +7648,13 @@ const STANDING_ACTIONS = new Set(["no-phase", "week", "program-ending", "quiet",
 const DISMISS_STANDING_MS = 14 * 86400000;
 
 /** The coach marked a Needs-you item as read (12 Oct): it leaves Home, the Feed and the rail's dot. */
-export function dismissHomeAction(clientId: number, actionId: string | string[]) {
+export function dismissHomeAction(clientId: number, actionId: string | string[], chat: ChatCoachView) {
   const client = getData().clients.find((c) => c.id === clientId);
   const ids = (Array.isArray(actionId) ? actionId : [actionId]).filter(Boolean);
   if (!client || !ids.length) return;
   // Kept small: only the items that still stand stay recorded. Every item, let go or not (2 Nov: the list after the
   // filter left out what was let go before, so each Done brought the one before it back).
-  const standing = new Set(getClientHome(clientId).allActionIds);
+  const standing = new Set(getClientHome(clientId, chat).allActionIds);
   const next: Record<string, number> = {};
   for (const [id, at] of Object.entries(client.coach_dismissed ?? {})) if (standing.has(id)) next[id] = at;
   const now = Date.now();
@@ -7704,12 +7683,12 @@ const isUnseen = (seen: Record<string, number> | undefined, e: FeedEvent, since:
   e.at >= since && (seen?.[e.id] ?? 0) < e.at;
 
 /**
- * The rows getClientHome walks for each client (their chat, the videos and calls they asked for, their invoices), grouped
- * once for many clients (coachNeeds; 17 Nov, mission 2: every client's Home walked every one of them). Each list keeps
- * the store's order, so what getClientHome filters out of it is what it found walking the store.
+ * The rows getClientHome walks for each client (the videos and calls they asked for, their invoices), grouped once for
+ * many clients (coachNeeds; 17 Nov, mission 2: every client's Home walked every one of them). Each list keeps the store's
+ * order, so what getClientHome filters out of it is what it found walking the store. Their chat comes from the coach's
+ * chat view (ChatCoachView.homeRows), grouped there the same way.
  */
 export type ClientHomeRows = {
-  chat: Map<number, Data["chat_messages"]>;
   videos: Map<number, VideoRequest[]>;
   callAsks: Map<number, MeetingRequest[]>;
   invoices: Map<number, Data["invoices"]>;
@@ -7721,23 +7700,24 @@ export function clientHomeRows(clientIds: readonly number[]): ClientHomeRows {
     for (const row of list ?? []) out.get(row.client_id)?.push(row);
     return out;
   };
-  return { chat: group(data.chat_messages), videos: group(data.video_requests), callAsks: group(data.meeting_requests), invoices: group(data.invoices) };
+  return { videos: group(data.video_requests), callAsks: group(data.meeting_requests), invoices: group(data.invoices) };
 }
 
 /**
  * One client's Home. `feed` lets a caller that needs several clients walk the
  * store once (the rail) rather than once per client; `ix` the same for their
- * training rows (trainingIndex over every client), and `own` for their chat,
- * video and call asks and invoices (clientHomeRows).
+ * training rows (trainingIndex over every client), and `own` for their
+ * video and call asks and invoices (clientHomeRows). `chat`: the coach's chat
+ * view this client is in (fetchCoachChat).
  */
-export function getClientHome(clientId: number, feed?: FeedEvent[], ix?: TrainingIndex, own?: ClientHomeRows): ClientHome {
+export function getClientHome(clientId: number, chat: ChatCoachView, feed?: FeedEvent[], ix?: TrainingIndex, own?: ClientHomeRows): ClientHome {
   const data = getData();
   // Their training rows, read once when a check below needs them (23 Oct, speed: it scanned the store per row).
   let tix = ix;
   const rows = () => (tix ??= trainingIndex(clientId));
   const client = data.clients.find((c) => c.id === clientId);
   // A phone workout is the coach's logs alone (16 Nov): never news, a dot or a note to read here.
-  const all = (feed ?? getActivityFeed(client?.coach_id ?? 0)).filter((e) => e.clientId === clientId && !e.health);
+  const all = (feed ?? getActivityFeed(client?.coach_id ?? 0, chat)).filter((e) => e.clientId === clientId && !e.health);
   const since = Date.now() - HOME_NEW_DAYS * 86400000;
   const events = all.slice(0, 60).map((e) => ({ ...e, when: feedTimeLabel(e.at, e.timeKnown), unseen: isUnseen(client?.coach_seen, e, since) }));
   const unseen = events.filter((e) => e.unseen);
@@ -7751,11 +7731,10 @@ export function getClientHome(clientId: number, feed?: FeedEvent[], ix?: Trainin
   // oldest first, across every client.
   // A message with no answer after it: the last word in the chat is theirs
   // (a reaction from the coach counts as an answer).
-  const chat = (own?.chat.get(clientId) ?? data.chat_messages).filter((m) => m.client_id === clientId && (m.text.trim() || m.media_path)).sort((a, b) => stampMs(b.created_at) - stampMs(a.created_at));
-  const lastCoach = chat.find((m) => m.sender === "coach");
   // Opening the chat clears it too (25 Oct, Alex): only what came in after the coach last had the chat open.
   const readAt = client?.coach_chat_read_at ? stampMs(client.coach_chat_read_at) : 0;
-  const unanswered = chat.filter((m) => m.sender === "client" && !m.reactions?.coach && (!lastCoach || stampMs(m.created_at) > stampMs(lastCoach.created_at)) && stampMs(m.created_at) > readAt);
+  // chat/pick.ts chatNeedOf: their messages with words or a file newest first, the coach's last, theirs after it.
+  const { unanswered } = chatNeedOf(chat.homeRows(clientId), clientId, readAt);
   if (unanswered.length) {
     const oldest = unanswered[unanswered.length - 1];
     const newest = unanswered[0];
@@ -8262,47 +8241,45 @@ export function setCoachNote(clientId: number, text: string) {
 
 /** The coach has looked: these events (all of them, one session's, or by id) stop being new. */
 /** Something the client wrote in the chat lately that the coach hasn't opened the chat on. */
-export function chatUnread(clientId: number): boolean {
-  return chatUnreadCount(clientId) > 0;
+export function chatUnread(thread: ChatThread): boolean {
+  return chatUnreadCount(thread) > 0;
 }
 
-/** The oldest of them (25 Oct, Alex: a chat opens on the first new message). */
-export function chatFirstUnread(clientId: number): number | null {
+/** The oldest of them (25 Oct, Alex: a chat opens on the first new message): the first in the store's (id) order. */
+export function chatFirstUnread(thread: ChatThread): number | null {
+  const clientId = thread.clientId;
   const data = getData();
   const seen = data.clients.find((c) => c.id === clientId)?.coach_seen ?? {};
   const since = Date.now() - HOME_NEW_DAYS * 86400000;
-  const m = data.chat_messages.find((x) => x.client_id === clientId && x.sender === "client" && (x.text.trim() || x.media_path) && stampMs(x.created_at) >= since && !(`chat-${x.id}` in seen));
+  const m = thread.rows(clientId).find((x) => x.client_id === clientId && x.sender === "client" && (x.text.trim() || x.media_path) && stampMs(x.created_at) >= since && !(`chat-${x.id}` in seen));
   return m?.id ?? null;
 }
 
 /**
- * The chat list's rows (loadChatDock; 17 Nov, mission 2): each client's messages as listChatMessages orders them and
- * how many are unread as chatUnreadCount counts them, from one walk of the messages instead of two whole walks a client.
+ * The chat list's rows (loadChatDock; 17 Nov, mission 2): each client's last message with words or a file, in the
+ * thread's order, and how many are unread as chatUnreadCount counts them (chat/pick.ts dockLineOf), from the dock's view.
  */
-export function chatListRows(clientIds: readonly number[]): Map<number, { messages: ChatMessage[]; unreadCount: number }> {
+export function chatListRows(dock: ChatDockView, clientIds: readonly number[]): Map<number, { last: ChatMessage | null; unreadCount: number }> {
   const data = getData();
-  const byClient = new Map<number, ChatMessage[]>(clientIds.map((id) => [id, []]));
-  for (const m of data.chat_messages) byClient.get(m.client_id)?.push(m);
   const since = Date.now() - HOME_NEW_DAYS * 86400000;
-  const out = new Map<number, { messages: ChatMessage[]; unreadCount: number }>();
-  for (const [clientId, list] of byClient) {
+  const out = new Map<number, { last: ChatMessage | null; unreadCount: number }>();
+  for (const clientId of clientIds) {
     const seen = data.clients.find((c) => c.id === clientId)?.coach_seen ?? {};
-    const unreadCount = list.filter((m) => m.sender === "client" && (m.text.trim() || m.media_path) && stampMs(m.created_at) >= since && !(`chat-${m.id}` in seen)).length;
-    const messages = list.sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id - b.id));
-    out.set(clientId, { messages, unreadCount });
+    out.set(clientId, dockLineOf(dock.rowsOf(clientId), seen, since));
   }
   return out;
 }
 
 /** How many of them (the coach's phone, 21 Oct, shows the count). */
-export function chatUnreadCount(clientId: number): number {
+export function chatUnreadCount(thread: ChatThread): number {
+  const clientId = thread.clientId;
   const data = getData();
   const seen = data.clients.find((c) => c.id === clientId)?.coach_seen ?? {};
   const since = Date.now() - HOME_NEW_DAYS * 86400000;
-  return data.chat_messages.filter((m) => m.client_id === clientId && m.sender === "client" && (m.text.trim() || m.media_path) && stampMs(m.created_at) >= since && !(`chat-${m.id}` in seen)).length;
+  return thread.rows(clientId).filter((m) => m.client_id === clientId && m.sender === "client" && (m.text.trim() || m.media_path) && stampMs(m.created_at) >= since && !(`chat-${m.id}` in seen)).length;
 }
 
-export function markClientEventsSeen(clientId: number, which: { all: true } | { dayId: number } | { ids: string[] } | { tab: string }) {
+export function markClientEventsSeen(clientId: number, which: { all: true } | { dayId: number } | { ids: string[] } | { tab: string }, chat: ChatCoachView) {
   const data = getData();
   const client = data.clients.find((c) => c.id === clientId);
   if (!client) return;
@@ -8314,7 +8291,7 @@ export function markClientEventsSeen(clientId: number, which: { all: true } | { 
     persist();
   }
   const since = Date.now() - HOME_NEW_DAYS * 86400000;
-  const recent = getActivityFeed(client.coach_id ?? 0).filter((e) => e.clientId === clientId && e.at >= since);
+  const recent = getActivityFeed(client.coach_id ?? 0, chat).filter((e) => e.clientId === clientId && e.at >= since);
   // A tab clears what is on the tab itself; news about one session waits
   // for that session to be opened.
   const hit = recent.filter((e) =>
@@ -8338,9 +8315,9 @@ export function markClientEventsSeen(clientId: number, which: { all: true } | { 
  * "who needs me", not "how many things".
  */
 /** The same, as the rail's reasons (14 Oct): one line a kind, in its colour, the most pressing first. */
-export function clientReasons(clientId: number, feed?: FeedEvent[]): AttentionReason[] {
+export function clientReasons(clientId: number, chat: ChatCoachView, feed?: FeedEvent[]): AttentionReason[] {
   const out: AttentionReason[] = [];
-  for (const a of getClientHome(clientId, feed).actions) {
+  for (const a of getClientHome(clientId, chat, feed).actions) {
     const since = a.at ?? 0;
     if (a.id.startsWith("reply-video-")) {
       const m = /^(Photo|Video) of (.+?) waiting/.exec(a.title);
@@ -8362,10 +8339,10 @@ export function clientReasons(clientId: number, feed?: FeedEvent[]): AttentionRe
   return sortReasons(out);
 }
 
-export function clientAttention(clientId: number, feed?: FeedEvent[]): string | null {
+export function clientAttention(clientId: number, chat: ChatCoachView, feed?: FeedEvent[]): string | null {
   // The same list the client's Home spells out; the dot's title is the first
   // of them, and how many more there are.
-  const actions = getClientHome(clientId, feed).actions;
+  const actions = getClientHome(clientId, chat, feed).actions;
   if (actions.length === 0) return null;
   return actions.length === 1 ? actions[0].title : `${actions[0].title} · and ${actions.length - 1} more`;
 }
@@ -9188,13 +9165,11 @@ export function allocChatMediaName(tag?: string): string {
 }
 
 /** A chat video's file replaced by its small web copy (25 Oct): every message that shows it, now the copy. */
-export function swapChatMedia(from: string, to: string): number {
+export async function swapChatMedia(from: string, to: string): Promise<number> {
   let n = 0;
-  for (const m of getData().chat_messages) {
-    if (m.media_path !== from) continue;
-    m.media_path = to;
+  for (const clientId of await swapPath(from, to, "w.swap")) {
     n++;
-    chatChanged(m.client_id);
+    chatChanged(clientId);
   }
   if (n) persist();
   return n;
@@ -11659,12 +11634,12 @@ export function getClientProgramNoteMeta(clientId: number, programId: number): {
 }
 
 /** The coach opened the client's note on a programme: it is not new again until the client writes. */
-export function markProgramNoteSeen(programId: number) {
+export function markProgramNoteSeen(programId: number, chat: ChatCoachView) {
   const n = (getData().client_program_notes ?? []).find((x) => x.program_id === programId);
   if (!n || n.coach_seen_at === n.updated_at) return;
   n.coach_seen_at = n.updated_at;
   persist();
-  markClientEventsSeen(n.client_id, { ids: [`program-note-${n.id}`] });
+  markClientEventsSeen(n.client_id, { ids: [`program-note-${n.id}`] }, chat);
 }
 
 export function getClientIdForProgram(programId: number): number | null {
@@ -12321,7 +12296,7 @@ function macroSeries(clientId: number, which: keyof typeof MACRO_GOAL_KEYS): { n
     return localDateStr(d);
   })();
   const name = which === "protein" ? "Protein logged" : which === "carbs" ? "Carbs logged" : "Fat logged";
-  return { name, unit: "g", series: getLoggedDays(clientId, from, today).days.map((d) => ({ date: d.date, value: d[which] })).sort((a, b) => (a.date < b.date ? -1 : 1)) };
+  return { name, unit: "g", series: getLoggedDays(clientId, from, today, "no-comments").days.map((d) => ({ date: d.date, value: d[which] })).sort((a, b) => (a.date < b.date ? -1 : 1)) };
 }
 const macroKey = (key: string): keyof typeof MACRO_GOAL_KEYS | null => (key === "protein" || key === "carbs" || key === "fat" ? key : null);
 
@@ -14268,29 +14243,33 @@ function exerciseLinkFor(row: VideoRequest): MessageLink | null {
 }
 /** A text reply to a client's photo or video. `withPicture` (16 Nov, Alex): the photo sent back with the coach's
     drawing on it is already filed as the reply's file (setVideoReplyFile, "photo"); it goes into the chat with the words. */
-export function replyToMedia(id: number, text: string, withPicture = false): boolean {
+export async function replyToMedia(id: number, text: string, withPicture = false): Promise<boolean> {
   const row = getData().video_requests.find((r) => r.id === id);
   const clean = text.trim().slice(0, 2000);
   if (!row || !clean) return false;
   if (!sendVideoReply(id, clean)) return false;
   const picture = withPicture && row.reply_media === "photo" && row.reply_file_path ? { path: row.reply_file_path, type: "image" as const, name: "Reply.jpg" } : undefined;
-  sendChatMessage(row.client_id, "coach", clean, picture, exerciseLinkFor(row));
+  await sendChatMessage(row.client_id, "coach", clean, picture, exerciseLinkFor(row), null, { path: "w.insert.replyMedia" });
   return true;
 }
 /** A recorded form review: its file is already up (/api/video-reply); the message, its length and the drawing count follow. */
-export function sendFormReview(id: number, message: string, meta: { durationMs: number; annotations: number }): boolean {
+export async function sendFormReview(id: number, message: string, meta: { durationMs: number; annotations: number }): Promise<boolean> {
   const row = getData().video_requests.find((r) => r.id === id);
   if (!row || !row.reply_file_path) return false;
   row.reply_duration_ms = Number.isFinite(meta.durationMs) ? Math.max(0, Math.round(meta.durationMs)) : null;
   row.reply_annotations = Number.isFinite(meta.annotations) ? Math.max(0, Math.round(meta.annotations)) : null;
   if (!sendVideoReply(id, message)) return false;
   // The clip in the chat too, pointing at the exercise.
-  sendChatMessage(row.client_id, "coach", message.trim().slice(0, 2000), { path: row.reply_file_path, type: "video", name: "Form review.mp4" }, exerciseLinkFor(row));
+  await sendChatMessage(row.client_id, "coach", message.trim().slice(0, 2000), { path: row.reply_file_path, type: "video", name: "Form review.mp4" }, exerciseLinkFor(row), null, { path: "w.insert.formReview" });
   return true;
 }
-/** A file some chat message shows: a newer review must not delete it from under the chat. */
-export function chatUsesFile(path: string): boolean {
-  return getData().chat_messages.some((m) => m.media_path === path);
+/** A file some chat message shows: a newer review must not delete it from under the chat. A check that fails says it does (kept). */
+export async function chatUsesFile(path: string): Promise<boolean> {
+  try {
+    return await chatShowsFile(path, "media.usesFile");
+  } catch {
+    return true;
+  }
 }
 
 /** Takes the reply back. Returns its video, to delete. */
@@ -14562,11 +14541,10 @@ export type MealComment = { id: number; text: string; when: string };
  * carried it, so nothing of it is left in the client's app. Only a meal
  * comment of this client's; anything else is left alone.
  */
-export function removeMealComment(clientId: number, messageId: number) {
+export async function removeMealComment(clientId: number, messageId: number) {
   const data = getData();
-  const msg = data.chat_messages.find((m) => m.id === messageId && m.client_id === clientId && m.sender === "coach");
-  if (!msg || msg.link?.kind !== "food" || !msg.link.meal) return;
-  data.chat_messages = data.chat_messages.filter((m) => m !== msg);
+  const msg = await deleteRow(clientId, messageId, { sender: "coach", foodMeal: true }, "w.mealComment.remove");
+  if (!msg) return;
   // Its notification was logged in the same breath, with the same words.
   const sent = new Date(msg.created_at).getTime();
   const note = data.coach_activity.find((a) => a.client_id === clientId && a.kind === "coach_note" && a.message === msg.text && Math.abs(new Date(a.created_at).getTime() - sent) < 5000);
@@ -14580,23 +14558,25 @@ export function removeMealComment(clientId: number, messageId: number) {
  * carried it. Quietly: a fixed typo is not news, so nothing new is sent and
  * what the client has read stays read.
  */
-export function editMealComment(clientId: number, messageId: number, text: string) {
+export async function editMealComment(clientId: number, messageId: number, text: string) {
   const clean = text.trim();
   const data = getData();
-  const msg = data.chat_messages.find((m) => m.id === messageId && m.client_id === clientId && m.sender === "coach");
-  if (!clean || !msg || msg.link?.kind !== "food" || !msg.link.meal || msg.text === clean) return;
-  const sent = new Date(msg.created_at).getTime();
-  const note = data.coach_activity.find((a) => a.client_id === clientId && a.kind === "coach_note" && a.message === msg.text && Math.abs(new Date(a.created_at).getTime() - sent) < 5000);
+  if (!clean) return;
+  // No edited_at on a meal comment (as it always was): the door leaves it alone when given none.
+  const msg = await editText(clientId, messageId, { sender: "coach", text: clean, editedAt: null, foodMeal: true }, "w.mealComment.edit");
+  if (!msg) return;
+  const sent = new Date(msg.was_at).getTime();
+  const note = data.coach_activity.find((a) => a.client_id === clientId && a.kind === "coach_note" && a.message === msg.was_text && Math.abs(new Date(a.created_at).getTime() - sent) < 5000);
   if (note) note.message = clean;
-  msg.text = clean;
   persist();
   chatChanged(clientId);
 }
 
-export const hasMealComment = (clientId: number, date: string, meal: string) => (mealCommentsOn(clientId, date).get(meal)?.length ?? 0) > 0;
-function mealCommentsOn(clientId: number, date: string): Map<string, MealComment[]> {
+/** A meal's comment already there (the send's guard against a second, two tabs or a double click). */
+export const hasMealComment = (comments: ChatThread, clientId: number, date: string, meal: string) => (mealCommentsOn(comments, clientId, date).get(meal)?.length ?? 0) > 0;
+function mealCommentsOn(comments: ChatThread, clientId: number, date: string): Map<string, MealComment[]> {
   const out = new Map<string, MealComment[]>();
-  for (const m of listChatMessages(clientId)) {
+  for (const m of comments.foodComments(clientId)) {
     const l = m.link;
     if (m.sender !== "coach" || !m.text || l?.kind !== "food" || l.date !== date || !l.meal) continue;
     const list = out.get(l.meal) ?? [];
@@ -14632,7 +14612,7 @@ export type LoggedDaysView = {
 };
 
 /** The days a client logged food on, newest first, inside a date range. */
-export function getLoggedDays(clientId: number, from: string, to: string): LoggedDaysView {
+export function getLoggedDays(clientId: number, from: string, to: string, comments: ChatThread | "no-comments"): LoggedDaysView {
   const data = getData();
   const derived = getNutritionGoalsSummary(clientId);
   const trainedOn = trainingDates(clientId);
@@ -14651,11 +14631,12 @@ export function getLoggedDays(clientId: number, from: string, to: string): Logge
     .map(([date, rows]) => {
       const labels = new Map(listFoodMeals(clientId, date).map((m) => [m.id, m.label] as const));
       const photos = mealPhotosOn(clientId, date);
-      const comments = mealCommentsOn(clientId, date);
+      // "no-comments": a reader that throws the comments away (macroSeries) reads no chat for them.
+      const commentsOn = comments === "no-comments" ? new Map<string, MealComment[]>() : mealCommentsOn(comments, clientId, date);
       const order = [...labels.keys()];
       const meals = new Map<string, LoggedMeal>();
       for (const e of rows) {
-        const meal = meals.get(e.meal) ?? { id: e.meal, label: labels.get(e.meal) ?? "Meal", kcal: 0, protein: 0, carbs: 0, fat: 0, foods: [], photo: photos.get(e.meal) ?? null, comments: comments.get(e.meal) ?? [] };
+        const meal = meals.get(e.meal) ?? { id: e.meal, label: labels.get(e.meal) ?? "Meal", kcal: 0, protein: 0, carbs: 0, fat: 0, foods: [], photo: photos.get(e.meal) ?? null, comments: commentsOn.get(e.meal) ?? [] };
         meal.kcal += e.kcal;
         meal.protein += e.protein;
         meal.carbs += e.carbs;
@@ -14883,7 +14864,7 @@ export function yesterdaysOpenMetrics(clientId: number): { date: string; metrics
   return metrics.length ? { date, metrics } : null;
 }
 
-export function getFoodDiary(clientId: number, date: string): FoodDiaryView {
+export function getFoodDiary(clientId: number, date: string, chat: ChatThread): FoodDiaryView {
   const today = localDateStr();
   const entries = listFoodEntries(clientId, date);
   const sum = (k: "kcal" | "protein" | "carbs" | "fat") => r1(entries.reduce((s, e) => s + e[k], 0));
@@ -14910,7 +14891,7 @@ export function getFoodDiary(clientId: number, date: string): FoodDiaryView {
     previousMap.set(key, row);
   }
   const photos = mealPhotosOn(clientId, date);
-  const comments = mealCommentsOn(clientId, date);
+  const comments = mealCommentsOn(chat, clientId, date);
   const order = new Map(meals.map((m, i) => [m.id, i]));
   const previous = [...previousMap.values()]
     .map((p) => ({ ...p, kcal: Math.round(p.kcal) }))

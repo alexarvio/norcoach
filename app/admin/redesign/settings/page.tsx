@@ -1,6 +1,7 @@
 import { isOwner, requireCoach } from "../../../lib/auth";
 import { clerkOn } from "../../../lib/clerk";
-import { getCoachProfileView, getCoachSettings, listCoachAccounts } from "../../../lib/queries";
+import { getCoachProfileView, getCoachSettings, listCoachEmails } from "../../../lib/queries";
+import { fetchCoachPageChat } from "../../../lib/chat/rows";
 import { getData } from "../../../lib/db";
 import { COUNTRIES, countryOf, invoicingFor } from "../../../lib/countries";
 import { LEGAL } from "../../../lib/legal";
@@ -68,6 +69,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   // Each loader timed (app/lib/timing.ts, /api/timing): measuring only, the props are what they were.
   const t = startTiming("settings");
   const coach = await t.time("auth", () => requireCoach());
+  // The chat first (Step 5, app/lib/chat/rows.ts): the rail's view and the chat list's.
+  const chat = await t.time("chat", () => fetchCoachPageChat(coach.id, "page.settings"));
   const params = await searchParams;
 
   // Profile: the coach's own, or for the owner any coach's (?coachId=).
@@ -75,7 +78,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const asked = Number(params.coachId);
   const coachId = owner && Number.isInteger(asked) && asked > 0 && t.time("profileView", () => getCoachProfileView(asked)) ? asked : coach.id;
   const profile = t.time("profileView", () => getCoachProfileView(coachId));
-  const coaches = owner ? t.time("coachAccounts", () => listCoachAccounts().map((c) => ({ id: c.id, email: c.email }))) : [];
+  // Their ids and emails alone (Step 5: no coach's feed built for them).
+  const coaches = owner ? t.time("coachAccounts", () => listCoachEmails()) : [];
   // Your details: the account basics, beside the public profile.
   const contact = t.time("coachSettings", () => getCoachSettings(coachId)).contact ?? {};
   const details = {
@@ -161,9 +165,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
   return t.end(
     <div className="rd-frame">
-      <RedesignRail rail={t.time("rail", () => loadRail(coach))} clientId={0} />
+      <RedesignRail rail={t.time("rail", () => loadRail(coach, chat.coach))} clientId={0} />
       {/* The chat tab and its 60px on the right, as every coach-level page (16 Nov, Alex: the audit). */}
-      <ChatDock chats={t.time("chatDock", () => loadChatDock(coach))} />
+      <ChatDock chats={t.time("chatDock", () => loadChatDock(coach, chat.dock))} />
       <div className="rd-page">
         <SettingsBoard className="rd trn rls rst rpf" sections={sections} />
       </div>

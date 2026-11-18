@@ -17,7 +17,9 @@ import ClientHomePanel from "./ClientHomePanel";
 import PhasesOverviewPanel from "./PhasesOverviewPanel";
 import BusinessPanel from "./BusinessPanel";
 import StyleGuidePanel from "./StyleGuidePanel";
-import { getClient, getClientEngagement, getClientHome, getOverviewPanel, listClients, type OverviewPanel } from "../lib/queries";
+import { getActivityFeed, getClient, getClientEngagement, getClientHome, getOverviewPanel, listClients, listCoachEmails, type OverviewPanel } from "../lib/queries";
+import { fetchCoachChat, fetchThread, type ChatCoachView, type ChatThread } from "../lib/chat/rows";
+import { coachIdOfClient } from "../lib/tenancy";
 import { coachOwnsClient } from "../lib/tenancy";
 import CoachesPanel from "./CoachesPanel";
 
@@ -104,12 +106,15 @@ export default async function AdminPage({
   const asked = params.client ? Number(params.client) : null;
   const selectedId = view ? null : asked != null && coachOwnsClient(coach.id, asked) ? asked : clients[0]?.id ?? null;
   const client = selectedId ? getClient(selectedId) : undefined;
+  // The chat first (Step 5, app/lib/chat/rows.ts): the coach's view (every coach's on Coaches), and the client's thread.
+  const chat = await fetchCoachChat(view === "coaches" ? listCoachEmails().map((c) => c.id) : [coach.id], "page.oldAdmin");
+  const thread = client ? await fetchThread(client.id, "page.oldAdmin.thread") : null;
   // Read once: the right-hand panel and the client's Home show the same facts.
-  const overview = client ? getOverviewPanel(client.id) : null;
+  const overview = client ? getOverviewPanel(client.id, () => getActivityFeed(coachIdOfClient(client.id) ?? 0, chat)) : null;
 
   return (
     <AdminShell
-      sidebar={<AdminSidebar coachId={coach.id} coachEmail={coach.email} selectedId={selectedId} view={view} isOwner={owner} />}
+      sidebar={<AdminSidebar coachId={coach.id} coachEmail={coach.email} selectedId={selectedId} view={view} isOwner={owner} chat={chat} />}
       panel={
         view === "calendar" ? (
           <CalendarDayPanel coachId={coach.id} day={params.day} month={params.month} />
@@ -126,7 +131,7 @@ export default async function AdminPage({
     >
       {view === "feed" ? (
         <div className="ad-pad">
-          <FeedPanel coachId={coach.id} coachEmail={coach.email} owner={owner} category={params.cat} page={params.page} />
+          <FeedPanel coachId={coach.id} coachEmail={coach.email} owner={owner} category={params.cat} page={params.page} chat={chat} />
         </div>
       ) : view === "phases" ? (
         <div className="ad-pad ad-stack">
@@ -142,13 +147,13 @@ export default async function AdminPage({
         </div>
       ) : view === "coaches" ? (
         <div className="ad-pad">
-          <CoachesPanel ownerId={coach.id} ok={params.coachOk} error={params.coachError} />
+          <CoachesPanel ownerId={coach.id} ok={params.coachOk} error={params.coachError} chat={chat} />
         </div>
       ) : view === "calendar" ? (
         <div className="ad-pad">
           <CalendarPanel coachId={coach.id} month={params.month} day={params.day} />
         </div>
-      ) : !client || !overview ? (
+      ) : !client || !overview || !thread ? (
         <div className="ad-pad">
           <p className="ad-empty">
             {clients.length === 0
@@ -165,6 +170,8 @@ export default async function AdminPage({
           initialTab={params.tab}
           loginOk={params.loginOk}
           loginError={params.loginError}
+          chat={chat}
+          thread={thread}
         />
       )}
     </AdminShell>
@@ -179,6 +186,8 @@ function ClientDashboard({
   initialTab,
   loginOk,
   loginError,
+  chat,
+  thread,
 }: {
   clientId: number;
   name: string;
@@ -187,6 +196,8 @@ function ClientDashboard({
   initialTab?: string;
   loginOk?: string;
   loginError?: string;
+  chat: ChatCoachView;
+  thread: ChatThread;
 }) {
   // The core loop, nothing else: say who this client is, build their
   // training, set their nutrition, and define what they log daily and
@@ -194,7 +205,7 @@ function ClientDashboard({
   // Three tabs, per the workstation design. Start Page became the right-hand
   // panel, and Daily/Weekly Tracker collapsed into Measurements — a metric's
   // rhythm is a property of the metric, not a reason for its own screen.
-  const home = getClientHome(clientId);
+  const home = getClientHome(clientId, chat);
   const dot = (tab: string) => home.unseenTabs.includes(tab);
   const sections: TabSection[] = [
     {
@@ -230,18 +241,19 @@ function ClientDashboard({
           clientName={name}
           phaseParam={initialTab === "training" ? phaseParam : undefined}
           weekLinkBase={`/admin?client=${clientId}&tab=training`}
+          chat={chat}
         />
       ),
     },
     // `?phase=` is only ever the tab-in-the-address's phase: each tab keeps its
     // own ids (Training: programmes; the others: phases), so another tab's id
     // would open the wrong one. Without it a tab opens on its live phase.
-    { id: "nutrition", label: "Nutrition", dot: dot("nutrition"), content: <NutritionPanel clientId={clientId} phaseParam={initialTab === "nutrition" ? phaseParam : undefined} /> },
+    { id: "nutrition", label: "Nutrition", dot: dot("nutrition"), content: <NutritionPanel clientId={clientId} phaseParam={initialTab === "nutrition" ? phaseParam : undefined} chat={thread} /> },
     { id: "measurements", label: "Lifestyle", dot: dot("measurements"), content: <MeasurementsPanel clientId={clientId} phaseParam={initialTab === "measurements" ? phaseParam : undefined} /> },
     { id: "meetings", label: "Meetings", content: <MeetingsPanel clientId={clientId} /> },
     { id: "photos", label: "Shape update", dot: dot("photos"), content: <ProgressPicturesPanel clientId={clientId} /> },
     // Messages is always the last tab. New sections go before it.
-    { id: "messages", label: "Messages", content: <MessagesPanel clientId={clientId} /> },
+    { id: "messages", label: "Messages", content: <MessagesPanel clientId={clientId} chat={thread} /> },
   ];
 
 

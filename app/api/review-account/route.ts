@@ -40,7 +40,7 @@ export async function GET() {
     return new NextResponse(`${CLIENT_EMAIL} is already someone else's login; nothing was changed.`, { status: 409 });
   }
 
-  const clientId = buildDemoClient(coach.id, CLIENT_NAME);
+  const clientId = await buildDemoClient(coach.id, CLIENT_NAME);
   const password = readablePassword();
   createUser(CLIENT_EMAIL, password, "client", clientId, false);
 
