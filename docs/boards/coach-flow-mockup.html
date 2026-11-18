@@ -60,6 +60,11 @@
   .cap2 { display:grid; grid-template-columns:1fr 1fr; height:36px; padding:3px; border-radius:999px; background:#fff; box-shadow:inset 0 0 0 1px var(--btnline); font-size:13px; font-weight:600; }
   .cap2 span { display:grid; place-items:center; border-radius:999px; } .cap2 .on { background:var(--ink); color:#fff; }
   .price { margin-top:20px; font-size:40px; font-weight:300; letter-spacing:-.02em; font-variant-numeric:tabular-nums; } .price span { font-size:15px; font-weight:500; color:var(--faint); letter-spacing:0; }
+  .fld.date .cal { position:absolute; right:11px; width:16px; height:16px; color:var(--sec); }
+  .fld .rest { color:var(--label); }
+  .who { display:flex; align-items:center; gap:14px; margin-top:4px; }
+  .who .face { display:grid; place-items:center; width:56px; height:56px; border-radius:50%; background:#d9cfbf; font-size:22px; font-weight:600; color:#3a3328; }
+  .who b { display:block; font-size:16px; font-weight:600; } .who small { display:block; margin-top:3px; font-size:12.5px; color:var(--faint); }
   .codecard { display:flex; align-items:center; justify-content:space-between; height:56px; padding:0 14px 0 18px; border-radius:14px; background:#fff; box-shadow:inset 0 0 0 1px var(--line); }
   .codecard b { font-size:22px; font-weight:600; letter-spacing:.16em; }
   .act { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600; color:var(--ink); } .act svg { width:15px; height:15px; }
@@ -86,9 +91,9 @@
   #cproto .proto-steps { position:absolute; left:34px; right:34px; top:50%; transform:translateY(-50%); margin:0; opacity:0; translate:0 10px; }
   #cproto.past .proto-pitch, #cproto.past .proto-top { opacity:0; translate:0 -10px; }
   #cproto.past .proto-steps { opacity:1; translate:0 0; }
-  #cproto .ready .codecard, #cproto .ready .linkrow, #cproto .ready .lbl, #cproto .ready .ink { opacity:0; translate:0 10px; transition:opacity .42s var(--ease), translate .52s var(--ease); }
-  #cproto .ready.in .codecard, #cproto .ready.in .linkrow, #cproto .ready.in .lbl, #cproto .ready.in .ink { opacity:1; translate:0 0; }
-  #cproto .ready.in .lbl { transition-delay:.15s; } #cproto .ready.in .codecard { transition-delay:.28s; } #cproto .ready.in .linkrow { transition-delay:.42s; } #cproto .ready.in .ink { transition-delay:.6s; }
+  #cproto .ready .who, #cproto .ready .ink { opacity:0; translate:0 10px; transition:opacity .42s var(--ease), translate .52s var(--ease); }
+  #cproto .ready.in .who, #cproto .ready.in .ink { opacity:1; translate:0 0; }
+  #cproto .ready.in .who { transition-delay:.18s; } #cproto .ready.in .ink { transition-delay:.42s; }
   #cproto .ink .dots { display:none; gap:4px; } #cproto .ink.sending .dots { display:inline-flex; } #cproto .ink.sending .w { display:none; }
   #cproto .dots i { width:5px; height:5px; border-radius:50%; background:#fff; animation:dot 1s var(--ease) infinite; } #cproto .dots i:nth-child(2) { animation-delay:.15s; } #cproto .dots i:nth-child(3) { animation-delay:.3s; }
   @keyframes dot { 0%,80%,100% { opacity:.25; } 40% { opacity:1; } }
@@ -116,7 +121,9 @@
   <h1>Coach sign-up in the browser</h1>
   <ul>
     <li><b>One flow, one look:</b> every step in the sign-up's dark-and-paper frame, today's white plan card and the old welcome steps folded in. Each thing asked once (the name and business were asked twice).</li>
-    <li><b>Order:</b> Account → Confirm email → About you (photo, first and last name, what you coach) → Your business (business name, country, time zone) → You&rsquo;re set, with their code to share.</li>
+    <li><b>Order:</b> Account → Confirm email → About you (photo, first and last name, date of birth, what you coach) → Your business (business name, country) → You&rsquo;re set: their picture, name and business, then Open Norcoach.</li>
+    <li><b>The code</b> clients join with is in Settings, Profile, Your code, not here (18 Nov, Alex).</li>
+    <li><b>The time zone</b> is set by itself from the computer, never asked (18 Nov, Alex: "it should be"); changed in Settings, Preferences.</li>
     <li><b>No plan step:</b> the first coaches are free (18 Nov, Alex: no plans settled yet). When plans are, a plan step can go in before You&rsquo;re set.</li>
     <li><b>On a laptop</b> the dark side lists the steps once they&rsquo;re past the first: done ticked green, the one on screen white. On a phone, the step&rsquo;s name in the dark head as now.</li>
     <li><b>Left for Settings later:</b> address, invoicing, payouts, the public profile.</li>
@@ -150,35 +157,32 @@
   <div class="paper"><div class="form"><h3 class="t">About you</h3>
   <div class="photo"><span class="avatar"><svg class="icon" viewBox="0 0 24 24"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="13" r="3.4"/></svg></span><span class="word">Add a photo</span></div>
   <div class="two"><div><div class="lbl">First name</div><div class="fld">Finlay</div></div><div><div class="lbl">Last name</div><div class="fld">Chedd</div></div></div>
-  <div class="lbl">What you coach</div><div class="fld on">Online strength coach<i class="caret"></i></div>
+  <div class="lbl">Date of birth</div><div class="fld on date">14 / 03 / 19<i class="caret"></i><span class="rest">YY</span><svg class="icon cal" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2.5"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></svg></div>
+  <div class="lbl">What you coach</div><div class="fld">Online strength coach</div>
   <div class="ink">Continue</div></div><div class="legal">Privacy policy<i class="bar"></i>Support</div></div>
-</div></div><figcaption class="cap">3 · About you: the photo clients see, the name in two, what you coach</figcaption></figure>
+</div></div><figcaption class="cap">3 · About you: the photo clients see, the name in two, the date of birth (typed or picked), what you coach</figcaption></figure>
     <figure><div class="laptop"><div class="lp">
   <div class="band"><svg class="ghost" aria-hidden="true"><use href="#nc-mark"/></svg><div class="logo"><svg class="m"><use href="#nc-mark"/></svg><svg class="w"><use href="#nc-word"/></svg></div><ol class="steps"><li class="done"><i><svg viewBox="0 0 24 24" fill="none"><path d="m5 12.5 4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></i><span>Account</span></li><li class="done"><i><svg viewBox="0 0 24 24" fill="none"><path d="m5 12.5 4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></i><span>About you</span></li><li class="now"><i></i><span>Your business</span></li></ol></div>
   <div class="paper"><div class="form"><h3 class="t">Your business</h3>
   <div class="lbl">Business name</div><div class="fld">Full Potential Coaching</div>
   <div class="lbl">Country</div><div class="fld pick">Netherlands<svg class="icon chev" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></svg></div>
   <p class="fact">Prices in EUR<i class="bar"></i>21% VAT</p>
-  <div class="lbl">Time zone</div><div class="row"><span>Amsterdam<i class="bar"></i>GMT+1</span><b>Change</b></div>
   <div class="ink">Continue</div></div><div class="legal">Privacy policy<i class="bar"></i>Support</div></div>
-</div></div><figcaption class="cap">4 · Your business: the country sets the currency and tax, the time zone comes from the computer</figcaption></figure>
+</div></div><figcaption class="cap">4 · Your business: the country sets the currency and tax</figcaption></figure>
     <figure><div class="laptop"><div class="lp">
   <div class="band"><svg class="ghost" aria-hidden="true"><use href="#nc-mark"/></svg><div class="logo"><svg class="m"><use href="#nc-mark"/></svg><svg class="w"><use href="#nc-word"/></svg></div><ol class="steps"><li class="done"><i><svg viewBox="0 0 24 24" fill="none"><path d="m5 12.5 4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></i><span>Account</span></li><li class="done"><i><svg viewBox="0 0 24 24" fill="none"><path d="m5 12.5 4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></i><span>About you</span></li><li class="done"><i><svg viewBox="0 0 24 24" fill="none"><path d="m5 12.5 4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></i><span>Your business</span></li></ol></div>
   <div class="paper"><div class="form"><h3 class="t">You&rsquo;re set, Finlay</h3>
-  <div class="lbl">Your code</div>
-  <div class="codecard"><b>FINLAY</b><span class="act"><svg class="icon" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Copy</span></div>
-  <div class="linkrow"><span>app.norcoachapp.com/join/finlay</span><span class="act"><svg class="icon" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Copy</span></div>
+  <div class="who"><span class="face">F</span><span><b>Finlay Chedd</b><small>Full Potential Coaching<i class="bar"></i>Online strength coach</small></span></div>
   <div class="ink">Open Norcoach</div></div><div class="legal">Privacy policy<i class="bar"></i>Support</div></div>
-</div></div><figcaption class="cap">5 · You're set: their code and link to share, then into Norcoach</figcaption></figure>
+</div></div><figcaption class="cap">5 · You're set: who they are, then into Norcoach</figcaption></figure>
     <figure><div class="phone"><div class="sb white"><span>9:41</span><span class="sys"><svg width="16" height="10" viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg><svg width="22" height="11" viewBox="0 0 27 13"><rect x=".5" y=".5" width="23" height="12" rx="3.5" fill="none" stroke="currentColor" opacity=".4"/><rect x="2.5" y="2.5" width="16" height="8" rx="2"/></svg></span></div><div class="ph"><svg class="ghost" aria-hidden="true"><use href="#nc-mark"/></svg><div class="logo"><svg class="m"><use href="#nc-mark"/></svg><svg class="w"><use href="#nc-word"/></svg></div><h3 class="h">About you</h3><div class="sheet">
   <div class="photo"><span class="avatar"><svg class="icon" viewBox="0 0 24 24"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="13" r="3.4"/></svg></span><span class="word">Add a photo</span></div>
   <div class="two"><div><div class="lbl">First name</div><div class="fld">Finlay</div></div><div><div class="lbl">Last name</div><div class="fld">Chedd</div></div></div>
-  <div class="lbl">What you coach</div><div class="fld on">Online strength coach<i class="caret"></i></div>
+  <div class="lbl">Date of birth</div><div class="fld on date">14 / 03 / 19<i class="caret"></i><span class="rest">YY</span><svg class="icon cal" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2.5"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></svg></div>
+  <div class="lbl">What you coach</div><div class="fld">Online strength coach</div>
   <div class="ink">Continue</div></div></div></div><figcaption class="cap">The phone: About you</figcaption></figure>
     <figure><div class="phone"><div class="sb white"><span>9:41</span><span class="sys"><svg width="16" height="10" viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg><svg width="22" height="11" viewBox="0 0 27 13"><rect x=".5" y=".5" width="23" height="12" rx="3.5" fill="none" stroke="currentColor" opacity=".4"/><rect x="2.5" y="2.5" width="16" height="8" rx="2"/></svg></span></div><div class="ph"><svg class="ghost" aria-hidden="true"><use href="#nc-mark"/></svg><div class="logo"><svg class="m"><use href="#nc-mark"/></svg><svg class="w"><use href="#nc-word"/></svg></div><h3 class="h">You&rsquo;re set, Finlay</h3><div class="sheet">
-  <div class="lbl">Your code</div>
-  <div class="codecard"><b>FINLAY</b><span class="act"><svg class="icon" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Copy</span></div>
-  <div class="linkrow"><span>app.norcoachapp.com/join/finlay</span><span class="act"><svg class="icon" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Copy</span></div>
+  <div class="who"><span class="face">F</span><span><b>Finlay Chedd</b><small>Full Potential Coaching<i class="bar"></i>Online strength coach</small></span></div>
   <div class="ink">Open Norcoach</div></div></div></div><figcaption class="cap">The phone: You're set</figcaption></figure>
   </div>
 </section>
@@ -206,16 +210,14 @@
   <p class="note"><b>Send a new code</b></p></div><div class="pg next" data-i="2"><h3 class="t">About you</h3>
   <div class="photo"><span class="avatar"><svg class="icon" viewBox="0 0 24 24"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="13" r="3.4"/></svg></span><span class="word">Add a photo</span></div>
   <div class="two"><div><div class="lbl">First name</div><div class="fld">Finlay</div></div><div><div class="lbl">Last name</div><div class="fld">Chedd</div></div></div>
-  <div class="lbl">What you coach</div><div class="fld on">Online strength coach<i class="caret"></i></div>
+  <div class="lbl">Date of birth</div><div class="fld on date">14 / 03 / 19<i class="caret"></i><span class="rest">YY</span><svg class="icon cal" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2.5"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></svg></div>
+  <div class="lbl">What you coach</div><div class="fld">Online strength coach</div>
   <div class="ink tap" data-go="3">Continue</div></div><div class="pg next" data-i="3"><h3 class="t">Your business</h3>
   <div class="lbl">Business name</div><div class="fld">Full Potential Coaching</div>
   <div class="lbl">Country</div><div class="fld pick">Netherlands<svg class="icon chev" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></svg></div>
   <p class="fact">Prices in EUR<i class="bar"></i>21% VAT</p>
-  <div class="lbl">Time zone</div><div class="row"><span>Amsterdam<i class="bar"></i>GMT+1</span><b>Change</b></div>
   <div class="ink tap" data-go="4">Continue</div></div><div class="pg next ready" data-i="4"><h3 class="t">You&rsquo;re set, Finlay</h3>
-  <div class="lbl">Your code</div>
-  <div class="codecard"><b>FINLAY</b><span class="act"><svg class="icon" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Copy</span></div>
-  <div class="linkrow"><span>app.norcoachapp.com/join/finlay</span><span class="act"><svg class="icon" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Copy</span></div>
+  <div class="who"><span class="face">F</span><span><b>Finlay Chedd</b><small>Full Potential Coaching<i class="bar"></i>Online strength coach</small></span></div>
   <div class="ink tap" data-go="5">Open Norcoach</div></div></div>
     <div class="legal">Privacy policy<i class="bar"></i>Support</div></div>
 </div>
@@ -225,7 +227,7 @@
       <ol>
         <li><b>After the first step</b> the pitch on the dark side fades up and away and the list of steps comes in; each step done ticks green with a small pop.</li>
         <li><b>Between steps</b> the form slides out to the left as the next slides in, the dark side still.</li>
-        <li><b>You&rsquo;re set</b>: the code, the link and Open Norcoach come in one after another.</li>
+        <li><b>You&rsquo;re set</b>: their picture, name and business, then Open Norcoach, one after the other.</li>
         <li><b>Open Norcoach</b>: the paper covers everything, the star, then the word from behind it, the admin&rsquo;s opening.</li>
       </ol>
       <div class="proto-ctl"><button class="ink" id="cp-play">Play</button><button id="cp-reset">Start again</button></div>
