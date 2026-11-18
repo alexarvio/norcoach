@@ -267,7 +267,9 @@ export default function HomeDraft({
         </div>
         <div className="trn-head-actions">
           {/* White pills with an icon, as every tab's own actions (design rules 9b). */}
-          <AppAccessButton key={clientId} clientId={clientId} firstName={firstName} initial={home.access} due={!!dueUnlock} />
+          {/* App access is the old sign-in's (temporary passwords, unlocking). With the sign-in through Clerk a client makes
+              their own account or takes the invite, so it isn't drawn (18 Nov, Alex: "take out app access"). */}
+          {!home.access?.codes && <AppAccessButton key={clientId} clientId={clientId} firstName={firstName} initial={home.access} due={!!dueUnlock} />}
           <button type="button" className="trn-pill" onClick={() => setDetails(true)}>
             <AccountIcon /> Details
           </button>
