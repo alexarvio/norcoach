@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nutrition picture: options</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600&display=swap">
+<!--
+  18 Nov 2026, Alex: the food photo behind Nutrition has no source on record ("Yes, show options"). Free pictures from
+  Unsplash (the Unsplash licence, not Unsplash+), each drawn as the Nutrition banner and as the Home phase card.
+  Shown straight from Unsplash; the one picked is saved to public/img with its source beside it in phaseCovers.ts.
+-->
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Archivo,system-ui,sans-serif;font-weight:500;background:#F5F6F8;color:#141a24;padding:32px 28px 60px;-webkit-font-smoothing:antialiased}
+h1{font-size:22px;font-weight:600;letter-spacing:-.01em}
+.lead{margin-top:6px;font-size:14px;color:#5b6474;max-width:60em}
+.grid{margin-top:28px;display:grid;grid-template-columns:repeat(auto-fill,minmax(560px,1fr));gap:28px 24px}
+.opt{display:grid;grid-template-columns:auto 1fr;gap:10px 14px;align-items:start}
+.opt h2{grid-column:1/-1;display:flex;align-items:baseline;gap:10px;font-size:15px;font-weight:600}
+.opt h2 b{font-size:26px;font-weight:300;font-variant-numeric:tabular-nums}
+.opt h2 a{margin-left:auto;font-size:12px;font-weight:500;color:#8b93a1;text-decoration:none}
+.banner{position:relative;width:390px;height:231px;border-radius:18px 18px 0 0;overflow:hidden;background:#222;color:#fff}
+.banner img,.card img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.banner::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,12,20,.6) 0%,rgba(8,12,20,.35) 45%,rgba(8,12,20,.8) 100%)}
+.banner>div{position:absolute;inset:0;z-index:1}
+.eye{position:absolute;left:22px;top:54px;font-size:10.5px;font-weight:600;letter-spacing:.18em;color:rgba(255,255,255,.78)}
+.ttl{position:absolute;left:22px;top:72px;font-size:26px;font-weight:600;letter-spacing:-.02em}
+.day{position:absolute;left:22px;top:108px;font-size:13px;color:rgba(255,255,255,.88)}
+.week{position:absolute;left:22px;right:22px;top:140px;display:flex;justify-content:space-between;font-size:12px;font-variant-numeric:tabular-nums;color:rgba(255,255,255,.85)}
+.week span{display:grid;place-items:center;width:28px;height:28px;border-radius:50%}
+.week .on{background:#fff;color:#141a24;font-weight:600}
+.tabs{position:absolute;left:22px;right:22px;bottom:0;height:30px;display:flex;justify-content:center;gap:36px;border-bottom:1px solid rgba(255,255,255,.22);font-size:11px;font-weight:600;letter-spacing:.14em;color:rgba(255,255,255,.6)}
+.tabs span{position:relative;height:30px}
+.tabs .on{color:#fff}
+.tabs .on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:#fff}
+.card{position:relative;width:150px;height:167px;border-radius:14px;overflow:hidden;background:#15171c;color:#fff}
+.card::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,12,16,.5) 0%,rgba(10,12,16,.12) 34%,rgba(10,12,16,.3) 60%,rgba(10,12,16,.72) 100%)}
+.card i{position:absolute;z-index:1;left:6px;top:6px;padding:3px 7px;border-radius:999px;background:rgba(40,42,48,.55);box-shadow:inset 0 0 0 1px rgba(255,255,255,.28);font-style:normal;font-size:6.5px;font-weight:600;letter-spacing:.16em}
+.card p{position:absolute;z-index:1;left:5px;right:5px;bottom:5px;height:62px;padding:9px 8px;border-radius:10px;background:rgba(92,98,112,.5);box-shadow:inset 0 0 0 1px rgba(255,255,255,.22);backdrop-filter:blur(8px);font-size:10px;font-weight:600}
+.card p small{display:block;margin-top:18px;font-size:6px;letter-spacing:.14em;color:rgba(255,255,255,.8)}
+</style>
+</head>
+<body>
+<h1>Nutrition picture</h1>
+<p class="lead">Free to use (Unsplash). Each is shown as the Nutrition screen’s banner and, small, as the phase card on Home.</p>
+<div class="grid" id="grid"></div>
+<script>
+// [photo id, Unsplash page slug, what it is, where the picture sits in the banner]
+var OPTIONS = [
+  ["photo-1606791422814-b32c705e3e2f", "cooked-food-on-black-frying-pan-gUU4MF87Ipw", "Pan", "center"],
+  ["photo-1765751077345-4dbeb15244c4", "a-delicious-bowl-of-food-with-meat-and-vegetables-uj9c3fZH9_U", "Bowl", "center"],
+  ["photo-1614886332795-6ef15400ee2d", "", "Ceramic bowl", "center"],
+  ["photo-1669144457338-e72d55e373c7", "a-bowl-of-fruit-LeWYqsyCPK0", "Fruit bowl", "center"],
+  ["photo-1645914589022-3917b99b9a69", "a-black-plate-topped-with-three-figs-and-a-leaf-nMk4TmVfA2k", "Figs", "center"],
+  ["photo-1494859802809-d069c3b71a8a", "vegetable-dish-in-white-ceramic-bowl-Ww8eQWjMJWk", "White bowl", "center"],
+  ["photo-1665580756360-cc605f696f66", "", "Board", "center"]
+];
+var grid = document.getElementById("grid");
+OPTIONS.forEach(function (o, i) {
+  var src = "https://images.unsplash.com/" + o[0] + "?w=900&q=75&auto=format&fit=crop";
+  var el = document.createElement("section");
+  el.className = "opt";
+  el.innerHTML =
+    "<h2><b>" + (i + 1) + "</b>" + o[2] + (o[1] ? '<a href="https://unsplash.com/photos/' + o[1] + '">Unsplash</a>' : "") + "</h2>" +
+    '<div class="banner"><img src="' + src + '" style="object-position:' + o[3] + '" alt=""><div><p class="eye">NUTRITION</p><p class="ttl">Lean bulk</p><p class="day">Thursday 19 November</p>' +
+    '<div class="week"><span>16</span><span>17</span><span>18</span><span class="on">19</span><span>20</span><span>21</span><span>22</span></div>' +
+    '<div class="tabs"><span class="on">TRAINING DAY</span><span>REST DAY</span></div></div></div>' +
+    '<div class="card"><img src="' + src + '" style="object-position:' + o[3] + '" alt=""><i>NUTRITION</i><p>Lean bulk<small>WEEK 4 OF 12</small></p></div>';
+  grid.appendChild(el);
+});
+</script>
+</body>
+</html>
