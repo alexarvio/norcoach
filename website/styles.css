@@ -1393,3 +1393,17 @@ h1, h2, h3 { font-weight: 600; }
   .top-links a { white-space: nowrap; }
   .top-links .btn { padding: 0 16px; }
 }
+
+/* ---- Our story (18 Nov, Alex: back, Alex and Finlay; as before the three-pillars cut) ------------------------------ */
+.story { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 56px; align-items: start; }
+.duo { display: flex; }
+.duo .face { width: 96px; height: 96px; font-size: 32px; box-shadow: 0 0 0 5px var(--paper); }
+.duo .face + .face { margin-left: -22px; background: #cfd5de; }
+.letter p { font-size: 20px; line-height: 1.6; color: var(--body); }
+.letter p + p { margin-top: 18px; }
+.letter .sig { margin-top: 22px; font-size: 14px; font-weight: 600; color: var(--ink); }
+.letter .sig span { color: var(--muted); font-weight: 500; }
+@media (max-width: 1040px) {
+  .story { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .letter p { font-size: 18px; }
+}

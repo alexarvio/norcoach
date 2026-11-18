@@ -61,7 +61,25 @@ function toCanonical(request: NextRequest): NextResponse | null {
   return NextResponse.redirect(`https://${CANONICAL}${request.nextUrl.pathname}${request.nextUrl.search}`, 308);
 }
 
+// The website on the bare domain (18 Nov, Alex: "connect it to the url already, just we set a username and password"):
+// once SITE_USER and SITE_PASSWORD are set on the server, norcoachapp.com (and www) shows website/ through
+// app/site/[[...path]]/route.ts, which asks for them; /api stays the app's. Until then the bare domain goes to the app.
+const SITE_ON = !!process.env.SITE_USER?.trim() && !!process.env.SITE_PASSWORD?.trim();
+function toSite(request: NextRequest): NextResponse | null {
+  if (!CANONICAL || !SITE_ON) return null;
+  const parent = CANONICAL.split(".").length > 2 ? CANONICAL.slice(CANONICAL.indexOf(".") + 1) : null;
+  const host = (request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "").split(":")[0].toLowerCase();
+  if (!parent || (host !== parent && host !== `www.${parent}`)) return null;
+  const { pathname } = request.nextUrl;
+  if (pathname.startsWith("/api/")) return null;
+  const url = request.nextUrl.clone();
+  url.pathname = `/site${pathname === "/" ? "" : pathname}`;
+  return NextResponse.rewrite(url);
+}
+
 export function proxy(request: NextRequest, event: NextFetchEvent) {
+  const site = toSite(request);
+  if (site) return site;
   const moved = toCanonical(request);
   if (moved) return moved;
   if (withClerk) return withClerk(request, event);
