@@ -38,3 +38,13 @@
 /* ---- Add coach and Reset password: the .dlh card (portaled, so never under .rd); the form keeps its column. */
 .rco-dlg .rco-form { display: flex; flex-direction: column; gap: 10px; }
 .rco-dlg .rco-field { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+
+/* Finding a coach (18 Nov, Alex): the search pill beside Accounts (the shared .rd-search), the coach's face before their
+   name (24px; white with the hairline and their initial in ink when there is no picture), the name a link to their
+   profile, their business and Norcode grey after it. */
+.rd.rco .rco-search { width: 280px; max-width: 100%; }
+.rd.rls.rco .rls-name { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.rd.rco .rco-face { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; overflow: hidden; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #e1e5eb; font-size: 11px; font-weight: 600; line-height: 1; color: #141a24; }
+.rd.rco .rco-face img { width: 100%; height: 100%; object-fit: cover; }
+.rd.rco .rco-name { flex: none; max-width: 46%; min-width: 0; overflow: hidden; color: inherit; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.rd.rls.rco .rls-name .rco-name b { max-width: none; }
