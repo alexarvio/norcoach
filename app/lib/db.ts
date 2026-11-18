@@ -1378,7 +1378,7 @@ export type CoachPayments = { stripe_account_id?: string; stripe_status?: "pendi
     price in the coach's currency (VAT as Invoicing says) and how often it bills. Never deleted while a client is on it:
     archived, the clients on it staying and billed, out of the picker. */
 export type CoachPlan = { id: string; name: string; price?: number | null; every?: InvoiceEvery | null; archived?: boolean; created_at: string };
-export type CoachSettings = { /** The plans the coach offers (coachPlans.ts). */ plans?: CoachPlan[]; business?: CoachBusiness; invoicing?: CoachInvoicing; payments?: CoachPayments; /** The coach's own time zone (IANA): new meetings start in it. Set at onboarding. */ timezone?: string; /** The coach's own contact details (Your profile, Your details): not the business on invoices. */ contact?: CoachContact; /** What reaches the coach's phone (Settings, Notifications, 27 Oct): each kind on unless false; quiet hours hold them. */ notify?: CoachNotify; /** Weights shown in, by default (Settings, Preferences, 27 Oct). */ units?: "kg" | "lbs"; /** The coach's logo (Settings, Business details, 28 Oct; lib/brandMark.ts): `logo` the upload as a PNG, `mark` its one-colour silhouette drawn faint behind every screen in place of the star. */ brand?: { logo?: string; mark?: string }; /** What the coach pays Norcoach (28 Oct, Alex; lib/billing.ts). */ billing?: CoachBilling };
+export type CoachSettings = { /** The plans the coach offers (coachPlans.ts). */ plans?: CoachPlan[]; business?: CoachBusiness; invoicing?: CoachInvoicing; payments?: CoachPayments; /** The coach's own time zone (IANA): new meetings start in it. Set at onboarding. */ timezone?: string; /** The coach's own contact details (Your profile, Your details): not the business on invoices. */ contact?: CoachContact; /** What reaches the coach's phone (Settings, Notifications, 27 Oct): each kind on unless false; quiet hours hold them. */ notify?: CoachNotify; /** Weights shown in, by default (Settings, Preferences, 27 Oct). */ units?: "kg" | "lbs"; /** The coach's logo (Settings, Business details, 28 Oct; lib/brandMark.ts): `logo` the upload as a PNG, `mark` its one-colour silhouette drawn faint behind every screen in place of the star. */ brand?: { logo?: string; mark?: string }; /** What the coach pays Norcoach (28 Oct, Alex; lib/billing.ts). */ billing?: CoachBilling; /** The code a client types to ask to join them (18 Nov, Alex; lib/joinRequests.ts): letters and digits, upper case, unique across coaches. */ join_code?: string };
 /** The coach's Norcoach subscription, as Stripe last told it (lib/billing.ts). `required` is set when the owner lets a
  *  coach in, or by the owner on Coaches; without it the coach uses Norcoach free (the owner, the coaches from before). */
 export type CoachBilling = {
@@ -1401,6 +1401,24 @@ export type CoachBilling = {
 export type CoachNotify = { chat?: boolean; video?: boolean; quiet?: boolean; quietFrom?: string; quietTo?: string };
 /** A coach's phone and address, as on any account profile. Every field optional. */
 export type CoachContact = { phone_code?: string; phone?: string; address?: string; postcode?: string; city?: string; country_code?: string };
+
+/** A client asking to join a coach by their code (18 Nov, Alex): who they are, as they gave it, until the coach says yes
+ *  or no. Kept by their Clerk account, as they have no account of ours until Accept makes them the coach's client. */
+export type JoinRequest = {
+  id: number;
+  coach_id: number;
+  clerk_user_id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  /** YYYY-MM-DD. */
+  birthdate: string;
+  status: "open" | "accepted" | "declined" | "withdrawn";
+  created_at: string;
+  settled_at?: string;
+  /** The client Accept made. */
+  client_id?: number;
+};
 
 export type Data = {
   users: User[];
@@ -1485,6 +1503,9 @@ export type Data = {
   client_departures?: { id: number; coach_id: number | null; client_id: number; name: string; start: string | null; at: string; by: "coach" | "client" }[];
   // The coaches' threads with the company (23 Oct, lib/support.ts). Not a Postgres table of its own: kept in `kv`.
   support_messages?: SupportMessage[];
+  // A client asking to join a coach by their code (18 Nov, Alex; lib/joinRequests.ts), before they are a client. Not a
+  // Postgres table of its own: kept in `kv`.
+  join_requests?: JoinRequest[];
   // Saves already taken, by their one-time key (6 Nov, lib/once.ts): a save sent again after the signal dropped answers
   // as the first did instead of adding twice. Kept a day. A Postgres table of its own since 18 Nov (pg/onceKeys.ts),
   // with a copy in `kv` for a rollback.

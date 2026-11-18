@@ -1,4 +1,5 @@
 import { GYM_COLORS, isGymColor } from "../../lib/gymColors";
+import { openJoinRequestsFor } from "../../lib/joinRequests";
 import { setsDue } from "../../lib/setsDue";
 import { billingAccess, billingOn, type BillingAccess } from "../../lib/billing";
 import { chatRev } from "../../lib/chatBus";
@@ -683,7 +684,7 @@ export function loadPhaseNeeds(coachId: number): NeedRow[] {
   }
   return rows;
 }
-export type RailData = { clients: RailClient[]; coach: { name: string; photoPath: string | null; /** Weights shown in by default (Settings, Preferences, 27 Oct). */ units: "kg" | "lbs"; /** Settings, Business details: the one line under the logo, empty when none is set (16 Nov, the audit). */ business: string }; isOwner: boolean; inviteReady: boolean; /** Sign-in through Clerk: New client sends an invite link, no password. */ clerk: boolean; /** Support lines not read: the company's to a coach (the Support row), every coach's to the owner (Coaches). */ supportUnread: number; /** What the coach pays Norcoach (28 Oct; lib/billing.ts): a failed payment or read-only says so in the rail. */ billing: BillingAccess; /** Subscriptions set up on the server: the Billing row shows. */ billingOn: boolean };
+export type RailData = { clients: RailClient[]; coach: { name: string; photoPath: string | null; /** Weights shown in by default (Settings, Preferences, 27 Oct). */ units: "kg" | "lbs"; /** Settings, Business details: the one line under the logo, empty when none is set (16 Nov, the audit). */ business: string }; isOwner: boolean; inviteReady: boolean; /** Sign-in through Clerk: New client sends an invite link, no password. */ clerk: boolean; /** Support lines not read: the company's to a coach (the Support row), every coach's to the owner (Coaches). */ supportUnread: number; /** What the coach pays Norcoach (28 Oct; lib/billing.ts): a failed payment or read-only says so in the rail. */ billing: BillingAccess; /** Subscriptions set up on the server: the Billing row shows. */ billingOn: boolean; /** Asking to join with the coach's code (18 Nov): counted on the Feed row with the rest of Needs you. */ joinRequests: number };
 
 /** The dot trail on one client's screens (dots.ts): what the rail counts for them, each placed where it is. */
 export function loadDots(clientId: number): DotTrail {
@@ -807,7 +808,7 @@ export function loadRail(coach: { id: number; email: string; role: "coach" | "cl
   return sub("coach", () => {
     const profile = getCoachProfile(coach.id);
     const owner = isOwner(coach);
-    return { clients, coach: { name: profile?.display_name?.trim() || nameFromEmail(coach.email), photoPath: profile?.avatar_path ?? null, units: getData().users.find((u) => u.id === coach.id)?.coach_settings?.units === "lbs" ? "lbs" : "kg", business: getCoachSettings(coach.id).business?.business_name?.trim() ?? "" }, isOwner: owner, inviteReady: mailConfigured(), clerk: clerkOn(), supportUnread: owner ? supportUnreadForOwner() : supportUnreadForCoach(coach.id), billing: billingAccess(coach.id, owner), billingOn: billingOn() };
+    return { clients, coach: { name: profile?.display_name?.trim() || nameFromEmail(coach.email), photoPath: profile?.avatar_path ?? null, units: getData().users.find((u) => u.id === coach.id)?.coach_settings?.units === "lbs" ? "lbs" : "kg", business: getCoachSettings(coach.id).business?.business_name?.trim() ?? "" }, isOwner: owner, inviteReady: mailConfigured(), clerk: clerkOn(), supportUnread: owner ? supportUnreadForOwner() : supportUnreadForCoach(coach.id), billing: billingAccess(coach.id, owner), billingOn: billingOn(), joinRequests: openJoinRequestsFor(coach.id).length };
   });
 }
 

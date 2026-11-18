@@ -21,6 +21,7 @@ import { listCoachPlans, planClientCounts } from "../../../lib/coachPlans";
 import { DataSettings, NotificationsSettings, PreferencesSettings } from "./MoreSettings";
 import { loadAccountSecurity } from "../../../lib/accountSecurity";
 import { passwordsOnHint } from "../../../lib/clerkPasswords";
+import { ensureJoinCode } from "../../../lib/joinRequests";
 import ProfileEditor from "../profile/ProfileEditor";
 import SettingsBoard, { type SettingsSection } from "./SettingsBoard";
 import { SepJoin } from "../Sep";
@@ -132,7 +133,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       label: profile && coachId !== coach.id ? `${profile.displayName}'s profile` : undefined,
       fact: facts.profile,
       tag: profile && <span className={`trn-state${profile.published ? " good" : ""}`}>{profile.published ? "Published" : "Not published"}</span>,
-      body: profile ? <ProfileEditor key={coachId} profile={profile} coaches={coaches} details={details} countries={countries} /> : <p className="rpf-empty">No coach profile</p>,
+      body: profile ? <ProfileEditor key={coachId} profile={profile} coaches={coaches} details={details} countries={countries} joinCode={ensureJoinCode(coachId)} /> : <p className="rpf-empty">No coach profile</p>,
     },
     { key: "account", fact: facts.account, body: <AccountSettings email={coach.email} passwordless={clerkOn()} security={security} passwordsHint={passwordsHint} /> },
     {

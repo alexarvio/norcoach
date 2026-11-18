@@ -2,10 +2,11 @@
 // the Phases screen's Needs you, and Ending soon, each split under small-caps heads with the category's icon, name and
 // count. Plain data, so the server's readers and the screens share it. The tracks run Lifestyle, Training, Nutrition.
 
-export type NeedCat = "messages" | "lifestyle" | "training" | "nutrition" | "meetings" | "account" | "plan";
+// "join": someone asking to join with the coach's code (18 Nov, Alex; lib/joinRequests.ts), first, as a new client waits on it.
+export type NeedCat = "join" | "messages" | "lifestyle" | "training" | "nutrition" | "meetings" | "account" | "plan";
 
 /** The groups' order down the page. */
-export const NEED_CATS: NeedCat[] = ["messages", "lifestyle", "training", "nutrition", "meetings", "account", "plan"];
+export const NEED_CATS: NeedCat[] = ["join", "messages", "lifestyle", "training", "nutrition", "meetings", "account", "plan"];
 
 /** A link's group by the tab it opens: a check-in or a shape update Lifestyle, a session Training, a food day Nutrition,
     a call Meetings; anything else (the chat) Messages. */

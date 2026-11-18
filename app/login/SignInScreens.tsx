@@ -42,19 +42,22 @@ export function AuthShell({ children }: { children: ReactNode }) {
  * The coach sign-up's frame (17 Nov, Alex: B of docs/boards/coach-signup-mockup.html, "I definitely like B"): the
  * website carries on. On a laptop the website's dark background (site-bg.css, shared with the site) with the logo and
  * its hero line beside the form on paper; on a phone the dark is a short head with the screen's title over the paper.
- * The title is drawn in the head on a phone and over the form on a laptop, one of the two hidden at a time.
+ * The title is drawn in the head on a phone and over the form on a laptop, one of the two hidden at a time. `pitch`:
+ * the website's coach line beside the form on a laptop (default), none on the client's screens (18 Nov).
  */
-export function SiteShell({ title, children, aside }: { title: ReactNode; children?: ReactNode; aside?: ReactNode }) {
+export function SiteShell({ title, children, aside, pitch = true, className }: { title: ReactNode; children?: ReactNode; aside?: ReactNode; pitch?: boolean; className?: string }) {
   useKeyboardReveal();
   return (
-    <div className="su-page">
+    <div className={`su-page${className ? ` ${className}` : ""}`}>
       {/* In the iPhone app the clock and battery turn white over the dark (they followed only the client app). */}
       <NativeStatusBar leaveDark />
       <div className="su-band site-bg site-bg-mark" data-clock="dark">
         <NorCoachLogo className="su-logo" />
-        <p className="su-pitch" aria-hidden="true">
-          Scale the quality <span>of your online coaching.</span>
-        </p>
+        {pitch && (
+          <p className="su-pitch" aria-hidden="true">
+            Scale the quality <span>of your online coaching.</span>
+          </p>
+        )}
         <h1 className="su-head">{title}</h1>
       </div>
       <div className="su-paper">
@@ -170,13 +173,19 @@ export function SignInScreen({
   return (
     <SiteShell
       title="Sign in"
-      // Not inside the phone app (13 Nov): it is the clients' way in; coaches sign up on the website.
+      // A client makes their account and joins their coach by code (18 Nov, Alex); a coach signs up on the website, never
+      // inside the phone app (13 Nov: it is the clients' way in, and coaches pay outside the App Store).
       aside={
-        inApp ? undefined : (
-          <>
-            Coaching others? <a href={signupHref}>Create a coach account</a>
-          </>
-        )
+        <>
+          <span className="su-aside-line">
+            New here? <a href="/join">Create an account</a>
+          </span>
+          {!inApp && (
+            <span className="su-aside-line">
+              Coaching others? <a href={signupHref}>Create a coach account</a>
+            </span>
+          )}
+        </>
       }
     >
       {notice && <p className="auth-ok">{notice}</p>}
@@ -388,11 +397,11 @@ export function ResetPasswordScreen({ email, onSubmit, onResend, onBack, busy, e
 
 /** A coach making their own account (17 Nov, Alex: B of docs/boards/coach-signup-mockup.html): Apple, Google, or an
  *  email and a password, the email then confirmed by a code. Who they are comes next (CoachDetailsScreen). */
-export function CoachSignUpScreen({ onEmail, onApple, onGoogle, busy, error, askPassword = true }: Oauth & Busy & { onEmail?: (email: string, password: string) => void; askPassword?: boolean }) {
+export function CoachSignUpScreen({ onEmail, onApple, onGoogle, busy, error, askPassword = true, client = false }: Oauth & Busy & { onEmail?: (email: string, password: string) => void; askPassword?: boolean; /** The client's own sign-up (18 Nov, Alex): `Create your account`, no coach pitch. */ client?: boolean }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   return (
-    <SiteShell title="Create your coach account" aside={<SignInLink />}>
+    <SiteShell title={client ? "Create your account" : "Create your coach account"} aside={<SignInLink />} pitch={!client}>
       <ErrorLine error={error} />
       <Providers onApple={onApple} onGoogle={onGoogle} busy={busy} />
       <Or />
@@ -431,6 +440,8 @@ export function CoachSignUpScreen({ onEmail, onApple, onGoogle, busy, error, ask
  * (finishCoachSignUpAction), which makes the account that waits for approval.
  */
 export function CoachDetailsScreen({ action, name, email, error }: { action?: (formData: FormData) => void | Promise<void>; name: string; email: string; error?: string | null }) {
+  const [first, ...rest] = name.trim().split(/\s+/);
+  const last = rest.join(" ");
   return (
     <SiteShell title="About you">
       <p className="auth-note auth-note-top">
@@ -438,13 +449,19 @@ export function CoachDetailsScreen({ action, name, email, error }: { action?: (f
       </p>
       <ErrorLine error={error} />
       <form className="auth-form" action={action}>
-        <label className="auth-field">
-          <span>Your name</span>
-          <input name="name" autoComplete="name" placeholder="Finlay Chedd" defaultValue={name} required maxLength={80} autoFocus={!name} />
-        </label>
+        <div className="au-two">
+          <label className="auth-field">
+            <span>First name</span>
+            <input name="first" autoComplete="given-name" defaultValue={first ?? ""} required maxLength={40} autoFocus={!first} />
+          </label>
+          <label className="auth-field">
+            <span>Last name</span>
+            <input name="last" autoComplete="family-name" defaultValue={last} required maxLength={40} />
+          </label>
+        </div>
         <label className="auth-field">
           <span>Business name</span>
-          <input name="business" autoComplete="organization" placeholder="Full Potential Coaching" maxLength={120} autoFocus={!!name} />
+          <input name="business" autoComplete="organization" maxLength={120} autoFocus={!!first && !!last} />
         </label>
         <button className="btn auth-submit" type="submit">
           Continue

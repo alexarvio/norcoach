@@ -84,13 +84,15 @@
 /* The card itself drawn here, the admin hairline at radius 18 (16 Nov, Alex: the audit): Ending soon sits outside any
    .rls scope, and its edge came from the client app's own .nd-card (#E0E0E0); `ndg-card` so the names never collide. */
 .rd .rls-card.ndg-card { border: 1px solid #e1e5eb; border-radius: 18px; background: #fff; }
-.rd .nd-row { display: grid; grid-template-columns: var(--nd-date, 84px) 200px minmax(0, 1fr) 96px auto 18px; align-items: center; column-gap: 16px; min-height: 52px; padding: 0 12px 0 18px; cursor: pointer; }
+.rd .nd-row { display: grid; grid-template-columns: var(--nd-date, 84px) 200px minmax(0, 1fr) 96px var(--nd-acts, auto) 18px; align-items: center; column-gap: 16px; min-height: 52px; padding: 0 12px 0 18px; cursor: pointer; }
 .rd .nd-row + .nd-row { border-top: 1px solid #eef0f3; }
 .rd .nd-row:hover { background: var(--color-row-hover, #fafbfd); }
 .rd .nd-row.still { cursor: default; }
+/* A join request (18 Nov, Alex): nothing to open, its Accept and Decline on the row. */
+.rd .nd-row.nd-join { cursor: default; }
 .rd .nd-row.out { opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
 @media (prefers-reduced-motion: reduce) { .rd .nd-row.out { transition: none; } }
-.rd .nd-row.bar { grid-template-columns: var(--nd-date, 84px) 200px minmax(0, 1fr) 150px 96px auto 18px; }
+.rd .nd-row.bar { grid-template-columns: var(--nd-date, 84px) 200px minmax(0, 1fr) 150px 96px var(--nd-acts, auto) 18px; }
 .rd .nd-who { display: flex; align-items: center; gap: 10px; min-width: 0; text-decoration: none; }
 .rd a.nd-who:focus-visible { outline: none; }
 .rd a.nd-who:focus-visible .nd-name { text-decoration: underline; text-decoration-color: #c5ccd8; text-underline-offset: 4px; }
@@ -122,15 +124,15 @@
 .rd .nd-row .rfd-done:hover { color: #2f7a3f; }
 /* A list with no date on any row (the phases owed are standing states) drops the column, never an empty one. */
 .rd .nd-groups.nodate .nd-row > .rd-logdate { display: none; }
-.rd .nd-groups.nodate .nd-row { grid-template-columns: 200px minmax(0, 1fr) 96px auto 18px; }
+.rd .nd-groups.nodate .nd-row { grid-template-columns: 200px minmax(0, 1fr) 96px var(--nd-acts, auto) 18px; }
 .rd .nd-groups { container: nd / inline-size; }
 @container nd (max-width: 760px) {
-  .rd .nd-row { grid-template-columns: var(--nd-date, 84px) 150px minmax(0, 1fr) auto 18px; }
+  .rd .nd-row { grid-template-columns: var(--nd-date, 84px) 150px minmax(0, 1fr) var(--nd-acts, auto) 18px; }
   .rd .nd-row > .nd-wait { display: none; }
-  .rd .nd-row.bar { grid-template-columns: var(--nd-date, 84px) 150px minmax(0, 1fr) 96px auto 18px; }
+  .rd .nd-row.bar { grid-template-columns: var(--nd-date, 84px) 150px minmax(0, 1fr) 96px var(--nd-acts, auto) 18px; }
   .rd .nd-row.bar > .nd-bar { display: none; }
   .rd .nd-row.bar > .nd-wait { display: block; }
-  .rd .nd-groups.nodate .nd-row { grid-template-columns: 150px minmax(0, 1fr) auto 18px; }
+  .rd .nd-groups.nodate .nd-row { grid-template-columns: 150px minmax(0, 1fr) var(--nd-acts, auto) 18px; }
 }
 
 /* Activity's client filter (26 Oct, Alex): a 36px white pill beside the kinds, the face and name when one is picked;

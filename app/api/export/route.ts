@@ -11,7 +11,7 @@ import { getData } from "../../lib/db";
 export const dynamic = "force-dynamic";
 
 /** Tables that are about sign-in or the company, never part of a coach's export. */
-const LEFT_OUT = new Set(["users", "login_lock_events", "support_messages", "coach_reset_applied", "workspace_reset_applied", "sessions_migrated", "_seq"]);
+const LEFT_OUT = new Set(["users", "login_lock_events", "support_messages", "join_requests", "coach_reset_applied", "workspace_reset_applied", "sessions_migrated", "_seq"]);
 
 export async function GET(request: Request) {
   const user = await getRequestUser(request);

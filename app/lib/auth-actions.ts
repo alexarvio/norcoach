@@ -294,7 +294,8 @@ export async function finishCoachSignUpAction(formData: FormData) {
   const who = await clerkIdentity();
   const email = who?.emails[0];
   if (!email) redirect("/login");
-  const name = String(formData.get("name") ?? "").trim().slice(0, 80);
+  // First and last name (18 Nov, Alex), one name as the coach's profile keeps it; "name" from a page before that.
+  const name = [formData.get("first"), formData.get("last")].map((v) => String(v ?? "").trim()).filter(Boolean).join(" ").slice(0, 80) || String(formData.get("name") ?? "").trim().slice(0, 80);
   const business = String(formData.get("business") ?? "").trim().slice(0, 120) || null;
   if (!name) redirect("/auth/coach-details?error=name");
   if (!findUserByEmail(email)) letCoachIn(createPasswordlessUser(email, "coach", null, { name, business }).id);

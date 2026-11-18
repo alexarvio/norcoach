@@ -77,6 +77,14 @@ export function pushCoachNews(clientId: number, news: { title: string; body: str
   sendPushInBackground(coachId, news);
 }
 
+/** Someone asked to join the coach with their code (18 Nov, Alex; lib/joinRequests.ts): their name over "Wants to join
+ *  you", a tap opening the Feed, where Needs you holds Accept and Decline (the phone app opens on its own screens). Held
+ *  in quiet hours, as news is. */
+export function pushCoachJoin(coachId: number, requestId: number, name: string) {
+  if (!coachWants(coachId, "news")) return;
+  sendPushInBackground(coachId, { title: name, body: "Wants to join you", url: "/admin/redesign/feed", tag: `join:${requestId}` });
+}
+
 /** A client's photo or video of an exercise came in: "Video of Squat", and a tap opens it to review. */
 export function pushCoachVideo(requestId: number) {
   const data = getData();
