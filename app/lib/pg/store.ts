@@ -1,7 +1,8 @@
-import { and, eq, getTableColumns, inArray, sql } from "drizzle-orm";
+import { and, eq, getTableColumns, getTableName, inArray, sql } from "drizzle-orm";
 import type { PgColumn as Column, PgDatabase, PgTable } from "drizzle-orm/pg-core";
 import { reportSkipped, health, noteSaveCost } from "./health";
-import { COLLECTIONS, kv, TABLE_NAMES_NOT_IN_KV } from "./schema";
+import { COLLECTIONS, DERIVED, kv, ROLLBACK_KV_COPIES, TABLE_NAMES_NOT_IN_KV } from "./schema";
+import { msInstant, msInstantMs, stampInstant, stampInstantMs } from "./stamps";
 
 // Loads the whole store from Postgres and saves changes back (phase 1).
 //
@@ -18,6 +19,12 @@ import { COLLECTIONS, kv, TABLE_NAMES_NOT_IN_KV } from "./schema";
 // out of every string written, and a lone surrogate (which jsonb refuses) becomes U+FFFD; a row whose key is missing
 // or unusable, or a value that can't be written as JSON, is left out and reported, the rest saved, and what the
 // database held for it stays there (never deleted for being left out).
+//
+// Step 4 (18 Nov): a column in DERIVED (schema.ts) is not a field of the row: a real instant filled from a text stamp
+// (pg/stamps.ts). It is left out of the mapping both ways and of the snapshot (it follows from a field the snapshot
+// already compares), filled on every upsert, and checked at boot (derivedStale), so rows written by a build that
+// didn't fill it (a rollback) are put right on the next save. A collection in ROLLBACK_KV_COPIES is also written whole
+// to kv under its name, for a rollback to the builds that read it there.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type AnyDb = PgDatabase<any, any, any>;
@@ -29,9 +36,31 @@ const ABSENT = "__absent";
 const INT32_MIN = -2147483648;
 const INT32_MAX = 2147483647;
 
+/** Every column of the table, the derived ones too (what an upsert writes). */
 function columnsOf(table: PgTable) {
   return getTableColumns(table) as Record<string, Column>;
 }
+
+type Derived = (typeof DERIVED)[number];
+const DERIVED_OF = new Map<PgTable, Derived[]>();
+for (const d of DERIVED) DERIVED_OF.set(d.table, [...(DERIVED_OF.get(d.table) ?? []), d]);
+
+/** The value a derived column holds for this row (ISO text), or null. */
+const derivedValue = (d: Derived, row: Row) => (d.kind === "ms" ? msInstant(row[d.from]) : stampInstant(row[d.from]));
+
+const FIELDS = new WeakMap<PgTable, Record<string, Column>>();
+/** The columns that are fields of the row: every column but the derived ones. */
+function fieldsOf(table: PgTable): Record<string, Column> {
+  let fields = FIELDS.get(table);
+  if (!fields) {
+    const derived = new Set((DERIVED_OF.get(table) ?? []).map((d) => d.column as string));
+    fields = Object.fromEntries(Object.entries(columnsOf(table)).filter(([field]) => !derived.has(field)));
+    FIELDS.set(table, fields);
+  }
+  return fields;
+}
+
+const ROLLBACK_COPIES = new Set<string>(ROLLBACK_KV_COPIES);
 
 // Whether a JSON value can sit in this column as-is. Anything that can't (a
 // string where a number column is, a number past an integer column's range)
@@ -50,13 +79,15 @@ function fits(column: Column, value: unknown): boolean {
     case "string":
       return typeof value === "string";
     default:
-      return true; // json
+      // json. Not a string on its own (18 Nov, step 4 review): drizzle's jsonb reads a string back through JSON.parse,
+      // so "12" or "true" would come back a number or a boolean; inside `extra` (an object) it comes back as it went.
+      return typeof value !== "string";
   }
 }
 
 /** A store row as a table record. */
 export function toRecord(table: PgTable, row: Row): Row {
-  const columns = columnsOf(table);
+  const columns = fieldsOf(table);
   const record: Row = {};
   const extra: Row = {};
   const absent: string[] = [];
@@ -86,7 +117,7 @@ export function fromRecord(table: PgTable, record: Row): Row {
   const extra = (record[EXTRA] as Row | null) ?? {};
   const absent = new Set((extra[ABSENT] as string[] | undefined) ?? []);
   const row: Row = {};
-  for (const field of Object.keys(columnsOf(table))) {
+  for (const field of Object.keys(fieldsOf(table))) {
     if (field === EXTRA || absent.has(field)) continue;
     row[field] = record[field];
   }
@@ -153,13 +184,16 @@ export async function loadStore(db: AnyDb, moved: string[] = []): Promise<Row> {
   const out: Row = {};
   for (const c of COLLECTIONS) {
     const columns = columnsOf(c.table);
+    const order: readonly string[] = "order" in c ? c.order : c.key;
     const records = (await db
       .select()
       .from(c.table)
-      .orderBy(...c.key.map((k) => columns[k]))) as Row[];
+      .orderBy(...order.map((k) => columns[k]))) as Row[];
     out[c.name] = records.map((r) => fromRecord(c.table, r));
   }
   for (const r of (await db.select().from(kv)) as { key: string; value: unknown }[]) {
+    // A collection's copy for a rollback: the table is what loads (pg/onceKeys.ts took it from this copy at boot).
+    if (ROLLBACK_COPIES.has(r.key)) continue;
     if (COLLECTION_NAMES.has(r.key) && Array.isArray(r.value) && (out[r.key] as unknown[]).length === 0) {
       console.log(`[store] ${r.key} is still in kv (${r.value.length} rows) and its table is empty: loaded from kv, moved into the table by the first save`);
       out[r.key] = r.value;
@@ -175,6 +209,42 @@ export async function loadStore(db: AnyDb, moved: string[] = []): Promise<Row> {
     out[r.key] = r.value;
   }
   return out;
+}
+
+/**
+ * The rows whose derived columns don't hold what the writer would write (step 4C): left NULL or stale by a build that
+ * didn't fill them (a rollback, then this build again), or where the migration's SQL read a stamp differently from
+ * stampMs. By collection, their row keys, for PgStoreWriter.forget, so the first save writes them again. Compared to
+ * the millisecond, from `data` as loaded (before the boot's tidies).
+ */
+export async function derivedStale(db: AnyDb, data: Row): Promise<Map<string, Set<string>>> {
+  const stale = new Map<string, Set<string>>();
+  for (const c of COLLECTIONS) {
+    const derived = DERIVED_OF.get(c.table);
+    if (!derived || c.key.length !== 1) continue;
+    const keyColumn = columnsOf(c.table)[c.key[0]].name;
+    const columns = derived.map((d) => columnsOf(c.table)[d.column].name);
+    const read = await db.execute(
+      sql.raw(`SELECT "${keyColumn}" AS k, ${columns.map((col, i) => `(EXTRACT(EPOCH FROM "${col}") * 1000)::float8 AS d${i}`).join(", ")} FROM "${getTableName(c.table)}"`)
+    );
+    const held = new Map<string, (number | null)[]>();
+    for (const r of ((read as { rows?: Row[] }).rows ?? []) as Row[]) {
+      held.set(String(r.k), derived.map((_, i) => (r[`d${i}`] == null ? null : Math.round(Number(r[`d${i}`])))));
+    }
+    const keys = new Set<string>();
+    for (const row of (Array.isArray(data[c.name]) ? data[c.name] : []) as Row[]) {
+      if (!row || typeof row !== "object") continue;
+      const key = String(row[c.key[0]]);
+      const have = held.get(key);
+      if (!have) continue; // not in the table: written by the next save anyway
+      derived.forEach((d, i) => {
+        const want = d.kind === "ms" ? msInstantMs(row[d.from]) : stampInstantMs(row[d.from]);
+        if (want !== have[i]) keys.add(key);
+      });
+    }
+    if (keys.size) stale.set(c.name, keys);
+  }
+  return stale;
 }
 
 /**
@@ -245,6 +315,14 @@ function snapshotOf(data: Row): Snapshot {
     }
     kvMap.set(cleanText(key), json);
   }
+  // A collection's whole copy for a rollback (step 4B), beside its table, in the same save.
+  for (const name of ROLLBACK_COPIES) {
+    const list = data[name];
+    if (!Array.isArray(list)) continue;
+    const json = cleanJson(list);
+    if (json == null) held.kv.add(name);
+    else kvMap.set(name, json);
+  }
   health().skipped = skipped;
   return { rows, kv: kvMap, held };
 }
@@ -274,6 +352,17 @@ export class PgStoreWriter {
     for (const name of moved) {
       this.last.rows.set(name, new Map());
       this.last.kv.set(name, "");
+    }
+  }
+
+  /**
+   * These rows are written again by the next save, as if the database held something else for them (derivedStale);
+   * one gone from the store by then is deleted, as any.
+   */
+  forget(stale: Map<string, Set<string>>) {
+    for (const [name, keys] of stale) {
+      const rows = this.last.rows.get(name);
+      if (rows) for (const key of keys) if (rows.has(key)) rows.set(key, "");
     }
   }
 
@@ -323,6 +412,9 @@ export class PgStoreWriter {
       const columns = columnsOf(c.table);
       const upserts: Row[] = [];
       for (const [key, json] of after) if (before.get(key) !== json) upserts.push(JSON.parse(json));
+      // Its instants from its stamps (step 4C), on every row written: only those, the rest follows from the snapshot.
+      const derived = DERIVED_OF.get(c.table);
+      if (derived) for (const record of upserts) for (const d of derived) record[d.column] = derivedValue(d, record);
       const deletes = [...before.keys()].filter((key) => !after.has(key));
       compared += after.size;
       changed += upserts.length + deletes.length;

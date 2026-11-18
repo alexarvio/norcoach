@@ -3,7 +3,7 @@ import path from "path";
 import { once } from "events";
 import { DATA_DIR } from "./db";
 import { chatUsesFile, setVideoReplyFile, videoReplyTarget } from "./queries";
-import { deleteUpload, prepareChatMedia, putUploadFromDisk } from "./storage";
+import { deleteUpload, prepareChatMedia, putUploadFromDisk, trashFile } from "./storage";
 import { toMp4 } from "./transcode";
 
 // Receiving a coach's reply video (see app/api/video-reply/[id]/route.ts):
@@ -71,7 +71,7 @@ export async function receiveReplyVideo(request: Request, id: number): Promise<R
   if (previous && !chatUsesFile(previous)) {
     await deleteUpload(previous);
     const old = path.join(DATA_DIR, previous.replace(/^\//, ""));
-    if (old.startsWith(path.join(DATA_DIR, "uploads"))) fs.rmSync(old, { force: true });
+    if (old.startsWith(path.join(DATA_DIR, "uploads"))) trashFile(old);
   }
   return Response.json({ path: filed.publicPath, bytes: total, converted: filed !== target });
 }

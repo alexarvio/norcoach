@@ -75,6 +75,24 @@ export async function register() {
     setTimeout(make, 60_000).unref?.();
   }
   const { runBackup, msUntilNextRun, backupConfigured } = await import("./app/lib/backup");
+  // Deleted uploads wait in trash for 30 days (18 Nov, step 4D, lib/storage.ts): every night at the backup's hour the
+  // days past that go, with or without a backup; a few minutes after boot, what the disk's trash holds goes up to the
+  // bucket's. Not in `next build`'s prerender workers.
+  if (process.env.NEXT_PHASE !== "phase-production-build") {
+    const { pruneTrash, trashToBucket } = await import("./app/lib/storage");
+    const prune = () =>
+      void pruneTrash()
+        .then((n) => n && console.log(`[uploads] trash: ${n} file${n === 1 ? "" : "s"} older than 30 days deleted`))
+        .catch((e) => console.error("[uploads] trash prune failed:", e instanceof Error ? e.message : e));
+    const nightly = () => {
+      setTimeout(() => {
+        prune();
+        nightly();
+      }, msUntilNextRun()).unref?.();
+    };
+    nightly();
+    setTimeout(() => void trashToBucket().catch(() => {}), 5 * 60_000).unref?.();
+  }
   if (!backupConfigured()) return;
 
   const run = async (why: string) => {

@@ -1,10 +1,12 @@
 import path from "path";
 import { eq, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
-import { installStore, prepareStore, readJsonFile, STORE_MODE, type Data } from "../db";
+import { installIdSource, installStore, prepareStore, readJsonFile, STORE_MODE, type Data } from "../db";
 import { errorReason, health, toSentry } from "./health";
+import { IdPools } from "./ids";
+import { onceKeysFromKvCopy } from "./onceKeys";
 import { COLLECTIONS, kv } from "./schema";
-import { loadStore, PgStoreWriter } from "./store";
+import { derivedStale, loadStore, PgStoreWriter } from "./store";
 
 // Starts the Postgres store (STORE=postgres). Called once from
 // instrumentation.ts, which Next awaits before the server takes requests:
@@ -25,6 +27,11 @@ import { loadStore, PgStoreWriter } from "./store";
 //   - a save that fails is tried again on a backoff (2 s, 5 s, 15 s, 30 s, then every minute) until one goes
 //     through, with one alert to Sentry (tag store-stuck) after three failures in a row;
 //   - flushStore() for the shutdown (app/lib/shutdown.ts), which saves at once on SIGTERM.
+//
+// Step 4 (18 Nov, the groundwork for direct tables): before the store loads, the once_keys table is taken from its kv
+// copy (pg/onceKeys.ts); once loaded, rows whose instant columns don't hold what the writer would write are marked to
+// be written again (store.ts derivedStale); and before any id is handed out the id sequences are raised past every
+// id taken and a block drawn (pg/ids.ts), with allocId drawing from them from then on.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type AnyDb = PgDatabase<any, any, any>;
@@ -134,10 +141,21 @@ async function start() {
   let raw: Partial<Data>;
   // Lists still kept in kv under a collection's name while its table is empty: moved into the table by the first save.
   const moved: string[] = [];
+  // Rows whose instant columns are to be written again (step 4C).
+  let restamped = 0;
   if (hasData) {
+    // The saves taken once, as the last build to save left them (step 4B: a build before it writes only the kv copy).
+    const onceKeys = await onceKeysFromKvCopy(db);
+    if (onceKeys != null) log(`once_keys: ${onceKeys} taken from kv's copy`);
     raw = (await loadStore(db, moved)) as Partial<Data>;
     // What the database holds right now, before the load-time tidies touch it.
     writer.prime(raw as Row, moved);
+    const stale = await derivedStale(db, raw as Row);
+    for (const [name, keys] of stale) {
+      log(`${name}: ${keys.size} row${keys.size === 1 ? "" : "s"} with an instant column to write again`);
+      restamped += keys.size;
+    }
+    writer.forget(stale);
     log("loaded from Postgres");
   } else {
     raw = await emptyStart(db);
@@ -147,7 +165,11 @@ async function start() {
   const { data } = prepared;
   // Always run, even when a tidy already changed something: a counter left behind its table hands out ids twice.
   const raised = raiseCounters(data);
-  const changed = prepared.changed || raised > 0 || moved.length > 0;
+  // Ids from Postgres for the tables that will move (step 4A), before anything can take one; the counters as raised.
+  const ids = new IdPools(db, () => (data._seq ??= {}));
+  await ids.start();
+  (globalThis as unknown as { _pgIds?: IdPools })._pgIds = ids;
+  const changed = prepared.changed || raised > 0 || moved.length > 0 || restamped > 0;
   // The import, or a tidy's changes, are written before any request arrives,
   // so a failure stops the boot instead of surfacing later.
   if (!hasData || changed) await writer.save(() => data as unknown as Row);
@@ -225,6 +247,7 @@ async function start() {
 
   (globalThis as unknown as { _pgFlush?: () => Promise<void> })._pgFlush = () => save("shutdown");
 
+  installIdSource((table, counter) => ids.take(table, counter));
   installStore(data, (latest) => {
     current = latest;
     return save("persist");

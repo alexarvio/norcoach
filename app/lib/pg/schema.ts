@@ -1,4 +1,4 @@
-import { boolean, doublePrecision, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, doublePrecision, index, integer, jsonb, pgSequence, pgTable, primaryKey, serial, text, timestamp } from "drizzle-orm/pg-core";
 
 // The Postgres tables behind the store (phase 1 of moving off ironline.json).
 //
@@ -21,6 +21,11 @@ const id = () => integer("id").primaryKey();
 const fk = (name: string) => integer(name);
 const num = (name: string) => doublePrecision(name);
 const extra = () => jsonb("extra");
+/**
+ * A real instant beside a text stamp (18 Nov, step 4C): not a field of the row. Filled by the writer from the text
+ * (DERIVED below, pg/stamps.ts) and never loaded back; the app keeps reading the text.
+ */
+const instant = (name: string) => timestamp(name, { withTimezone: true, mode: "string" });
 
 export const users = pgTable("users", {
   id: id(),
@@ -210,6 +215,7 @@ export const set_logs = pgTable("set_logs", {
   rpe_actual: num("rpe_actual"),
   logged_at: text("logged_at"),
   extra: extra(),
+  logged_at_tz: instant("logged_at_tz"),
 });
 
 export const invoices = pgTable("invoices", {
@@ -290,6 +296,7 @@ export const metric_entries = pgTable("metric_entries", {
   value: num("value"),
   logged_at: text("logged_at"),
   extra: extra(),
+  logged_at_tz: instant("logged_at_tz"),
 });
 
 export const metric_template_categories = pgTable("metric_template_categories", {
@@ -439,6 +446,7 @@ export const chat_messages = pgTable("chat_messages", {
   media_type: text("media_type"),
   created_at: text("created_at"),
   extra: extra(),
+  created_at_tz: instant("created_at_tz"),
 });
 
 export const client_events = pgTable("client_events", {
@@ -474,6 +482,7 @@ export const coach_activity = pgTable("coach_activity", {
   action_ref: fk("action_ref"),
   dedupe_key: text("dedupe_key"),
   extra: extra(),
+  created_at_tz: instant("created_at_tz"),
 });
 
 export const report_templates = pgTable("report_templates", {
@@ -592,6 +601,7 @@ export const food_entries = pgTable("food_entries", {
   fat: num("fat"),
   logged_at: text("logged_at"),
   extra: extra(),
+  logged_at_tz: instant("logged_at_tz"),
 });
 
 export const custom_foods = pgTable("custom_foods", {
@@ -684,6 +694,25 @@ export const video_requests = pgTable("video_requests", {
   extra: extra(),
 });
 
+/**
+ * Saves taken once (lib/once.ts; 18 Nov, step 4B): until now a list in `kv`, now a table of its own, still in memory
+ * and written by the mirror in the same transaction as the rows of the save that took the key, so a later step that
+ * writes a row straight to Postgres can write its key with it. `key` is the save's name and the device's key
+ * ("chat9:abc…"), never empty (once.ts takes none under 8 characters); `at` the moment it was taken (ms), as the row
+ * holds it; `created_at` the same as an instant, filled by the writer.
+ *
+ * Kept in `kv` as well while a rollback to the builds before step 4 must keep its retry protection
+ * (ROLLBACK_KV_COPIES): the boot takes the table from that copy (pg/onceKeys.ts).
+ */
+export const once_keys = pgTable("once_keys", {
+  key: text("key").primaryKey(),
+  at: num("at"),
+  result: jsonb("result"),
+  redirect: text("redirect"),
+  extra: extra(),
+  created_at: instant("created_at"),
+});
+
 export const COLLECTIONS = [
   { name: "users", table: users, key: ["id"] },
   { name: "clients", table: clients, key: ["id"] },
@@ -737,7 +766,47 @@ export const COLLECTIONS = [
   { name: "report_template_sections", table: report_template_sections, key: ["id"] },
   { name: "client_reports", table: client_reports, key: ["id"] },
   { name: "client_preferences", table: client_preferences, key: ["client_id"] },
+  // Loaded oldest first, as the list in kv kept them: once.ts keeps the newest MAX_KEPT.
+  { name: "once_keys", table: once_keys, key: ["key"], order: ["at", "key"] },
 ] as const;
+
+/**
+ * The columns that are not a field of the row (18 Nov, step 4C): a real instant beside a text stamp (`stamp`, read as
+ * stampMs reads it, pg/stamps.ts) or a count of ms (`ms`). Filled by the writer on every upsert from the field named
+ * in `from`, backfilled in SQL by the migration that added them, put right at boot where they differ (store.ts).
+ */
+export const DERIVED = [
+  { table: chat_messages, name: "chat_messages", column: "created_at_tz", from: "created_at", kind: "stamp" },
+  { table: set_logs, name: "set_logs", column: "logged_at_tz", from: "logged_at", kind: "stamp" },
+  { table: metric_entries, name: "metric_entries", column: "logged_at_tz", from: "logged_at", kind: "stamp" },
+  { table: food_entries, name: "food_entries", column: "logged_at_tz", from: "logged_at", kind: "stamp" },
+  { table: coach_activity, name: "coach_activity", column: "created_at_tz", from: "created_at", kind: "stamp" },
+  { table: once_keys, name: "once_keys", column: "created_at", from: "at", kind: "ms" },
+] as const;
+
+/**
+ * Collections also kept whole in `kv` under their own name, for a rollback to a build that still reads them there
+ * (18 Nov, step 4B): written beside the table in the same save, and never loaded from kv but by pg/onceKeys.ts.
+ */
+export const ROLLBACK_KV_COPIES = ["once_keys"] as const;
+
+/**
+ * Where ids come from for the tables that will leave memory (18 Nov, step 4A; pg/ids.ts): one sequence each, int4 like
+ * the id columns, raised at every boot to the highest id and `_seq`. Named as SEQUENCED_TABLES in ids.ts lists them.
+ */
+const idSeq = (table: string) => pgSequence(`${table}_id_seq`, { startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 });
+export const chat_messages_id_seq = idSeq("chat_messages");
+export const coach_activity_id_seq = idSeq("coach_activity");
+export const food_entries_id_seq = idSeq("food_entries");
+export const calorie_logs_id_seq = idSeq("calorie_logs");
+export const food_days_id_seq = idSeq("food_days");
+export const food_meals_id_seq = idSeq("food_meals");
+export const saved_meals_id_seq = idSeq("saved_meals");
+export const meal_photos_id_seq = idSeq("meal_photos");
+export const metric_entries_id_seq = idSeq("metric_entries");
+export const set_logs_id_seq = idSeq("set_logs");
+export const workout_assignments_id_seq = idSeq("workout_assignments");
+export const program_days_id_seq = idSeq("program_days");
 
 /**
  * Names that are tables, never a key in `kv` (17 Nov): a kv row named like a collection would replace that collection
