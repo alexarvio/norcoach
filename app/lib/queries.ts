@@ -13,6 +13,7 @@ import { getCatalogFood, searchCatalog, type CatalogFood } from "./foods/catalog
 import type { OffProduct } from "./foods/openfoodfacts";
 import type { LinkView, MessageLink } from "./messageLinks";
 import { coachIdOfClient } from "./tenancy";
+import { isStockCover, PHASE_COVERS } from "./phaseCovers";
 import { inViewZone, viewZone } from "./viewZone";
 import { isTimezone, SERVER_TZ, zonedToUtc } from "./timezones";
 import { meetingTypeOf } from "./meetingTypes";
@@ -13017,14 +13018,14 @@ export function stageClientCardPicture(clientId: number, track: PhaseTrack, buff
   return `/uploads/covers/${clientId}/${filename}`;
 }
 
-/** The sheet's Done: the track's pictures become exactly these (theirs only, at most six). Returns the ones dropped, for the storage bucket. */
+/** The sheet's Done: the track's pictures become exactly these (theirs, and the track's stock pictures they added, 18 Nov; at most six). Returns the files dropped, for the storage bucket: never a stock picture. */
 export function setClientCardPictures(clientId: number, track: PhaseTrack, paths: string[]): string[] {
   const client = getData().clients.find((c) => c.id === clientId);
   if (!client) return [];
-  const mine = (p: string) => p.startsWith(`/uploads/covers/${clientId}/${track}-`);
+  const mine = (p: string) => p.startsWith(`/uploads/covers/${clientId}/${track}-`) || PHASE_COVERS[track].includes(p);
   const next = [...new Set(paths.filter(mine))].slice(0, MAX_CARD_PICTURES);
   const have = getClientCardPictures(clientId)[track] ?? [];
-  const dropped = have.filter((p) => !next.includes(p));
+  const dropped = have.filter((p) => !next.includes(p) && !isStockCover(p));
   setCardPictures(client, track, next);
   persist();
   dropped.forEach((p) => unlinkQuietly(coverFile(p)));
@@ -13046,6 +13047,8 @@ export function removeClientCardPicture(clientId: number, track: PhaseTrack, pub
   if (!client || !have.includes(publicPath)) return null;
   setCardPictures(client, track, have.filter((p) => p !== publicPath));
   persist();
+  // A stock picture is everyone's: it leaves the list, its file stays.
+  if (isStockCover(publicPath)) return null;
   unlinkQuietly(coverFile(publicPath));
   return publicPath;
 }
@@ -13057,8 +13060,9 @@ export function clearClientCardCover(clientId: number, track: PhaseTrack): strin
   if (!client || !have.length) return [];
   setCardPictures(client, track, []);
   persist();
-  have.forEach((p) => unlinkQuietly(coverFile(p)));
-  return have;
+  const files = have.filter((p) => !isStockCover(p));
+  files.forEach((p) => unlinkQuietly(coverFile(p)));
+  return files;
 }
 
 export function saveClientAvatar(clientId: number, buffer: Buffer, mimeType: string): string {

@@ -6,6 +6,7 @@ import { useNavigateTab, useOpenCheckIn } from "./CheckInContext";
 import FitTitle from "./FitTitle";
 import CardPictureSheet, { useLongPress, type CardCovers } from "./CardPictureSheet";
 import PictureCycle from "./PictureCycle";
+import { PHASE_COVERS } from "../lib/phaseCovers";
 import CheckInDialog, { type CheckInForm } from "./CheckInDialog";
 import { FEATURES } from "../lib/features";
 import { pic } from "../lib/pic";
@@ -268,11 +269,13 @@ function PhaseCardCarousel({ phases, coachName, today, nextSession, food, weekDo
   const coachCoverOf = (track: HomePhase["track"]) => phases.find((p) => p.track === track)?.coverUrl ?? null;
   // Only a cover the coach chose is theirs (22 Oct); a stock one is the default.
   const coachChoseOf = (track: HomePhase["track"]) => !!phases.find((p) => p.track === track)?.coachCover;
-  // The client's own pictures, taking turns (14 Oct); none, the coach's one.
+  // The client's own pictures, taking turns (14 Oct); none, the one the coach chose; neither, the track's stock
+  // pictures taking turns (18 Nov, Alex: "these 5 are going to be in rotation").
   const coverFor = (track: HomePhase["track"]): string[] => {
     const own = ownFor(track);
     if (own.length) return own;
     const coach = coachCoverOf(track);
+    if (!coachChoseOf(track) && PHASE_COVERS[track].length) return PHASE_COVERS[track];
     return coach ? [coach] : [];
   };
   const count = phases.length;

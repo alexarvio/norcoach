@@ -4091,7 +4091,7 @@ a.cd-entry:hover { border-color: var(--accent); }
 .nd-banner::after { width: 420px; height: 420px; left: -160px; top: 120px; border: 60px solid rgba(255, 255, 255, 0.18); }
 .nd-banner > * { position: relative; z-index: 1; }
 /* Nutrition's banner over the lunchbox photo, like Training's: a dark fade, the words in white. */
-.nd-banner.nd-photo { background: #222222 url("/img/nutrition-head.jpg") right center / cover no-repeat; }
+.nd-banner.nd-photo { background: #222222 url("/img/nutrition-spread.jpg") center / cover no-repeat; }
 .nd-banner.nd-photo::after { display: none; }
 .nd-banner.nd-photo::before { inset: 0; width: auto; height: auto; border: 0; border-radius: 0; background: linear-gradient(180deg, rgba(8, 12, 20, 0.6) 0%, rgba(8, 12, 20, 0.45) 45%, rgba(8, 12, 20, 0.8) 100%); }
 .nd-photo .nd-kicker { color: rgba(255, 255, 255, 0.72); }
@@ -16911,8 +16911,6 @@ button.pp-row { cursor: zoom-in; }
 .pc-aura::before { background: radial-gradient(closest-side at 28% 75%, rgba(120, 196, 255, 0.95), transparent), radial-gradient(closest-side at 78% 85%, rgba(255, 255, 255, 0.55), transparent); animation: hm-aura-a 4.5s ease-in-out infinite; }
 .pc-aura::after { background: radial-gradient(closest-side at 62% 80%, rgba(90, 170, 255, 0.85), transparent), radial-gradient(closest-side at 15% 90%, rgba(255, 255, 255, 0.45), transparent); animation: hm-aura-b 6s ease-in-out infinite; animation-delay: -2.5s; }
 @media (prefers-reduced-motion: reduce) { .pc-aura::before, .pc-aura::after { animation: none; opacity: 0.7; } }
-/* The nutrition stock photo: its food sits on the right, so show that side. */
-.pc-cover[src*="nutrition-head"] { object-position: 80% center; }
 /* The card you are on sits in the middle, a bit of the next and previous
    either side. The side padding centres the first and last too: the
    scroller is the plan section plus the 16px bleed each side. */
@@ -18600,6 +18598,9 @@ button.ci-hint { cursor: pointer; }
 .cv-fold-add { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 0; border: 0; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; color: #141a24; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .cv-fold-add:active { background: #F5F6F8; }
 .cv-fold-words { margin: 8px 0 0; font-size: 12px; font-weight: 500; color: #8b93a1; }
+/* The track's stock pictures under the client's own (18 Nov, Alex): the app's small label, then each with a + in the ×'s ring. */
+.cv-fold-label { margin: 16px 0 8px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #5b6474; }
+.cv-fold-x:disabled { opacity: 0.4; cursor: default; }
 .cv-fold-reset { display: block; margin: 4px 0 -6px; padding: 6px 0; border: 0; background: none; font: inherit; font-size: 12.5px; font-weight: 600; color: #5b6474; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   .cv-fold-chev, .cv-fold-wrap, .cv-fold-pic img { transition: none; }
@@ -20777,7 +20778,7 @@ select.st-details-input.st-details-input.st-details-input.empty { color: #98A2B3
 /* Media in the chat header as its icon and word alone, no white pill (17 Oct, Alex). Doubled for the dev-server CSS order. */
 .cmg-btn.cm-media-btn, .cmg-btn.cm-media-btn:hover { height: auto; padding: 6px 4px; border: 0; border-radius: 0; background: none; box-shadow: none; font-weight: 600; color: #141a24; }
 /* Nutrition with nothing set up (17 Oct, Alex): the Training banner's size and type over the nutrition photo. */
-.tr-banner.nd-naked-banner { background-image: url("/img/nutrition-head.jpg"); background-position: right center; }
+.tr-banner.nd-naked-banner { background-image: url("/img/nutrition-spread.jpg"); background-position: center; }
 /* Home's meetings with none yet (17 Oct): the heading and Request a meeting, one quiet line under it. */
 .hm-mt-none { margin: 0; padding: 4px 0 0; font-size: 14px; font-weight: 500; color: #8b93a1; }
 /* No phase yet (17 Oct, Alex): the Training and Nutrition banners in black and white, like the empty cards on Home. */
