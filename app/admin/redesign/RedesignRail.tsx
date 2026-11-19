@@ -16,7 +16,7 @@ import { Sep } from "./Sep";
 import NativeCoachRedirect from "../../coach/NativeCoachRedirect";
 import RefreshOnReturn from "./RefreshOnReturn";
 import { pic } from "../../lib/pic";
-import { NorCoachLogo } from "../../components/NorCoachLogo";
+import { BrandLogo } from "../../components/BrandLogo";
 
 // The left rail, in the redesign's sheet: the brand, the coach's cross-client
 // views as icon rows, every client in one scrolling list, and the coach at
@@ -189,9 +189,11 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
       <RefreshOnReturn />
       {/* The Norcoach logo over the coach's business (24 Oct, Alex), as on the sign-in card. */}
       <div className="rr-brand">
-        <NorCoachLogo className="rr-logo" />
-        {/* The coach's own business (Settings, Business details), one line, nothing when none is set (16 Nov, the audit). */}
-        {rail.coach.business && (
+        {/* Their banner in its place when they uploaded one (19 Nov, Alex); without one, NORCOACH as before. */}
+        <BrandLogo className="rr-logo" banner={rail.coach.banner} bannerRatio={rail.coach.bannerRatio} name={rail.coach.business} nameInPlace={false} />
+        {/* The coach's own business (Settings, Business details), one line, nothing when none is set (16 Nov, the audit);
+            none under a banner, which says it already (19 Nov, Alex). */}
+        {rail.coach.business && !rail.coach.banner && (
           <span className="rr-brand-text">
             <b>{rail.coach.business}</b>
           </span>

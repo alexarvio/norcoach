@@ -157,6 +157,7 @@ import {
 import PrefSwitch from "./PrefSwitch";
 import { trainingBests } from "../lib/homeBoardData";
 import { workoutSheetOn } from "../lib/workoutSheet";
+import { coachBrandInline, coachMarkInline } from "../lib/brandMark";
 
 // Reads live from the JSON store on every request — without this, Next
 // statically prerenders this page at build time (before any real data
@@ -1594,6 +1595,9 @@ export default async function ClientPage({
       initialPush={phone ? (PHONE_TAB_SCREENS.has(phoneScreen) ? null : (phoneScreen as Exclude<PhoneScreen, "home" | "training" | "nutrition">)) : params.open === "invoices" ? "invoices" : params.open === "messages" ? "messages" : null}
       initialTab={initialTab}
       readOnly={phone}
+      // Their coach's banner or name where NORCOACH is, and colour (19 Nov, Alex); in the phone preview the client's coach's,
+      // their faint mark with it, so the pills and the mark never wear two coaches.
+      brand={phone ? { ...(await coachBrandInline(client?.coach_id)), mark: await coachMarkInline(client?.coach_id) } : await coachBrandInline(client?.coach_id)}
     />
     </>
   );

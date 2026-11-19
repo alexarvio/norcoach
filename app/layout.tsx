@@ -12,7 +12,7 @@ import ZoomCalm from "./components/ZoomCalm";
 import NativeLinks from "./components/NativeLinks";
 import { buildId } from "./lib/buildId";
 import { getSessionUser } from "./lib/auth";
-import { markFor, markInline } from "./lib/brandMark";
+import { bannerInline, bannerPathFor, brandFor, brandMarkInline, markFor, markInline } from "./lib/brandMark";
 
 export const metadata: Metadata = {
   title: "NORCOACH", // the tab's name in capitals, as the wordmark (24 Oct, Alex)
@@ -78,14 +78,28 @@ export const viewport: Viewport = {
 };
 
 /** The faint mark behind every screen (28 Oct, Alex; lib/brandMark.ts): the signed-in coach's logo, or their coach's
- *  for a client; none (or no one signed in), the star the CSS falls back to. */
-async function bgMark(): Promise<React.CSSProperties | undefined> {
+ *  for a client; none (or no one signed in), the star the CSS falls back to. With it the coach's brand (19 Nov, Alex:
+ *  docs/boards/coach-brand-mockup.html, option C): `--brand`, their colour on the main pills, and the
+ *  faint mark in it. Each only when set, so with none every screen is as it was. The banner travels in the props
+ *  (BrandLogo); it is only read into memory here, so it is never its address on a screen. */
+async function bodyBrand(): Promise<React.CSSProperties | undefined> {
   try {
-    const mark = markFor(await getSessionUser());
-    if (!mark) return undefined;
+    const user = await getSessionUser();
+    const style: Record<string, string> = {};
+    const mark = markFor(user);
     // Inside the page, so it is there at once on every open (13 Nov, Alex); its address while that can't be made.
-    const src = (await markInline(mark)) ?? mark;
-    return { "--bg-mark": `url("${src}")` } as React.CSSProperties;
+    if (mark) style["--bg-mark"] = `url("${(await markInline(mark)) ?? mark}")`;
+    // Read into the page before it is drawn, so the banner never comes in a moment late.
+    const bannerPath = bannerPathFor(user);
+    if (bannerPath) await bannerInline(bannerPath);
+    const brand = brandFor(user);
+    if (brand.color) style["--brand"] = brand.color;
+    // The faint mark in that colour (Home, the client's chat, the admin's page); with ink, the mark as it is.
+    if (brand.color && brand.color !== "#141a24") {
+      const tint = await brandMarkInline(mark, brand.color);
+      if (tint) style["--brand-mark"] = `url("${tint}")`;
+    }
+    return Object.keys(style).length ? (style as React.CSSProperties) : undefined;
   } catch {
     return undefined;
   }
@@ -100,14 +114,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   timer.time("applyDueProgramDeployments", () => applyDueProgramDeploymentsSometimes());
   timer.end(null);
 
-  // Colours are fixed to the design's palette (see the tokens at the top of
-  // globals.css) rather than injected per coach. Coach-configurable branding
-  // is deliberately out for now: one moving accent was enough to make both
-  // apps drift away from the files they were drawn from.
+  // The palette is the design's (the tokens at the top of globals.css). A coach changes one thing in it (19 Nov, Alex):
+  // their brand colour, `--brand`, which fills the main pills and nothing else, with today's ink when they have none.
   return (
     <html lang="en" className={`${libreBaskerville.variable} ${archivo.variable} ${kirana.variable} ${bricolage.variable}`}>
       {/* Sign-in through Clerk, when it is switched on (lib/clerk.ts). */}
-      <body style={await bgMark()}>
+      <body style={await bodyBrand()}>
         {/* The phone app marks itself before anything draws (17 Nov): the server then sends a coach to /coach. */}
         <script dangerouslySetInnerHTML={{ __html: NATIVE_SCRIPT }} />
         {clerkOn() ? <ClerkProvider signInUrl="/login" signUpUrl="/signup" signInFallbackRedirectUrl="/auth/continue" signUpFallbackRedirectUrl="/auth/continue" afterSignOutUrl="/login">{children}</ClerkProvider> : children}

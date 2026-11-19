@@ -410,7 +410,8 @@ import { COACH_PROFILE_LIMITS } from "./coachProfileView";
 import { deleteUpload, fitPhoto, keyOf, prepareChatMedia, putUpload, putUploadFromDisk, warmSmallCopies, webVideo } from "./storage";
 import fs from "fs";
 import { claimUpload, discardUpload, placeUpload, UPLOAD_CAPS, type StagedUpload, type UploadKind } from "./streamUpload";
-import { logoAsPng, makeLogoMark, removeCoachLogo, saveCoachLogo } from "./brandMark";
+import { coachBrand, logoAsPng, makeBannerMark, makeLogoMark, removeCoachBanner, removeCoachLogo, saveBrandColour, saveCoachBanner, saveCoachLogo } from "./brandMark";
+import { brandColour, normalHex } from "./brandColour";
 import { setPhaseObjectives, savePhaseCover, setPhaseCoverPath, editClientChatMessage, deleteClientChatMessage, setPhaseClientNote, chatThreadViews, type ChatThreadView } from "./queries";
 import { isStockCover } from "./phaseCovers";
 import { FEATURES } from "./features";
@@ -4688,6 +4689,56 @@ export async function removeCoachLogoAction(): Promise<void> {
   const coach = await requireCoach();
   for (const old of removeCoachLogo(coach.id)) await deleteUpload(old);
   revalidatePath("/", "layout");
+}
+
+/** The coach's brand colour (19 Nov, Alex; lib/brandColour.ts): kept as picked, used darkened when white words would
+ *  not read on it. Null, back to the ink. Saved at once. */
+export async function setBrandColourAction(hex: string | null): Promise<{ ok: true; hex: string | null; changed: boolean } | { ok: false; error: string }> {
+  const coach = await requireCoach();
+  if (hex == null || hex.trim() === "") {
+    if (!saveBrandColour(coach.id, null)) return { ok: false, error: "Not saved. Try again." };
+    revalidatePath("/", "layout");
+    return { ok: true, hex: null, changed: false };
+  }
+  const used = brandColour(hex);
+  if (!used) return { ok: false, error: "That isn't a colour." };
+  // Kept as the coach picked it, written the one way ('#rrggbb'), so a later rule reads their own pick.
+  const picked = normalHex(hex);
+  if (!picked || !saveBrandColour(coach.id, picked)) return { ok: false, error: "Not saved. Try again." };
+  revalidatePath("/", "layout");
+  return { ok: true, hex: used.hex, changed: used.changed };
+}
+
+/** The coach's banner (19 Nov, Alex): a wide wordmark made one colour as the logo is (makeBannerMark), drawn where
+ *  NORCOACH is on their screens and their clients'. Saved at once; the banner as the page draws it, or why not. */
+export async function uploadCoachBannerAction(formData: FormData): Promise<{ ok: true; banner: string; ratio: number } | { ok: false; error: string }> {
+  const coach = await requireCoach();
+  const file = formData.get("file") as File | null;
+  if (!file || file.size === 0) return { ok: false, error: "Pick a picture first." };
+  if (file.size > 10 * 1024 * 1024) return { ok: false, error: `${Math.round(file.size / 1024 / 1024)} MB is over 10 MB.` };
+  if (!file.type.startsWith("image/")) return { ok: false, error: "That file isn't a picture." };
+  const body = Buffer.from(await file.arrayBuffer());
+  let made: { png: Buffer; ratio: number };
+  try {
+    made = await makeBannerMark(body);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error && error.message ? error.message : "That file isn't a picture we can read." };
+  }
+  const saved = saveCoachBanner(coach.id, made.png, made.ratio);
+  if (!saved) return { ok: false, error: "Not saved. Try again." };
+  if (saved.previous) await deleteUpload(saved.previous);
+  await putUpload(saved.banner, made.png, "image/png");
+  revalidatePath("/", "layout");
+  return { ok: true, banner: coachBrand(coach.id).banner ?? saved.banner, ratio: made.ratio };
+}
+
+/** Back to the business name, else NORCOACH. */
+export async function removeCoachBannerAction(): Promise<{ ok: true } | { ok: false; error: string }> {
+  const coach = await requireCoach();
+  const old = removeCoachBanner(coach.id);
+  if (old) await deleteUpload(old);
+  revalidatePath("/", "layout");
+  return { ok: true };
 }
 
 export async function removeCoachPhotoAction(formData: FormData) {

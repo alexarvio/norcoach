@@ -13,7 +13,8 @@ import { loadChatDock, loadRail } from "../loaders";
 import RedesignRail from "../RedesignRail";
 import ChatDock from "../ChatDock";
 import "../messages/messages.css";
-import { AccountSettings, BusinessSettings, InvoicingSettings, LogoSettings, PrivacySettings } from "./SettingsForms";
+import { AccountSettings, BannerSettings, BrandColourSettings, BusinessSettings, InvoicingSettings, LogoSettings, PrivacySettings } from "./SettingsForms";
+import { coachBrandInline } from "../../../lib/brandMark";
 import SupportSection from "./SupportSection";
 import BillingSettings from "./BillingSettings";
 import { billingView } from "../../../lib/billing";
@@ -97,6 +98,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const payments = await t.time("stripe", () => stripeState(coach.id, !!params.stripe));
   const settings = t.time("coachSettings", () => getCoachSettings(coach.id));
   const business = settings.business ?? {};
+  // The banner inside the page, for its preview (19 Nov).
+  const brandNow = await coachBrandInline(coach.id);
   const invoicing = settings.invoicing ?? {};
   const support = t.time("support", () => loadSupportSection(coach));
   // Account & security's logins and devices, from Clerk (27 Oct); null with Clerk off or not answering.
@@ -146,6 +149,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       body: (
         <>
           <LogoSettings mark={settings.brand?.mark ?? null} />
+          {/* Beside the logo, the banner and the brand colour (19 Nov, Alex: docs/boards/coach-brand-mockup.html). */}
+          <BannerSettings banner={brandNow.banner ?? null} ratio={brandNow.bannerRatio ?? null} />
+          <BrandColourSettings picked={settings.brand?.color ?? null} />
           <BusinessSettings key={JSON.stringify(business)} initial={business} />
         </>
       ),
