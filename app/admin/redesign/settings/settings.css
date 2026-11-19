@@ -25,7 +25,10 @@
 .rd.rst .rst-sechead { display: flex; align-items: center; gap: 10px; min-height: 40px; margin: 0; font: inherit; }
 .rd.rst .rst-sectitle { min-width: 0; font-size: 20px; font-weight: 600; line-height: 1.25; letter-spacing: -0.01em; color: #141a24; }
 .rd.rst .rst-content { display: flex; flex-direction: column; gap: 22px; padding: 10px 0 30px; }
-@media (max-width: 900px) { .rd.rst .rst-list { position: static; max-width: none; } }
+/* Stacked, the list stops sticking (19 Nov, Alex: on a narrow window it stuck over the section as it scrolled): the split
+   wraps once it is under 652px (the list's 200, the gap's 32, the section's 420), which with the rail and the chat tabs
+   beside it is a window under about 1015px. */
+@media (max-width: 1020px) { .rd.rst .rst-list { position: static; max-width: none; } }
 
 /* A section's part: its small caps label (and a fact, grey after the bar) over its card, its control on the right. */
 .rd.rls.rst .rls-section.rst-sub { gap: 10px; }
