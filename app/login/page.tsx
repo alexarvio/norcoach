@@ -31,7 +31,8 @@ export default async function LoginPage({
   // Lockout recovery: fires once per new COACH_RESET_TOKEN value, see auth.ts.
   resetCoachFromEnv();
   // Blank-canvas wipe: fires once per new WORKSPACE_RESET_TOKEN value, see auth.ts.
-  resetWorkspaceFromEnv();
+  // The chat's DELETE awaited with CHAT_STORE=pg (Step 5); a failure is said and the page still draws (tried again next time).
+  await resetWorkspaceFromEnv().catch((error) => console.error("[workspace-reset] failed; tried again on the next sign-in page:", error instanceof Error ? error.message : error));
 
   // Already signed in? Send them where they belong rather than showing a
   // login form they'd have no reason to fill in.

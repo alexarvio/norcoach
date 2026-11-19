@@ -22,6 +22,13 @@ const O = (name: OnceTable) => sql.identifier(name);
 const ints = (ids: readonly number[]) => `{${ids.filter((n) => Number.isInteger(n)).join(",")}}`;
 /** The columns of a coach-wide read: the row without its preview picture (pick.ts lean). */
 const LEAN = sql.raw(`id, client_id, sender, text, media_path, media_type, created_at, (extra - 'media_thumb') AS extra`);
+/** LEAN under the alias m. */
+const LEAN_M = sql.raw(`m.id, m.client_id, m.sender, m.text, m.media_path, m.media_type, m.created_at, (m.extra - 'media_thumb') AS extra`);
+/** A row a coach-wide cut counts (pick.ts countable): sent with words and an instant. */
+const FEEDABLE = sql.raw(`m.sender = 'client' AND norcoach_has_words(m.text, m.media_path) AND m.created_at_tz IS NOT NULL`);
+/** Not a stray, not linked to a session (an echo is always session-linked). */
+const PLAIN = (strays: readonly number[]) =>
+  sql`m.id <> ALL(${ints(strays)}::int[]) AND (m.extra#>>'{link,kind}') IS DISTINCT FROM 'session'`;
 /** A meal comment's row: a food link with a meal (removeMealComment, editMealComment). */
 const FOOD_MEAL = sql.raw(`(extra#>>'{link,kind}' = 'food' AND COALESCE(extra#>>'{link,meal}', '') <> '')`);
 
@@ -40,11 +47,74 @@ export const readSql = {
    * pickCoachLast: the newest by instant, the lowest id between equal ones (a stable sort kept the store's order). One
    * client at a time (LATERAL … LIMIT 1), each read backwards on chat_messages_coach_last_idx until a row with words.
    */
-  coachLast: (t: ChatTable, clientIds: readonly number[]) =>
+  coachLast: (t: ChatTable, clientIds: readonly number[], strays: readonly number[] = []) =>
     sql`SELECT l.* FROM (SELECT DISTINCT unnest(${ints(clientIds)}::int[]) AS cid) c CROSS JOIN LATERAL (
           SELECT ${LEAN} FROM ${T(t)}
-          WHERE client_id = c.cid AND sender = 'coach' AND norcoach_has_words(text, media_path)
+          WHERE client_id = c.cid AND sender = 'coach' AND norcoach_has_words(text, media_path)${strays.length ? sql` AND id <> ALL(${ints(strays)}::int[])` : sql``}
           ORDER BY created_at_tz DESC NULLS LAST, id ASC LIMIT 1) l ORDER BY l.id`,
+  /**
+   * pickClientTop: each client's rows sent with words from the instant of their n-th newest countable one on (with
+   * words, an instant, not a stray, not linked to a session); all of them when they have fewer. On client_sent_idx,
+   * read backwards per client.
+   */
+  clientTop: (t: ChatTable, clientIds: readonly number[], n: number, strays: readonly number[]) =>
+    sql`SELECT r.* FROM (SELECT DISTINCT unnest(${ints(clientIds)}::int[]) AS cid) c
+        LEFT JOIN LATERAL (
+          SELECT m.created_at_tz AS cut FROM ${T(t)} m
+          WHERE m.client_id = c.cid AND ${FEEDABLE} AND ${PLAIN(strays)}
+          ORDER BY m.created_at_tz DESC OFFSET (${n}::int - 1) LIMIT 1) k ON true
+        CROSS JOIN LATERAL (
+          SELECT ${LEAN_M} FROM ${T(t)} m
+          WHERE m.client_id = c.cid AND m.sender = 'client' AND norcoach_has_words(m.text, m.media_path)
+            AND m.created_at_tz >= COALESCE(k.cut, '-infinity'::timestamptz)) r
+        ORDER BY r.id`,
+  /** pickCoachTop: the same cut across all these clients at once (each client's newest n, then the n-th of them all). */
+  coachTop: (t: ChatTable, clientIds: readonly number[], n: number, strays: readonly number[]) =>
+    sql`WITH c AS (SELECT DISTINCT unnest(${ints(clientIds)}::int[]) AS cid),
+        per AS (SELECT l.tz FROM c CROSS JOIN LATERAL (
+          SELECT m.created_at_tz AS tz FROM ${T(t)} m
+          WHERE m.client_id = c.cid AND ${FEEDABLE} AND ${PLAIN(strays)}
+          ORDER BY m.created_at_tz DESC LIMIT ${n}::int) l),
+        cut AS (SELECT tz FROM per ORDER BY tz DESC OFFSET (${n}::int - 1) LIMIT 1)
+        SELECT ${LEAN_M} FROM ${T(t)} m
+        WHERE m.client_id IN (SELECT cid FROM c) AND m.sender = 'client' AND norcoach_has_words(m.text, m.media_path)
+          AND m.created_at_tz >= COALESCE((SELECT tz FROM cut), '-infinity'::timestamptz)
+        ORDER BY m.id`,
+  /**
+   * pickNeeds: each client's rows sent with words after both the coach's last message with words (by instant, strays
+   * left out) and `after` (ISO, or null). `clients` is JSON: [{"cid": 12, "after": "2026-11-18T09:00:00.000Z"}].
+   * A client with a stray with words: all their rows with words (the second branch, gated on that one lookup by id, so
+   * it costs nothing for everyone else; see pickNeeds on why).
+   */
+  needs: (t: ChatTable, clients: string, strays: readonly number[]) =>
+    sql`SELECT r.* FROM jsonb_to_recordset(${clients}::jsonb) AS c(cid int, after timestamptz)
+        LEFT JOIN LATERAL (
+          SELECT m.created_at_tz AS t FROM ${T(t)} m
+          WHERE m.client_id = c.cid AND m.sender = 'coach' AND norcoach_has_words(m.text, m.media_path)
+            AND m.created_at_tz IS NOT NULL AND m.id <> ALL(${ints(strays)}::int[])
+          -- NULLS LAST as chat_messages_coach_last_idx holds them (none here), so the index gives the order.
+          ORDER BY m.created_at_tz DESC NULLS LAST LIMIT 1) lc ON true
+        CROSS JOIN LATERAL (
+          SELECT ${LEAN_M} FROM ${T(t)} m
+          WHERE m.client_id = c.cid AND m.sender = 'client' AND norcoach_has_words(m.text, m.media_path)
+            AND m.created_at_tz > GREATEST(COALESCE(lc.t, '-infinity'::timestamptz), COALESCE(c.after, '-infinity'::timestamptz))
+          UNION
+          SELECT ${LEAN_M} FROM ${T(t)} m
+          WHERE m.client_id = c.cid AND norcoach_has_words(m.text, m.media_path)
+            AND EXISTS (SELECT 1 FROM ${T(t)} s WHERE s.id = ANY(${ints(strays)}::int[]) AND s.client_id = c.cid AND norcoach_has_words(s.text, s.media_path))) r
+        ORDER BY r.id`,
+  /** pickRecent: what they sent with words from `since` (ISO) on. No limit: markClientEventsSeen keeps its marks to it. */
+  recent: (t: ChatTable, clientIds: readonly number[], since: string) =>
+    sql`SELECT ${LEAN} FROM ${T(t)} WHERE client_id = ANY(${ints(clientIds)}::int[]) AND sender = 'client' AND norcoach_has_words(text, media_path)
+          AND created_at_tz >= ${since}::timestamptz ORDER BY id`,
+  /** pickSince: what they sent after `after` (ISO); the Feed's Since filters it as it filtered every row. */
+  since: (t: ChatTable, clientIds: readonly number[], after: string) =>
+    sql`SELECT ${LEAN} FROM ${T(t)} WHERE client_id = ANY(${ints(clientIds)}::int[]) AND sender = 'client' AND created_at_tz > ${after}::timestamptz ORDER BY id`,
+  /** pickStrays: these clients' strays, either side's. */
+  straysRows: (t: ChatTable, clientIds: readonly number[], strays: readonly number[]) =>
+    sql`SELECT ${LEAN} FROM ${T(t)} WHERE id = ANY(${ints(strays)}::int[]) AND client_id = ANY(${ints(clientIds)}::int[]) ORDER BY id`,
+  /** Every row from `afterId` on, `limit` at a time (the nightly JSON backup with CHAT_STORE=pg). */
+  page: (t: ChatTable, afterId: number, limit: number) => sql`SELECT * FROM ${T(t)} WHERE id > ${afterId}::int ORDER BY id LIMIT ${limit}::int`,
   /**
    * pickDock, its last message: the thread's order is the stamp's text (byte order, as JS's < on ASCII), then the id. One
    * client at a time, on chat_messages_client_text_idx.
@@ -90,7 +160,8 @@ export type InsertParams = {
   /** created_at's instant (pg/stamps.ts stampInstant). */
   createdAtTz: string | null;
   /** The send's once key (chatSend's nonce), written in the same statement: none written, no message. */
-  once: { key: string; at: number; extra: string | null; createdAt: string | null } | null;
+  /** `result`: what once() answers a second arrival with, as JSON (a media review's reply: true); null for a send (the shadow's too). */
+  once: { key: string; at: number; extra: string | null; createdAt: string | null; result?: string | null } | null;
   /** A meal's comment: none if the meal has one already (two tabs). Run under insertNeedsLock's lock. */
   meal: { date: string; meal: string } | null;
 };
@@ -99,7 +170,7 @@ export const writeSql = {
   insert: (t: ChatTable, o: OnceTable, p: InsertParams) => sql`
     WITH k AS (
       INSERT INTO ${O(o)} (key, at, result, redirect, extra, created_at)
-      SELECT ${p.once?.key ?? null}::text, ${p.once?.at ?? null}::float8, NULL, NULL, ${p.once?.extra ?? null}::jsonb, ${p.once?.createdAt ?? null}::timestamptz
+      SELECT ${p.once?.key ?? null}::text, ${p.once?.at ?? null}::float8, ${p.once?.result ?? null}::jsonb, NULL, ${p.once?.extra ?? null}::jsonb, ${p.once?.createdAt ?? null}::timestamptz
       WHERE ${p.once?.key ?? null}::text IS NOT NULL
       ON CONFLICT (key) DO NOTHING
       RETURNING 1)
@@ -154,6 +225,18 @@ export const writeSql = {
   clientDelete: (t: ChatTable, clientId: number) => sql`DELETE FROM ${T(t)} WHERE client_id = ${clientId}::int RETURNING id`,
   /** Every chat (the workspace reset). A DELETE, never TRUNCATE: no lock that stops the reads. */
   wipe: (t: ChatTable) => sql`DELETE FROM ${T(t)} RETURNING id`,
+};
+
+// ---- After a lost connection, with CHAT_STORE=pg (rows.ts): did the write commit? -----------------------------------
+
+export const verifySql = {
+  /** A message by id: its sender, words and stamp, and whether it answers one. */
+  byId: (t: ChatTable, id: number) =>
+    sql`SELECT id, client_id, sender, text, created_at, (extra -> 'reply_to') IS NOT NULL AS answered FROM ${T(t)} WHERE id = ${id}::int`,
+  /** The messages that show a file. */
+  byPath: (t: ChatTable, mediaPath: string) => sql`SELECT id, client_id FROM ${T(t)} WHERE media_path = ${mediaPath}::text ORDER BY id`,
+  /** A once key already taken (chatSend's early look; the insert's own statement is the guard). */
+  onceTaken: (o: OnceTable, key: string) => sql`SELECT 1 AS one FROM ${O(o)} WHERE key = ${key}::text`,
 };
 
 // ---- The shadow's own upkeep (never run on chat_messages) ------------------------------------------------------------

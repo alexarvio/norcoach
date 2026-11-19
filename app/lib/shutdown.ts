@@ -5,6 +5,8 @@ import { endChatStreams } from "./chatBus";
 import { DATA_DIR, getData, STORE_MODE } from "./db";
 import { errorReason, health, toSentry } from "./pg/health";
 import { flushStore } from "./pg/runtime";
+import { releaseLease } from "./pg/lease";
+import { CHAT_PG } from "./chat/mode";
 
 // Shutting down without losing a save (17 Nov, the safety net). Railway stops a deploy with SIGTERM; Next's own
 // handler (next/dist/server/lib/start-server.js) closes the HTTP server, waits for the requests still open, then
@@ -42,7 +44,9 @@ function dumpStore(why: string): string | null {
   const name = `unsaved-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
   let body: string;
   try {
-    body = JSON.stringify(getData());
+    // With CHAT_STORE=pg the chat is in Postgres alone, every write of it committed before its answer: nothing of it can
+    // be unsaved, and the file says so (pg/runtime.ts refuses to import one as a whole store).
+    body = CHAT_PG ? JSON.stringify({ ...getData(), _chat_in_postgres: true }) : JSON.stringify(getData());
   } catch (e) {
     console.error(`[shutdown] !!! the last save to Postgres failed (${why}), and the store can't even be written as JSON:`, e);
     return null;
@@ -115,6 +119,8 @@ export function registerShutdown() {
           await import("@sentry/nextjs").then((Sentry) => Sentry.flush(FLUSH_MS)).catch(() => {});
         } else if (STORE_MODE === "postgres") {
           say(`saved; exiting after ${Date.now() - startedAt} ms`);
+          // The database's lease let go once the store is saved (pg/lease.ts), so the next instance takes it at once.
+          await Promise.race([releaseLease(), new Promise((resolve) => setTimeout(resolve, 500))]);
         }
         state.done = true;
         realExit(code);

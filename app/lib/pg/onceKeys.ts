@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
+import { CHAT_ONCE_PREFIX_SQL, CHAT_PG } from "../chat/mode";
 
 // The saves taken once (lib/once.ts) in a table of their own (18 Nov, step 4 of docs/database-plan.md, part B).
 //
@@ -61,7 +62,11 @@ export async function onceKeysFromKvCopy(db: AnyDb): Promise<number | null> {
   return db.transaction(async (tx) => {
     const has = (await tx.execute(sql`SELECT 1 AS one FROM "kv" WHERE "key" = 'once_keys' AND jsonb_typeof("value") = 'array'`)) as { rows?: unknown[] };
     if (!(has.rows ?? []).length) return null;
-    await tx.execute(sql`DELETE FROM "once_keys"`);
+    // With CHAT_STORE=pg (Step 5's cut-over) a chat insert writes its key straight to the table, in its own statement;
+    // kv's copy has it only from the next save on, so a day of those keys is kept rather than replaced (a send retried
+    // across a deploy is the outbox's usual case). kv's copy then fills in the rest, its own rows staying as they are.
+    if (CHAT_PG) await tx.execute(sql`DELETE FROM "once_keys" WHERE NOT ("key" ~ ${CHAT_ONCE_PREFIX_SQL}::text AND "created_at" > now() - interval '1 day')`);
+    else await tx.execute(sql`DELETE FROM "once_keys"`);
     await tx.execute(sql.raw(ONCE_KEYS_FROM_KV));
     const n = (await tx.execute(sql`SELECT count(*)::int AS n FROM "once_keys"`)) as { rows?: { n: number }[] };
     return Number(n.rows?.[0]?.n ?? 0);

@@ -5,6 +5,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { allocId, claimUnownedRows, getData, persist } from "./db";
 import { wipeAllChat } from "./chat/rows";
+import { CHAT_PG } from "./chat/mode";
 import { clearLockoutsFor } from "./loginLockout";
 import { coachOwnsClient, seedCoachLibrary } from "./tenancy";
 import { clerkOn, clerkUserIdFromRequest, clerkUserRow, deleteClerkUser } from "./clerk";
@@ -432,11 +433,25 @@ export function resetCoachFromEnv() {
  * admin UI: a one-click "delete everything" is not something a coach should
  * be able to hit by accident.
  */
-export function resetWorkspaceFromEnv() {
+export function resetWorkspaceFromEnv(): Promise<void> {
+  // One at a time: a second sign-in page drawn while the first wipe runs waits for it.
+  const g = globalThis as unknown as { __norcoachWorkspaceReset?: Promise<void> | null };
+  if (g.__norcoachWorkspaceReset) return g.__norcoachWorkspaceReset;
+  const run = resetWorkspaceOnce().finally(() => {
+    g.__norcoachWorkspaceReset = null;
+  });
+  g.__norcoachWorkspaceReset = run;
+  return run;
+}
+
+async function resetWorkspaceOnce(): Promise<void> {
   const token = process.env.WORKSPACE_RESET_TOKEN?.trim();
   if (!token) return;
   const data = getData();
   if (data.workspace_reset_applied === token) return;
+  // With CHAT_STORE=pg the chat goes first, in Postgres: a DELETE that fails stops the reset here, before anything is
+  // cleared or the token saved, so the next sign-in page tries it again (Step 5's cut-over).
+  if (CHAT_PG) await wipeAllChat("w.wipe");
 
   const before = data.clients.length;
   data.users = data.users.filter((u) => u.role === "coach");
@@ -464,7 +479,7 @@ export function resetWorkspaceFromEnv() {
   data.assignment_custom_values = [];
   // Through the chat's door: memory at once (this stays synchronous for the sign-in page that calls it); after the
   // cut-over a DELETE, which app/login/page.tsx will then await (docs/database-plan.md, Step 5).
-  void wipeAllChat("w.wipe").catch(() => {});
+  if (!CHAT_PG) void wipeAllChat("w.wipe").catch(() => {});
   data.coach_activity = [];
   data.client_reports = [];
   data.training_programs = [];
@@ -472,6 +487,9 @@ export function resetWorkspaceFromEnv() {
   data.client_gyms = [];
   data.workspace_reset_applied = token;
   persist();
+  // With CHAT_STORE=pg once more, now no client is left in memory: a send already past its checks when the first DELETE
+  // ran commits after it. Safe to repeat; a failure leaves at most such rows, which the boot's orphan report names.
+  if (CHAT_PG) await wipeAllChat("w.wipe").catch((error) => console.error("[workspace-reset] the second chat sweep failed:", error instanceof Error ? error.message : error));
   console.log(`[workspace-reset ${token}] applied: removed ${before} client(s) and their data; kept coach logins, exercises, templates`);
 }
 

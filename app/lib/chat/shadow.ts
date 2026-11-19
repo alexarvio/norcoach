@@ -29,14 +29,25 @@ import type { SQL } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import { getData, persist, type ChatRow } from "../db";
 import { storeHealth } from "../pg/health";
-import { chat_messages, once_keys } from "../pg/schema";
+import { chat_messages } from "../pg/schema";
 import { cleanJson, cleanText, fromRecord, toRecord } from "../pg/store";
-import { msInstant, stampInstant, stampInstantMs } from "../pg/stamps";
+import { stampInstantMs } from "../pg/stamps";
+import { CHAT_PG } from "./mode";
+import { insertParams } from "./params";
+import { chatPgReport, safeMessage } from "./pg";
 import { stampMs } from "../targetRule";
-import { CHAT_READ_PATHS, CHAT_WRITE_PATHS, type ChatPath, type ChatReadPath, type ChatWritePath } from "./paths";
+import { CHAT_READ_PATHS, CHAT_WRITE_PATHS, COACH_SHAPE, COACH_VIEW_PATHS, type ChatPath, type ChatReadPath, type ChatWritePath } from "./paths";
 import {
+  chatKept,
   chatNeedOf,
   dockLineOf,
+  pickClientTop,
+  pickCoachTop,
+  pickNeeds,
+  pickRecent,
+  pickSince,
+  pickStrays,
+  straysOf,
   groupOf,
   pickCoachLast,
   pickCoachSent,
@@ -68,6 +79,12 @@ export type ReadSpec =
   | { kind: "food"; clientId: number }
   | { kind: "coachSent"; clientIds: number[] }
   | { kind: "coachLast"; clientIds: number[] }
+  // The coach-wide reads, bounded (Step 5's cut-over); the strays are worked out from the committed rows, for both sides.
+  | { kind: "clientTop"; clientIds: number[]; n: number }
+  | { kind: "coachTop"; clientIds: number[]; n: number }
+  | { kind: "needs"; clients: { cid: number; after: number | null }[] }
+  | { kind: "recent"; clientIds: number[]; since: number }
+  | { kind: "since"; clientIds: number[]; after: number }
   | { kind: "dock"; clientIds: number[]; since: number }
   | { kind: "exists"; publicPath: string }
   | { kind: "lacksLook"; publicPath: string }
@@ -90,7 +107,7 @@ export type WriteSpec =
 // ---- Counts ------------------------------------------------------------------------------------------------------
 
 /** A path: how often the door was asked through it, and asked a view for what it doesn't hold. */
-type PathCount = { seen: number; missed: number };
+type PathCount = { seen: number; missed: number; /** With CHAT_STORE=pg: its query failed (the request with it). */ errored?: number };
 /** One query of a path (`path:kind`). */
 type QueryCount = { sampled: number; matched: number; differed: number; explained: number; errored: number; raced: number; dropped: number; skipped: number };
 type WriteCount = { seen: number; applied: number; matched: number; differed: number; errored: number };
@@ -110,7 +127,7 @@ type Totals = {
   updatedAt: string;
   paths: Record<string, PathCount>;
   queries: Record<string, QueryCount>;
-  equiv: { home: Equiv; dock: Equiv };
+  equiv: { home: Equiv; dock: Equiv; top: Equiv };
   writes: Record<string, WriteCount>;
   table: TableCount;
   days: Record<string, DayCount>;
@@ -135,7 +152,7 @@ type State = {
   done: Record<string, number>;
   inflight: Record<string, number>;
   bucket: { tokens: number; at: number };
-  equiv: { home: Equiv; dock: Equiv };
+  equiv: { home: Equiv; dock: Equiv; top: Equiv };
   days: Record<string, DayCount>;
   write: {
     enabled: boolean;
@@ -161,7 +178,7 @@ type State = {
   writeDb: AnyDb | null;
   pglite: boolean;
   seed: Promise<void> | null;
-  cache: { gen: number; map: Map<string, { json: string; row: ChatRow }>; rows: ChatRow[] } | null;
+  cache: { gen: number; map: Map<string, { json: string; row: ChatRow }>; rows: ChatRow[]; strays?: Set<number>; json?: number } | null;
   lastOp: Map<number, { path: ChatWritePath; at: number }>;
   pending: Map<number, number>;
   lag: IntervalHistogram | null;
@@ -184,7 +201,7 @@ const ROW_CAP = 200_000;
 /** Kinds of difference or error logged at most (each once). */
 const LOG_CAP = 500;
 /** The queries whose answer rides on a stamp's instant, where a row stampMs reads one way and the column another is known. */
-const STAMP_KINDS = new Set(["coachLast", "dock"]);
+const STAMP_KINDS = new Set(["coachLast", "dock", "clientTop", "coachTop", "needs", "recent", "since"]);
 
 const g = globalThis as unknown as { __norcoachChat?: State; _pgWriter?: ShadowWriter };
 
@@ -212,7 +229,7 @@ function state(): State {
     rate: RATE,
     queueCap: QUEUE_CAP,
     bucket: { tokens: RATE, at: Date.now() },
-    equiv: { home: zeroEquiv(), dock: zeroEquiv() },
+    equiv: { home: zeroEquiv(), dock: zeroEquiv(), top: zeroEquiv() },
     days: {},
     write: { enabled: false, seeded: false, overflow: 0, ops: {}, table: { ...zeroTable(), lastAt: null } },
     readQueue: [],
@@ -277,6 +294,17 @@ export function noteMissed(path: ChatPath, message: string) {
   } catch {}
 }
 
+/** With CHAT_STORE=pg, a read of this path failed (thrown to its caller): counted, said once a path. */
+export function noteErrored(path: ChatPath, error: unknown) {
+  try {
+    const c = pathCount(path);
+    c.errored = (c.errored ?? 0) + 1;
+    if (!remember(`pgerror:${path}`)) return;
+    console.error(`[chat] !!! a chat read failed (${path}): ${safeMessage(error)}`);
+    if (process.env.NODE_ENV === "production") toSentry((S) => S.captureMessage(`Chat read failed: ${path}`, { level: "error", tags: { alert: "chat-pg-read", path } }));
+  } catch {}
+}
+
 function toSentry(send: (sentry: typeof import("@sentry/nextjs")) => void) {
   import("@sentry/nextjs").then(send).catch(() => {});
 }
@@ -287,7 +315,11 @@ function toSentry(send: (sentry: typeof import("@sentry/nextjs")) => void) {
 export async function startChatShadow(opts: { db: AnyDb; url: string; writer: ShadowWriter }): Promise<void> {
   try {
     const s = state();
-    const asked = (process.env.CHAT_SHADOW ?? "off").toLowerCase();
+    const env = (process.env.CHAT_SHADOW ?? "off").toLowerCase();
+    // With chat in Postgres alone (CHAT_STORE=pg) there is nothing in memory to compare with: the writer commits no chat
+    // rows and the store holds none, so read and write would count every row as a difference. Baseline instead.
+    const asked = CHAT_PG && (env === "read" || env === "write") ? "baseline" : env;
+    if (asked !== env) console.log(`[chat] CHAT_SHADOW=${env} with CHAT_STORE=pg: running as baseline (nothing in memory to compare with)`);
     s.sampleEvery = Math.max(1, Math.round(Number(process.env.CHAT_SHADOW_SAMPLE) || 20));
     s.rate = Math.max(0.1, Number(process.env.CHAT_SHADOW_RATE) || RATE);
     s.queueCap = Math.max(1, Math.round(Number(process.env.CHAT_SHADOW_QUEUE) || QUEUE_CAP));
@@ -443,8 +475,18 @@ function committedRows(w: ShadowWriter): ChatRow[] {
     map.set(key, was && was.json === json ? was : { json, row: fromRecord(chat_messages, JSON.parse(json)) as unknown as ChatRow });
   }
   const rows = [...map.values()].map((v) => v.row).sort(byId);
-  s.cache = { gen: w.generation, map, rows };
+  let json = 0;
+  for (const v of map.values()) json += v.json.length;
+  s.cache = { gen: w.generation, map, rows, json };
   return rows;
+}
+
+/** The committed rows' strays (pick.ts isStray), once a generation: both sides of a bounded read leave them out of their cuts. */
+function committedStrays(w: ShadowWriter): Set<number> {
+  const rows = committedRows(w);
+  const s = state();
+  if (s.cache && !s.cache.strays) s.cache.strays = straysOf(rows);
+  return s.cache?.strays ?? straysOf(rows);
 }
 
 type Outcome = { kind: string; diff: unknown; ids: number[]; fields: string[]; rows?: RowsDiff } | null;
@@ -466,8 +508,10 @@ async function runRead(job: ReadJob) {
         return;
       }
       const g0 = w.generation;
+      // The strays as the last save committed them, for the SQL and the pick alike (the bounded reads).
+      const strays = committedStrays(w);
       const t0 = performance.now();
-      const actual = await query(s.readDb, job.spec);
+      const actual = await query(s.readDb, job.spec, [...strays].sort((a, b) => a - b));
       const ms = performance.now() - t0;
       if (w.saving || w.generation !== g0) {
         if (attempt === 0) {
@@ -481,7 +525,7 @@ async function runRead(job: ReadJob) {
       list.push(Math.round(ms * 10) / 10);
       if (list.length > 200) list.shift();
       const committed = committedRows(w);
-      const outcome = await compareRead(job.spec, actual, committed);
+      const outcome = await compareRead(job.spec, actual, committed, strays);
       if (outcome === "skipped") {
         c.skipped++;
         return;
@@ -504,7 +548,7 @@ async function runRead(job: ReadJob) {
 
 type Actual = { rows?: ChatRow[]; hit?: boolean; list?: { path: string; type: string }[] };
 
-async function query(db: AnyDb, spec: ReadSpec): Promise<Actual> {
+async function query(db: AnyDb, spec: ReadSpec, strays: number[] = []): Promise<Actual> {
   const t: ChatTable = "chat_messages";
   switch (spec.kind) {
     case "thread":
@@ -514,7 +558,17 @@ async function query(db: AnyDb, spec: ReadSpec): Promise<Actual> {
     case "coachSent":
       return { rows: rowsOf(await db.execute(readSql.coachSent(t, spec.clientIds))).map(decode) };
     case "coachLast":
-      return { rows: rowsOf(await db.execute(readSql.coachLast(t, spec.clientIds))).map(decode) };
+      return { rows: rowsOf(await db.execute(readSql.coachLast(t, spec.clientIds, strays))).map(decode) };
+    case "clientTop":
+      return { rows: rowsOf(await db.execute(readSql.clientTop(t, spec.clientIds, spec.n, strays))).map(decode) };
+    case "coachTop":
+      return { rows: rowsOf(await db.execute(readSql.coachTop(t, spec.clientIds, spec.n, strays))).map(decode) };
+    case "needs":
+      return { rows: rowsOf(await db.execute(readSql.needs(t, needsJson(spec.clients), strays))).map(decode) };
+    case "recent":
+      return { rows: rowsOf(await db.execute(readSql.recent(t, spec.clientIds, new Date(spec.since).toISOString()))).map(decode) };
+    case "since":
+      return { rows: rowsOf(await db.execute(readSql.since(t, spec.clientIds, new Date(spec.after).toISOString()))).map(decode) };
     case "dock": {
       const last = rowsOf(await db.execute(readSql.dockLast(t, spec.clientIds))).map(decode);
       const recent = rowsOf(await db.execute(readSql.dockRecent(t, spec.clientIds, spec.since))).map(decode);
@@ -551,7 +605,7 @@ async function diffRows(want: readonly ChatRow[], got: readonly ChatRow[]): Prom
 }
 
 /** Its pick over the committed rows against what the query read; null when they agree, "skipped" when too big to. */
-async function compareRead(spec: ReadSpec, actual: Actual, committed: ChatRow[]): Promise<Outcome | "skipped"> {
+async function compareRead(spec: ReadSpec, actual: Actual, committed: ChatRow[], strays: ReadonlySet<number> = new Set()): Promise<Outcome | "skipped"> {
   const rowsOutcome = async (kind: string, want: ChatRow[], got: ChatRow[]): Promise<Outcome | "skipped"> => {
     if (want.length + got.length > ROW_CAP) return "skipped";
     const d = await diffRows(want, got);
@@ -567,12 +621,32 @@ async function compareRead(spec: ReadSpec, actual: Actual, committed: ChatRow[])
       return rowsOutcome("food", pickFood(committed, spec.clientId), actual.rows!);
     case "coachSent":
       return rowsOutcome("coachSent", pickCoachSent(committed, new Set(spec.clientIds)), actual.rows!);
-    case "coachLast": {
+    case "coachLast":
+      return rowsOutcome("coachLast", pickCoachLast(committed, new Set(spec.clientIds), strays), actual.rows!);
+    case "clientTop": {
       const ids = new Set(spec.clientIds);
-      const last = pickCoachLast(committed, ids);
-      await equivHome(committed, spec.clientIds, pickCoachSent(committed, ids), last);
-      return rowsOutcome("coachLast", last, actual.rows!);
+      const want = pickClientTop(committed, ids, spec.n, strays);
+      await equivTop(committed, spec.clientIds, spec.n, "client", want, strays);
+      return rowsOutcome("clientTop", want, actual.rows!);
     }
+    case "coachTop": {
+      const ids = new Set(spec.clientIds);
+      const want = pickCoachTop(committed, ids, spec.n, strays);
+      await equivTop(committed, spec.clientIds, spec.n, "coach", want, strays);
+      return rowsOutcome("coachTop", want, actual.rows!);
+    }
+    case "needs": {
+      const want = pickNeeds(committed, spec.clients, strays);
+      const ids = new Set(spec.clients.map((c) => c.cid));
+      // Needs you's answer from the slice the coach views hold (what was sent after, the coach's last word, the strays).
+      const slice = [...new Map([...want, ...pickCoachLast(committed, ids, strays), ...pickStrays(committed, ids, strays)].map((m) => [m.id, m] as const)).values()].sort(byId);
+      await equivHome(committed, spec.clients.map((c) => c.cid), slice);
+      return rowsOutcome("needs", want, actual.rows!);
+    }
+    case "recent":
+      return rowsOutcome("recent", pickRecent(committed, new Set(spec.clientIds), spec.since), actual.rows!);
+    case "since":
+      return rowsOutcome("since", pickSince(committed, new Set(spec.clientIds), spec.after), actual.rows!);
     case "dock": {
       const want = pickDock(committed, new Set(spec.clientIds), spec.since);
       await equivDock(committed, spec.clientIds, want, spec.since);
@@ -616,14 +690,13 @@ function explained(o: NonNullable<Outcome>, committed: ChatRow[], actual: Actual
 }
 
 /** The narrowed coach slice gives Needs you the same answer as the whole rows (pure JS, no SQL), client by client. */
-async function equivHome(committed: ChatRow[], clientIds: number[], sent: ChatRow[], last: ChatRow[]) {
+async function equivHome(committed: ChatRow[], clientIds: number[], sliceRows: ChatRow[]) {
   const e = state().equiv.home;
   try {
     const clients = new Map(getData().clients.map((c) => [c.id, c] as const));
     const ids = new Set(clientIds);
     const whole = groupOf(committed, ids);
-    const sentOf = groupOf(sent, ids);
-    const lastOf = groupOf(last, ids);
+    const sliceOf = groupOf(sliceRows, ids);
     let i = 0;
     for (const id of clientIds) {
       if (++i % 50 === 0) await giveWay();
@@ -631,7 +704,7 @@ async function equivHome(committed: ChatRow[], clientIds: number[], sent: ChatRo
       const client = clients.get(id);
       const readAt = client?.coach_chat_read_at ? stampMs(client.coach_chat_read_at) : 0;
       const full = chatNeedOf(whole.get(id) ?? [], id, readAt);
-      const slice = chatNeedOf([...(sentOf.get(id) ?? []), ...(lastOf.get(id) ?? [])].sort(byId), id, readAt);
+      const slice = chatNeedOf(sliceOf.get(id) ?? [], id, readAt);
       const same = full.lastCoach?.id === slice.lastCoach?.id && stableJson(full.unanswered.map((m) => m.id)) === stableJson(slice.unanswered.map((m) => m.id));
       if (same) e.matched++;
       else {
@@ -646,6 +719,43 @@ async function equivHome(committed: ChatRow[], clientIds: number[], sent: ChatRo
     failed("equiv.home", error);
   }
 }
+
+/**
+ * A bounded slice holds every chat row a reader's newest-n cut keeps (pure JS, no SQL): per client (clientTop) or across
+ * them all (coachTop), with no echo dropped and with every session-linked row dropped, the two ends of what a reader can
+ * drop before it cuts. Containment, not equality: the slice may hold more, the reader cuts it again.
+ */
+async function equivTop(committed: ChatRow[], clientIds: number[], n: number, per: "client" | "coach", slice: ChatRow[], strays: ReadonlySet<number>) {
+  const e = state().equiv.top;
+  try {
+    const held = new Set(slice.map((m) => m.id));
+    for (const id of strays) held.add(id);
+    const ids = new Set(clientIds);
+    const none = () => false;
+    const session = (m: ChatRow) => m.link?.kind === "session";
+    const groups = per === "client" ? [...groupOf(committed, ids).values()] : [committed.filter((m) => ids.has(m.client_id))];
+    let i = 0;
+    for (const rows of groups) {
+      if (++i % 50 === 0) await giveWay();
+      e.checked++;
+      const lost = [...chatKept(rows, n, none), ...chatKept(rows, n, session)].filter((id) => !held.has(id));
+      if (!lost.length) e.matched++;
+      else {
+        e.differed++;
+        today().differed++;
+        report("equiv.top", { kind: "top", diff: { per, n, lost: [...new Set(lost)].slice(0, 20) }, ids: lost, fields: ["kept"] });
+      }
+    }
+  } catch (error) {
+    e.errored++;
+    today().errored++;
+    failed("equiv.top", error);
+  }
+}
+
+/** Needs you's clients as the statement takes them: JSON, `after` an ISO instant. */
+const needsJson = (clients: { cid: number; after: number | null }[]) =>
+  JSON.stringify(clients.map((c) => ({ cid: c.cid, after: c.after == null || !Number.isFinite(c.after) ? null : new Date(c.after).toISOString() })));
 
 /** The narrowed dock slice gives the chat list the same line as the whole rows (pure JS, no SQL), client by client. */
 async function equivDock(committed: ChatRow[], clientIds: number[], slice: ChatRow[], since: number) {
@@ -689,18 +799,6 @@ function report(path: string, o: NonNullable<Outcome>) {
     s.told.add(path);
     toSentry((S) => S.captureMessage(`Chat shadow difference: ${path}`, { level: "warning", tags: { alert: "chat-shadow-diff", path } }));
   }
-}
-
-/**
- * An error's words, safe for the log: Postgres's SQLSTATE and message, drizzle's parameters cut off, and every quoted
- * value in it ("invalid input syntax for type integer: "abc"") put out of sight. Never a message's words or a key.
- */
-function safeMessage(error: unknown): string {
-  const e = error instanceof Error && error.cause instanceof Error ? error.cause : error;
-  const code = (e as { code?: unknown } | null)?.code;
-  const words = (e instanceof Error ? e.message : String(e)).split("\nparams:")[0];
-  const hidden = words.replace(/"(?:[^"\\]|\\.)*"/g, '"…"').replace(/'(?:[^'\\]|\\.)*'/g, "'…'");
-  return `${typeof code === "string" ? `${code} ` : ""}${hidden}`.slice(0, 300);
 }
 
 function failed(where: string, error: unknown) {
@@ -760,24 +858,8 @@ function writeJob(spec: WriteSpec, path: ChatWritePath): WriteJob {
   const sameIds = (want: number[]) => (rows: Row[]) => stableJson(rows.map((r) => Number(r.id)).sort((a, b) => a - b)) === stableJson([...want].sort((a, b) => a - b));
   switch (spec.op) {
     case "insert": {
-      const record = JSON.parse(cleanJson(toRecord(chat_messages, spec.row as unknown as Row)) ?? "null") as Row;
-      const extra = { ...((record.extra as Row | null) ?? {}) };
-      delete extra.reply_to;
-      const onceRecord = spec.once ? (JSON.parse(cleanJson(toRecord(once_keys, { key: spec.once.key, at: spec.once.at })) ?? "null") as Row) : null;
-      const p: InsertParams = {
-        id: Number(record.id),
-        client_id: Number(record.client_id),
-        sender: String(record.sender),
-        text: record.text as string | null,
-        media_path: record.media_path as string | null,
-        media_type: record.media_type as string | null,
-        created_at: record.created_at as string | null,
-        extra: Object.keys(extra).length ? JSON.stringify(extra) : null,
-        replyTo: spec.replyTo,
-        createdAtTz: stampInstant(spec.row.created_at),
-        once: onceRecord ? { key: String(onceRecord.key), at: Number(onceRecord.at), extra: onceRecord.extra == null ? null : JSON.stringify(onceRecord.extra), createdAt: msInstant(spec.once!.at) } : null,
-        meal: spec.meal,
-      };
+      // The send's once key as takeOnce keeps it (no result): its row in once_keys_shadow, as before.
+      const p: InsertParams = insertParams(spec.row, spec.replyTo, spec.once ? { key: spec.once.key, at: spec.once.at } : null, spec.meal);
       const answered = spec.row.reply_to != null;
       return {
         path,
@@ -1014,7 +1096,7 @@ function totalsNow(): Totals {
     updatedAt: new Date().toISOString(),
     paths: addMaps(base?.paths, s.paths, () => ({ seen: 0, missed: 0 })),
     queries: addMaps(base?.queries, s.queries, zeroQuery),
-    equiv: { home: addCounts(base?.equiv?.home, s.equiv.home, zeroEquiv), dock: addCounts(base?.equiv?.dock, s.equiv.dock, zeroEquiv) },
+    equiv: { home: addCounts(base?.equiv?.home, s.equiv.home, zeroEquiv), dock: addCounts(base?.equiv?.dock, s.equiv.dock, zeroEquiv), top: addCounts(base?.equiv?.top, s.equiv.top, zeroEquiv) },
     writes: addMaps(base?.writes, s.write.ops, zeroWrite),
     table: { ...addCounts(base?.table, { ...table, pending: 0 }, zeroTable), pending: s.write.table.pending },
     days,
@@ -1049,6 +1131,16 @@ const quantile = (list: number[], q: number) => {
   return sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
 };
 
+/**
+ * The `path:kind` of every slice a coach view's path fetches, as onFetch names them: the shape's kinds, `full` as the
+ * old admin's coachSent and coachLast. The Feed's `since` only once a coach has a visit before (it is driven by hand).
+ */
+const SHAPE_QUERY_KEYS: string[] = [
+  ...new Set(
+    COACH_VIEW_PATHS.flatMap((p) => COACH_SHAPE[p].flatMap((slice) => (slice.kind === "full" ? ["coachSent", "coachLast"] : [slice.kind])).map((kind) => `${p}:${kind}`))
+  ),
+].sort();
+
 /** What the week's exit asks, from the totals: names and counts only. */
 function exitOf(t: Totals) {
   const sum = (field: keyof QueryCount) => Object.values(t.queries).reduce((n, c) => n + (c[field] ?? 0), 0);
@@ -1059,11 +1151,14 @@ function exitOf(t: Totals) {
     readPathsNotSeen: CHAT_READ_PATHS.filter((p) => !(t.paths[p]?.seen > 0)),
     readPathsWithNoMatch: CHAT_READ_PATHS.filter((p) => !Object.entries(t.queries).some(([k, c]) => k.startsWith(`${p}:`) && c.matched > 0)),
     queriesNotMatched: Object.keys(t.queries).filter((k) => !(t.queries[k].matched > 0)).sort(),
+    // Every slice each coach view's shape fetches (paths.ts COACH_SHAPE), matched at least once: a path passing on its
+    // thread alone, its needs or clientTop never sampled, is not proved (queriesNotMatched lists only what was sampled).
+    shapeQueriesNotMatched: SHAPE_QUERY_KEYS.filter((k) => !(t.queries[k]?.matched > 0)),
     writePathsNotMatched: CHAT_WRITE_PATHS.filter((p) => !(t.writes[p]?.matched > 0)),
     matched: sum("matched"),
-    differed: sum("differed") + t.equiv.home.differed + t.equiv.dock.differed,
+    differed: sum("differed") + t.equiv.home.differed + t.equiv.dock.differed + (t.equiv.top?.differed ?? 0),
     explained: sum("explained"),
-    errored: sum("errored") + t.equiv.home.errored + t.equiv.dock.errored,
+    errored: sum("errored") + t.equiv.home.errored + t.equiv.dock.errored + (t.equiv.top?.errored ?? 0),
     missed: Object.values(t.paths).reduce((n, c) => n + (c.missed ?? 0), 0),
     days: days.map((d) => ({ day: d, matched: t.days[d].matched, differed: t.days[d].differed, explained: t.days[d].explained, errored: t.days[d].errored, txP90: median(t.days[d].txP90), lagP99: quantile(t.days[d].lagP99, 0.99) })),
     erroredLast3Days: last3.reduce((n, d) => n + t.days[d].errored, 0),
@@ -1099,15 +1194,34 @@ export function chatShadowReport() {
     pausedUntil: s.pausedUntil > Date.now() ? new Date(s.pausedUntil).toISOString() : null,
     // This boot's counts.
     read,
-    equiv: { home: { ...s.equiv.home }, dock: { ...s.equiv.dock } },
+    equiv: { home: { ...s.equiv.home }, dock: { ...s.equiv.dock }, top: { ...s.equiv.top } },
     write: { enabled: s.write.enabled, seeded: s.write.seeded, overflow: s.write.overflow, queue: s.writeQueue.length, ops, table: { ...s.write.table } },
     queue: { read: s.readQueue.length, write: s.writeQueue.length },
     lag: lagNow(),
     logged: { kinds: s.logged.size, suppressed: s.suppressed },
+    // The memory note (Step 5): the decoded copy of the committed chat rows the read shadow keeps (its JSON's length,
+    // two bytes a character, as a rough figure; the decoded rows are about as much again), and the heap beside it.
+    cache: s.cache ? { rows: s.cache.rows.length, approxMB: Math.round(((s.cache.json ?? 0) * 2) / 1e5) / 10 } : { rows: 0, approxMB: 0 },
+    heapUsedMB: Math.round(process.memoryUsage().heapUsed / 1e5) / 10,
+    // Where the chat lives (Step 5's cut-over): in memory, how many rows and the highest id (read just before the night's
+    // stop, to check against the pg boot's log line); in Postgres, chat's own connection's counts.
+    store: CHAT_PG ? { mode: "pg", pg: chatPgReport() } : { mode: "memory", memory: memoryChatFigures() },
     recent: s.recent.map((r) => ({ ...r, fields: [...r.fields] })),
     // The week's, across boots (baseline, read, write): what the exit reads.
     total,
   };
+}
+
+/** The chat in memory: its rows and highest id (for /api/timing; nothing with CHAT_STORE=pg). */
+function memoryChatFigures(): { rows: number; maxId: number } | null {
+  try {
+    const list = (getData().chat_messages ?? []) as unknown as ChatRow[];
+    let maxId = 0;
+    for (const m of list) if (m && m.id > maxId) maxId = m.id;
+    return { rows: list.length, maxId };
+  } catch {
+    return null;
+  }
 }
 
 /** Waits for both queues to empty (the tests). */

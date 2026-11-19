@@ -3,8 +3,10 @@ import { sortReasons, type AttentionReason } from "./attentionReasons";
 import path from "path";
 import { chatChanged } from "./chatBus";
 import { CHAT_TABLE, chatFileLacksLook, chatShowsFile, deleteClientChat, deleteRow, editText, insertChatRow, setLink, setLook, setPinned, setReaction, swapPath, type ChatCoachView, type ChatDockView, type ChatThread } from "./chat/rows";
-import { chatNeedOf, dockLineOf, HOME_NEW_DAYS } from "./chat/pick";
+import { chatNeedOf, dockLineOf, HOME_EVENTS, HOME_NEW_DAYS } from "./chat/pick";
 import type { ChatWritePath } from "./chat/paths";
+import { CHAT_PG } from "./chat/mode";
+import { noteTakenKey } from "./onceKeep";
 import { healthStoreName, healthWorkoutFacts, healthWorkoutWords } from "./healthWorkouts";
 import { allocId, DATA_DIR, DAY_NAMES_FULL, getData, persist, mergeDuplicateMetricDefinitions, CardioEntry } from "./db";
 import type { CalorieLog, CheckInNote, CustomFood, FoodDay, FoodEntry, FoodMealSlot, OffFood, SavedDay, SavedMeal, ClientEvent, ClientGym, ClientPhase, CoachProfile, CoachBusiness, CoachNotify, CoachInvoicing, CoachPayments, CoachSettings, Data, EventCategory, InvoiceEvery, InvoiceLine, InvoiceParty, InvoiceRecipient, InvoiceRepeat, InvoiceTemplate, KeptActivity, MetricAskAt, PhaseTrack, SessionAnswer, VideoRequest, WorkoutQuestion, MeetingRequest } from "./db";
@@ -299,6 +301,9 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
   const data = getData();
   const client = data.clients.find((c) => c.id === clientId);
   if (!client) return;
+  // With CHAT_STORE=pg their chat goes first, in Postgres: a DELETE that fails stops the erase here, before anything in
+  // memory changes, so it never reports done with their messages left behind (eraseClient says it failed; again is safe).
+  if (CHAT_PG) await deleteClientChat(clientId, "w.client.delete");
   // A Personal block that still has them saved is the coach's own: it stays.
   detachStrayEntryClients();
 
@@ -346,7 +351,11 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
 
   // Everything else of theirs: every collection's rows with their client_id. Their chat through its door (memory at
   // once; after the cut-over its DELETE), awaited once the rest is done.
-  const chatGone = deleteClientChat(clientId, "w.client.delete");
+  // (With CHAT_STORE=pg it went first, above.)
+  const chatGone = (() => {
+    if (CHAT_PG) return Promise.resolve(0);
+    return deleteClientChat(clientId, "w.client.delete");
+  })();
   const store = data as unknown as Record<string, unknown>;
   // chat-door: chat rows go through deleteClientChat
   for (const [name, value] of Object.entries(store)) {
@@ -357,6 +366,16 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
   data.clients = data.clients.filter((c) => c.id !== clientId);
   persist();
   await chatGone;
+  // With CHAT_STORE=pg once more, now the client is gone from memory: a send already past its checks when the first
+  // DELETE ran commits after it (nothing new can start for a client no longer here). The same statement, safe to repeat;
+  // a failure here leaves at most that row, which the boot's orphan report names.
+  if (CHAT_PG) {
+    try {
+      await deleteClientChat(clientId, "w.client.delete");
+    } catch (error) {
+      console.error(`[chat] the second sweep of client ${clientId}'s chat failed; the boot's orphan report will name what is left:`, error instanceof Error ? error.message : error);
+    }
+  }
 }
 
 export function renameClient(id: number, name: string) {
@@ -3918,6 +3937,8 @@ export function listCoachAccounts(chat: ChatCoachView) {
   const data = getData();
   const coaches = data.users.filter((u) => u.role === "coach").sort((a, b) => a.id - b.id);
   // Every coach's feed in one walk (17 Nov, mission 2: it was built once per coach), each the list getActivityFeed gives.
+  // Only its newest event is read: each client's newest message is in the view (Step 5).
+  chat.need("clientTop", 1);
   const feeds = activityFeeds(coaches.map((u) => u.id), chat);
   return coaches
     .map((u) => {
@@ -6978,12 +6999,16 @@ export async function sendChatMessage(
   link?: MessageLink | null,
   /** The message it answers, one in this chat. */
   replyTo?: number | null,
-  opts: { createdAt?: string; onceKey?: { key: string; at: number } | null; mealGuard?: { date: string; meal: string } | null; path?: ChatWritePath } = {}
-) {
-  await insertChatRow(
+  opts: { createdAt?: string; onceKey?: { key: string; at: number; result?: unknown } | null; mealGuard?: { date: string; meal: string } | null; path?: ChatWritePath } = {}
+): Promise<boolean> {
+  const row = await insertChatRow(
     { clientId, sender, text, media: media ? { path: media.path, type: media.type, name: media.name ?? null } : null, link, replyTo, createdAt: opts.createdAt, onceKey: opts.onceKey, mealGuard: opts.mealGuard },
     opts.path ?? "w.insert.send"
   );
+  // With CHAT_STORE=pg, none: its once key was taken already, or the meal has its comment. Nothing was written.
+  if (!row) return false;
+  // The key as the insert committed it, into the store's list too, so its kv copy carries it and once.ts prunes it.
+  if (CHAT_PG && opts.onceKey) noteTakenKey(opts.onceKey.key, opts.onceKey.at, opts.onceKey.result);
   persist();
   chatChanged(clientId);
   if (sender === "coach") {
@@ -6991,8 +7016,10 @@ export async function sendChatMessage(
     // the bell leaves coach_note out), so it is written whatever the client
     // chose (21 Oct: with "Messages from your coach" off, a new message never
     // showed as unread). The setting decides the buzz on the lock screen.
-    logCoachActivity(clientId, text || `Your coach sent you ${mediaWords(media?.type ?? null)}`, { kind: "coach_note", push: getClientPreferences(clientId).coach_notes });
+    // With CHAT_STORE=pg the note carries the message's id, so an edit or a delete finds it however late it lands.
+    logCoachActivity(clientId, text || `Your coach sent you ${mediaWords(media?.type ?? null)}`, { kind: "coach_note", push: getClientPreferences(clientId).coach_notes, ...(CHAT_PG ? { messageId: row.id } : {}) });
   }
+  return true;
 }
 
 /** One side's reaction on a message: set it, swap it, or take it off (null). Only a known emoji sticks. */
@@ -7003,10 +7030,21 @@ export async function setChatReaction(clientId: number, messageId: number, who: 
   chatChanged(clientId);
 }
 
-/** The notification a coach message was logged with, in the same breath and the same words. */
-function noteFor(msg: { client_id: number; text: string; created_at: string }) {
+/**
+ * The notification a coach message was logged with: by the message's id where the note carries it (CHAT_STORE=pg, Step
+ * 5's cut-over: an insert can take longer than the 5 s the words-and-time match allows), else in the same breath and
+ * the same words, as always.
+ */
+function noteFor(msg: { id: number; client_id: number; text: string | null; created_at: string | null; unknown?: true }) {
+  const notes = getData().coach_activity;
+  // By id, with the same words the memory match asks, so pg mode touches exactly the notes memory mode does (a photo-only
+  // message's "sent you a photo" note never matched its empty words, and still doesn't). Its words unknown (a write that
+  // committed as its connection was lost, rows.ts): by id alone.
+  const byMessage = notes.find((a) => a.client_id === msg.client_id && a.kind === "coach_note" && a.message_id === msg.id && (msg.unknown || a.message === msg.text));
+  if (byMessage) return byMessage;
+  if (msg.unknown || msg.created_at == null) return null;
   const sent = new Date(msg.created_at).getTime();
-  return getData().coach_activity.find((a) => a.client_id === msg.client_id && a.kind === "coach_note" && a.message === msg.text && Math.abs(new Date(a.created_at).getTime() - sent) < 5000) ?? null;
+  return notes.find((a) => a.client_id === msg.client_id && a.kind === "coach_note" && a.message_id == null && a.message === msg.text && Math.abs(new Date(a.created_at).getTime() - sent) < 5000) ?? null;
 }
 
 /**
@@ -7019,7 +7057,7 @@ export async function editChatMessage(clientId: number, messageId: number, text:
   // Only the coach's own message (the door matches the sender), the chat first, then the notification it carried.
   const was = await editText(clientId, messageId, { sender: "coach", text: clean, editedAt: new Date().toISOString() }, "w.edit.coach");
   if (!was) return;
-  const note = noteFor({ client_id: clientId, text: was.was_text, created_at: was.was_at });
+  const note = noteFor({ id: messageId, client_id: clientId, text: was.was_text, created_at: was.was_at, unknown: was.unknown });
   if (note) note.message = clean;
   persist();
   chatChanged(clientId);
@@ -7030,7 +7068,7 @@ export async function deleteChatMessage(clientId: number, messageId: number): Pr
   const data = getData();
   const gone = await deleteRow(clientId, messageId, { sender: "coach" }, "w.delete.coach");
   if (!gone) return null;
-  const note = noteFor({ client_id: clientId, text: gone.text, created_at: gone.created_at });
+  const note = noteFor({ id: messageId, client_id: clientId, text: gone.text, created_at: gone.created_at, unknown: gone.unknown });
   if (note) data.coach_activity = data.coach_activity.filter((a) => a !== note);
   persist();
   chatChanged(clientId);
@@ -7714,9 +7752,11 @@ export function getClientHome(clientId: number, chat: ChatCoachView, feed?: Feed
   const rows = () => (tix ??= trainingIndex(clientId));
   const client = data.clients.find((c) => c.id === clientId);
   // A phone workout is the coach's logs alone (16 Nov): never news, a dot or a note to read here.
+  // Its newest HOME_EVENTS: the chat's part of them in the view (Step 5: a coach view holds each client's newest).
+  chat.need("clientTop", HOME_EVENTS, clientId);
   const all = (feed ?? getActivityFeed(client?.coach_id ?? 0, chat)).filter((e) => e.clientId === clientId && !e.health);
   const since = Date.now() - HOME_NEW_DAYS * 86400000;
-  const events = all.slice(0, 60).map((e) => ({ ...e, when: feedTimeLabel(e.at, e.timeKnown), unseen: isUnseen(client?.coach_seen, e, since) }));
+  const events = all.slice(0, HOME_EVENTS).map((e) => ({ ...e, when: feedTimeLabel(e.at, e.timeKnown), unseen: isUnseen(client?.coach_seen, e, since) }));
   const unseen = events.filter((e) => e.unseen);
 
   const actions: HomeAction[] = [];
@@ -8288,6 +8328,8 @@ export function markClientEventsSeen(clientId: number, which: { all: true } | { 
     persist();
   }
   const since = Date.now() - HOME_NEW_DAYS * 86400000;
+  // The client's last 14 days of chat, whole: the marks are kept to them (Step 5).
+  chat.need("recent", 0, clientId);
   const recent = getActivityFeed(client.coach_id ?? 0, chat).filter((e) => e.clientId === clientId && e.at >= since);
   // A tab clears what is on the tab itself; news about one session waits
   // for that session to be opened.
@@ -8999,6 +9041,8 @@ export function logCoachActivity(
     mergeDetail?: string;
     /** With a dedupe key that already has a row: that row says this instead, unread again (a day's targets, from how the day began to now). */
     replace?: boolean;
+    /** A coach message's note: the message it carries (CHAT_STORE=pg; noteFor finds it by this). */
+    messageId?: number;
   }
 ) {
   const data = getData();
@@ -9037,6 +9081,7 @@ export function logCoachActivity(
     action_label: opts.actionLabel ?? null,
     action_ref: opts.actionRef ?? null,
     dedupe_key: opts.dedupeKey ?? null,
+    ...(opts.messageId != null ? { message_id: opts.messageId } : {}),
   });
   persist();
   // To the lock screen too, when the client has notifications on, for the
@@ -13891,12 +13936,18 @@ export function setVideoReplyFile(id: number, publicPath: string, media: "video"
  * The reply goes out: its comment (the video is already filed), and the
  * client hears of it in their notifications, which open it straight away.
  */
-export function sendVideoReply(id: number, note: string): boolean {
+export function sendVideoReply(id: number, note: string, onceKey?: string | null): boolean {
   const data = getData();
   const row = data.video_requests.find((r) => r.id === id);
   if (!row) return false;
   const clean = note.trim().slice(0, 2000) || null;
   if (!clean && !row.reply_file_path) return false;
+  // CHAT_STORE=pg: the review's own send again (its chat message failed after this ran and was saved, and once() let the
+  // retry through): already recorded, so no second note or push. Memory mode never passes a key.
+  if (CHAT_PG && onceKey) {
+    if (row.reply_once === onceKey && row.reply_note === clean) return true;
+    row.reply_once = onceKey;
+  }
   row.reply_note = clean;
   row.replied_at = new Date().toISOString();
   row.reply_seen_at = null;
@@ -13923,26 +13974,38 @@ function exerciseLinkFor(row: VideoRequest): MessageLink | null {
 }
 /** A text reply to a client's photo or video. `withPicture` (16 Nov, Alex): the photo sent back with the coach's
     drawing on it is already filed as the reply's file (setVideoReplyFile, "photo"); it goes into the chat with the words. */
-export async function replyToMedia(id: number, text: string, withPicture = false): Promise<boolean> {
+export async function replyToMedia(id: number, text: string, withPicture = false, onceKey?: { key: string; at: number; result: true } | null): Promise<boolean> {
   const row = getData().video_requests.find((r) => r.id === id);
   const clean = text.trim().slice(0, 2000);
   if (!row || !clean) return false;
-  if (!sendVideoReply(id, clean)) return false;
+  if (!sendVideoReply(id, clean, onceKey?.key)) return false;
   const picture = withPicture && row.reply_media === "photo" && row.reply_file_path ? { path: row.reply_file_path, type: "image" as const, name: "Reply.jpg" } : undefined;
-  await sendChatMessage(row.client_id, "coach", clean, picture, exerciseLinkFor(row), null, { path: "w.insert.replyMedia" });
+  // With CHAT_STORE=pg the message carries a key of its own (chatReplyMedia…, never once()'s, which once() keeps after
+  // the store has the reply): a false back means it went already, so this is that reply.
+  await sendChatMessage(row.client_id, "coach", clean, picture, exerciseLinkFor(row), null, { path: "w.insert.replyMedia", ...(CHAT_PG && onceKey ? { onceKey } : {}) });
   return true;
 }
 /** A recorded form review: its file is already up (/api/video-reply); the message, its length and the drawing count follow. */
-export async function sendFormReview(id: number, message: string, meta: { durationMs: number; annotations: number }): Promise<boolean> {
+export async function sendFormReview(id: number, message: string, meta: { durationMs: number; annotations: number }, onceKey?: { key: string; at: number; result: true } | null): Promise<boolean> {
   const row = getData().video_requests.find((r) => r.id === id);
   if (!row || !row.reply_file_path) return false;
   row.reply_duration_ms = Number.isFinite(meta.durationMs) ? Math.max(0, Math.round(meta.durationMs)) : null;
   row.reply_annotations = Number.isFinite(meta.annotations) ? Math.max(0, Math.round(meta.annotations)) : null;
-  if (!sendVideoReply(id, message)) return false;
+  if (!sendVideoReply(id, message, onceKey?.key)) return false;
   // The clip in the chat too, pointing at the exercise.
-  await sendChatMessage(row.client_id, "coach", message.trim().slice(0, 2000), { path: row.reply_file_path, type: "video", name: "Form review.mp4" }, exerciseLinkFor(row), null, { path: "w.insert.formReview" });
+  await sendChatMessage(row.client_id, "coach", message.trim().slice(0, 2000), { path: row.reply_file_path, type: "video", name: "Form review.mp4" }, exerciseLinkFor(row), null, { path: "w.insert.formReview", ...(CHAT_PG && onceKey ? { onceKey } : {}) });
   return true;
 }
+/**
+ * A chat upload whose message never went in (CHAT_STORE=pg: the send's once key was taken already, or the meal had its
+ * comment): off the disk and out of the bucket, once no message shows it (chatFileLeft, which checks after the insert's
+ * answer and keeps the file on any doubt). Only chatSend's own upload, whose name is new to it (allocChatMediaName).
+ */
+export async function discardLosingUpload(mediaPath: string): Promise<void> {
+  const gone = await chatFileLeft(mediaPath);
+  if (gone) await deleteUpload(gone);
+}
+
 /** A file some chat message shows: a newer review must not delete it from under the chat. A check that fails says it does (kept). */
 export async function chatUsesFile(path: string): Promise<boolean> {
   try {
@@ -14225,9 +14288,8 @@ export async function removeMealComment(clientId: number, messageId: number) {
   const data = getData();
   const msg = await deleteRow(clientId, messageId, { sender: "coach", foodMeal: true }, "w.mealComment.remove");
   if (!msg) return;
-  // Its notification was logged in the same breath, with the same words.
-  const sent = new Date(msg.created_at).getTime();
-  const note = data.coach_activity.find((a) => a.client_id === clientId && a.kind === "coach_note" && a.message === msg.text && Math.abs(new Date(a.created_at).getTime() - sent) < 5000);
+  // Its notification: by the message's id, else logged in the same breath, with the same words (noteFor).
+  const note = noteFor({ id: messageId, client_id: clientId, text: msg.text, created_at: msg.created_at, unknown: msg.unknown });
   if (note) data.coach_activity = data.coach_activity.filter((a) => a !== note);
   persist();
   chatChanged(clientId);
@@ -14240,13 +14302,11 @@ export async function removeMealComment(clientId: number, messageId: number) {
  */
 export async function editMealComment(clientId: number, messageId: number, text: string) {
   const clean = text.trim();
-  const data = getData();
   if (!clean) return;
   // No edited_at on a meal comment (as it always was): the door leaves it alone when given none.
   const msg = await editText(clientId, messageId, { sender: "coach", text: clean, editedAt: null, foodMeal: true }, "w.mealComment.edit");
   if (!msg) return;
-  const sent = new Date(msg.was_at).getTime();
-  const note = data.coach_activity.find((a) => a.client_id === clientId && a.kind === "coach_note" && a.message === msg.was_text && Math.abs(new Date(a.created_at).getTime() - sent) < 5000);
+  const note = noteFor({ id: messageId, client_id: clientId, text: msg.was_text, created_at: msg.was_at, unknown: msg.unknown });
   if (note) note.message = clean;
   persist();
   chatChanged(clientId);

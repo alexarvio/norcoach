@@ -6,8 +6,15 @@ import { errorReason, health, toSentry } from "./health";
 import { IdPools } from "./ids";
 import { onceKeysFromKvCopy } from "./onceKeys";
 import { COLLECTIONS, kv } from "./schema";
-import { derivedStale, loadStore, PgStoreWriter } from "./store";
+import { derivedStale, insertRowsOnce, loadStore, PgStoreWriter } from "./store";
 import { startChatShadow } from "../chat/shadow";
+import { CHAT_ONCE_PREFIX_SQL, CHAT_PG, CHAT_STORE_ASKED } from "../chat/mode";
+import { startChatPg } from "../chat/pg";
+import { chatPreflight } from "../chat/preflight";
+import { takeLease } from "./lease";
+import { setPgStrays } from "../chat/strays";
+import { stampInstantMs } from "./stamps";
+import { stampMs } from "../targetRule";
 
 // Starts the Postgres store (STORE=postgres). Called once from
 // instrumentation.ts, which Next awaits before the server takes requests:
@@ -41,6 +48,10 @@ type Row = Record<string, unknown>;
 const MIGRATIONS = path.join(process.cwd(), "drizzle");
 const log = (message: string) => console.log(`[store] ${message}`);
 
+/** This boot's own label on the store's and the lease's connections (Postgres), for the owner reading pg_stat_activity. */
+const BOOT_ID = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+const STORE_APP_NAME = `norcoach-store-${BOOT_ID}`;
+
 /** The waits between retries of a failed save; the last repeats until one goes through. */
 const RETRY_MS = [2_000, 5_000, 15_000, 30_000, 60_000];
 /** Failures in a row before the one alert. */
@@ -58,7 +69,8 @@ async function connect(url: string): Promise<AnyDb> {
   const { Pool } = await import("pg");
   const { drizzle } = await import("drizzle-orm/node-postgres");
   const { migrate } = await import("drizzle-orm/node-postgres/migrator");
-  const db = drizzle(new Pool({ connectionString: url, max: 5 }));
+  // Named (a label only, for the owner reading pg_stat_activity; one instance at a time is pg/lease.ts's).
+  const db = drizzle(new Pool({ connectionString: url, max: 5, application_name: STORE_APP_NAME }));
   await migrate(db, { migrationsFolder: MIGRATIONS });
   return db as unknown as AnyDb;
 }
@@ -136,6 +148,12 @@ async function start() {
   const db = await connect(process.env.DATABASE_URL!);
   (globalThis as unknown as { _pgDb?: AnyDb })._pgDb = db;
   const writer = new PgStoreWriter(db);
+  // One instance on the database at a time (pg/lease.ts): with CHAT_STORE=pg the boot waits for the lease and refuses
+  // without it; in memory mode it is taken in the background, never waited on, so a pg boot over this one waits.
+  await takeLease(process.env.DATABASE_URL!, { mustHold: CHAT_PG, name: `norcoach-lease-${BOOT_ID}` });
+  // With the chat in Postgres alone (CHAT_STORE=pg, Step 5's cut-over): what its SQL leans on is there and runs, or the
+  // boot stops here with nothing changed.
+  if (CHAT_PG) await chatPreflight(db);
 
   // The id counters are always saved, so their absence means an empty database (or a damaged one: emptyStart).
   const hasData = (await db.select().from(kv).where(eq(kv.key, "_seq"))).length > 0;
@@ -160,17 +178,29 @@ async function start() {
     log("loaded from Postgres");
   } else {
     raw = await emptyStart(db);
+    // A whole-store JSON (local, or ALLOW_JSON_IMPORT=1) carries its chat; with CHAT_STORE=pg it goes into the table,
+    // never into memory or kv (a file the shutdown wrote with the chat left out is refused: its chat is in Postgres).
+    if (CHAT_PG) await importChat(db, raw);
   }
+  // The chat's own boot checks (CHAT_STORE=pg): its stamps' instants put right, its strays, its highest id.
+  const chat = CHAT_PG ? await chatBoot(db) : null;
 
   const prepared = prepareStore(raw);
   const { data } = prepared;
   // Always run, even when a tidy already changed something: a counter left behind its table hands out ids twice.
   const raised = raiseCounters(data);
+  // The chat's counter at least its table's highest id (raiseCounters no longer sees chat rows, CHAT_STORE=pg).
+  let chatRaised = false;
+  if (chat && chat.maxId > (data._seq.chat_messages ?? 0)) {
+    chatRaised = true;
+    log(`raised the id counter of chat_messages from ${data._seq.chat_messages ?? "none"} to ${chat.maxId}, its highest id`);
+    data._seq.chat_messages = chat.maxId;
+  }
   // Ids from Postgres for the tables that will move (step 4A), before anything can take one; the counters as raised.
   const ids = new IdPools(db, () => (data._seq ??= {}));
   await ids.start();
   (globalThis as unknown as { _pgIds?: IdPools })._pgIds = ids;
-  const changed = prepared.changed || raised > 0 || moved.length > 0 || restamped > 0;
+  const changed = prepared.changed || raised > 0 || chatRaised || moved.length > 0 || restamped > 0;
   // The import, or a tidy's changes, are written before any request arrives,
   // so a failure stops the boot instead of surfacing later.
   if (!hasData || changed) await writer.save(() => data as unknown as Row);
@@ -179,6 +209,11 @@ async function start() {
   // to it, and in write mode its tables seeded, before any request. It catches everything itself; the boot never fails over it.
   (globalThis as unknown as { _pgWriter?: PgStoreWriter })._pgWriter = writer;
   await startChatShadow({ db, url: process.env.DATABASE_URL!, writer }).catch(() => {});
+  // Chat's own connection (CHAT_STORE=pg), before any request, and the orphans said (an erase whose chat stayed).
+  if (CHAT_PG) {
+    await startChatPg({ db, url: process.env.DATABASE_URL! });
+    await reportChatOrphans(db, data);
+  }
   if (writer.lastCommitAt) health().lastCommitAt = new Date(writer.lastCommitAt).toISOString();
 
   // Every save goes through here: persist(), the retries, and the shutdown's.
@@ -262,6 +297,11 @@ async function start() {
 
 /** Loads the Postgres store once; does nothing in JSON mode. */
 export function initStore(): Promise<void> {
+  // CHAT_STORE (chat/mode.ts) known, and "pg" only with the Postgres store (never while next build renders pages).
+  if (!["", "memory", "pg"].includes(CHAT_STORE_ASKED)) return Promise.reject(new Error(`[store] Refusing to start: CHAT_STORE=${CHAT_STORE_ASKED} is not memory or pg`));
+  if (CHAT_STORE_ASKED === "pg" && STORE_MODE !== "postgres" && process.env.NEXT_PHASE !== "phase-production-build") {
+    return Promise.reject(new Error("[store] Refusing to start: CHAT_STORE=pg needs the Postgres store (STORE=postgres and DATABASE_URL)"));
+  }
   if (STORE_MODE !== "postgres") return Promise.resolve();
   const g = globalThis as unknown as { _pgInit?: Promise<void> };
   g._pgInit ??= start();
@@ -275,4 +315,94 @@ export function initStore(): Promise<void> {
 export function flushStore(): Promise<void> | null {
   const flush = (globalThis as unknown as { _pgFlush?: () => Promise<void> })._pgFlush;
   return flush ? flush() : null;
+}
+
+// ---- The chat in Postgres alone (CHAT_STORE=pg, Step 5's cut-over) ------------------------------------------------
+
+/** More strays than this means the server reads its stamps in the wrong zone (TZ): refuse rather than serve odd answers. */
+const STRAYS_MAX = Math.max(0, Number(process.env.CHAT_STRAYS_MAX) || 50);
+
+const resultRows = (r: unknown) => ((r as { rows?: Row[] }).rows ?? []) as Row[];
+
+/**
+ * The JSON import's chat, into the table as the writer writes rows (a row already there kept), then out of what loads
+ * into memory. A file the shutdown wrote (`_chat_in_postgres`) holds no chat: refused unless ALLOW_JSON_WITHOUT_CHAT=1,
+ * the chat then restored on its own (pg_dump). Should the first save then fail, the next boot refuses (chat rows and no
+ * `_seq`): empty the chat table and start again.
+ */
+async function importChat(db: AnyDb, raw: Partial<Data>) {
+  const r = raw as Record<string, unknown>;
+  if (r._chat_in_postgres) {
+    if (process.env.ALLOW_JSON_WITHOUT_CHAT !== "1") {
+      throw new Error(
+        "[store] Refusing to start: the JSON to import was written with CHAT_STORE=pg and holds no chat (it is in Postgres). Restore the database instead (scripts/restore-pg-backup.mjs), or set ALLOW_JSON_WITHOUT_CHAT=1 to start without it."
+      );
+    }
+    delete r._chat_in_postgres;
+  }
+  const list = r.chat_messages;
+  delete r.chat_messages;
+  if (!Array.isArray(list) || !list.length) return;
+  const n = await insertRowsOnce(db, "chat_messages", list);
+  log(`chat_messages: ${n} rows of the JSON imported into the table (CHAT_STORE=pg)`);
+}
+
+/**
+ * The chat table at boot: each row's instant (created_at_tz) put right where it isn't what the writer would write (a
+ * build that didn't fill it, a rollback past step 4: derivedStale no longer sees chat), its strays found (pick.ts
+ * isStray), its highest id. 5000 rows a read, 500 a write.
+ */
+async function chatBoot(db: AnyDb): Promise<{ maxId: number }> {
+  const strays: number[] = [];
+  let rows = 0;
+  let maxId = 0;
+  let restamped = 0;
+  for (let after = 0; ; ) {
+    const page = resultRows(
+      await db.execute(sql`SELECT id, created_at, (EXTRACT(EPOCH FROM created_at_tz) * 1000)::float8 AS ms FROM chat_messages WHERE id > ${after}::int ORDER BY id LIMIT 5000`)
+    );
+    if (!page.length) break;
+    const fix: { id: number; tz: string | null }[] = [];
+    for (const r of page) {
+      const id = Number(r.id);
+      const want = stampInstantMs(r.created_at);
+      const have = r.ms == null ? null : Math.round(Number(r.ms));
+      if (want !== have) fix.push({ id, tz: want == null ? null : new Date(want).toISOString() });
+      const read = stampMs(String(r.created_at ?? ""));
+      if (!(Number.isFinite(read) && want === read)) strays.push(id);
+      maxId = Math.max(maxId, id);
+    }
+    for (let i = 0; i < fix.length; i += 500) {
+      const part = fix.slice(i, i + 500);
+      const ids = `{${part.map((p) => p.id).join(",")}}`;
+      const tzs = `{${part.map((p) => (p.tz == null ? "NULL" : `"${p.tz}"`)).join(",")}}`;
+      await db.execute(sql`UPDATE chat_messages m SET created_at_tz = v.tz FROM unnest(${ids}::int[], ${tzs}::timestamptz[]) AS v(id, tz) WHERE m.id = v.id`);
+    }
+    restamped += fix.length;
+    rows += page.length;
+    after = Number(page[page.length - 1].id);
+  }
+  const once = resultRows(await db.execute(sql`SELECT count(*)::int AS n FROM once_keys WHERE key ~ ${CHAT_ONCE_PREFIX_SQL}::text`))[0]?.n ?? 0;
+  console.log(`[chat] pg: ${rows} rows, max id ${maxId}, restamped ${restamped}, strays ${strays.length}, chat once keys kept ${once}`);
+  if (strays.length > STRAYS_MAX) {
+    throw new Error(
+      `[chat] Refusing to start with CHAT_STORE=pg: ${strays.length} chat rows read their stamp otherwise than the column (more than ${STRAYS_MAX}); is TZ=Europe/Amsterdam set? (CHAT_STRAYS_MAX raises the limit)`
+    );
+  }
+  setPgStrays(strays);
+  return { maxId };
+}
+
+/** Chat rows whose client is gone (an erase whose chat stayed, before the cut-over's order): said, never deleted. */
+async function reportChatOrphans(db: AnyDb, data: Data) {
+  try {
+    const ids = `{${data.clients.map((c) => c.id).join(",")}}`;
+    const row = resultRows(await db.execute(sql`SELECT count(*)::int AS n, count(DISTINCT client_id)::int AS clients FROM chat_messages WHERE NOT (client_id = ANY(${ids}::int[]))`))[0];
+    if (Number(row?.n ?? 0) > 0) {
+      console.error(`[chat] !!! ${row?.n} chat rows of ${row?.clients} clients no longer in the store (kept; look at them)`);
+      toSentry((S) => S.captureMessage(`Chat rows of removed clients: ${row?.n}`, { level: "warning", tags: { alert: "chat-orphans" } }));
+    }
+  } catch (error) {
+    console.error("[chat] the orphan check failed:", error instanceof Error ? error.message : error);
+  }
 }

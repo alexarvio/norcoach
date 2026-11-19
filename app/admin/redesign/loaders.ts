@@ -21,6 +21,7 @@ import { SERVER_TZ, zonedToUtc } from "../../lib/timezones";
 import { hasBankDetails, invoicingFor } from "../../lib/countries";
 import { clientActions, coachNeeds } from "../../lib/coachNeeds";
 import type { ChatCoachView, ChatDockView, ChatThread } from "../../lib/chat/rows";
+import { HOME_KIND_ROWS as HOME_KIND_ROWS_CHAT } from "../../lib/chat/pick";
 import {
   getActivityFeed,
   getClientProfile,
@@ -1185,7 +1186,7 @@ export function feedHref(e: Pick<FeedEvent, "clientId" | "tab" | "category" | "t
 
 /** Activity keeps each kind's newest this many rows (the screen's filters, HomeDraft FILTERS), so a filter pages through
     its own history while the page stays bounded. */
-const HOME_KIND_ROWS = 200;
+const HOME_KIND_ROWS = HOME_KIND_ROWS_CHAT;
 /** HomeDraft's filters but All, as they sort a row: a row is kept while any kind it falls in has room. */
 const HOME_KINDS: ((e: { category: string; tab: string }) => boolean)[] = [
   (e) => e.category === "training",
@@ -1209,6 +1210,8 @@ export function loadHome(clientId: number, chat: { coach: ChatCoachView; thread:
   const panel = sub("panel", () => getOverviewPanel(clientId, feedOnce));
   // Activity is the client's whole feed (not the newest 60 rows), so Invoices or Meetings still has its history for a
   // client who chats every day.
+  // The chat's part of each kind's newest HOME_KIND_ROWS is in the tab's coach view (chat/paths.ts).
+  chat.coach.need("clientTop", HOME_KIND_ROWS, clientId);
   const mine = feedOnce().filter((e) => e.clientId === clientId);
   // The calls that are over (21 Oct, the Home mockup), in Activity with the rest, by when they were: a timed call at its
   // moment in its own timezone, a call with no time at its day's noon (as the feed files a day with no time).

@@ -26,11 +26,12 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
   // Each loader timed (app/lib/timing.ts, /api/timing): measuring only, the props are what they were.
   const t = startTiming("feed");
   const coach = await t.time("auth", () => requireCoach());
+  // The visit is noted first, so Since and New read from the visit before this one; before the chat, too, whose view
+  // holds what came after that visit (Step 5's cut-over: the Feed's Since reads only that).
+  await t.time("noteFeedLooked", () => noteFeedLooked(coach.id));
   // The chat first (Step 5, app/lib/chat/rows.ts): the one view the Feed, the rail and the chat list share.
   const chat = await t.time("chat", () => fetchCoachPageChat(coach.id, "page.feed"));
   const params = await searchParams;
-  // The visit is noted first, so Since and New read from the visit before this one.
-  await t.time("noteFeedLooked", () => noteFeedLooked(coach.id));
   const board = await t.time("feedBoard", () => getFeedBoard(coach.id, chat.coach));
   // eslint-disable-next-line react-hooks/purity -- a server render reads the clock once, on purpose: the waits in Needs you count from it, the same on the server and in the browser
   const now = Date.now();

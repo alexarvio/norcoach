@@ -1,5 +1,8 @@
 import { revalidatePath } from "next/cache";
 import { getData, persist, type OnceKey } from "./db";
+import { findOnceKey, keepOnceKey, onceRows } from "./onceKeep";
+
+export { noteTakenKey } from "./onceKeep";
 
 // A save taken once (6 Nov, Alex: "it could come to a lot of confusing moments if we start having duplicates"). Since
 // experimental.useOffline (next.config.ts), a save whose connection dropped is sent again once the signal is back. If
@@ -13,32 +16,19 @@ import { getData, persist, type OnceKey } from "./db";
 // table of its own since 18 Nov (step 4B, pg/onceKeys.ts), written by the mirror in the same transaction as the rows
 // of the save that took the key; this file works on the in-memory list as before.
 
-const DAY_MS = 86_400_000;
-const MAX_KEPT = 5000;
 const KEY = /^[A-Za-z0-9_-]{8,80}$/;
 
 const g = globalThis as unknown as { __norcoachOnceRunning?: Map<string, Promise<unknown>> };
 /** Saves still running, by key: one that comes again meanwhile waits for the first and answers as it does. */
 const running = (g.__norcoachOnceRunning ??= new Map());
 
-function rows(): OnceKey[] {
-  const d = getData();
-  if (!d.once_keys) d.once_keys = [];
-  return d.once_keys;
-}
+// The store's list (lib/onceKeep.ts, shared with the store's own code since Step 5's cut-over).
+const rows = onceRows;
+const findKey = findOnceKey;
+const keep = (row: OnceKey) => keepOnceKey(row);
 
-function findKey(full: string): OnceKey | undefined {
-  return rows().find((r) => r.key === full);
-}
-
-function keep(row: OnceKey) {
-  const now = Date.now();
-  const d = getData();
-  const kept = rows().filter((r) => now - r.at < DAY_MS && r.key !== row.key);
-  kept.push(row);
-  d.once_keys = kept.length > MAX_KEPT ? kept.slice(kept.length - MAX_KEPT) : kept;
-  persist();
-}
+/** The key is known taken in the store's list (chatSend with CHAT_STORE=pg, before its upload). */
+export const onceKeyKnown = (full: string) => !!findKey(full);
 
 /** The key as the device sent it, when it is one (a FormData field, or the argument itself). */
 export function onceKeyOf(source: FormData | string | null | undefined, field = "onceKey"): string | null {

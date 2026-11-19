@@ -7,6 +7,7 @@ import { ageOf, openJoinRequestsFor } from "./joinRequests";
 import { needCatOfHref } from "./needCats";
 import { getData, persist, type Data } from "./db";
 import type { ChatCoachView } from "./chat/rows";
+import { FEED_KIND_ROWS } from "./chat/pick";
 import {
   activityWords,
   callThing,
@@ -35,8 +36,9 @@ type CallRow = ReturnType<typeof listMeetings>[number];
 const VISIT_GAP_MS = 30 * 60000;
 /** Within a visit, the look's time moves on at most once a minute, so a page re-read after every save doesn't write the store each time. */
 const LOOK_STEP_MS = 60000;
-/** Activity keeps each kind's newest this many rows, so a kind pages through its own history while the page stays bounded. */
-const KIND_ROWS = 200;
+/** Activity keeps each kind's newest this many rows, so a kind pages through its own history while the page stays bounded.
+    The chat's part of them is what the Feed's coach view holds (chat/pick.ts, chat/paths.ts). */
+const KIND_ROWS = FEED_KIND_ROWS;
 /** A sign-in lock lasts this long (lib/loginLockout.ts). */
 const LOCK_MS = 15 * 60000;
 
@@ -276,7 +278,8 @@ function sinceOf(ctx: Ctx): FeedBoard["since"] {
   for (const f of data.food_entries ?? []) if (ids.has(f.client_id) && f.date <= today && savedSince(f.logged_at, f.date)) food.add(`${f.client_id}:${f.date}`);
   for (const c of data.calorie_logs) if (ids.has(c.client_id) && c.source !== "health" && c.kcal > 0 && c.date <= today && savedSince(c.logged_at, c.date)) food.add(`${c.client_id}:${c.date}`);
 
-  const messages = ctx.chat.clientSent(ids).filter((m) => ids.has(m.client_id) && m.sender === "client" && (m.text?.trim() || m.media_path) && stampMs(m.created_at) > prev).length;
+  // What came after the coach's last visit (the Feed's view holds it from that prev on, chat/paths.ts).
+  const messages = ctx.chat.sinceRows(ids, prev).filter((m) => ids.has(m.client_id) && m.sender === "client" && (m.text?.trim() || m.media_path) && stampMs(m.created_at) > prev).length;
 
   // Shape updates: each sheet a photo came in on since.
   const slots = new Map(data.photo_slots.filter((s) => ids.has(s.client_id)).map((s) => [s.id, s.client_id] as const));
@@ -403,6 +406,8 @@ function callAt(date: string, time: string, tz: string | null | undefined): numb
 }
 
 function activityOf(ctx: Ctx): ActivityRow[] {
+  // Each kind's newest KIND_ROWS: the coach's newest chat rows of the kind are in the view.
+  ctx.chat.need("coachTop", KIND_ROWS);
   const prev = ctx.prev;
   const isNew = (at: number) => prev != null && at > prev;
   // What each row is, cheaply; its link is read only for the rows kept (each kind's newest KIND_ROWS). Words another row
