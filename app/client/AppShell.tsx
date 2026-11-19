@@ -9,6 +9,8 @@ import "./gyms.css";
 import { useRouter } from "next/navigation";
 import { markCoachNotesReadAction, markNotificationReadAction } from "../lib/actions";
 import { useWorkoutOutboxRunner } from "../components/workoutOutbox";
+import { useLiveActivitySync } from "./useLiveActivitySync";
+import { liveEnd, type LiveNow } from "../lib/liveActivity";
 import type { NotificationCategory } from "../lib/notificationTypes";
 import { goalItemId } from "../lib/weightGoal";
 import { logoutAction } from "../lib/auth-actions";
@@ -131,7 +133,9 @@ function writeTab(id: string) {
 /** What a phone push asks the app to open (24 Oct): a notification, as the list would open it, or a meeting reminder's call. */
 export type Arrival =
   | { notificationId: number; category: NotificationCategory; actionTab: string | null; actionRef: number | null; link: LinkView | null }
-  | { meetingId: number };
+  | { meetingId: number }
+  /** A "still going" reminder (19 Nov, Alex): into the workout while it runs, as the resume pill; once over, its overview. */
+  | { workoutDayId: number; week: number; live: boolean };
 
 export default function AppShell({
   clientName,
@@ -159,7 +163,10 @@ export default function AppShell({
   chatUnread = false,
   events = null,
   brand = {},
+  liveNow = null,
 }: {
+  /** The session going, for the lock-screen pill (19 Nov, Alex; useLiveActivitySync); null in the coach's preview. */
+  liveNow?: LiveNow | null;
   /** The client's coach's brand (19 Nov, Alex; lib/brandMark.ts coachBrand): their banner or business name where
       NORCOACH is, their colour on the main pills. Nothing set, the app as it was. `mark` only in the coach's phone
       preview: the client's coach's faint mark, as the client sees it. */
@@ -297,6 +304,8 @@ export default function AppShell({
   // The workout's saves kept on the phone go from here (7 Nov, workoutOutbox.ts): on opening, the signal back, the app
   // back in front. Never in the coach's phone preview: there nothing is read, shown or sent.
   useWorkoutOutboxRunner(clientId, !readOnly);
+  // The session going on the phone's lock screen (19 Nov, Alex): the client's own app alone, never a coach looking.
+  useLiveActivitySync(clientId, !readOnly && coachMessages.viewerIsClient, liveNow);
   // The event Events opens on, from a notification (10 Oct); cleared when the screen closes.
   const [eventFocus, setEventFocus] = useState<number | null>(null);
   const openEventsAt = events
@@ -500,6 +509,10 @@ export default function AppShell({
       window.history.replaceState(null, "", "/client");
       if ("meetingId" in arrival) {
         openMeetingsAt?.(arrival.meetingId);
+        return;
+      }
+      if ("workoutDayId" in arrival) {
+        goToTab("training", arrival.workoutDayId, { week: arrival.week, exercise: null, resume: arrival.live });
         return;
       }
       void markNotificationReadAction(arrival.notificationId).catch(() => {});
@@ -868,7 +881,8 @@ export default function AppShell({
                   )}
                 </div>
                 <div className="app-menu-foot">
-                  <form action={logoutAction}>
+                  {/* The lock-screen pill goes with the client (19 Nov): never the last one's session for the next. */}
+                  <form action={logoutAction} onSubmit={() => liveEnd()}>
                     <button type="submit" className="app-menu-logout">
                       Log out
                     </button>

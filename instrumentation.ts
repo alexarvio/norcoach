@@ -58,6 +58,24 @@ export async function register() {
     setInterval(remind, 5 * 60_000).unref?.();
     setTimeout(remind, 90_000).unref?.();
   }
+  // A session left running (19 Nov, Alex: "I forget to complete the workout"): "Upper is still going" 60 min and 3 h
+  // after its last set, every five minutes on the live server, as the call reminders (app/lib/workoutReminders.ts).
+  const { workoutRemindersOn, runWorkoutReminders } = await import("./app/lib/workoutReminders");
+  if (workoutRemindersOn() && process.env.NEXT_PHASE !== "phase-production-build") {
+    let busy = false;
+    const remindWorkouts = () => {
+      if (busy) return;
+      busy = true;
+      void runWorkoutReminders()
+        .then((n) => n && console.log(`[reminders] workouts: sent ${n}`))
+        .catch((e) => console.error("[reminders] workouts failed:", e instanceof Error ? e.message : e))
+        .finally(() => {
+          busy = false;
+        });
+    };
+    setInterval(remindWorkouts, 5 * 60_000).unref?.();
+    setTimeout(remindWorkouts, 120_000).unref?.();
+  }
   // Recurring invoices (21 Oct): each series makes its next invoice on its day, checked every ten minutes. Locally
   // too, so a series can be seen working; the client's buzz for a sent one only from the live server (as reminders).
   if (process.env.RECURRING_INVOICES !== "off") {

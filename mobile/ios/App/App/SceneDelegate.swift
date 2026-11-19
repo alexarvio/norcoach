@@ -30,6 +30,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 class MainViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         bridge?.registerPluginInstance(NorcoachAuthPlugin())
+        // The workout on the lock screen (19 Nov, Alex: NorcoachLivePlugin.swift).
+        bridge?.registerPluginInstance(NorcoachLivePlugin())
         // No rubber band (11 Nov, Alex: dragging a screen showed blank room above and below it): the view itself, and
         // every scrolling box in the page, which is where the app scrolls. In the app alone; the website keeps its own.
         webView?.scrollView.bounces = false

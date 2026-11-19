@@ -78,8 +78,8 @@ export async function sendFcm(token: string, message: PushMessage): Promise<"sen
         // Read by the app when the notification is tapped (NativePush.tsx).
         data: { url: message.url },
         android: {
-          // Held a day if the phone is off, like web push.
-          ttl: "86400s",
+          // Held a day if the phone is off, like web push, or the message's own ttlSeconds (19 Nov, Alex: a workout reminder, 30 min).
+          ttl: `${message.ttlSeconds && message.ttlSeconds > 0 ? Math.round(message.ttlSeconds) : 86400}s`,
           ...(message.tag ? { collapse_key: message.tag } : {}),
           notification: { channel_id: "ironline", ...(message.tag ? { tag: message.tag } : {}) },
         },
