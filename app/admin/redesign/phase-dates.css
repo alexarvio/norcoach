@@ -41,9 +41,12 @@
 .pdh-cancel.pdh-cancel { height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: #5b6474; white-space: nowrap; cursor: pointer; }
 .pdh-cancel.pdh-cancel:hover { color: #141a24; }
 .pdh-cancel.pdh-cancel:focus-visible { outline: none; background: #f5f6f8; color: #141a24; }
-.pdh-primary { height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: #141a24; font: inherit; font-size: 13.5px; font-weight: 600; color: #fff; white-space: nowrap; cursor: pointer; }
+.pdh-primary { height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--brand, #141a24); font: inherit; font-size: 13.5px; font-weight: 600; color: #fff; white-space: nowrap; cursor: pointer; }
 .pdh-primary:hover { background: #262e3b; }
 .pdh-primary:focus-visible { outline: none; background: #2f3846; }
+/* The coach's brand (19 Nov, Alex: "the toggles, the pop-ups, everything should be in that color"). */
+body[style*="--brand"] .pdh-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--brand) 88%, #fff); }
+body[style*="--brand"] .pdh-primary:focus-visible:not(:disabled) { background: color-mix(in srgb, var(--brand) 82%, #fff); }
 .pdh-primary:disabled { background: #c9cfd8; cursor: default; }
 @media (prefers-reduced-motion: reduce) {
   .pdh-label, .pdh-input.pdh-input, .pdh .pdh-field input.rdt { transition: none; }

@@ -79,7 +79,7 @@
 .rr .rr-filter { flex: none; display: flex; width: 100%; height: 36px; gap: 2px; margin: 8px 0; padding: 4px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; box-sizing: border-box; }
 .rr .rr-filter button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: none; box-shadow: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; white-space: nowrap; cursor: pointer; transition: background 0.2s ease, color 0.2s ease; } /* 600 picked or not, so switching moves nothing (6 Nov, Alex) */
 .rr .rr-filter button:hover:not(.on) { color: #141a24; }
-.rr .rr-filter button.on { background: #141a24; font-weight: 600; color: #fff; }
+.rr .rr-filter button.on { background: var(--brand, #141a24); font-weight: 600; color: #fff; }
 .rr .rr-filter button:focus-visible { outline: 2px solid #141a24; outline-offset: 1px; }
 .rr .rr-filter small { font-size: 12px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; }
 .rr .rr-filter button.on small { color: rgba(255, 255, 255, 0.65); }
@@ -168,7 +168,7 @@
 .rtour-go { display: flex; align-items: center; gap: 14px; }
 .rtour-word { padding: 0; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; cursor: pointer; }
 .rtour-word:hover { color: #141a24; }
-.rtour-next { height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: #141a24; font: inherit; font-size: 13px; font-weight: 600; color: #fff; cursor: pointer; }
+.rtour-next { height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--brand, #141a24); font: inherit; font-size: 13px; font-weight: 600; color: #fff; cursor: pointer; }
 .rtour-word:focus-visible, .rtour-next:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .rtour-lit, .rtour-card { transition: none; } }
 /* Every admin screen on paper, as Home and the chats (27 Oct, Alex: "the logo in the background on every screen"): the
@@ -204,3 +204,20 @@ body[style*="--brand"] .npd.npd .npd-save.npd-save:not(:disabled):focus-visible 
    every admin screen at once, Settings too. Not Home's Muscle balance windows, each outlined in its own colour. */
 body[style*="--brand"] :is(.rd-btn-group:not(.rh-spans), .npd-seg, .dlh-seg, .rd-coltabs, .rd-switch-states) { --pill-bg: var(--brand); }
 body[style*="--brand"] :is(.rd-btn-group:not(.rh-spans), .npd-seg, .dlh-seg, .rd-coltabs, .rd-switch-states) > button.on { background: var(--brand); }
+/* And New client (19 Nov, Alex: "the toggles, the pop-ups, everything should be in that color"): its Member info |
+   App access and Gender capsules and its one pill, Next or Create (globals.css draws them ink under .nc-hl). Brand set
+   only, so with none they are ink's own exactly. */
+body[style*="--brand"] .nc-hl :is(.nc-steps, .nc-pills) { --pill-bg: var(--brand); }
+body[style*="--brand"] .nc-hl .nc-steps > .nc-step.on, body[style*="--brand"] .nc-hl .nc-pills > .pl-chip.on { background: var(--brand); }
+body[style*="--brand"] .nc-hl .nc-foot .pl-primary:not(:disabled) { background: var(--brand); }
+body[style*="--brand"] .nc-hl .nc-foot .pl-primary:not(:disabled):hover { background: color-mix(in srgb, var(--brand) 88%, #fff); }
+body[style*="--brand"] .nc-hl .nc-foot .pl-primary:not(:disabled):focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent); }
+
+/* ---- Coach brand: shared parts in the admin (19 Nov, Alex: "the toggles, the pop-ups, everything should be in that
+   color"): Details' pop-up (ClientCardEditor look="hairline"), its Gender capsule, the sliding pill too, and its Save.
+   None set, ink exactly as before. */
+.cc-hl .nc-pills { --pill-bg: var(--brand, #141a24); }
+.cc-hl.cc-hl .nc-pills .pl-chip.on { background: var(--brand, #141a24); }
+body[style*="--brand"] .cc-hl.cc-hl .ad-btn-primary:not(:disabled) { background: var(--brand); }
+body[style*="--brand"] .cc-hl.cc-hl .ad-btn-primary:not(:disabled):hover { background: color-mix(in srgb, var(--brand) 88%, #fff); }
+body[style*="--brand"] .cc-hl.cc-hl .ad-btn-primary:not(:disabled):focus-visible { background: color-mix(in srgb, var(--brand) 82%, #fff); }

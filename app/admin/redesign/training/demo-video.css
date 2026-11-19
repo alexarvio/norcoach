@@ -39,10 +39,14 @@
 .dmvh-seg button { flex: 1; min-width: 0; height: 30px; padding: 0 8px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .dmvh-seg button:hover { color: #141a24; }
 .dmvh-seg button:focus-visible { outline: none; background: #f5f6f8; color: #141a24; }
-.dmvh-seg button.on { background: #141a24; color: #fff; }
+.dmvh-seg button.on { background: var(--brand, #141a24); color: #fff; }
 .dmvh-seg button.on:focus-visible { background: #2a3242; }
 /* Its pill slides (28 Oct, Alex; SlidePills); keyboard focus on the picked one still lifts it. */
+.dmvh-seg { --pill-bg: var(--brand, #141a24); }
 .dmvh-seg:has(> button.on:focus-visible) { --pill-bg: #2a3242; }
+/* The capsule and the pill in the coach's brand (19 Nov, Alex: "the toggles, the pop-ups, everything should be in that color"). */
+body[style*="--brand"] .dmvh-seg button.on:focus-visible { background: color-mix(in srgb, var(--brand) 82%, #fff); }
+body[style*="--brand"] .dmvh-seg:has(> button.on:focus-visible) { --pill-bg: color-mix(in srgb, var(--brand) 82%, #fff); }
 /* One height for the three tabs (23 Oct, Alex: switching made the pop-up jump): the drop zone fills it, Your videos scrolls in it. */
 .dmvh-panel { display: flex; flex-direction: column; gap: 8px; height: 176px; }
 .dmvh-panel .dmvh-drop { flex: 1 1 auto; height: auto; min-height: 112px; }
@@ -98,8 +102,9 @@
 .dmvh-danger:hover { background: #f5f6f8; } /* the neutral hover, the words red (29 Oct, Alex) */
 .dmvh-remove { margin-left: -10px; }
 .dmvh-cancel:focus-visible, .dmvh-danger:focus-visible { outline: none; background: #f5f6f8; }
-.dmvh-primary { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: #141a24; color: #fff; font: inherit; font-size: 13.5px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.dmvh-primary { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--brand, #141a24); color: #fff; font: inherit; font-size: 13.5px; font-weight: 600; white-space: nowrap; cursor: pointer; }
 .dmvh-primary:hover { background: #2a3242; }
+body[style*="--brand"] .dmvh-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--brand) 88%, #fff); }
 .dmvh-primary:focus-visible { outline: none; box-shadow: 0 0 0 3px #e1e5eb; }
 .dmvh-primary:disabled { background: #c9cfd8; box-shadow: none; cursor: default; }
 .dmvh-spin { width: 13px; height: 13px; border: 2px solid rgba(255, 255, 255, 0.35); border-top-color: #fff; border-radius: 999px; animation: dmvh-spin 0.8s linear infinite; }

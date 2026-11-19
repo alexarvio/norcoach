@@ -39,10 +39,13 @@
 .npd.npd .npd-seg button svg { flex: none; }
 .npd.npd .npd-seg button:hover { color: #141a24; }
 .npd.npd .npd-seg button:focus-visible { outline: none; background: #f5f6f8; color: #141a24; }
-.npd.npd .npd-seg button.on { background: #141a24; color: #fff; }
+.npd.npd .npd-seg button.on { background: var(--brand, #141a24); color: #fff; }
 .npd.npd .npd-seg button.on:focus-visible { background: #2a3242; }
 /* Its pill slides (28 Oct, Alex; SlidePills); keyboard focus on the picked one still lifts it. */
 .npd.npd .npd-seg:has(> button.on:focus-visible) { --pill-bg: #2a3242; }
+/* The coach's brand (19 Nov, Alex: "the toggles, the pop-ups, everything should be in that color"): the picked option, the armed date, a chosen tile, a switch on, a list's picked row. */
+body[style*="--brand"] .npd.npd .npd-seg button.on:focus-visible { background: color-mix(in srgb, var(--brand) 82%, #fff); }
+body[style*="--brand"] .npd.npd .npd-seg:has(> button.on:focus-visible) { --pill-bg: color-mix(in srgb, var(--brand) 82%, #fff); }
 
 /* The calendar beside the dates. */
 /* The calendar's key keeps two rows of room whatever the track (25 Oct, Alex: switching Training, Nutrition and Lifestyle
@@ -57,7 +60,7 @@
 .npd.npd .npd-date { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 1px; height: 50px; padding: 0 16px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #e1e5eb; font: inherit; text-align: left; color: #141a24; cursor: pointer; box-sizing: border-box; transition: box-shadow 0.15s; }
 .npd.npd .npd-date:hover { box-shadow: inset 0 0 0 1px #c5ccd8; }
 .npd.npd .npd-date:focus-visible { outline: none; background: #f5f6f8; }
-.npd.npd .npd-date.arm { box-shadow: inset 0 0 0 1.5px #141a24; }
+.npd.npd .npd-date.arm { box-shadow: inset 0 0 0 1.5px var(--brand, #141a24); }
 .npd.npd .npd-date.locked { background: #f5f6f8; box-shadow: none; cursor: default; }
 .npd.npd .npd-date.locked b { color: #5b6474; }
 /* The pop-up's one small-caps label (16 Nov, Alex, the audit): Starts and Ends as When and Note beside them. */
@@ -75,7 +78,7 @@
 body:has(.npd.npd) .rd-picker-menu.rd-picker-menu { padding: 5px; border: 0; border-radius: 10px; box-shadow: 0 12px 28px rgba(20, 30, 50, 0.16); font-family: var(--font-archivo), system-ui, sans-serif; }
 body:has(.npd.npd) .rd-picker-menu [data-slot="dropdown-menu-item"] { min-height: 34px; padding: 0 10px; border-radius: 7px; font-size: 13.5px; font-weight: 600; color: #141a24; }
 /* The picked one ink, as TimePick's in the same pop-up (16 Nov, Alex: the audit; Repeat's was grey beside Time's ink). */
-body:has(.npd.npd) .rd-picker-menu.rd-picker-menu [data-slot="dropdown-menu-item"].on, body:has(.npd.npd) .rd-picker-menu.rd-picker-menu [data-slot="dropdown-menu-item"].on[data-highlighted] { background: #141a24; color: #fff; }
+body:has(.npd.npd) .rd-picker-menu.rd-picker-menu [data-slot="dropdown-menu-item"].on, body:has(.npd.npd) .rd-picker-menu.rd-picker-menu [data-slot="dropdown-menu-item"].on[data-highlighted] { background: var(--brand, #141a24); color: #fff; }
 body:has(.npd.npd) .rd-picker-menu.rd-picker-menu [data-slot="dropdown-menu-item"].on small { color: rgba(255, 255, 255, 0.72); }
 body:has(.npd.npd) .rd-picker-menu.rd-picker-menu [data-slot="dropdown-menu-item"].on .rd-picker-tone { background: rgba(255, 255, 255, 0.14); color: #fff; }
 body:has(.npd.npd) .rd-picker-menu [data-slot="dropdown-menu-item"] small { font-size: 12px; font-weight: 500; color: #98a2b3; }
@@ -212,7 +215,7 @@ body:has(.npd.npd) .rd-picker-menu [data-slot="dropdown-menu-item"] small { font
 .npd.npd .npd-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; height: 60px; padding: 0; border: 0; border-radius: 14px; background: #fff; box-shadow: inset 0 0 0 1px #e1e5eb; font: inherit; font-size: 12.5px; font-weight: 500; color: #141a24; cursor: pointer; }
 .npd.npd .npd-tile svg { color: var(--tc); }
 .npd.npd .npd-tile:hover { box-shadow: inset 0 0 0 1px #c5ccd8; }
-.npd.npd .npd-tile.on { background: #141a24; box-shadow: none; color: #fff; font-weight: 600; }
+.npd.npd .npd-tile.on { background: var(--brand, #141a24); box-shadow: none; color: #fff; font-weight: 600; }
 .npd.npd .npd-tile.on svg { color: #fff; }
 
 /* ---- The event pop-up on the same pattern (20 Oct): eight categories four across, the When capsule over the dates,
@@ -249,7 +252,7 @@ body:has(.npd.npd) .rd-picker-menu [data-slot="dropdown-menu-item"] small { font
 .npd.npd .npd-endrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; font-size: 13.5px; font-weight: 500; color: #3a4250; cursor: pointer; }
 .npd.npd .npd-switch { position: relative; flex: none; width: 34px; height: 20px; padding: 0; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; cursor: pointer; transition: background 0.2s ease, box-shadow 0.2s ease; }
 .npd.npd .npd-switch i { position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #98a2b3; transition: left 0.2s ease, background 0.2s ease; }
-.npd.npd .npd-switch.on { background: #141a24; box-shadow: none; }
+.npd.npd .npd-switch.on { background: var(--brand, #141a24); box-shadow: none; }
 .npd.npd .npd-switch.on i { left: 17px; background: #fff; }
 .npd.npd .npd-switch:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .npd.npd .npd-switch, .npd.npd .npd-switch i { transition: none; } }
