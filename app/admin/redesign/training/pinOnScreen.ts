@@ -6,6 +6,16 @@
 
 let stop: (() => void) | null = null;
 
+/** An element's top put at a place on screen, at once: a session opened again where it was after the page loaded anew. */
+export function putOnScreen(el: HTMLElement | null, top: number) {
+  if (!el) return;
+  const scroller = scrollerOf(el);
+  const drift = el.getBoundingClientRect().top - top;
+  if (Math.abs(drift) < 0.5) return;
+  if (scroller === document.scrollingElement || scroller === document.documentElement || scroller === document.body) window.scrollBy({ top: drift, behavior: "instant" });
+  else scroller.scrollTop += drift;
+}
+
 function scrollerOf(el: HTMLElement): HTMLElement {
   for (let p = el.parentElement; p; p = p.parentElement) {
     const y = getComputedStyle(p).overflowY;
