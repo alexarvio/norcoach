@@ -78,12 +78,13 @@ export const inFamily = (key: string | null | undefined, family: { prefix: strin
 export type ChatNoteAsk = { id: number; client_id: number; text: string | null; created_at: string | null; unknown?: true };
 
 /**
- * The notification a coach message was logged with: by the message's id where the note carries it, with the same words
- * the memory match asks (a photo-only message's "sent you a photo" note never matched its empty words, and still
- * doesn't); its words unknown, by id alone; else logged in the same breath (5 s) with the same words. noteFor, verbatim.
+ * The notification a coach message was logged with: by the message's id where the note carries it, whatever its words
+ * (19 Nov, Alex: a photo-only message's "sent you a photo" note, one logged late and the demo client's past-stamped
+ * ones go with an edit or a delete; every new note carries its id); else, for a note from before ids, logged in the
+ * same breath (5 s) with the same words.
  */
 export function chatNoteOf(notes: readonly NoteRow[], msg: ChatNoteAsk): NoteRow | null {
-  const byMessage = notes.find((a) => a.client_id === msg.client_id && a.kind === "coach_note" && a.message_id === msg.id && (msg.unknown || a.message === msg.text));
+  const byMessage = notes.find((a) => a.client_id === msg.client_id && a.kind === "coach_note" && a.message_id === msg.id);
   if (byMessage) return byMessage;
   if (msg.unknown || msg.created_at == null) return null;
   const sent = new Date(msg.created_at).getTime();

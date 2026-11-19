@@ -7050,12 +7050,10 @@ export async function sendChatMessage(
     // the bell leaves coach_note out), so it is written whatever the client
     // chose (21 Oct: with "Messages from your coach" off, a new message never
     // showed as unread). The setting decides the buzz on the lock screen.
-    // With CHAT_STORE=pg the note carries the message's id, so an edit or a delete finds it however late it lands.
-    // Not for NOTES_STORE=pg alone (quest 7, 19 Nov proof): the note is stamped as the message is, so the words-and-5-s
-    // match still finds it there, and an id would also tie a past-stamped message's note (the demo client's) that memory
-    // mode never finds: an edit or delete would change the client's list where memory mode leaves it. The pg boot's
-    // backfill links old notes only where that match picks exactly the pair, so it changes nothing either.
-    logCoachActivity(clientId, text || `Your coach sent you ${mediaWords(media?.type ?? null)}`, { kind: "coach_note", push: getClientPreferences(clientId).coach_notes, ...(CHAT_PG ? { messageId: row.id } : {}) });
+    // The note carries the message's id in every mode (19 Nov, Alex: "it should change"), so an edit or a delete finds it
+    // by that: a photo-only message's "sent you a photo" too, one logged late, and a past-stamped message's (the demo
+    // client's). Notes from before keep the words-and-5-s match (notes/pick.ts chatNoteOf).
+    logCoachActivity(clientId, text || `Your coach sent you ${mediaWords(media?.type ?? null)}`, { kind: "coach_note", push: getClientPreferences(clientId).coach_notes, messageId: row.id });
   }
   return true;
 }
@@ -7069,10 +7067,9 @@ export async function setChatReaction(clientId: number, messageId: number, who: 
 }
 
 /**
- * The notification a coach message was logged with: by the message's id where the note carries it (CHAT_STORE=pg or
- * NOTES_STORE=pg: an insert can take longer than the 5 s the words-and-time match allows), else in the same breath and
- * the same words, as always. Through the notes' door since quest 7 (notes/pick.ts chatNoteOf holds the rule, verbatim);
- * then the note reworded or removed by its id.
+ * The notification a coach message was logged with: by the message's id whatever its words (every new note carries it
+ * since 19 Nov, in every mode), else, for a note from before ids, in the same breath (5 s) with the same words. Through
+ * the notes' door since quest 7 (notes/pick.ts chatNoteOf holds the rule); then the note reworded or removed by its id.
  */
 async function chatNoteFollows(msg:{ id: number; client_id: number; text: string | null; created_at: string | null; unknown?: true }, path: "action.chatNote.edit" | "action.chatNote.delete" | "action.chatNote.mealEdit" | "action.chatNote.mealRemove", to: { reword: string } | "delete") {
   const note = await fetchChatNote(msg, path);
@@ -9057,13 +9054,18 @@ export function logCoachActivity(
     mergeDetail?: string;
     /** With a dedupe key that already has a row: that row says this instead, unread again (a day's targets, from how the day began to now). */
     replace?: boolean;
-    /** A coach message's note: the message it carries (CHAT_STORE=pg; edits and deletes find it by this; NOTES_STORE=pg's backfill sets it on old notes). */
+    /** A coach message's note: the message it carries (every mode since 19 Nov; edits and deletes find it by this; NOTES_STORE=pg's backfill sets it on old notes). */
     messageId?: number;
   }
 ) {
   // The duplicate check, replace, merge and insert are the notes' door's since quest 7 (notes/apply.ts, the code moved
   // verbatim): applied to the store at once (memory), or queued and written once the store's save has it (NOTES_STORE=pg).
   const mode = !opts.dedupeKey ? "plain" : opts.replace ? "replace" : opts.mergeDetail ? "merge" : "keep";
+  // Once only (19 Nov, Alex: "yes once only key"): a note with no key of its own that says exactly what one just said
+  // (the same client, kind, words and place to open) within 10 s is the same action run again (a double click, a retry
+  // after a dropped connection), so neither the note nor its buzz comes twice. Not a coach message: two "ok"s a second
+  // apart are two messages, and a resent one is stopped by the chat's own once key.
+  if (mode === "plain" && opts.kind !== "coach_note" && !noteOnce(clientId, message, opts)) return;
   writeNote(
     {
       op: "insert",
@@ -9111,6 +9113,24 @@ export function logCoachActivity(
       },
     }
   );
+}
+
+/**
+ * The last keyless note of each thing in the last 10 s (logCoachActivity's once-only check): by the client, kind, tab
+ * and ref it points at, what it said. A repeat is dropped only while it is still that thing's latest note, so a call
+ * moved Tue, Wed and back to Tue inside 10 s still tells the client Tuesday. One process holds them.
+ */
+const NOTE_ONCE_MS = 10_000;
+const g_noteOnce = globalThis as unknown as { __norcoachNoteOnce?: Map<string, { said: string; at: number }> };
+function noteOnce(clientId: number, message: string, opts: { kind: CoachActivityKind; actionTab?: CoachActivityActionTab; actionLabel?: string; actionRef?: number }): boolean {
+  const last = (g_noteOnce.__norcoachNoteOnce ??= new Map());
+  const now = Date.now();
+  for (const [k, v] of last) if (now - v.at >= NOTE_ONCE_MS) last.delete(k);
+  const thing = JSON.stringify([clientId, opts.kind, opts.actionTab ?? null, opts.actionRef ?? null]);
+  const said = JSON.stringify([message, opts.actionLabel ?? null]);
+  if (last.get(thing)?.said === said) return false;
+  last.set(thing, { said, at: now });
+  return true;
 }
 
 /** The client's newest notifications, from the view their page fetched (notes/rows.ts fetchClientNotes). */
