@@ -1,4 +1,5 @@
 import { getPlanData } from "../lib/queries";
+import type { FoodRows } from "../lib/food/rows";
 import PlanPhasesCard from "./PlanPhasesCard";
 import PlanGoalsCard from "./PlanGoalsCard";
 import PlanMainGoalCard from "./PlanMainGoalCard";
@@ -20,8 +21,8 @@ const stamp = (iso: string) => {
 // The Plan tab: the main goal, the phases timeline, and the goals table,
 // each a white card. Server component: it gathers the data and hands it to
 // the interactive cards.
-export default function PhaseTimeline({ clientId }: { clientId: number }) {
-  const data = getPlanData(clientId);
+export default function PhaseTimeline({ clientId, food }: { clientId: number; /** The client's food diary (app/lib/food/rows.ts): the goals read it. */ food: FoodRows }) {
+  const data = getPlanData(food, clientId);
   return (
     <div className="pl">
       <PlanMainGoalCard

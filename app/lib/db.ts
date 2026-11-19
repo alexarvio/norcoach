@@ -4,6 +4,7 @@ import type { GoalTracking } from "./goalView";
 import path from "path";
 import { CHAT_PG } from "./chat/mode";
 import { NOTES_PG } from "./notes/mode";
+import { FOOD_PG } from "./food/mode";
 
 // Pure-JS JSON file store — no native module, no compiler, works identically
 // on any machine. Swap this file for a real database later without touching
@@ -1258,6 +1259,9 @@ export type NoteActionTab = CoachActivityActionTab;
 declare const NOTES_DOOR: unique symbol;
 /** The store's notifications, sealed (19 Nov, quest 7): only app/lib/notes/ opens them, so tsc refuses any other reach. */
 export type NotesStoreRows = { readonly [NOTES_DOOR]: "app/lib/notes/rows.ts" };
+declare const FOOD_DOOR: unique symbol;
+/** The store's food diary lists, sealed (19 Nov, quest 8 part 1): only app/lib/food/ opens them, so tsc refuses any other reach. */
+export type FoodStoreRows = { readonly [FOOD_DOOR]: "app/lib/food/rows.ts" };
 
 // Coach-level, reusable report templates (mirrors the metric_template_*
 // pattern) — a template is just an ordered set of sections; applying it to
@@ -1473,7 +1477,9 @@ export type Data = {
   photo_uploads: PhotoUpload[];
   photo_settings: PhotoSettings[];
   photo_period_notes: PhotoPeriodNote[];
-  meal_photos: MealPhoto[];
+  // The food diary's seven lists (quest 8 part 1): sealed, opened by the door alone (app/lib/food/rows.ts); absent with
+  // FOOD_STORE=pg, where they live in Postgres alone.
+  meal_photos?: FoodStoreRows;
   video_requests: VideoRequest[];
   client_profiles: ClientProfile[];
   client_goals: ClientGoal[];
@@ -1500,14 +1506,14 @@ export type Data = {
   // Workouts from the phone's health store (16 Nov, lib/healthSync.ts), for the coach's Activity. A Postgres table of its own since 19 Nov (pg/healthWorkouts.ts), still in memory; kept whole in `kv` too, for a rollback.
   health_workouts?: HealthWorkout[];
   event_categories: EventCategory[];
-  calorie_logs: CalorieLog[];
-  food_entries: FoodEntry[];
+  calorie_logs?: FoodStoreRows;
+  food_entries?: FoodStoreRows;
   custom_foods: CustomFood[];
-  food_meals: FoodMealSlot[];
-  food_days: FoodDay[];
-  saved_meals: SavedMeal[];
+  food_meals?: FoodStoreRows;
+  food_days?: FoodStoreRows;
+  saved_meals?: FoodStoreRows;
   off_foods: OffFood[];
-  saved_days: SavedDay[];
+  saved_days?: FoodStoreRows;
   check_in_notes: CheckInNote[];
   client_exercise_notes: ClientExerciseNote[];
   client_program_notes: ClientProgramNote[];
@@ -1573,14 +1579,13 @@ function emptyData(): Data {
     meeting_requests: [],
     weight_goals: [],
     event_categories: [],
-    calorie_logs: [],
-    food_entries: [],
+    // Not with FOOD_STORE=pg (quest 8 part 1): the food diary lives in Postgres alone, and neither prepareStore nor
+    // getData's self-heal may put an empty list back into the store.
+    ...(FOOD_PG ? {} : { calorie_logs: [] as unknown as FoodStoreRows, food_entries: [] as unknown as FoodStoreRows }),
     custom_foods: [],
-    food_meals: [],
-    food_days: [],
-    saved_meals: [],
+    ...(FOOD_PG ? {} : { food_meals: [] as unknown as FoodStoreRows, food_days: [] as unknown as FoodStoreRows, saved_meals: [] as unknown as FoodStoreRows }),
     off_foods: [],
-    saved_days: [],
+    ...(FOOD_PG ? {} : { saved_days: [] as unknown as FoodStoreRows }),
     check_in_notes: [],
     client_exercise_notes: [],
     client_program_notes: [],
@@ -1605,7 +1610,7 @@ function emptyData(): Data {
     photo_uploads: [],
     photo_settings: [],
     photo_period_notes: [],
-    meal_photos: [],
+    ...(FOOD_PG ? {} : { meal_photos: [] as unknown as FoodStoreRows }),
     video_requests: [],
     client_profiles: [],
     client_goals: [],

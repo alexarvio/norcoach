@@ -91,15 +91,22 @@ export const client_phases = pgTable("client_phases", {
   extra: extra(),
 });
 
-export const calorie_logs = pgTable("calorie_logs", {
-  id: id(),
-  client_id: fk("client_id"),
-  date: text("date"),
-  kcal: num("kcal"),
-  logged_at: text("logged_at"),
-  note: text("note"),
-  extra: extra(),
-});
+// The food diary's indexes (19 Nov, quest 8 part 1; app/lib/food/rows.ts reads a client's days, a meal's rows, a picture's
+// rows by file). The unique rule on calorie_logs (client_id, date) is NOT here: a FOOD_STORE=pg boot makes it under the
+// lease once its twins are moved out, and a memory boot drops it (app/lib/food/boot.ts), so a twin never blocks a save.
+export const calorie_logs = pgTable(
+  "calorie_logs",
+  {
+    id: id(),
+    client_id: fk("client_id"),
+    date: text("date"),
+    kcal: num("kcal"),
+    logged_at: text("logged_at"),
+    note: text("note"),
+    extra: extra(),
+  },
+  (t) => [index("calorie_logs_client_date_idx").on(t.client_id, t.date, t.id)]
+);
 
 export const check_in_notes = pgTable("check_in_notes", {
   id: id(),
@@ -648,23 +655,31 @@ export const password_resets = pgTable(
  * Every collection, with the field(s) that identify a row. store.ts walks
  * this list to load and save; a collection missing here would not be saved.
  */
-export const food_entries = pgTable("food_entries", {
-  id: id(),
-  client_id: fk("client_id"),
-  date: text("date"),
-  meal: text("meal"),
-  food_id: text("food_id"),
-  name: text("name"),
-  grams: num("grams"),
-  serving: text("serving"),
-  kcal: num("kcal"),
-  protein: num("protein"),
-  carbs: num("carbs"),
-  fat: num("fat"),
-  logged_at: text("logged_at"),
-  extra: extra(),
-  logged_at_tz: instant("logged_at_tz"),
-});
+export const food_entries = pgTable(
+  "food_entries",
+  {
+    id: id(),
+    client_id: fk("client_id"),
+    date: text("date"),
+    meal: text("meal"),
+    food_id: text("food_id"),
+    name: text("name"),
+    grams: num("grams"),
+    serving: text("serving"),
+    kcal: num("kcal"),
+    protein: num("protein"),
+    carbs: num("carbs"),
+    fat: num("fat"),
+    logged_at: text("logged_at"),
+    extra: extra(),
+    logged_at_tz: instant("logged_at_tz"),
+  },
+  (t) => [
+    index("food_entries_client_date_idx").on(t.client_id, t.date, t.id),
+    // A meal of the client's own on every day it holds food (removeFoodMeal's reach).
+    index("food_entries_client_meal_idx").on(t.client_id, t.meal, t.id),
+  ]
+);
 
 export const custom_foods = pgTable("custom_foods", {
   id: id(),
@@ -680,30 +695,46 @@ export const custom_foods = pgTable("custom_foods", {
   extra: extra(),
 });
 
-export const food_meals = pgTable("food_meals", {
-  id: id(),
-  client_id: fk("client_id"),
-  name: text("name"),
-  created_at: text("created_at"),
-  extra: extra(),
-});
+export const food_meals = pgTable(
+  "food_meals",
+  {
+    id: id(),
+    client_id: fk("client_id"),
+    name: text("name"),
+    created_at: text("created_at"),
+    extra: extra(),
+  },
+  (t) => [index("food_meals_client_idx").on(t.client_id, t.id)]
+);
 
-export const food_days = pgTable("food_days", {
-  id: id(),
-  client_id: fk("client_id"),
-  date: text("date"),
-  day_type: text("day_type"),
-  extra: extra(),
-});
+export const food_days = pgTable(
+  "food_days",
+  {
+    id: id(),
+    client_id: fk("client_id"),
+    date: text("date"),
+    day_type: text("day_type"),
+    extra: extra(),
+  },
+  (t) => [index("food_days_client_date_idx").on(t.client_id, t.date, t.id)]
+);
 
-export const saved_meals = pgTable("saved_meals", {
-  id: id(),
-  client_id: fk("client_id"),
-  name: text("name"),
-  items: jsonb("items"),
-  created_at: text("created_at"),
-  extra: extra(),
-});
+export const saved_meals = pgTable(
+  "saved_meals",
+  {
+    id: id(),
+    client_id: fk("client_id"),
+    name: text("name"),
+    items: jsonb("items"),
+    created_at: text("created_at"),
+    extra: extra(),
+  },
+  (t) => [
+    index("saved_meals_client_idx").on(t.client_id, t.id),
+    // A picture's rows by file (the pictures' clean-up, the look).
+    index("saved_meals_picture_idx").on(sql`(extra ->> 'picture')`).where(sql`(extra ->> 'picture') IS NOT NULL`),
+  ]
+);
 
 export const off_foods = pgTable("off_foods", {
   id: id(),
@@ -721,24 +752,61 @@ export const off_foods = pgTable("off_foods", {
   extra: extra(),
 });
 
-export const saved_days = pgTable("saved_days", {
-  id: id(),
-  client_id: fk("client_id"),
-  name: text("name"),
-  items: jsonb("items"),
-  created_at: text("created_at"),
-  extra: extra(),
-});
+export const saved_days = pgTable(
+  "saved_days",
+  {
+    id: id(),
+    client_id: fk("client_id"),
+    name: text("name"),
+    items: jsonb("items"),
+    created_at: text("created_at"),
+    extra: extra(),
+  },
+  (t) => [index("saved_days_client_idx").on(t.client_id, t.id)]
+);
 
-export const meal_photos = pgTable("meal_photos", {
-  id: id(),
-  client_id: fk("client_id"),
-  date: text("date"),
-  meal: text("meal"),
-  file_path: text("file_path"),
-  uploaded_at: text("uploaded_at"),
-  extra: extra(),
-});
+export const meal_photos = pgTable(
+  "meal_photos",
+  {
+    id: id(),
+    client_id: fk("client_id"),
+    date: text("date"),
+    meal: text("meal"),
+    file_path: text("file_path"),
+    uploaded_at: text("uploaded_at"),
+    extra: extra(),
+  },
+  (t) => [index("meal_photos_client_date_idx").on(t.client_id, t.date, t.meal, t.id), index("meal_photos_path_idx").on(t.file_path)]
+);
+
+/**
+ * The food diary's write tokens (19 Nov, quest 8 part 1; FOOD_STORE=pg): each write's own, in its transaction, so a write
+ * whose commit was lost to a dropped connection can be read back rather than run blind. Pruned after 30 days. Not a
+ * collection: never loaded into memory, never written by the store's writer.
+ */
+export const food_ops = pgTable(
+  "food_ops",
+  {
+    token: text("token").primaryKey(),
+    op: text("op").notNull(),
+    client_id: integer("client_id"),
+    at: timestamp("at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+    after: jsonb("after"),
+  },
+  (t) => [index("food_ops_at_idx").on(t.at)]
+);
+
+/** Twin rows a FOOD_STORE=pg boot moved out before making a unique rule (calorie_logs on client and day), kept whole. */
+export const food_twins = pgTable(
+  "food_twins",
+  {
+    tbl: text("tbl").notNull(),
+    id: integer("id").notNull(),
+    row: jsonb("row").notNull(),
+    removed_at: timestamp("removed_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.tbl, t.id] })]
+);
 
 export const video_requests = pgTable("video_requests", {
   id: id(),
@@ -907,6 +975,8 @@ export const set_logs_id_seq = idSeq("set_logs");
 export const workout_assignments_id_seq = idSeq("workout_assignments");
 export const program_days_id_seq = idSeq("program_days");
 export const health_workouts_id_seq = idSeq("health_workouts");
+// Saved days had none (quest 8 part 1): theirs, for FOOD_STORE=pg (pg/ids.ts takes it then; memory mode counts from _seq).
+export const saved_days_id_seq = idSeq("saved_days");
 
 /**
  * Names that are tables, never a key in `kv` (17 Nov): a kv row named like a collection would replace that collection
@@ -917,4 +987,4 @@ export const health_workouts_id_seq = idSeq("health_workouts");
 // chat_messages is here too (Step 5's cut-over): with CHAT_STORE=pg it leaves the writer's collections, and a stray
 // `chat_messages` in the store must never be written to kv. A no-op while it is a collection (store.ts adds those anyway).
 // coach_activity, its shadow, its twins and its ops' tokens the same (quest 7, NOTES_STORE=pg; app/lib/notes/).
-export const TABLE_NAMES_NOT_IN_KV = ["kv", "push_subscriptions", "password_resets", "chat_messages_shadow", "once_keys_shadow", "chat_messages", "coach_activity", "coach_activity_shadow", "coach_activity_twins", "coach_activity_ops"] as const;
+export const TABLE_NAMES_NOT_IN_KV = ["kv", "push_subscriptions", "password_resets", "chat_messages_shadow", "once_keys_shadow", "chat_messages", "coach_activity", "coach_activity_shadow", "coach_activity_twins", "coach_activity_ops", "food_ops", "food_twins"] as const;

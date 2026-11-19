@@ -23,6 +23,7 @@ import { SERVER_TZ, zonedToUtc } from "../../lib/timezones";
 import { hasBankDetails, invoicingFor } from "../../lib/countries";
 import { clientActions, coachNeeds } from "../../lib/coachNeeds";
 import type { ChatCoachView, ChatDockView, ChatThread } from "../../lib/chat/rows";
+import { noFoodRows, type FoodRows } from "../../lib/food/rows";
 import { fetchNoteKeys, type NoteKeys } from "../../lib/notes/rows";
 import type { NoteTab } from "../../lib/notes/paths";
 import { HOME_KIND_ROWS as HOME_KIND_ROWS_CHAT } from "../../lib/chat/pick";
@@ -557,7 +558,7 @@ const STATE = { draft: "draft", now: "live", next: "scheduled", past: "past" } a
 // The coach's goals for a phase (up to three), shown on the client's Home.
 const goalsOf = (phaseId: number | null | undefined): string[] => (phaseId ? getData().client_phases.find((p) => p.id === phaseId)?.objectives ?? [] : []);
 
-export function loadNutrition(clientId: number, params: { phase?: string }, thread: ChatThread): DraftNutrition {
+export function loadNutrition(clientId: number, params: { phase?: string }, thread: ChatThread, food: FoodRows): DraftNutrition {
   const today = localDateStr();
   const plan = getNutritionPlan(clientId);
   const stored = getStoredNutritionPlan(clientId);
@@ -595,12 +596,12 @@ export function loadNutrition(clientId: number, params: { phase?: string }, thre
   fourWeeksBack.setDate(fourWeeksBack.getDate() - 27);
   const from = phase.start ?? localDateStr(fourWeeksBack);
   const to = phase.end ? endOfWeek(phase.end) : today;
-  const logged = getLoggedDays(clientId, from, to > today ? today : to, thread);
+  const logged = getLoggedDays(food, clientId, from, to > today ? today : to, thread);
   // The figures over the log follow 7d | 30d | Phase (23 Oct, Alex): the last 30 days by the calendar, today counting
   // as it does in the phase's, whatever phase is on screen; only what the figures read.
   const thirtyBack = new Date(`${today}T00:00:00`);
   thirtyBack.setDate(thirtyBack.getDate() - 29);
-  const recent = getLoggedDays(clientId, localDateStr(thirtyBack), today, thread).days.map((d) => ({ date: d.date, kcal: d.kcal, protein: d.protein, carbs: d.carbs, fat: d.fat, proteinTarget: d.proteinTarget }));
+  const recent = getLoggedDays(food, clientId, localDateStr(thirtyBack), today, thread).days.map((d) => ({ date: d.date, kcal: d.kcal, protein: d.protein, carbs: d.carbs, fat: d.fat, proteinTarget: d.proteinTarget }));
 
   return {
     id: phase.id,
@@ -669,9 +670,9 @@ function railSpots(clientId: number, actions: HomeAction[], byId: Map<string, Fe
 /** The Phases screen's Needs you (2 Nov, Alex: "if anyone is missing a phase have the notification appear there just like
  *  in feed"): a new client with no phase yet, a track with no live phase (or its draft over today), a live phase with
  *  nothing in it; the Feed's rows, the Plan their way in. */
-export function loadPhaseNeeds(coachId: number, chat: ChatCoachView): NeedRow[] {
+export function loadPhaseNeeds(coachId: number, chat: ChatCoachView, food: FoodRows): NeedRow[] {
   // The rail's read of the coach's Needs you, not a second one (4 Nov, Alex: "just a tiny bit slow"; coachNeeds.ts).
-  const { byId } = coachNeeds(coachId, chat);
+  const { byId } = coachNeeds(coachId, chat, food);
   const data = getData();
   const rows: NeedRow[] = [];
   for (const c of listClients(coachId)) {
@@ -680,7 +681,7 @@ export function loadPhaseNeeds(coachId: number, chat: ChatCoachView): NeedRow[] 
       rows.push({ ...base, key: `${c.id}:setup`, cat: "plan", kind: "phase", what: "No phase yet", action: "New phase", href: `/admin/redesign/plan?client=${c.id}`, dismissId: null });
       continue;
     }
-    for (const a of clientActions(coachId, c.id, chat)) {
+    for (const a of clientActions(coachId, c.id, chat, food)) {
       if (!PHASE_OWED.test(a.id)) continue;
       // Its track's group: `track-training` names it, `empty-…` by the tab it opens (Lifestyle's is measurements).
       const track = /^track-(lifestyle|training|nutrition)$/.exec(a.id)?.[1] ?? (a.tab === "measurements" ? "lifestyle" : a.tab);
@@ -693,7 +694,7 @@ export function loadPhaseNeeds(coachId: number, chat: ChatCoachView): NeedRow[] 
 export type RailData = { clients: RailClient[]; coach: { name: string; photoPath: string | null; /** Weights shown in by default (Settings, Preferences, 27 Oct). */ units: "kg" | "lbs"; /** Settings, Business details: the one line under the logo, empty when none is set (16 Nov, the audit). */ business: string; /** Their banner in NORCOACH's place (19 Nov, Alex; lib/brandMark.ts), its width over its height. */ banner?: string; bannerRatio?: number }; isOwner: boolean; inviteReady: boolean; /** Sign-in through Clerk: New client sends an invite link, no password. */ clerk: boolean; /** Support lines not read: the company's to a coach (the Support row), every coach's to the owner (Coaches). */ supportUnread: number; /** What the coach pays Norcoach (28 Oct; lib/billing.ts): a failed payment or read-only says so in the rail. */ billing: BillingAccess; /** Subscriptions set up on the server: the Billing row shows. */ billingOn: boolean; /** Asking to join with the coach's code (18 Nov): counted on the Feed row with the rest of Needs you. */ joinRequests: number };
 
 /** The dot trail on one client's screens (dots.ts): what the rail counts for them, each placed where it is. */
-export function loadDots(clientId: number, chat: ChatCoachView): DotTrail {
+export function loadDots(clientId: number, chat: ChatCoachView, food: FoodRows): DotTrail {
   const data = getData();
   const client = data.clients.find((c) => c.id === clientId);
   const dots: DotTrail = { tabs: [], training: { weeks: {}, days: [], exercises: [] }, food: {}, meetings: false, unlock: false, todo: [] };
@@ -721,8 +722,8 @@ export function loadDots(clientId: number, chat: ChatCoachView): DotTrail {
     todo("plan", { key: "setup", kind: "setup", what: "No phase yet", words: null, since: null, action: "New phase", href: route("plan"), ref: null });
   }
   // The rail's read of the coach's Needs you, not the whole feed again for one client (4 Nov, Alex; coachNeeds.ts).
-  const { byId } = coachNeeds(client.coach_id ?? 0, chat);
-  for (const a of clientActions(client.coach_id ?? 0, clientId, chat)) {
+  const { byId } = coachNeeds(client.coach_id ?? 0, chat, food);
+  for (const a of clientActions(client.coach_id ?? 0, clientId, chat, food)) {
     const open = needView(clientId, a, byId).open;
     const since = a.at != null && Number.isFinite(a.at) ? a.at : null;
     if (a.id === "week") {
@@ -795,20 +796,20 @@ export function loadDots(clientId: number, chat: ChatCoachView): DotTrail {
 }
 
 /** The left rail's data: every client with whether they need the coach, and the coach at the foot. */
-export function loadRail(coach: { id: number; email: string; role: "coach" | "client" }, chat: ChatCoachView): RailData {
+export function loadRail(coach: { id: number; email: string; role: "coach" | "client" }, chat: ChatCoachView, food: FoodRows): RailData {
   // A new coach sees the welcome steps first; every redesign page reads the rail, so this is the one gate.
   if (getData().users.find((u) => u.id === coach.id)?.onboarding) redirect("/auth/coach-setup");
   // The coach's feed and every client's Needs you, read once a request and shared with the Feed, the Phases screen and
   // the dot trail (4 Nov, Alex: "just a tiny bit slow"; coachNeeds.ts). Timed as rail.feed and rail.needsYou when the
   // rail reads it first.
-  const { byId } = coachNeeds(coach.id, chat);
+  const { byId } = coachNeeds(coach.id, chat, food);
   const data = getData();
   const clients = sub("needsYou", () => {
     const list = listClients(coach.id);
     return list.map((c) => {
       const user = getUserForClient(c.id);
       const isNew = listClientPhases(c.id).length === 0 && !data.training_programs.some((p) => p.client_id === c.id);
-      return { id: c.id, name: c.name, avatarPath: c.avatar_path ?? null, ...railSpots(c.id, clientActions(coach.id, c.id, chat), byId, isNew), notSignedIn: !user || (!user.clerk_user_id && (user.must_change_password || !user.password_hash)) };
+      return { id: c.id, name: c.name, avatarPath: c.avatar_path ?? null, ...railSpots(c.id, clientActions(coach.id, c.id, chat, food), byId, isNew), notSignedIn: !user || (!user.clerk_user_id && (user.must_change_password || !user.password_hash)) };
     });
   });
   return sub("coach", () => {
@@ -1054,11 +1055,11 @@ function periodsSinceFirstEntry(metrics: { id: number }[], cadence: "daily" | "w
 
 // ---- Meetings ---------------------------------------------------------------------
 
-export function loadMeetings(clientId: number): DraftMeetings {
+export function loadMeetings(clientId: number, food: FoodRows): DraftMeetings {
   const today = localDateStr();
   const data = getMeetingsWorkspaceData(clientId);
   // Every goal, with its live standing in a few words.
-  const goals: DraftGoal[] = getGoalSummaries(clientId).map(({ goal, view, tracking }) => {
+  const goals: DraftGoal[] = getGoalSummaries(food, clientId).map(({ goal, view, tracking }) => {
     let status = "";
     if (view.kind === "metric") {
       const figure = (view.barLabel ?? "").split(" · ")[0];
@@ -1108,8 +1109,8 @@ function planCtxOf(clientId: number): Pick<DraftPlan, "today" | "thisWeek" | "ph
   return { today: d.today, thisWeek: d.thisWeek, phases: d.phases, programs: d.programs };
 }
 
-export function loadPlan(clientId: number): DraftPlan {
-  const d = getPlanData(clientId);
+export function loadPlan(clientId: number, food: FoodRows): DraftPlan {
+  const d = getPlanData(food, clientId);
   return {
     today: d.today,
     thisWeek: d.thisWeek,
@@ -1179,7 +1180,9 @@ export function feedHref(e: Pick<FeedEvent, "clientId" | "tab" | "category" | "t
   // day or exercise; Home when it is about nothing), with the chat over it
   // at that message (RedesignShell reads ?chat=).
   if (t?.kind === "chat") {
-    const view = t.link ? describeMessageLink(e.clientId, t.link) : null;
+    // A food link is never removed and has no week (describeMessageLink's food case reads the meal for its label alone,
+    // which this never shows), so it reads no food; any other link reads none either.
+    const view = t.link ? (t.link.kind === "food" ? { removed: false, week: null } : describeMessageLink(noFoodRows("page.feed"), e.clientId, t.link)) : null;
     const base = t.link && view && !view.removed ? messageLinkHref(e.clientId, t.link, view.week) : tab("home");
     const [path, hash = ""] = base.split("#");
     return `${path}&chat=${t.messageId}${hash ? `#${hash}` : ""}`;
@@ -1212,16 +1215,16 @@ const HOME_KINDS: ((e: { category: string; tab: string }) => boolean)[] = [
   (e) => (e.category === "messages" || e.category === "notes") && e.tab !== "meetings",
 ];
 
-export function loadHome(clientId: number, chat: { coach: ChatCoachView; thread: ChatThread }): DraftHome {
+export function loadHome(clientId: number, chat: { coach: ChatCoachView; thread: ChatThread }, food: FoodRows): DraftHome {
   // The look is noted first: a new visit moves the last look into prev, so "Since" counts from the coach's previous visit
   // on this first render too, and stays put on every re-read within the visit.
   sub("look", () => noteHomeLooked(clientId));
-  const board = sub("board", () => getHomeBoard(clientId, chat.thread));
+  const board = sub("board", () => getHomeBoard(clientId, chat.thread, food));
   // The coach's feed, built once for the panel and Activity (23 Oct, speed: it was built twice), when the panel asks
   // for it, as it did.
   const coachId = getData().clients.find((c) => c.id === clientId)?.coach_id ?? 0;
   let coachFeed: FeedEvent[] | null = null;
-  const feedOnce = () => (coachFeed ??= sub("feed", () => getActivityFeed(coachId, chat.coach)));
+  const feedOnce = () => (coachFeed ??= sub("feed", () => getActivityFeed(coachId, chat.coach, food)));
   const panel = sub("panel", () => getOverviewPanel(clientId, feedOnce));
   // Activity is the client's whole feed (not the newest 60 rows), so Invoices or Meetings still has its history for a
   // client who chats every day.
@@ -1303,7 +1306,7 @@ export function loadHome(clientId: number, chat: { coach: ChatCoachView; thread:
     events,
     board: sub("consistencyLinks", () => withDayLinks(clientId, board)),
     // The locked app (19 Nov, Alex; app/lib/appLock.ts): the ⋯'s Open {First}'s app while it is.
-    appLocked: sub("appLock", () => appLocked(clientId)),
+    appLocked: sub("appLock", () => appLocked(clientId, food)),
   };
 }
 
@@ -1380,7 +1383,7 @@ export function messageLinkHref(clientId: number, link: MessageLink, week: numbe
 const NO_LINK_TARGETS: DraftMessages["targets"] = { training: [], foodDays: [], nutrition: false, checkins: [], photos: false };
 
 /** `targets` false (the coach's phone, which never links, 17 Nov): no link targets read, an empty list in their place. */
-export function loadMessages(clientId: number, thread: ChatThread, opts: { targets?: boolean } = {}): DraftMessages {
+export function loadMessages(clientId: number, thread: ChatThread, food: FoodRows, opts: { targets?: boolean } = {}): DraftMessages {
   const when = dayMonthTime;
   const hrefFor = (link: MessageLink, week: number | null) => messageLinkHref(clientId, link, week);
   // Both sides, newest first: the client answers from their app.
@@ -1395,7 +1398,7 @@ export function loadMessages(clientId: number, thread: ChatThread, opts: { targe
     .filter((m) => m.text.trim() || m.media_path)
     .reverse()
     .map((m) => {
-      const view = m.link ? describeMessageLink(clientId, m.link) : null;
+      const view = m.link ? describeMessageLink(food, clientId, m.link) : null;
       return {
         id: m.id,
         mine: m.sender === "coach",
@@ -1414,7 +1417,7 @@ export function loadMessages(clientId: number, thread: ChatThread, opts: { targe
       };
     });
   // The revision the rows were read under (the view's, Step 5), never one read after them.
-  return { rev: thread.rev, messages, targets: opts.targets === false ? NO_LINK_TARGETS : listMessageLinkTargets(clientId), avatarPath: getClient(clientId)?.avatar_path ?? null, coachAvatarPath: getCoachAvatarPath(clientId), unread: chatUnread(thread), firstUnread: chatFirstUnread(thread), lastActiveAt: clientLastActive(clientId) };
+  return { rev: thread.rev, messages, targets: opts.targets === false ? NO_LINK_TARGETS : listMessageLinkTargets(food, clientId), avatarPath: getClient(clientId)?.avatar_path ?? null, coachAvatarPath: getCoachAvatarPath(clientId), unread: chatUnread(thread), firstUnread: chatFirstUnread(thread), lastActiveAt: clientLastActive(clientId) };
 }
 
 // ---- Invoices tab: the client's invoices as they print, and what Settings

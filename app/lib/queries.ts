@@ -39,6 +39,8 @@ import { colourOfGroup, groupColour } from "./categoryColors";
 import { PHASE_OBJECTIVE_CHARS, PHASE_OBJECTIVES_MAX } from "./phaseCovers";
 import { cleanRepeat, openEnd, type EventRepeat } from "./eventRepeat";
 import { deleteUpload, trashFile } from "./storage";
+import { FOOD_PG } from "./food/mode";
+import { deleteClientFood, noFoodRows, setFoodLook, type FoodBox, type FoodRows } from "./food/rows";
 import { setsDue } from "./setsDue";
 import { assistedRow, beforeStop, copiedWeights, isReset, laneKg, laneOfGym, laneTypedAt, laterSlot, liftOf, raisedTo, repWindow, setsSinceReset, stopAfter, writeLane, type Lane } from "./targetRule";
 import { FEATURES } from "./features";
@@ -312,6 +314,8 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
   if (CHAT_PG) await deleteClientChat(clientId, "w.client.delete");
   // With NOTES_STORE=pg their notifications the same (quest 7): a DELETE that fails stops the erase before anything changes.
   if (NOTES_PG) await deleteClientNotes(clientId, "w.client.delete");
+  // With FOOD_STORE=pg their food diary the same (quest 8 part 1): one transaction under their lock, before anything changes.
+  if (FOOD_PG) await deleteClientFood(clientId, "w.client.delete");
   // A Personal block that still has them saved is the coach's own: it stays.
   detachStrayEntryClients();
 
@@ -365,7 +369,7 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
     return deleteClientChat(clientId, "w.client.delete");
   })();
   const store = data as unknown as Record<string, unknown>;
-  // chat-door: chat rows go through deleteClientChat
+  // chat-door: chat rows go through deleteClientChat. food-door: the food lists by the same filter (pg: deleteClientFood above)
   // notes-door: the notifications go through deleteClientNotes, in their turn among the collections (memory: at once, the
   // same filter; with NOTES_STORE=pg they went first, above)
   for (const [name, value] of Object.entries(store)) {
@@ -396,6 +400,16 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
       await deleteClientNotes(clientId, "w.client.delete");
     } catch (error) {
       console.error(`[notes] the second sweep of client ${clientId}'s notifications failed; the boot's orphan report will name what is left:`, error instanceof Error ? error.message : error);
+    }
+  }
+  // The food diary the same (FOOD_STORE=pg): a write already queued on the client's chain when the first DELETE ran
+  // (a phone sync, an upload) is refused once the client is gone from memory (writeFood), and this sweep takes what any
+  // committed between.
+  if (FOOD_PG) {
+    try {
+      await deleteClientFood(clientId, "w.client.delete");
+    } catch (error) {
+      console.error(`[food] the second sweep of client ${clientId}'s food diary failed; the preflight's orphan count will name what is left:`, error instanceof Error ? error.message : error);
     }
   }
 }
@@ -935,7 +949,7 @@ export type LinkTargets = {
   photos: boolean;
 };
 
-export function listMessageLinkTargets(clientId: number): LinkTargets {
+export function listMessageLinkTargets(food: FoodRows, clientId: number): LinkTargets {
   const data = getData();
   const span = linkableWeeks(clientId);
   const training = span
@@ -958,7 +972,8 @@ export function listMessageLinkTargets(clientId: number): LinkTargets {
     d.setDate(d.getDate() - 14);
     return localDateStr(d);
   })();
-  const foodDays = [...new Set((data.food_entries ?? []).filter((e) => e.client_id === clientId && e.date >= from && e.date <= today).map((e) => e.date))]
+  food.need("listMessageLinkTargets", clientId, { from, to: today }, ["entries"]);
+  const foodDays = [...new Set(food.entries.filter((e) => e.client_id === clientId && e.date >= from && e.date <= today).map((e) => e.date))]
     .sort()
     .reverse()
     .map((date) => ({ date, label: shortDay(date) }));
@@ -980,7 +995,7 @@ export function listMessageLinkTargets(clientId: number): LinkTargets {
  * shown, not when sent: a renamed session reads its new name, and a deleted
  * exercise says it is gone rather than leading nowhere.
  */
-export function describeMessageLink(clientId: number, link: MessageLink): LinkView {
+export function describeMessageLink(food: FoodRows, clientId: number, link: MessageLink): LinkView {
   const data = getData();
   const view = (area: LinkView["area"], label: string, week: number | null = null, gone = false, removed = false): LinkView => ({ link, area, label, week, gone, removed });
   switch (link.kind) {
@@ -1002,7 +1017,7 @@ export function describeMessageLink(clientId: number, link: MessageLink): LinkVi
       return view("Nutrition", "Nutrition targets");
     case "food": {
       if (!link.meal) return view("Nutrition", `Food diary · ${shortDay(link.date)}`);
-      const meal = listFoodMeals(clientId, link.date).find((m) => m.id === link.meal);
+      const meal = listFoodMeals(food, clientId, link.date).find((m) => m.id === link.meal);
       return view("Nutrition", `${meal?.label ?? "A meal"} · ${shortDay(link.date)}`);
     }
     case "checkin": {
@@ -1026,8 +1041,9 @@ export function describeMessageLink(clientId: number, link: MessageLink): LinkVi
 export function notificationLink(clientId: number, n: { action_tab: string | null; action_ref: number | null; dedupe_key: string | null }): LinkView | null {
   if (n.action_tab !== "training" || n.action_ref == null || !n.dedupe_key) return null;
   const ask = /^video-ask:(\d+):/.exec(n.dedupe_key);
-  if (ask) return describeMessageLink(clientId, { kind: "exercise", dayId: n.action_ref, assignmentId: Number(ask[1]) });
-  if (/^training:\d+:/.test(n.dedupe_key)) return describeMessageLink(clientId, { kind: "session", dayId: n.action_ref });
+  // A training link: no food read (describeMessageLink reads food only for a food link).
+  if (ask) return describeMessageLink(noFoodRows("page.client"), clientId, { kind: "exercise", dayId: n.action_ref, assignmentId: Number(ask[1]) });
+  if (/^training:\d+:/.test(n.dedupe_key)) return describeMessageLink(noFoodRows("page.client"), clientId, { kind: "session", dayId: n.action_ref });
   return null;
 }
 
@@ -3429,8 +3445,8 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const feedValue = (v: number) => String(Math.round(v * 10) / 10);
 
 /** Everything one coach's clients logged, newest first. The Feed page filters and pages it. */
-export function getActivityFeed(coachId: number, chat: ChatCoachView): FeedEvent[] {
-  return activityFeeds([coachId], chat).get(coachId) ?? [];
+export function getActivityFeed(coachId: number, chat: ChatCoachView, food: FoodRows): FeedEvent[] {
+  return activityFeeds([coachId], chat, food).get(coachId) ?? [];
 }
 
 /**
@@ -3439,7 +3455,7 @@ export function getActivityFeed(coachId: number, chat: ChatCoachView): FeedEvent
  * in the order the walk finds them, sorted the same way. The store's rows are filtered to the coaches' clients before
  * they are grouped, so a coach's feed no longer maps every other coach's sets, food, check-ins and chat.
  */
-function activityFeeds(coachIds: readonly number[], chat: ChatCoachView): Map<number, FeedEvent[]> {
+function activityFeeds(coachIds: readonly number[], chat: ChatCoachView, food: FoodRows): Map<number, FeedEvent[]> {
   const data = getData();
   chat.covers("activityFeeds", coachIds);
   const feeds = new Map<number, FeedEvent[]>(coachIds.map((id) => [id, []]));
@@ -3607,7 +3623,8 @@ function activityFeeds(coachIds: readonly number[], chat: ChatCoachView): Map<nu
   // (the diary's total pushed to it, or a figure typed) together, at the latest of them, the client's note on the day as
   // its words. A typed day with no diary is its own row, as before.
   const diary = new Map<string, { clientId: number; date: string; kcal: number; items: number; latest: string | null; note: string | null }>();
-  for (const f of data.food_entries ?? []) {
+  food.need("activityFeeds", [...clientsById.keys()], "all", ["entries", "calories"]);
+  for (const f of food.entries) {
     if (!clientsById.has(f.client_id)) continue;
     const key = `${f.client_id}:${f.date}`;
     const d = diary.get(key) ?? { clientId: f.client_id, date: f.date, kcal: 0, items: 0, latest: null, note: null };
@@ -3618,7 +3635,7 @@ function activityFeeds(coachIds: readonly number[], chat: ChatCoachView): Map<nu
   }
   // A figure the phone filled (Apple Health / Health Connect, 17 Nov) is no row of the client's doing: the coach reads it as the
   // day's calories elsewhere, never as "Logged food" in Activity.
-  for (const c of data.calorie_logs) {
+  for (const c of food.calories) {
     if (c.source === "health" || !clientsById.has(c.client_id)) continue;
     const d = diary.get(`${c.client_id}:${c.date}`);
     if (d) {
@@ -4048,13 +4065,13 @@ export function feedTimeLabel(at: number, timeKnown = true): string {
  * clients the coach has and when one of them last logged something. Nothing
  * about the clients themselves.
  */
-export function listCoachAccounts(chat: ChatCoachView) {
+export function listCoachAccounts(chat: ChatCoachView, food: FoodRows) {
   const data = getData();
   const coaches = data.users.filter((u) => u.role === "coach").sort((a, b) => a.id - b.id);
   // Every coach's feed in one walk (17 Nov, mission 2: it was built once per coach), each the list getActivityFeed gives.
   // Only its newest event is read: each client's newest message is in the view (Step 5).
   chat.need("clientTop", 1);
-  const feeds = activityFeeds(coaches.map((u) => u.id), chat);
+  const feeds = activityFeeds(coaches.map((u) => u.id), chat, food);
   return coaches
     .map((u) => {
       const latest = feeds.get(u.id)?.[0];
@@ -6986,28 +7003,9 @@ export async function setChatMediaLook(path: string, look: MediaLook) {
     n++;
     chatChanged(clientId);
   }
-  // A meal's picture too (10 Nov, Alex: as the chat's), on the day's photo and on any saved meal showing the same file.
-  for (const p of getData().meal_photos) {
-    if (p.file_path !== path) continue;
-    p.thumb = look.thumb;
-    n++;
-  }
-  for (const s of getData().saved_meals) {
-    if (s.picture !== path) continue;
-    s.picture_thumb = look.thumb;
-    n++;
-  }
-  for (const d of getData().saved_days) {
-    if (d.picture === path) {
-      d.picture_thumb = look.thumb;
-      n++;
-    }
-    for (const c of d.cards ?? []) {
-      if (c.picture !== path) continue;
-      c.picture_thumb = look.thumb;
-      n++;
-    }
-  }
+  // A meal's picture too (10 Nov, Alex: as the chat's), on the day's photo and on any saved meal showing the same file
+  // (the food diary's door: in memory the store's rows changed in place, saved below; with FOOD_STORE=pg its own write).
+  n += await setFoodLook(path, look.thumb);
   if (n) persist();
 }
 /** A chat file some message shows with no look yet. */
@@ -7047,7 +7045,7 @@ export function chatSeenTest(clientId: number): (m: ChatMessage) => boolean {
   return (m) => stampMs(m.created_at) <= (m.sender === "client" ? coachAt : clientAt);
 }
 
-export function chatThreadViews(thread: ChatThread): ChatThreadView[] {
+export function chatThreadViews(thread: ChatThread, food: FoodRows): ChatThreadView[] {
   const clientId = thread.clientId;
   const all = thread.inTextOrder(clientId);
   // Each reply's quote from this chat's own messages, looked up once (17 Nov).
@@ -7072,7 +7070,7 @@ export function chatThreadViews(thread: ChatThread): ChatThreadView[] {
         dateIso: m.created_at.slice(0, 10),
         dayLabel: dayWords(d, { weekday: "long", long: true }),
         timeLabel: clock(d),
-        link: m.link ? describeMessageLink(clientId, m.link) : null,
+        link: m.link ? describeMessageLink(food, clientId, m.link) : null,
         replyTo: (() => {
           const q = m.reply_to == null ? null : chatQuoteOf(byId.get(m.reply_to));
           return q ? { id: q.id, fromMe: q.sender === "client", text: q.text } : null;
@@ -7784,13 +7782,13 @@ const STANDING_ACTIONS = new Set(["no-phase", "week", "program-ending", "quiet",
 const DISMISS_STANDING_MS = 14 * 86400000;
 
 /** The coach marked a Needs-you item as read (12 Oct): it leaves Home, the Feed and the rail's dot. */
-export function dismissHomeAction(clientId: number, actionId: string | string[], chat: ChatCoachView) {
+export function dismissHomeAction(clientId: number, actionId: string | string[], chat: ChatCoachView, food: FoodRows) {
   const client = getData().clients.find((c) => c.id === clientId);
   const ids = (Array.isArray(actionId) ? actionId : [actionId]).filter(Boolean);
   if (!client || !ids.length) return;
   // Kept small: only the items that still stand stay recorded. Every item, let go or not (2 Nov: the list after the
   // filter left out what was let go before, so each Done brought the one before it back).
-  const standing = new Set(getClientHome(clientId, chat).allActionIds);
+  const standing = new Set(getClientHome(clientId, chat, food).allActionIds);
   const next: Record<string, number> = {};
   for (const [id, at] of Object.entries(client.coach_dismissed ?? {})) if (standing.has(id)) next[id] = at;
   const now = Date.now();
@@ -7846,7 +7844,7 @@ export function clientHomeRows(clientIds: readonly number[]): ClientHomeRows {
  * video and call asks and invoices (clientHomeRows). `chat`: the coach's chat
  * view this client is in (fetchCoachChat).
  */
-export function getClientHome(clientId: number, chat: ChatCoachView, feed?: FeedEvent[], ix?: TrainingIndex, own?: ClientHomeRows): ClientHome {
+export function getClientHome(clientId: number, chat: ChatCoachView, food: FoodRows, feed?: FeedEvent[], ix?: TrainingIndex, own?: ClientHomeRows): ClientHome {
   const data = getData();
   // Their training rows, read once when a check below needs them (23 Oct, speed: it scanned the store per row).
   let tix = ix;
@@ -7855,7 +7853,7 @@ export function getClientHome(clientId: number, chat: ChatCoachView, feed?: Feed
   // A phone workout is the coach's logs alone (16 Nov): never news, a dot or a note to read here.
   // Its newest HOME_EVENTS: the chat's part of them in the view (Step 5: a coach view holds each client's newest).
   chat.need("clientTop", HOME_EVENTS, clientId);
-  const all = (feed ?? getActivityFeed(client?.coach_id ?? 0, chat)).filter((e) => e.clientId === clientId && !e.health);
+  const all = (feed ?? getActivityFeed(client?.coach_id ?? 0, chat, food)).filter((e) => e.clientId === clientId && !e.health);
   const since = Date.now() - HOME_NEW_DAYS * 86400000;
   const events = all.slice(0, HOME_EVENTS).map((e) => ({ ...e, when: feedTimeLabel(e.at, e.timeKnown), unseen: isUnseen(client?.coach_seen, e, since) }));
   const unseen = events.filter((e) => e.unseen);
@@ -8155,8 +8153,9 @@ const plusDays = (iso: string, n: number) => {
  * which says a client doing half of what they are asked. Days before they
  * started are not days they missed.
  */
-export function clientStartDate(clientId: number): string | null {
+export function clientStartDate(food: FoodRows, clientId: number): string | null {
   const data = getData();
+  food.need("clientStartDate", clientId, "all", ["entries", "calories"]);
   let first: string | null = null;
   const see = (day: string | null | undefined) => {
     if (day && (first == null || day < first)) first = day;
@@ -8165,8 +8164,8 @@ export function clientStartDate(clientId: number): string | null {
   // be days before the client actually began.
   const daily = new Set(data.metric_definitions.filter((m) => m.client_id === clientId && m.frequency === "daily").map((m) => m.id));
   for (const e of data.metric_entries) if (daily.has(e.metric_definition_id)) see(e.period);
-  for (const e of data.food_entries ?? []) if (e.client_id === clientId) see(e.date);
-  for (const c of data.calorie_logs) if (c.client_id === clientId && c.source !== "health") see(c.date);
+  for (const e of food.entries) if (e.client_id === clientId) see(e.date);
+  for (const c of food.calories) if (c.client_id === clientId && c.source !== "health") see(c.date);
   const dayIds = new Set(data.program_days.filter((pd) => pd.client_id === clientId).map((pd) => pd.id));
   const assignmentIds = new Set(data.workout_assignments.filter((wa) => dayIds.has(wa.program_day_id)).map((wa) => wa.id));
   for (const s of data.set_logs) if (assignmentIds.has(s.workout_assignment_id)) see(s.logged_at?.slice(0, 10));
@@ -8184,7 +8183,7 @@ export function clientStartDate(clientId: number): string | null {
 // altogether and lose eight points. Normalise first and the difference in
 // rhythm stops mattering — which is the whole reason a daily thing and a
 // weekly thing can sit in one score at all.
-function engagementWindow(clientId: number, days: number, back: number, since: string | null): { parts: EngagementPart[]; all: EngagementPart[]; overall: number | null } {
+function engagementWindow(food: FoodRows, clientId: number, days: number, back: number, since: string | null): { parts: EngagementPart[]; all: EngagementPart[]; overall: number | null } {
   const data = getData();
   const today = localDateStr();
   const to = plusDays(today, -days * back);
@@ -8294,8 +8293,9 @@ function engagementWindow(clientId: number, days: number, back: number, since: s
   // days they were given a target — over the same days the daily check-in is,
   // so today's blank does not count against either.
   if (getNutritionGoalsSummary(clientId).trainingKcal) {
-    const logged = new Set(listCalorieLogs(clientId, 400).map((c) => c.date));
-    for (const e of data.food_entries ?? []) if (e.client_id === clientId) logged.add(e.date);
+    food.need("engagementWindow", clientId, "all", ["entries", "calories"]);
+    const logged = new Set(listCalorieLogs(food, clientId, 400).map((c) => c.date));
+    for (const e of food.entries) if (e.client_id === clientId) logged.add(e.date);
     const run = streakTo((d) => logged.has(d));
     add("nutrition", "Food logged", pastDays.filter((d) => logged.has(d)).length, pastDays.length, "day", run >= 2 ? `${run}-day streak` : undefined);
 
@@ -8303,8 +8303,8 @@ function engagementWindow(clientId: number, days: number, back: number, since: s
     const goals = getNutritionGoalsSummary(clientId);
     const kcalOf = new Map<string, number>();
     const proteinOf = new Map<string, number>();
-    for (const c of listCalorieLogs(clientId, 400)) kcalOf.set(c.date, (kcalOf.get(c.date) ?? 0) + (c.kcal ?? 0));
-    for (const e of data.food_entries ?? []) {
+    for (const c of listCalorieLogs(food, clientId, 400)) kcalOf.set(c.date, (kcalOf.get(c.date) ?? 0) + (c.kcal ?? 0));
+    for (const e of food.entries) {
       if (e.client_id !== clientId) continue;
       kcalOf.set(e.date, (kcalOf.get(e.date) ?? 0) + (e.kcal ?? 0));
       proteinOf.set(e.date, (proteinOf.get(e.date) ?? 0) + (e.protein ?? 0));
@@ -8334,13 +8334,13 @@ function engagementWindow(clientId: number, days: number, back: number, since: s
   return { parts: counted, all: parts, overall: counted.length ? Math.round(counted.reduce((s, p) => s + p.pct, 0) / counted.length) : null };
 }
 
-export function getClientEngagement(clientId: number, days: number = ENGAGEMENT_DAYS): ClientEngagement {
-  const start = clientStartDate(clientId);
-  const now = engagementWindow(clientId, days, 0, start);
+export function getClientEngagement(food: FoodRows, clientId: number, days: number = ENGAGEMENT_DAYS): ClientEngagement {
+  const start = clientStartDate(food, clientId);
+  const now = engagementWindow(food, clientId, days, 0, start);
   // The same thirty days before those thirty. Null until there is anything
   // in them, so a new client is not told they are down on a month that never
   // happened.
-  const before = engagementWindow(clientId, days, 1, start);
+  const before = engagementWindow(food, clientId, days, 1, start);
   const windowFrom = plusDays(localDateStr(), -(days - 1));
   const can = new Set(now.all.map((p) => p.id));
   const hasNutrition = !!getNutritionGoalsSummary(clientId).trainingKcal;
@@ -8417,7 +8417,7 @@ export function chatUnreadCount(thread: ChatThread): number {
   return thread.rows(clientId).filter((m) => m.client_id === clientId && m.sender === "client" && (m.text.trim() || m.media_path) && stampMs(m.created_at) >= since && !(`chat-${m.id}` in seen)).length;
 }
 
-export function markClientEventsSeen(clientId: number, which: { all: true } | { dayId: number } | { ids: string[] } | { tab: string }, chat: ChatCoachView) {
+export function markClientEventsSeen(clientId: number, which: { all: true } | { dayId: number } | { ids: string[] } | { tab: string }, chat: ChatCoachView, food: FoodRows) {
   const data = getData();
   const client = data.clients.find((c) => c.id === clientId);
   if (!client) return;
@@ -8431,7 +8431,7 @@ export function markClientEventsSeen(clientId: number, which: { all: true } | { 
   const since = Date.now() - HOME_NEW_DAYS * 86400000;
   // The client's last 14 days of chat, whole: the marks are kept to them (Step 5).
   chat.need("recent", 0, clientId);
-  const recent = getActivityFeed(client.coach_id ?? 0, chat).filter((e) => e.clientId === clientId && e.at >= since);
+  const recent = getActivityFeed(client.coach_id ?? 0, chat, food).filter((e) => e.clientId === clientId && e.at >= since);
   // A tab clears what is on the tab itself; news about one session waits
   // for that session to be opened.
   const hit = recent.filter((e) =>
@@ -8455,9 +8455,9 @@ export function markClientEventsSeen(clientId: number, which: { all: true } | { 
  * "who needs me", not "how many things".
  */
 /** The same, as the rail's reasons (14 Oct): one line a kind, in its colour, the most pressing first. */
-export function clientReasons(clientId: number, chat: ChatCoachView, feed?: FeedEvent[]): AttentionReason[] {
+export function clientReasons(clientId: number, chat: ChatCoachView, food: FoodRows, feed?: FeedEvent[]): AttentionReason[] {
   const out: AttentionReason[] = [];
-  for (const a of getClientHome(clientId, chat, feed).actions) {
+  for (const a of getClientHome(clientId, chat, food, feed).actions) {
     const since = a.at ?? 0;
     if (a.id.startsWith("reply-video-")) {
       const m = /^(Photo|Video) of (.+?) waiting/.exec(a.title);
@@ -8479,10 +8479,10 @@ export function clientReasons(clientId: number, chat: ChatCoachView, feed?: Feed
   return sortReasons(out);
 }
 
-export function clientAttention(clientId: number, chat: ChatCoachView, feed?: FeedEvent[]): string | null {
+export function clientAttention(clientId: number, chat: ChatCoachView, food: FoodRows, feed?: FeedEvent[]): string | null {
   // The same list the client's Home spells out; the dot's title is the first
   // of them, and how many more there are.
-  const actions = getClientHome(clientId, chat, feed).actions;
+  const actions = getClientHome(clientId, chat, food, feed).actions;
   if (actions.length === 0) return null;
   return actions.length === 1 ? actions[0].title : `${actions[0].title} · and ${actions.length - 1} more`;
 }
@@ -9826,27 +9826,29 @@ export type { CalorieLog } from "./db";
 
 /** Each day's calories, newest first (10 Nov, Alex: the diary's Log button gone): the diary's total where food was logged,
     else a figure typed or pushed before. */
-export function listCalorieDays(clientId: number, limit = 30): CalorieLog[] {
-  const data = getData();
+export function listCalorieDays(rows: FoodRows, clientId: number, limit = 30): CalorieLog[] {
+  rows.need("listCalorieDays", clientId, "all", ["entries", "calories", "days"]);
   const days = new Map<string, CalorieLog>();
-  for (const c of data.calorie_logs) if (c.client_id === clientId) days.set(c.date, c);
+  for (const c of rows.calories) if (c.client_id === clientId) days.set(c.date, c);
   const food = new Map<string, number>();
-  for (const e of data.food_entries) if (e.client_id === clientId) food.set(e.date, (food.get(e.date) ?? 0) + (Number(e.kcal) || 0));
+  for (const e of rows.entries) if (e.client_id === clientId) food.set(e.date, (food.get(e.date) ?? 0) + (Number(e.kcal) || 0));
   for (const [date, kcal] of food) {
     const log = days.get(date);
-    days.set(date, { ...(log ?? { id: 0, client_id: clientId, date, logged_at: date }), kcal: Math.round(kcal), day_type: foodDayType(clientId, date) } as CalorieLog);
+    days.set(date, { ...(log ?? { id: 0, client_id: clientId, date, logged_at: date }), kcal: Math.round(kcal), day_type: foodDayType(rows, clientId, date) } as CalorieLog);
   }
   return [...days.values()].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, limit);
 }
 
-export function getCalorieLog(clientId: number, date: string): CalorieLog | null {
-  return getData().calorie_logs.find((c) => c.client_id === clientId && c.date === date) ?? null;
+export function getCalorieLog(rows: FoodRows, clientId: number, date: string): CalorieLog | null {
+  rows.need("getCalorieLog", clientId, { dates: [date] }, ["calories"]);
+  return rows.calories.find((c) => c.client_id === clientId && c.date === date) ?? null;
 }
 
 // Most recent first.
-export function listCalorieLogs(clientId: number, limit = 30): CalorieLog[] {
-  return getData()
-    .calorie_logs.filter((c) => c.client_id === clientId)
+export function listCalorieLogs(rows: FoodRows, clientId: number, limit = 30): CalorieLog[] {
+  rows.need("listCalorieLogs", clientId, "all", ["calories"]);
+  return rows.calories
+    .filter((c) => c.client_id === clientId)
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
     .slice(0, limit);
 }
@@ -9854,6 +9856,7 @@ export function listCalorieLogs(clientId: number, limit = 30): CalorieLog[] {
 // null clears the day.
 // `note` and `dayType` left undefined keep what the day already has.
 export function setCalorieLog(
+  box: FoodBox,
   clientId: number,
   date: string,
   kcal: number | null,
@@ -9861,10 +9864,11 @@ export function setCalorieLog(
   dayType: "training" | "rest" | undefined = undefined,
   source: "diary" | null | undefined = undefined
 ) {
-  const data = getData();
-  const existing = data.calorie_logs.find((c) => c.client_id === clientId && c.date === date);
+  box.need("setCalorieLog", clientId, { dates: [date] }, ["calories"]);
+  const data = box;
+  const existing = data.calories.find((c) => c.client_id === clientId && c.date === date);
   if (kcal == null) {
-    if (existing) data.calorie_logs = data.calorie_logs.filter((c) => c !== existing);
+    if (existing) data.calories = data.calories.filter((c) => c !== existing);
   } else if (existing) {
     existing.kcal = kcal;
     existing.logged_at = new Date().toISOString();
@@ -9872,8 +9876,8 @@ export function setCalorieLog(
     if (dayType !== undefined) existing.day_type = dayType;
     if (source !== undefined) existing.source = source;
   } else {
-    data.calorie_logs.push({
-      id: allocId("calorie_logs"),
+    data.calories.push({
+      id: box.alloc("calories"),
       client_id: clientId,
       date,
       kcal,
@@ -9883,7 +9887,7 @@ export function setCalorieLog(
       ...(source ? { source } : {}),
     });
   }
-  persist();
+  box.persist();
 }
 
 // ---- Check-in notes: the client's own words beside the numbers ----
@@ -11442,12 +11446,12 @@ export function getClientProgramNoteMeta(clientId: number, programId: number): {
 }
 
 /** The coach opened the client's note on a programme: it is not new again until the client writes. */
-export function markProgramNoteSeen(programId: number, chat: ChatCoachView) {
+export function markProgramNoteSeen(programId: number, chat: ChatCoachView, food: FoodRows) {
   const n = (getData().client_program_notes ?? []).find((x) => x.program_id === programId);
   if (!n || n.coach_seen_at === n.updated_at) return;
   n.coach_seen_at = n.updated_at;
   persist();
-  markClientEventsSeen(n.client_id, { ids: [`program-note-${n.id}`] }, chat);
+  markClientEventsSeen(n.client_id, { ids: [`program-note-${n.id}`] }, chat, food);
 }
 
 export function getClientIdForProgram(programId: number): number | null {
@@ -12084,11 +12088,11 @@ export function getClientIdForGoal(id: number): number | null {
 // The client's own calorie log is a figure a goal can track too ("Drop kcal
 // to 2,400"), though it is not a check-in metric. One point per logged day.
 export const KCAL_GOAL_KEY = "kcal";
-function calorieSeries(clientId: number): { name: string; unit: string; series: SeriesPoint[] } {
+function calorieSeries(food: FoodRows, clientId: number): { name: string; unit: string; series: SeriesPoint[] } {
   return {
     name: "Calories logged",
     unit: "kcal",
-    series: listCalorieDays(clientId, 100000)
+    series: listCalorieDays(food, clientId, 100000)
       .map((c) => ({ date: c.date, value: c.kcal }))
       .sort((a, b) => (a.date < b.date ? -1 : 1)),
   };
@@ -12096,7 +12100,7 @@ function calorieSeries(clientId: number): { name: string; unit: string; series: 
 
 /** The food diary's daily macro totals, one point a day, as a goal can watch them. */
 export const MACRO_GOAL_KEYS = { protein: "protein", carbs: "carbs", fat: "fat" } as const;
-function macroSeries(clientId: number, which: keyof typeof MACRO_GOAL_KEYS): { name: string; unit: string; series: SeriesPoint[] } {
+function macroSeries(food: FoodRows, clientId: number, which: keyof typeof MACRO_GOAL_KEYS): { name: string; unit: string; series: SeriesPoint[] } {
   const today = localDateStr();
   const from = (() => {
     const d = new Date(`${today}T00:00:00`);
@@ -12104,15 +12108,15 @@ function macroSeries(clientId: number, which: keyof typeof MACRO_GOAL_KEYS): { n
     return localDateStr(d);
   })();
   const name = which === "protein" ? "Protein logged" : which === "carbs" ? "Carbs logged" : "Fat logged";
-  return { name, unit: "g", series: getLoggedDays(clientId, from, today, "no-comments").days.map((d) => ({ date: d.date, value: d[which] })).sort((a, b) => (a.date < b.date ? -1 : 1)) };
+  return { name, unit: "g", series: getLoggedDays(food, clientId, from, today, "no-comments").days.map((d) => ({ date: d.date, value: d[which] })).sort((a, b) => (a.date < b.date ? -1 : 1)) };
 }
 const macroKey = (key: string): keyof typeof MACRO_GOAL_KEYS | null => (key === "protein" || key === "carbs" || key === "fat" ? key : null);
 
 /** Series for a graph-choice key ("field-3" / "metric-7"), the calorie log, or a macro. */
-function seriesForKey(clientId: number, key: string): { name: string; unit: string; series: SeriesPoint[] } | null {
-  if (key === KCAL_GOAL_KEY) return calorieSeries(clientId);
+function seriesForKey(food: FoodRows, clientId: number, key: string): { name: string; unit: string; series: SeriesPoint[] } | null {
+  if (key === KCAL_GOAL_KEY) return calorieSeries(food, clientId);
   const macro = macroKey(key);
-  if (macro) return macroSeries(clientId, macro);
+  if (macro) return macroSeries(food, clientId, macro);
   const choice = listGraphChoices(clientId).find((c) => c.key === key);
   if (!choice) return null;
   // A Weight goal watches every weigh-in (23 Oct, Alex: bodyWeightReadings), in the unit its target was set in.
@@ -12168,12 +12172,12 @@ function habitWeekValues(metricId: number, today: string): SeriesPoint[] {
   return getMetricSeries(metricId).filter((p) => p.date >= monday && p.date <= sunday);
 }
 
-export function goalContext(clientId: number, goal: ClientGoal): GoalContext {
+export function goalContext(food: FoodRows, clientId: number, goal: ClientGoal): GoalContext {
   const today = localDateStr();
   const ctx: GoalContext = { today, createdAt: goal.created_at ?? today };
   const t = goal.tracked_by ?? null;
   if (t?.kind === "metric") {
-    const s = seriesForKey(clientId, t.metricKey);
+    const s = seriesForKey(food, clientId, t.metricKey);
     if (s) ctx.metric = s;
   } else if (t?.kind === "exercise") {
     const name = getData().exercises.find((e) => e.id === t.exerciseId)?.name ?? "Exercise";
@@ -12187,19 +12191,19 @@ export function goalContext(clientId: number, goal: ClientGoal): GoalContext {
 
 /** Goal rows as the client sees them, open goals first, done text goals last. */
 /** The client's current goals: open only, in the coach's own order. */
-export function getGoalViews(clientId: number): GoalView[] {
+export function getGoalViews(food: FoodRows, clientId: number): GoalView[] {
   return listClientGoals(clientId)
     .filter((g) => !g.done)
-    .map((g) => computeGoalView({ id: g.id, text: g.text, done: g.done, tracking: g.tracked_by ?? null }, goalContext(clientId, g)));
+    .map((g) => computeGoalView({ id: g.id, text: g.text, done: g.done, tracking: g.tracked_by ?? null }, goalContext(food, clientId, g)));
 }
 
 /** The coach's list: every goal the client sees, with its tracking in words. */
-export function getGoalSummaries(clientId: number): { goal: ClientGoal; view: GoalView; tracking: string }[] {
+export function getGoalSummaries(food: FoodRows, clientId: number): { goal: ClientGoal; view: GoalView; tracking: string }[] {
   return listClientGoals(clientId).map((g) => {
     const t = g.tracked_by ?? null;
     const names: { metric?: string; unit?: string; exercise?: string; habit?: string; gym?: string | null } = {};
     if (t?.kind === "metric") {
-      const s = seriesForKey(clientId, t.metricKey);
+      const s = seriesForKey(food, clientId, t.metricKey);
       names.metric = s?.name;
       names.unit = s?.unit;
     } else if (t?.kind === "exercise") {
@@ -12209,7 +12213,7 @@ export function getGoalSummaries(clientId: number): { goal: ClientGoal; view: Go
     else if (t?.kind === "habit") names.habit = getData().metric_definitions.find((m) => m.id === t.metricId)?.name;
     return {
       goal: g,
-      view: computeGoalView({ id: g.id, text: g.text, done: g.done, tracking: t }, goalContext(clientId, g)),
+      view: computeGoalView({ id: g.id, text: g.text, done: g.done, tracking: t }, goalContext(food, clientId, g)),
       tracking: describeTracking(t, names),
     };
   });
@@ -12228,7 +12232,7 @@ export type GoalEditorOptions = {
   gyms: { id: number; name: string; removed: boolean }[];
 };
 
-export function getGoalEditorOptions(clientId: number): GoalEditorOptions {
+export function getGoalEditorOptions(food: FoodRows, clientId: number): GoalEditorOptions {
   const today = localDateStr();
   const phase = getCurrentPhase(clientId, "nutrition") ?? getCurrentPhase(clientId, "training");
   const phaseEnd = phase
@@ -12243,10 +12247,10 @@ export function getGoalEditorOptions(clientId: number): GoalEditorOptions {
     phaseEnd,
     metrics: [
       // What the client logs in the food diary comes first: nutrition goals are set on these.
-      { key: KCAL_GOAL_KEY, group: "nutrition", ...calorieSeries(clientId) },
-      { key: MACRO_GOAL_KEYS.protein, group: "nutrition", ...macroSeries(clientId, "protein") },
-      { key: MACRO_GOAL_KEYS.carbs, group: "nutrition", ...macroSeries(clientId, "carbs") },
-      { key: MACRO_GOAL_KEYS.fat, group: "nutrition", ...macroSeries(clientId, "fat") },
+      { key: KCAL_GOAL_KEY, group: "nutrition", ...calorieSeries(food, clientId) },
+      { key: MACRO_GOAL_KEYS.protein, group: "nutrition", ...macroSeries(food, clientId, "protein") },
+      { key: MACRO_GOAL_KEYS.carbs, group: "nutrition", ...macroSeries(food, clientId, "carbs") },
+      { key: MACRO_GOAL_KEYS.fat, group: "nutrition", ...macroSeries(food, clientId, "fat") },
       ...listGraphChoices(clientId).map((c) => ({
         key: c.key,
         name: c.name,
@@ -12626,13 +12630,13 @@ export function getPlanPhases(clientId: number) {
   return { today, thisWeek, phases, programs: programOptions };
 }
 
-export function getPlanData(clientId: number) {
+export function getPlanData(food: FoodRows, clientId: number) {
   const { today, thisWeek, phases, programs: programOptions } = getPlanPhases(clientId);
 
   // The goals table.
   const fmtShort = dayMonth;
   const meetingsById = new Map(listMeetings(clientId).map((m) => [m.id, m] as const));
-  const goals: PlanGoalRow[] = getGoalSummaries(clientId).map(({ goal, view }) => {
+  const goals: PlanGoalRow[] = getGoalSummaries(food, clientId).map(({ goal, view }) => {
     const t = goal.tracked_by ?? null;
     let live = "";
     let pct = goal.done ? 100 : 0;
@@ -12645,7 +12649,7 @@ export function getPlanData(clientId: number) {
       // The figure alone: the coach reads it against the rule underneath.
       live = figure;
       pct = view.reached ? 100 : Math.round((view.bar ?? 0) * 100);
-      const s = seriesForKey(clientId, t.metricKey);
+      const s = seriesForKey(food, clientId, t.metricKey);
       tracks = s?.name ?? "Metric";
       rule = `Metric · ${tracks} ${t.op} ${fmtNumber(t.target)}${s?.unit ? ` ${s.unit}` : ""} · by ${fmtShort(t.byDate)}`;
       by = fmtShort(t.byDate);
@@ -12704,7 +12708,7 @@ export function getPlanData(clientId: number) {
     programs: programOptions,
     goals,
     nextReview: next ? { id: next.id, date: next.date, topic: next.topic || "Check-in call" } : null,
-    goalOptions: getGoalEditorOptions(clientId),
+    goalOptions: getGoalEditorOptions(food, clientId),
     mainGoal: getClientProfile(clientId).main_goal ?? "",
     mainGoalSavedAt: getClientProfile(clientId).main_goal_saved_at ?? null,
   };
@@ -13181,9 +13185,10 @@ export function searchFoods(clientId: number, query: string, limit = 30): FoodOp
 
 /** What the client logged last, the latest first, each with the amount and unit it was logged at then (11 Nov, Alex:
  * "peanut butter I added yesterday… if I added 60 g then it adds 60 g"), for the top of an empty search. */
-export function recentFoods(clientId: number, limit = 8): FoodOption[] {
+export function recentFoods(rows: FoodRows, clientId: number, limit = 8): FoodOption[] {
+  rows.need("recentFoods", clientId, "all", ["entries"]);
   const latest = new Map<string, FoodEntry>();
-  for (const e of getData().food_entries) {
+  for (const e of rows.entries) {
     if (e.client_id !== clientId || !(e.grams > 0)) continue;
     const had = latest.get(e.food_id);
     if (!had || e.logged_at > had.logged_at) latest.set(e.food_id, e);
@@ -13200,68 +13205,71 @@ export function recentFoods(clientId: number, limit = 8): FoodOption[] {
     .slice(0, limit);
 }
 
-export function listFoodEntries(clientId: number, date: string): FoodEntry[] {
-  return getData()
-    .food_entries.filter((e) => e.client_id === clientId && e.date === date)
+export function listFoodEntries(rows: FoodRows, clientId: number, date: string): FoodEntry[] {
+  rows.need("listFoodEntries", clientId, { dates: [date] }, ["entries"]);
+  return rows.entries
+    .filter((e) => e.client_id === clientId && e.date === date)
     .sort((a, b) => a.logged_at.localeCompare(b.logged_at));
 }
 
 const r1 = (n: number) => Math.round(n * 10) / 10;
 
 /** The day's kcal from the diary into the calorie log the coach reads, when the client pushes it. Nothing logged in the diary: nothing happens. */
-export function pushFoodDayToCalorieLog(clientId: number, date: string): boolean {
-  const entries = listFoodEntries(clientId, date);
+export function pushFoodDayToCalorieLog(box: FoodBox, clientId: number, date: string): boolean {
+  const entries = listFoodEntries(box, clientId, date);
   if (entries.length === 0) return false;
   const kcal = Math.round(entries.reduce((s, e) => s + e.kcal, 0));
-  setCalorieLog(clientId, date, kcal, undefined, foodDayType(clientId, date), "diary");
+  setCalorieLog(box, clientId, date, kcal, undefined, foodDayType(box, clientId, date), "diary");
   return true;
 }
 
 /** The four standard meals, then the ones the client added for that day (or that hold food on it). */
-export function listFoodMeals(clientId: number, date: string): { id: FoodMeal; label: string; own: boolean }[] {
-  const data = getData();
-  const withFood = new Set(data.food_entries.filter((e) => e.client_id === clientId && e.date === date).map((e) => e.meal));
-  const extra = data.food_meals
+export function listFoodMeals(rows: FoodRows, clientId: number, date: string): { id: FoodMeal; label: string; own: boolean }[] {
+  rows.need("listFoodMeals", clientId, { dates: [date] }, ["entries", "meals"]);
+  const data = rows;
+  const withFood = new Set(data.entries.filter((e) => e.client_id === clientId && e.date === date).map((e) => e.meal));
+  const extra = data.meals
     .filter((m) => m.client_id === clientId && (m.date === date || withFood.has(`m:${m.id}`)))
     // The newest on top (10 Nov, Alex: "you always have the new one at the top"), until the client drags it elsewhere.
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
     .map((m) => ({ id: `m:${m.id}`, label: m.name, own: true }));
   const all = [...extra, ...FOOD_MEALS.map((m) => ({ ...m, own: false }))];
-  const order = getClient(clientId)?.meal_order;
+  const order = rows.client(clientId)?.meal_order;
   if (!order?.length) return all;
   const rank = new Map(order.map((id, i) => [id, i]));
   return all.map((m, i) => ({ m, i })).sort((a, b) => (rank.get(a.m.id) ?? (a.m.own ? -1000 : 1000) + a.i) - (rank.get(b.m.id) ?? (b.m.own ? -1000 : 1000) + b.i)).map((x) => x.m);
 }
 
 /** The meals in the order the client put them; ids not theirs are ignored, missing ones keep their place at the end. */
-export function reorderFoodMeals(clientId: number, date: string, ids: string[]) {
-  const client = getClient(clientId);
+export function reorderFoodMeals(box: FoodBox, clientId: number, date: string, ids: string[]) {
+  const client = box.client(clientId);
   if (!client) return;
-  const have = new Set(listFoodMeals(clientId, date).map((m) => m.id));
+  const have = new Set(listFoodMeals(box, clientId, date).map((m) => m.id));
   // Meals from other days keep their place in the order; today's are put as asked, in the places they held.
   const queue = ids.filter((id) => have.has(id));
   const placed = (client.meal_order ?? []).map((id) => (have.has(id) ? queue.shift() : id)).filter((id): id is string => !!id);
   client.meal_order = [...placed, ...queue];
-  persist();
+  box.persist();
 }
 
-export function hasFoodMeal(clientId: number, meal: string, date: string): boolean {
-  return listFoodMeals(clientId, date).some((m) => m.id === meal);
+export function hasFoodMeal(rows: FoodRows, clientId: number, meal: string, date: string): boolean {
+  return listFoodMeals(rows, clientId, date).some((m) => m.id === meal);
 }
 
-export function addFoodMeal(clientId: number, name: string, date: string): FoodMealSlot {
-  const data = getData();
-  const row: FoodMealSlot = { id: allocId("food_meals"), client_id: clientId, name, date, created_at: new Date().toISOString() };
-  data.food_meals.push(row);
-  persist();
+export function addFoodMeal(box: FoodBox, clientId: number, name: string, date: string): FoodMealSlot {
+  const data = box;
+  const row: FoodMealSlot = { id: box.alloc("meals"), client_id: clientId, name, date, created_at: new Date().toISOString() };
+  data.meals.push(row);
+  box.persist();
   return row;
 }
 
-export function renameFoodMeal(clientId: number, id: number, name: string): boolean {
-  const row = getData().food_meals.find((m) => m.id === id && m.client_id === clientId);
+export function renameFoodMeal(box: FoodBox, clientId: number, id: number, name: string): boolean {
+  box.need("renameFoodMeal", clientId, { dates: [] }, ["meals"]);
+  const row = box.meals.find((m) => m.id === id && m.client_id === clientId);
   if (!row) return false;
   row.name = name;
-  persist();
+  box.persist();
   return true;
 }
 
@@ -13271,34 +13279,36 @@ export function renameFoodMeal(clientId: number, id: number, name: string): bool
  * no date and can hold food on many. A saved day holding it keeps its name, so using that day still makes a card of it.
  * Returns the files nothing shows any more, for the bucket copies; null when nothing went.
  */
-export function removeFoodMeal(clientId: number, id: number, date: string | null = null): string[] | null {
-  const data = getData();
-  const row = data.food_meals.find((m) => m.id === id && m.client_id === clientId);
+export function removeFoodMeal(box: FoodBox, clientId: number, id: number, date: string | null = null): string[] | null {
+  // The meal's rows on every day (its `held` checks), its photo on the day, the saved days naming it (writeFood's reach).
+  box.need("removeFoodMeal", clientId, { dates: date == null ? [] : [date] }, ["meals", "photos", "savedDays"]);
+  const data = box;
+  const row = data.meals.find((m) => m.id === id && m.client_id === clientId);
   if (!row) return null;
   const key = `m:${id}`;
   const held = (e: FoodEntry) => e.client_id === clientId && e.meal === key;
-  if (date == null && data.food_entries.some(held)) return null;
-  data.food_entries = data.food_entries.filter((e) => !(held(e) && e.date === date));
-  const photos = data.meal_photos.filter((p) => p.client_id === clientId && p.meal === key && p.date === date);
-  data.meal_photos = data.meal_photos.filter((p) => !photos.includes(p));
-  if (!data.food_entries.some(held)) {
-    for (const d of data.saved_days) if (d.client_id === clientId) for (const i of d.items) if (i.meal === key) i.meal_name = row.name;
-    data.food_meals = data.food_meals.filter((m) => m !== row);
+  if (date == null && data.entries.some(held)) return null;
+  data.entries = data.entries.filter((e) => !(held(e) && e.date === date));
+  const photos = data.photos.filter((p) => p.client_id === clientId && p.meal === key && p.date === date);
+  data.photos = data.photos.filter((p) => !photos.includes(p));
+  if (!data.entries.some(held)) {
+    for (const d of data.savedDays) if (d.client_id === clientId) for (const i of d.items) if (i.meal === key) i.meal_name = row.name;
+    data.meals = data.meals.filter((m) => m !== row);
   }
-  const gone = dropUnusedMealPictures(photos.map((p) => p.file_path));
-  persist();
+  const gone = box.gc(photos.map((p) => p.file_path));
+  box.persist();
   return gone;
 }
 
 /** Everything in one meal on one day, copied into a meal on another (the same food and amounts, logged now). */
-export function copyFoodMeal(clientId: number, fromDate: string, fromMeal: string, toDate: string, toMeal: string): number {
-  const data = getData();
-  const rows = listFoodEntries(clientId, fromDate).filter((e) => e.meal === fromMeal);
+export function copyFoodMeal(box: FoodBox, clientId: number, fromDate: string, fromMeal: string, toDate: string, toMeal: string): number {
+  const data = box;
+  const rows = listFoodEntries(box, clientId, fromDate).filter((e) => e.meal === fromMeal);
   const now = new Date().toISOString();
-  const to = mealOnDay(clientId, toMeal, toDate);
-  for (const e of rows) data.food_entries.push({ ...e, id: allocId("food_entries"), date: toDate, meal: to, logged_at: now });
+  const to = mealOnDay(box, clientId, toMeal, toDate);
+  for (const e of rows) data.entries.push({ ...e, id: box.alloc("entries"), date: toDate, meal: to, logged_at: now });
   if (rows.length) {
-    persist();
+    box.persist();
   }
   return rows.length;
 }
@@ -13306,36 +13316,37 @@ export function copyFoodMeal(clientId: number, fromDate: string, fromMeal: strin
 export type SavedMealItemView = { food_id: string; name: string; grams: number; serving: string | null; kcal: number; protein: number; carbs: number; fat: number };
 export type SavedMealView = { id: number; name: string; kcal: number; protein: number; carbs: number; fat: number; picture: string | null; thumb: string | null; count: number; names: string[]; items: SavedMealItemView[] };
 
-export function listSavedMeals(clientId: number): SavedMealView[] {
-  return getData()
-    .saved_meals.filter((m) => m.client_id === clientId)
+export function listSavedMeals(rows: FoodRows, clientId: number): SavedMealView[] {
+  rows.need("listSavedMeals", clientId, { dates: [] }, ["savedMeals"]);
+  return rows.savedMeals
+    .filter((m) => m.client_id === clientId)
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
     .map((m) => ({ id: m.id, name: m.name, kcal: Math.round(m.items.reduce((s, i) => s + i.kcal, 0)), protein: Math.round(m.items.reduce((s, i) => s + i.protein, 0)), carbs: Math.round(m.items.reduce((s, i) => s + i.carbs, 0)), fat: Math.round(m.items.reduce((s, i) => s + i.fat, 0)), picture: m.picture ?? null, thumb: m.picture_thumb ?? null, count: m.items.length, names: [...new Set(m.items.map((i) => i.name))], items: m.items.map((i) => ({ food_id: i.food_id, name: i.name, grams: i.grams, serving: i.serving, kcal: i.kcal, protein: i.protein, carbs: i.carbs, fat: i.fat })) }));
 }
 
 /** One meal on one day, kept under a name to add again. */
-export function saveMeal(clientId: number, date: string, meal: FoodMeal, name: string): SavedMeal | null {
-  const rows = listFoodEntries(clientId, date).filter((e) => e.meal === meal);
+export function saveMeal(box: FoodBox, clientId: number, date: string, meal: FoodMeal, name: string): SavedMeal | null {
+  const rows = listFoodEntries(box, clientId, date).filter((e) => e.meal === meal);
   if (rows.length === 0) return null;
-  const data = getData();
+  const data = box;
   const row: SavedMeal = {
     ...(FOOD_MEALS.some((m) => m.id === meal) ? { slot: meal } : {}),
-    id: allocId("saved_meals"),
+    id: box.alloc("savedMeals"),
     client_id: clientId,
     name,
     items: rows.map((e) => ({ food_id: e.food_id, name: e.name, grams: e.grams, serving: e.serving, kcal: e.kcal, protein: e.protein, carbs: e.carbs, fat: e.fat })),
     created_at: new Date().toISOString(),
   };
   // The day's photo becomes the saved meal's picture (9 Nov, Alex): the same file, so nothing is copied.
-  const photo = getMealPhoto(clientId, date, meal);
+  const photo = getMealPhoto(box, clientId, date, meal);
   if (photo) {
     row.picture = photo;
-    row.picture_thumb = getData().meal_photos.find((p) => p.file_path === photo)?.thumb ?? null;
+    row.picture_thumb = box.photos.find((p) => p.file_path === photo)?.thumb ?? null;
   }
-  data.saved_meals.push(row);
+  data.savedMeals.push(row);
   // And the slot now is that meal: its card takes the name, its camera the saved meal.
   for (const e of rows) e.saved_meal_id = row.id;
-  persist();
+  box.persist();
   return row;
 }
 
@@ -13349,15 +13360,15 @@ function createdItem(clientId: number, i: CreatedItem) {
 }
 
 /** A saved meal made from nothing, on the Saved meals screen (10 Nov, Alex): a card named first and filled after, so it may hold no food yet. */
-export function createSavedMeal(clientId: number, name: string, items: CreatedItem[] = [], slot: string | null = null): SavedMeal | null {
+export function createSavedMeal(box: FoodBox, clientId: number, name: string, items: CreatedItem[] = [], slot: string | null = null): SavedMeal | null {
   const rows = items.map((i) => createdItem(clientId, i)).filter((r): r is NonNullable<typeof r> => r != null);
   if (!name.trim() || (items.length > 0 && rows.length === 0)) return null;
-  const data = getData();
+  const data = box;
   // Made for Breakfast, Lunch, Dinner or Snacks (12 Nov, Alex): used, it goes into that meal's card.
   const meal = slot && FOOD_MEALS.some((m) => m.id === slot) ? slot : null;
-  const row: SavedMeal = { ...(meal ? { slot: meal } : {}), id: allocId("saved_meals"), client_id: clientId, name, items: rows, created_at: new Date().toISOString() };
-  data.saved_meals.push(row);
-  persist();
+  const row: SavedMeal = { ...(meal ? { slot: meal } : {}), id: box.alloc("savedMeals"), client_id: clientId, name, items: rows, created_at: new Date().toISOString() };
+  data.savedMeals.push(row);
+  box.persist();
   return row;
 }
 
@@ -13365,122 +13376,125 @@ export function createSavedMeal(clientId: number, name: string, items: CreatedIt
 type SavedDayCard = NonNullable<SavedDay["cards"]>[number];
 
 /** Its cards: the ones kept on it, else, saved before and not changed since, one a meal it holds, the standard ones first. */
-function cardsOfSavedDay(d: SavedDay): SavedDayCard[] {
+function cardsOfSavedDay(rows: FoodRows, d: SavedDay): SavedDayCard[] {
   if (d.cards) return d.cards;
   const keys = [...new Set(d.items.map((i) => i.meal))];
   const standard = FOOD_MEALS.map((m) => m.id as string).filter((k) => keys.includes(k));
   const label = (key: string) =>
-    FOOD_MEALS.find((m) => m.id === key)?.label ?? d.items.find((i) => i.meal === key)?.meal_name ?? getData().food_meals.find((m) => `m:${m.id}` === key && m.client_id === d.client_id)?.name ?? "Meal";
+    FOOD_MEALS.find((m) => m.id === key)?.label ?? d.items.find((i) => i.meal === key)?.meal_name ?? rows.meals.find((m) => `m:${m.id}` === key && m.client_id === d.client_id)?.name ?? "Meal";
   return [...standard, ...keys.filter((k) => !standard.includes(k))].map((key) => ({ key, name: label(key) }));
 }
 
-const savedDayOf = (clientId: number, id: number) => getData().saved_days.find((d) => d.id === id && d.client_id === clientId) ?? null;
+const savedDayOf = (box: FoodRows, clientId: number, id: number) => {
+  box.need("savedDayOf", clientId, { dates: [] }, ["savedDays", "meals"]);
+  return box.savedDays.find((d) => d.id === id && d.client_id === clientId) ?? null;
+};
 
 /** The day and its card, the cards made its own so a change has somewhere to go. */
-function savedDayCard(clientId: number, id: number, key: string): { day: SavedDay; card: SavedDayCard } | null {
-  const day = savedDayOf(clientId, id);
+function savedDayCard(box: FoodBox, clientId: number, id: number, key: string): { day: SavedDay; card: SavedDayCard } | null {
+  const day = savedDayOf(box, clientId, id);
   if (!day) return null;
-  day.cards = cardsOfSavedDay(day);
+  day.cards = cardsOfSavedDay(box, day);
   const card = day.cards.find((c) => c.key === key);
   return card ? { day, card } : null;
 }
 
 /** Create a day (10 Nov, Alex): its name and the four standard cards, empty. */
-export function createBlankSavedDay(clientId: number, name: string): SavedDay | null {
+export function createBlankSavedDay(box: FoodBox, clientId: number, name: string): SavedDay | null {
   const clean = name.trim().slice(0, 40);
   if (!clean) return null;
-  const row: SavedDay = { id: allocId("saved_days"), client_id: clientId, name: clean, day_type: null, items: [], cards: FOOD_MEALS.map((m) => ({ key: m.id, name: m.label })), created_at: new Date().toISOString() };
-  getData().saved_days.push(row);
-  persist();
+  const row: SavedDay = { id: box.alloc("savedDays"), client_id: clientId, name: clean, day_type: null, items: [], cards: FOOD_MEALS.map((m) => ({ key: m.id, name: m.label })), created_at: new Date().toISOString() };
+  box.savedDays.push(row);
+  box.persist();
   return row;
 }
 
-export function renameSavedDay(clientId: number, id: number, name: string): boolean {
-  const day = savedDayOf(clientId, id);
+export function renameSavedDay(box: FoodBox, clientId: number, id: number, name: string): boolean {
+  const day = savedDayOf(box, clientId, id);
   const clean = name.trim().slice(0, 40);
   if (!day || !clean) return false;
   day.name = clean;
-  persist();
+  box.persist();
   return true;
 }
 
-export function addSavedDayCard(clientId: number, id: number, key: string, name: string): boolean {
-  const day = savedDayOf(clientId, id);
+export function addSavedDayCard(box: FoodBox, clientId: number, id: number, key: string, name: string): boolean {
+  const day = savedDayOf(box, clientId, id);
   const clean = name.trim().slice(0, 40);
   if (!day || !clean || !/^c:\d+$/.test(key)) return false;
-  day.cards = cardsOfSavedDay(day);
+  day.cards = cardsOfSavedDay(box, day);
   if (day.cards.some((c) => c.key === key)) return true;
   day.cards.unshift({ key, name: clean });
-  persist();
+  box.persist();
   return true;
 }
 
 /** The cards in the order dragged; keys not on the day are ignored, any left out keep their place at the end. */
-export function reorderSavedDayCards(clientId: number, id: number, keys: string[]): boolean {
-  const day = savedDayOf(clientId, id);
+export function reorderSavedDayCards(box: FoodBox, clientId: number, id: number, keys: string[]): boolean {
+  const day = savedDayOf(box, clientId, id);
   if (!day) return false;
-  const cards = cardsOfSavedDay(day);
+  const cards = cardsOfSavedDay(box, day);
   const placed = keys.flatMap((k) => cards.filter((c) => c.key === k));
   day.cards = [...new Set([...placed, ...cards])];
   day.ordered = true;
-  persist();
+  box.persist();
   return true;
 }
 
-export function renameSavedDayCard(clientId: number, id: number, key: string, name: string): boolean {
-  const found = savedDayCard(clientId, id, key);
+export function renameSavedDayCard(box: FoodBox, clientId: number, id: number, key: string, name: string): boolean {
+  const found = savedDayCard(box, clientId, id, key);
   const clean = name.trim().slice(0, 40);
   if (!found || !clean) return false;
   found.card.name = clean;
   // Its own meal now: a saved meal's name and picture would otherwise win when the day is used.
   for (const i of found.day.items) if (i.meal === key) delete i.saved_meal_id;
-  persist();
+  box.persist();
   return true;
 }
 
 /** A card off a saved day, with its foods. Returns its picture's file when nothing shows it any more; null when there is no such card. */
-export function removeSavedDayCard(clientId: number, id: number, key: string): string[] | null {
-  const found = savedDayCard(clientId, id, key);
+export function removeSavedDayCard(box: FoodBox, clientId: number, id: number, key: string): string[] | null {
+  const found = savedDayCard(box, clientId, id, key);
   if (!found) return null;
   found.day.cards = found.day.cards!.filter((c) => c !== found.card);
   found.day.items = found.day.items.filter((i) => i.meal !== key);
-  const gone = dropUnusedMealPictures([found.card.picture]);
-  persist();
+  const gone = box.gc([found.card.picture]);
+  box.persist();
   return gone;
 }
 
-export function addSavedDayFood(clientId: number, id: number, key: string, item: CreatedItem): boolean {
-  const found = savedDayCard(clientId, id, key);
+export function addSavedDayFood(box: FoodBox, clientId: number, id: number, key: string, item: CreatedItem): boolean {
+  const found = savedDayCard(box, clientId, id, key);
   const made = createdItem(clientId, item);
   if (!found || !made) return false;
   found.day.items.push({ meal: key, ...made });
-  persist();
+  box.persist();
   return true;
 }
 
 /** The card's food at `index`, checked against `foodId`. Its figures scale with the amount. */
-export function updateSavedDayFood(clientId: number, id: number, key: string, index: number, foodId: string, grams: number, serving: string | null): boolean {
-  const found = savedDayCard(clientId, id, key);
+export function updateSavedDayFood(box: FoodBox, clientId: number, id: number, key: string, index: number, foodId: string, grams: number, serving: string | null): boolean {
+  const found = savedDayCard(box, clientId, id, key);
   const item = found?.day.items.filter((i) => i.meal === key)[index];
   if (!item || item.food_id !== foodId || !(grams > 0) || grams > 5000 || !(item.grams > 0)) return false;
   const k = grams / item.grams;
   Object.assign(item, { grams: r1(grams), serving, kcal: r1(item.kcal * k), protein: r1(item.protein * k), carbs: r1(item.carbs * k), fat: r1(item.fat * k) });
-  persist();
+  box.persist();
   return true;
 }
 
-export function removeSavedDayFood(clientId: number, id: number, key: string, index: number, foodId: string): boolean {
-  const found = savedDayCard(clientId, id, key);
+export function removeSavedDayFood(box: FoodBox, clientId: number, id: number, key: string, index: number, foodId: string): boolean {
+  const found = savedDayCard(box, clientId, id, key);
   const item = found?.day.items.filter((i) => i.meal === key)[index];
   if (!found || !item || item.food_id !== foodId) return false;
   found.day.items = found.day.items.filter((i) => i !== item);
-  persist();
+  box.persist();
   return true;
 }
 
 /** The picture on the day's own card in the list. Returns its public path and the earlier file when nothing shows it any more. */
-export function setSavedDayCover(clientId: number, id: number, buffer: Buffer, mimeType: string): { path: string; gone: string[] } | null {
-  const day = savedDayOf(clientId, id);
+export function setSavedDayCover(box: FoodBox, clientId: number, id: number, buffer: Buffer, mimeType: string): { path: string; gone: string[] } | null {
+  const day = savedDayOf(box, clientId, id);
   if (!day) return null;
   const ext = (mimeType.split("/")[1] || "jpg").replace("jpeg", "jpg").replace(/[^a-z0-9]/gi, "") || "jpg";
   const date = localDateStr();
@@ -13492,25 +13506,25 @@ export function setSavedDayCover(clientId: number, id: number, buffer: Buffer, m
   const was = day.picture;
   day.picture = publicPath;
   delete day.picture_thumb;
-  const gone = dropUnusedMealPictures([was]);
-  persist();
+  const gone = box.gc([was]);
+  box.persist();
   return { path: publicPath, gone };
 }
 
-export function removeSavedDayCover(clientId: number, id: number): string[] {
-  const day = savedDayOf(clientId, id);
+export function removeSavedDayCover(box: FoodBox, clientId: number, id: number): string[] {
+  const day = savedDayOf(box, clientId, id);
   if (!day?.picture) return [];
   const was = day.picture;
   delete day.picture;
   delete day.picture_thumb;
-  const gone = dropUnusedMealPictures([was]);
-  persist();
+  const gone = box.gc([was]);
+  box.persist();
   return gone;
 }
 
 /** A card's picture on a saved day. Returns its public path and the earlier file when nothing shows it any more. */
-export function setSavedDayPicture(clientId: number, id: number, key: string, buffer: Buffer, mimeType: string): { path: string; gone: string[] } | null {
-  const found = savedDayCard(clientId, id, key);
+export function setSavedDayPicture(box: FoodBox, clientId: number, id: number, key: string, buffer: Buffer, mimeType: string): { path: string; gone: string[] } | null {
+  const found = savedDayCard(box, clientId, id, key);
   if (!found) return null;
   const ext = (mimeType.split("/")[1] || "jpg").replace("jpeg", "jpg").replace(/[^a-z0-9]/gi, "") || "jpg";
   const date = localDateStr();
@@ -13523,30 +13537,31 @@ export function setSavedDayPicture(clientId: number, id: number, key: string, bu
   found.card.picture = publicPath;
   delete found.card.picture_thumb;
   for (const i of found.day.items) if (i.meal === key) delete i.saved_meal_id;
-  const gone = dropUnusedMealPictures([was]);
-  persist();
+  const gone = box.gc([was]);
+  box.persist();
   return { path: publicPath, gone };
 }
 
-export function removeSavedDayPicture(clientId: number, id: number, key: string): string[] {
-  const found = savedDayCard(clientId, id, key);
+export function removeSavedDayPicture(box: FoodBox, clientId: number, id: number, key: string): string[] {
+  const found = savedDayCard(box, clientId, id, key);
   if (!found?.card.picture) return [];
   const was = found.card.picture;
   delete found.card.picture;
   delete found.card.picture_thumb;
-  const gone = dropUnusedMealPictures([was]);
-  persist();
+  const gone = box.gc([was]);
+  box.persist();
   return gone;
 }
 
 /** Forgets a saved meal. Returns the picture files that went with it (only when nothing else shows them), for the bucket copies. */
-export function deleteSavedMeal(clientId: number, id: number): string[] {
-  const data = getData();
-  const row = data.saved_meals.find((m) => m.id === id && m.client_id === clientId);
+export function deleteSavedMeal(box: FoodBox, clientId: number, id: number): string[] {
+  box.need("deleteSavedMeal", clientId, { dates: [] }, ["savedMeals"]);
+  const data = box;
+  const row = data.savedMeals.find((m) => m.id === id && m.client_id === clientId);
   if (!row) return [];
-  data.saved_meals = data.saved_meals.filter((m) => m !== row);
-  const gone = dropUnusedMealPictures([row.picture]);
-  persist();
+  data.savedMeals = data.savedMeals.filter((m) => m !== row);
+  const gone = box.gc([row.picture]);
+  box.persist();
   return gone;
 }
 
@@ -13554,54 +13569,57 @@ const foodsKey = (rows: { food_id: string; grams: number }[]) => rows.map((e) =>
 
 // A saved meal changed on its own card (10 Nov, Alex: its picture, its name, its foods, as a day's card). What is logged
 // never changes with it: a day it filled keeps the foods eaten, and stays that saved meal (was_foods).
-const savedMealOf = (clientId: number, id: number) => getData().saved_meals.find((m) => m.id === id && m.client_id === clientId) ?? null;
+const savedMealOf = (box: FoodRows, clientId: number, id: number) => {
+  box.need("savedMealOf", clientId, { dates: [] }, ["savedMeals"]);
+  return box.savedMeals.find((m) => m.id === id && m.client_id === clientId) ?? null;
+};
 
-function changeSavedFoods(row: SavedMeal, change: () => void) {
+function changeSavedFoods(box: FoodBox, row: SavedMeal, change: () => void) {
   const before = foodsKey(row.items);
   change();
   if (foodsKey(row.items) !== before) row.was_foods = [...(row.was_foods ?? []).filter((k) => k !== before), before].slice(-20);
-  persist();
+  box.persist();
 }
 
-export function renameSavedMeal(clientId: number, id: number, name: string): boolean {
-  const row = savedMealOf(clientId, id);
+export function renameSavedMeal(box: FoodBox, clientId: number, id: number, name: string): boolean {
+  const row = savedMealOf(box, clientId, id);
   const clean = name.trim().slice(0, 40);
   if (!row || !clean) return false;
   row.name = clean;
-  persist();
+  box.persist();
   return true;
 }
 
-export function addSavedMealFood(clientId: number, id: number, item: CreatedItem): boolean {
-  const row = savedMealOf(clientId, id);
+export function addSavedMealFood(box: FoodBox, clientId: number, id: number, item: CreatedItem): boolean {
+  const row = savedMealOf(box, clientId, id);
   const made = createdItem(clientId, item);
   if (!row || !made) return false;
-  changeSavedFoods(row, () => row.items.push(made));
+  changeSavedFoods(box, row, () => row.items.push(made));
   return true;
 }
 
 /** The food at `index`, checked against `foodId` so a list out of date never changes the wrong one. Its figures scale with the amount. */
-export function updateSavedMealFood(clientId: number, id: number, index: number, foodId: string, grams: number, serving: string | null): boolean {
-  const row = savedMealOf(clientId, id);
+export function updateSavedMealFood(box: FoodBox, clientId: number, id: number, index: number, foodId: string, grams: number, serving: string | null): boolean {
+  const row = savedMealOf(box, clientId, id);
   const item = row?.items[index];
   if (!row || !item || item.food_id !== foodId || !(grams > 0) || grams > 5000 || !(item.grams > 0)) return false;
   const k = grams / item.grams;
-  changeSavedFoods(row, () => {
+  changeSavedFoods(box, row, () => {
     row.items[index] = { ...item, grams: r1(grams), serving, kcal: r1(item.kcal * k), protein: r1(item.protein * k), carbs: r1(item.carbs * k), fat: r1(item.fat * k) };
   });
   return true;
 }
 
-export function removeSavedMealFood(clientId: number, id: number, index: number, foodId: string): boolean {
-  const row = savedMealOf(clientId, id);
+export function removeSavedMealFood(box: FoodBox, clientId: number, id: number, index: number, foodId: string): boolean {
+  const row = savedMealOf(box, clientId, id);
   if (!row || row.items[index]?.food_id !== foodId) return false;
-  changeSavedFoods(row, () => row.items.splice(index, 1));
+  changeSavedFoods(box, row, () => row.items.splice(index, 1));
   return true;
 }
 
 /** The saved meal's own picture, set from its card: that meal alone, no day's photo. Returns its public path and the earlier file when nothing shows it any more. */
-export function setSavedMealPicture(clientId: number, id: number, buffer: Buffer, mimeType: string): { path: string; gone: string[] } | null {
-  const row = savedMealOf(clientId, id);
+export function setSavedMealPicture(box: FoodBox, clientId: number, id: number, buffer: Buffer, mimeType: string): { path: string; gone: string[] } | null {
+  const row = savedMealOf(box, clientId, id);
   if (!row) return null;
   const ext = (mimeType.split("/")[1] || "jpg").replace("jpeg", "jpg").replace(/[^a-z0-9]/gi, "") || "jpg";
   const date = localDateStr();
@@ -13614,20 +13632,20 @@ export function setSavedMealPicture(clientId: number, id: number, buffer: Buffer
   const was = row.picture;
   row.picture = publicPath;
   delete row.picture_thumb;
-  const gone = dropUnusedMealPictures([was]);
-  persist();
+  const gone = box.gc([was]);
+  box.persist();
   return { path: publicPath, gone };
 }
 
 /** Takes the picture off a saved meal. Other days' photos stay. Returns the file when nothing shows it any more. */
-export function removeSavedMealPicture(clientId: number, id: number): string[] {
-  const row = savedMealOf(clientId, id);
+export function removeSavedMealPicture(box: FoodBox, clientId: number, id: number): string[] {
+  const row = savedMealOf(box, clientId, id);
   if (!row?.picture) return [];
   const was = row.picture;
   delete row.picture;
   delete row.picture_thumb;
-  const gone = dropUnusedMealPictures([was]);
-  persist();
+  const gone = box.gc([was]);
+  box.persist();
   return gone;
 }
 
@@ -13666,60 +13684,55 @@ function slotAddsToSavedMeal(rows: FoodEntry[], saved: SavedMeal): boolean {
  * foods become that day's, the foods added that day included, and every row is stamped as having come with it. Other days
  * it filled keep what was eaten and stay that meal (was_foods). False when the slot is no saved meal.
  */
-export function updateSavedMealFromSlot(clientId: number, date: string, meal: string): boolean {
-  const rows = listFoodEntries(clientId, date).filter((e) => e.meal === meal);
-  const saved = savedMealOfRows(rows, getData().saved_meals.filter((s) => s.client_id === clientId));
+export function updateSavedMealFromSlot(box: FoodBox, clientId: number, date: string, meal: string): boolean {
+  const rows = listFoodEntries(box, clientId, date).filter((e) => e.meal === meal);
+  const saved = savedMealOfRows(rows, box.savedMeals.filter((s) => s.client_id === clientId));
   if (!saved || !slotAddsToSavedMeal(rows, saved)) return false;
-  changeSavedFoods(saved, () => {
+  changeSavedFoods(box, saved, () => {
     saved.items = rows.map((e) => ({ food_id: e.food_id, name: e.name, grams: e.grams, serving: e.serving, kcal: e.kcal, protein: e.protein, carbs: e.carbs, fat: e.fat }));
   });
   for (const e of rows) e.saved_meal_id = saved.id;
-  persist();
+  box.persist();
   return true;
 }
 
-function savedMealOfSlot(clientId: number, date: string, meal: string): SavedMeal | null {
-  return savedMealOfRows(listFoodEntries(clientId, date).filter((e) => e.meal === meal), getData().saved_meals.filter((s) => s.client_id === clientId));
+function savedMealOfSlot(box: FoodRows, clientId: number, date: string, meal: string): SavedMeal | null {
+  return savedMealOfRows(listFoodEntries(box, clientId, date).filter((e) => e.meal === meal), box.savedMeals.filter((s) => s.client_id === clientId));
 }
 
-/** Of these picture files, the ones no saved meal and no day's photo holds any more: taken off the disk and returned, for the bucket copies. */
-function dropUnusedMealPictures(paths: (string | null | undefined)[]): string[] {
-  const data = getData();
-  const gone = [...new Set(paths.filter((p): p is string => !!p))].filter((p) => !data.saved_meals.some((s) => s.picture === p) && !data.meal_photos.some((m) => m.file_path === p) && !data.saved_days.some((d) => d.picture === p || d.cards?.some((c) => c.picture === p)));
-  for (const p of gone) trashFile(path.join(DATA_DIR, p.startsWith("/") ? p.slice(1) : p));
-  return gone;
-}
+// Of these picture files, the ones no saved meal and no day's photo holds any more: FoodBox.gc (app/lib/food/rows.ts,
+// the store's lists in memory as before; SQL in the same transaction with FOOD_STORE=pg).
 
 /** Own cards just made on a day, on top in this order: made within a millisecond of each other, "newest first" alone would be a coin toss. */
-function rankOwnCards(clientId: number, meals: string[]) {
-  const client = getClient(clientId);
+function rankOwnCards(box: FoodBox, clientId: number, meals: string[]) {
+  const client = box.client(clientId);
   const own = [...new Set(meals.filter((m) => m.startsWith("m:")))];
   if (!client || own.length === 0) return;
   client.meal_order = [...own, ...(client.meal_order ?? []).filter((id) => !own.includes(id))];
 }
 
 /** Where a meal id from another day (or a saved day) lands on a date: itself when it is a standard meal or already on that day, else an added meal of the same name on that day, made if needed; Snacks when the source meal is gone. */
-function mealOnDay(clientId: number, meal: string, date: string, taken: Set<string> = new Set(), deletedName?: string): string {
-  if (hasFoodMeal(clientId, meal, date)) return meal;
-  const data = getData();
-  const source = meal.startsWith("m:") ? data.food_meals.find((m) => m.id === Number(meal.slice(2)) && m.client_id === clientId) : null;
+function mealOnDay(box: FoodBox, clientId: number, meal: string, date: string, taken: Set<string> = new Set(), deletedName?: string): string {
+  if (hasFoodMeal(box, clientId, meal, date)) return meal;
+  const data = box;
+  const source = meal.startsWith("m:") ? data.meals.find((m) => m.id === Number(meal.slice(2)) && m.client_id === clientId) : null;
   // A meal deleted since keeps its name on the saved day (10 Nov, Alex: a different meal is a card of its own, never Snacks).
   const name = source?.name ?? deletedName;
   if (!name) return "snacks";
-  const twin = data.food_meals.find((m) => m.client_id === clientId && m.date === date && m.name.toLowerCase() === name.toLowerCase() && !taken.has(`m:${m.id}`));
-  const landed = `m:${twin ? twin.id : addFoodMeal(clientId, name, date).id}`;
+  const twin = data.meals.find((m) => m.client_id === clientId && m.date === date && m.name.toLowerCase() === name.toLowerCase() && !taken.has(`m:${m.id}`));
+  const landed = `m:${twin ? twin.id : addFoodMeal(box, clientId, name, date).id}`;
   taken.add(landed);
   return landed;
 }
 
 /** A saved meal's foods and amounts into a meal on a day, logged now. */
-export function addSavedMeal(clientId: number, id: number, date: string, meal: FoodMeal): number {
-  const data = getData();
-  const saved = data.saved_meals.find((m) => m.id === id && m.client_id === clientId);
-  if (!saved || !hasFoodMeal(clientId, meal, date)) return 0;
+export function addSavedMeal(box: FoodBox, clientId: number, id: number, date: string, meal: FoodMeal): number {
+  const data = box;
+  const saved = data.savedMeals.find((m) => m.id === id && m.client_id === clientId);
+  if (!saved || !hasFoodMeal(box, clientId, meal, date)) return 0;
   const now = new Date().toISOString();
-  for (const i of saved.items) data.food_entries.push({ id: allocId("food_entries"), client_id: clientId, date, meal, ...i, logged_at: now, saved_meal_id: saved.id });
-  persist();
+  for (const i of saved.items) data.entries.push({ id: box.alloc("entries"), client_id: clientId, date, meal, ...i, logged_at: now, saved_meal_id: saved.id });
+  box.persist();
   return saved.items.length;
 }
 
@@ -13727,60 +13740,63 @@ export function addSavedMeal(clientId: number, id: number, date: string, meal: F
     top of each other ("it's a different meal"). The one exception: saved from or made for Breakfast, Lunch, Dinner or
     Snacks (or named as one of them) it always goes into that meal's card, added to what is there ("always the breakfast
     slot with that meal"; 12 Nov, Alex: "so we don't have two breakfasts", Snacks too). Nothing logged is taken away. */
-export function addSavedMealCard(clientId: number, id: number, date: string): number {
-  const saved = getData().saved_meals.find((m) => m.id === id && m.client_id === clientId);
+export function addSavedMealCard(box: FoodBox, clientId: number, id: number, date: string): number {
+  box.need("addSavedMealCard", clientId, { dates: [date] }, ["savedMeals", "meals", "entries"]);
+  const saved = box.savedMeals.find((m) => m.id === id && m.client_id === clientId);
   if (!saved || saved.items.length === 0) return 0;
   const named = FOOD_MEALS.find((m) => m.label.toLowerCase() === saved.name.trim().toLowerCase())?.id ?? null;
   const slot = saved.slot && FOOD_MEALS.some((m) => m.id === saved.slot) ? saved.slot : named;
-  if (slot) return addSavedMeal(clientId, id, date, slot);
-  const card = addFoodMeal(clientId, saved.name, date);
-  return addSavedMeal(clientId, id, date, `m:${card.id}`);
+  if (slot) return addSavedMeal(box, clientId, id, date, slot);
+  const card = addFoodMeal(box, clientId, saved.name, date);
+  return addSavedMeal(box, clientId, id, date, `m:${card.id}`);
 }
 
 export type SavedDayCardView = { key: string; name: string; picture: string | null; thumb: string | null; items: SavedMealItemView[] };
 export type SavedDayView = { id: number; name: string; kcal: number; count: number; dayType: "training" | "rest" | null; picture: string | null; thumb: string | null; cards: SavedDayCardView[] };
 
-export function listSavedDays(clientId: number): SavedDayView[] {
-  return getData()
-    .saved_days.filter((d) => d.client_id === clientId)
+export function listSavedDays(rows: FoodRows, clientId: number): SavedDayView[] {
+  rows.need("listSavedDays", clientId, { dates: [] }, ["savedDays", "meals"]);
+  return rows.savedDays
+    .filter((d) => d.client_id === clientId)
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
-    .map((d) => ({ id: d.id, name: d.name, kcal: Math.round(d.items.reduce((s, i) => s + i.kcal, 0)), count: d.items.length, dayType: d.day_type ?? null, picture: d.picture ?? null, thumb: d.picture_thumb ?? null, cards: cardsOfSavedDay(d).map((c) => ({ key: c.key, name: c.name, picture: c.picture ?? null, thumb: c.picture_thumb ?? null, items: d.items.filter((i) => i.meal === c.key).map((i) => ({ food_id: i.food_id, name: i.name, grams: i.grams, serving: i.serving, kcal: i.kcal, protein: i.protein, carbs: i.carbs, fat: i.fat })) })) }));
+    .map((d) => ({ id: d.id, name: d.name, kcal: Math.round(d.items.reduce((s, i) => s + i.kcal, 0)), count: d.items.length, dayType: d.day_type ?? null, picture: d.picture ?? null, thumb: d.picture_thumb ?? null, cards: cardsOfSavedDay(rows, d).map((c) => ({ key: c.key, name: c.name, picture: c.picture ?? null, thumb: c.picture_thumb ?? null, items: d.items.filter((i) => i.meal === c.key).map((i) => ({ food_id: i.food_id, name: i.name, grams: i.grams, serving: i.serving, kcal: i.kcal, protein: i.protein, carbs: i.carbs, fat: i.fat })) })) }));
 }
 
 /** One whole day, kept under a name to log again. */
-export function saveDay(clientId: number, date: string, name: string): SavedDay | null {
-  const rows = listFoodEntries(clientId, date);
+export function saveDay(box: FoodBox, clientId: number, date: string, name: string): SavedDay | null {
+  const rows = listFoodEntries(box, clientId, date);
   if (rows.length === 0) return null;
-  const data = getData();
+  const data = box;
   const row: SavedDay = {
-    id: allocId("saved_days"),
+    id: box.alloc("savedDays"),
     client_id: clientId,
     name,
-    day_type: foodDayType(clientId, date),
+    day_type: foodDayType(box, clientId, date),
     // A meal that came from a saved meal stays that meal when the day is used again (its card, its picture).
     items: rows.map((e) => ({ meal: e.meal, food_id: e.food_id, name: e.name, grams: e.grams, serving: e.serving, kcal: e.kcal, protein: e.protein, carbs: e.carbs, fat: e.fat, ...(e.saved_meal_id != null ? { saved_meal_id: e.saved_meal_id } : {}) })),
     created_at: new Date().toISOString(),
   };
-  data.saved_days.push(row);
-  persist();
+  data.savedDays.push(row);
+  box.persist();
   return row;
 }
 
 /** Forgets a saved day. Returns its pictures' files that nothing else shows, for the bucket copies. */
-export function deleteSavedDay(clientId: number, id: number): string[] {
-  const data = getData();
-  const row = savedDayOf(clientId, id);
+export function deleteSavedDay(box: FoodBox, clientId: number, id: number): string[] {
+  const data = box;
+  const row = savedDayOf(box, clientId, id);
   if (!row) return [];
-  data.saved_days = data.saved_days.filter((d) => d !== row);
-  const gone = dropUnusedMealPictures([row.picture, ...(row.cards ?? []).map((c) => c.picture)]);
-  persist();
+  data.savedDays = data.savedDays.filter((d) => d !== row);
+  const gone = box.gc([row.picture, ...(row.cards ?? []).map((c) => c.picture)]);
+  box.persist();
   return gone;
 }
 
 /** A saved day's meals onto a date, logged now; meals that no longer exist go to Snacks. */
-export function addSavedDay(clientId: number, id: number, date: string): number {
-  const data = getData();
-  const saved = data.saved_days.find((d) => d.id === id && d.client_id === clientId);
+export function addSavedDay(box: FoodBox, clientId: number, id: number, date: string): number {
+  box.need("addSavedDay", clientId, { dates: [date] });
+  const data = box;
+  const saved = data.savedDays.find((d) => d.id === id && d.client_id === clientId);
   if (!saved) return 0;
   const now = new Date().toISOString();
   const landing = new Map<string, string>();
@@ -13790,47 +13806,47 @@ export function addSavedDay(clientId: number, id: number, date: string): number 
       // A card as it was named: a standard meal under its own name goes there, any other is a card under the name it has.
       const shown = saved.cards?.find((c) => c.key === i.meal)?.name;
       const asIs = shown == null || FOOD_MEALS.some((m) => m.id === i.meal && m.label === shown);
-      landing.set(i.meal, asIs ? mealOnDay(clientId, i.meal, date, taken, meal_name) : mealOnDay(clientId, `c:${i.meal}`, date, taken, shown));
+      landing.set(i.meal, asIs ? mealOnDay(box, clientId, i.meal, date, taken, meal_name) : mealOnDay(box, clientId, `c:${i.meal}`, date, taken, shown));
     }
-    data.food_entries.push({ id: allocId("food_entries"), client_id: clientId, date, ...i, meal: landing.get(i.meal)!, logged_at: now });
+    data.entries.push({ id: box.alloc("entries"), client_id: clientId, date, ...i, meal: landing.get(i.meal)!, logged_at: now });
   }
   // The order it was dragged into, else its own cards as they stand on it.
   const landed = (saved.cards ?? []).flatMap((c) => landing.get(c.key) ?? []);
-  if (saved.ordered) reorderFoodMeals(clientId, date, [...new Set([...landed, ...listFoodMeals(clientId, date).map((m) => m.id)])]);
-  else rankOwnCards(clientId, landed.length > 0 ? landed : [...landing.values()]);
+  if (saved.ordered) reorderFoodMeals(box, clientId, date, [...new Set([...landed, ...listFoodMeals(box, clientId, date).map((m) => m.id)])]);
+  else rankOwnCards(box, clientId, landed.length > 0 ? landed : [...landing.values()]);
   // A card's picture comes with it as that day's photo, the same file, never over one the day already has.
   for (const c of saved.cards ?? []) {
     const meal = landing.get(c.key);
-    if (!c.picture || !meal || data.meal_photos.some((p) => p.client_id === clientId && p.date === date && p.meal === meal)) continue;
-    data.meal_photos.push({ id: allocId("meal_photos"), client_id: clientId, date, meal, file_path: c.picture, uploaded_at: now, ...(c.picture_thumb ? { thumb: c.picture_thumb } : {}) });
+    if (!c.picture || !meal || data.photos.some((p) => p.client_id === clientId && p.date === date && p.meal === meal)) continue;
+    data.photos.push({ id: box.alloc("photos"), client_id: clientId, date, meal, file_path: c.picture, uploaded_at: now, ...(c.picture_thumb ? { thumb: c.picture_thumb } : {}) });
   }
-  if (saved.items.length) persist();
+  if (saved.items.length) box.persist();
   return saved.items.length;
 }
 
 /** Every meal of one day into another, the same foods and amounts, logged now; meals that no longer exist go to Snacks. */
-export function copyFoodDay(clientId: number, fromDate: string, toDate: string): number {
-  const data = getData();
-  const rows = listFoodEntries(clientId, fromDate);
+export function copyFoodDay(box: FoodBox, clientId: number, fromDate: string, toDate: string): number {
+  const data = box;
+  const rows = listFoodEntries(box, clientId, fromDate);
   const now = new Date().toISOString();
   const landing = new Map<string, string>();
   const taken = new Set<string>();
   for (const e of rows) {
-    if (!landing.has(e.meal)) landing.set(e.meal, mealOnDay(clientId, e.meal, toDate, taken));
-    data.food_entries.push({ ...e, id: allocId("food_entries"), date: toDate, meal: landing.get(e.meal)!, logged_at: now });
+    if (!landing.has(e.meal)) landing.set(e.meal, mealOnDay(box, clientId, e.meal, toDate, taken));
+    data.entries.push({ ...e, id: box.alloc("entries"), date: toDate, meal: landing.get(e.meal)!, logged_at: now });
   }
-  rankOwnCards(clientId, listFoodMeals(clientId, fromDate).flatMap((m) => landing.get(m.id) ?? []));
-  if (rows.length) persist();
+  rankOwnCards(box, clientId, listFoodMeals(box, clientId, fromDate).flatMap((m) => landing.get(m.id) ?? []));
+  if (rows.length) box.persist();
   return rows.length;
 }
 
-export function addFoodEntry(clientId: number, date: string, meal: FoodMeal, foodId: string, grams: number, serving: string | null): FoodEntry | null {
+export function addFoodEntry(box: FoodBox, clientId: number, date: string, meal: FoodMeal, foodId: string, grams: number, serving: string | null): FoodEntry | null {
   const food = getFoodOption(clientId, foodId);
-  if (!food || !hasFoodMeal(clientId, meal, date)) return null;
-  const data = getData();
+  if (!food || !hasFoodMeal(box, clientId, meal, date)) return null;
+  const data = box;
   const k = grams / 100;
   const entry: FoodEntry = {
-    id: allocId("food_entries"),
+    id: box.alloc("entries"),
     client_id: clientId,
     date,
     meal,
@@ -13844,13 +13860,13 @@ export function addFoodEntry(clientId: number, date: string, meal: FoodMeal, foo
     fat: r1(food.fat * k),
     logged_at: new Date().toISOString(),
   };
-  data.food_entries.push(entry);
-  persist();
+  data.entries.push(entry);
+  box.persist();
   return entry;
 }
 
-export function updateFoodEntry(clientId: number, id: number, grams: number, serving: string | null): boolean {
-  const e = getData().food_entries.find((x) => x.id === id && x.client_id === clientId);
+export function updateFoodEntry(box: FoodBox, clientId: number, id: number, grams: number, serving: string | null): boolean {
+  const e = box.entries.find((x) => x.id === id && x.client_id === clientId);
   if (!e) return false;
   const food = getFoodOption(clientId, e.food_id);
   // The food is gone (a custom one deleted): scale the snapshot instead.
@@ -13862,16 +13878,16 @@ export function updateFoodEntry(clientId: number, id: number, grams: number, ser
   e.protein = r1(per100.protein * k);
   e.carbs = r1(per100.carbs * k);
   e.fat = r1(per100.fat * k);
-  persist();
+  box.persist();
   return true;
 }
 
-export function removeFoodEntry(clientId: number, id: number): boolean {
-  const data = getData();
-  const e = data.food_entries.find((x) => x.id === id && x.client_id === clientId);
+export function removeFoodEntry(box: FoodBox, clientId: number, id: number): boolean {
+  const data = box;
+  const e = data.entries.find((x) => x.id === id && x.client_id === clientId);
   if (!e) return false;
-  data.food_entries = data.food_entries.filter((x) => x !== e);
-  persist();
+  data.entries = data.entries.filter((x) => x !== e);
+  box.persist();
   return true;
 }
 
@@ -13900,13 +13916,15 @@ export function addCustomFood(clientId: number, food: { name: string; kcal: numb
 // simply replaces the first, on the disk as well as in the table.
 
 /** The client's picture of one meal, or null. */
-export function getMealPhoto(clientId: number, date: string, meal: string): string | null {
-  return getData().meal_photos.find((p) => p.client_id === clientId && p.date === date && p.meal === meal)?.file_path ?? null;
+export function getMealPhoto(rows: FoodRows, clientId: number, date: string, meal: string): string | null {
+  rows.need("getMealPhoto", clientId, { dates: [date] }, ["photos"]);
+  return rows.photos.find((p) => p.client_id === clientId && p.date === date && p.meal === meal)?.file_path ?? null;
 }
 
 /** Every meal on a date that has a picture, by meal key. */
-export function mealPhotosOn(clientId: number, date: string): Map<string, string> {
-  return new Map(getData().meal_photos.filter((p) => p.client_id === clientId && p.date === date).map((p) => [p.meal, p.file_path] as const));
+export function mealPhotosOn(rows: FoodRows, clientId: number, date: string): Map<string, string> {
+  rows.need("mealPhotosOn", clientId, { dates: [date] }, ["photos"]);
+  return new Map(rows.photos.filter((p) => p.client_id === clientId && p.date === date).map((p) => [p.meal, p.file_path] as const));
 }
 
 // ---- Video requests: the coach asks for a video of an exercise ----------
@@ -14216,7 +14234,7 @@ export function markVideoSeen(id: number) {
  * Writes the picture to the disk and files it as that day's photo; on a meal that is a saved meal, as the saved meal's
  * picture as well (9 Nov, Alex). Returns its public path and the earlier files nothing shows any more.
  */
-export function saveMealPhoto(clientId: number, date: string, meal: string, buffer: Buffer, mimeType: string): { path: string; gone: string[] } {
+export function saveMealPhoto(box: FoodBox, clientId: number, date: string, meal: string, buffer: Buffer, mimeType: string): { path: string; gone: string[] } {
   const ext = (mimeType.split("/")[1] || "jpg").replace("jpeg", "jpg").replace(/[^a-z0-9]/gi, "") || "jpg";
   // "m:12" is a meal the client added; a colon is not a filename anywhere.
   const slug = meal.replace(/[^a-z0-9]/gi, "-");
@@ -14227,24 +14245,25 @@ export function saveMealPhoto(clientId: number, date: string, meal: string, buff
   fs.writeFileSync(path.join(dir, filename), buffer);
   const publicPath = `/uploads/meals/${clientId}/${date}/${filename}`;
 
-  const data = getData();
-  const row = data.meal_photos.find((p) => p.client_id === clientId && p.date === date && p.meal === meal);
+  const data = box;
+  box.need("saveMealPhoto", clientId, { dates: [date] }, ["photos", "entries", "savedMeals"]);
+  const row = data.photos.find((p) => p.client_id === clientId && p.date === date && p.meal === meal);
   const was: (string | null | undefined)[] = [row?.file_path];
   if (row) {
     row.file_path = publicPath;
     row.uploaded_at = new Date().toISOString();
     delete row.thumb;
   } else {
-    data.meal_photos.push({ id: allocId("meal_photos"), client_id: clientId, date, meal, file_path: publicPath, uploaded_at: new Date().toISOString() });
+    data.photos.push({ id: box.alloc("photos"), client_id: clientId, date, meal, file_path: publicPath, uploaded_at: new Date().toISOString() });
   }
-  const saved = savedMealOfSlot(clientId, date, meal);
+  const saved = savedMealOfSlot(box, clientId, date, meal);
   if (saved) {
     was.push(saved.picture);
     saved.picture = publicPath;
     delete saved.picture_thumb;
   }
-  const gone = dropUnusedMealPictures(was);
-  persist();
+  const gone = box.gc(was);
+  box.persist();
   return { path: publicPath, gone };
 }
 
@@ -14254,19 +14273,20 @@ export function saveMealPhoto(clientId: number, date: string, meal: string, buff
  * stays and stands in as the card's picture, as do other days' photos, the coach's record of what was eaten.
  * Returns the files nothing shows any more, for the bucket copies.
  */
-export function removeMealPhoto(clientId: number, date: string, meal: string): string[] {
-  const data = getData();
-  const row = data.meal_photos.find((p) => p.client_id === clientId && p.date === date && p.meal === meal);
-  const saved = savedMealOfSlot(clientId, date, meal);
+export function removeMealPhoto(box: FoodBox, clientId: number, date: string, meal: string): string[] {
+  const data = box;
+  box.need("removeMealPhoto", clientId, { dates: [date] }, ["photos", "entries", "savedMeals"]);
+  const row = data.photos.find((p) => p.client_id === clientId && p.date === date && p.meal === meal);
+  const saved = savedMealOfSlot(box, clientId, date, meal);
   const shown = saved?.picture ?? row?.file_path;
   if (!shown) return [];
-  if (row?.file_path === shown) data.meal_photos = data.meal_photos.filter((p) => p !== row);
+  if (row?.file_path === shown) data.photos = data.photos.filter((p) => p !== row);
   if (saved?.picture) {
     delete saved.picture;
     delete saved.picture_thumb;
   }
-  const gone = dropUnusedMealPictures([shown]);
-  persist();
+  const gone = box.gc([shown]);
+  box.persist();
   return gone;
 }
 
@@ -14311,33 +14331,43 @@ const dayLabelFor = (date: string, today: string): string => {
 
 /** Training or rest on a date: as set on the diary, else as logged with the calories, else by whether a set was logged. */
 // Training day unless the client picked otherwise (10 Nov, Alex: "have it on training day always").
-export function foodDayType(clientId: number, date: string): "training" | "rest" {
-  return getData().food_days.find((d) => d.client_id === clientId && d.date === date)?.day_type ?? "training";
+export function foodDayType(rows: FoodRows, clientId: number, date: string): "training" | "rest" {
+  rows.need("foodDayType", clientId, { dates: [date] }, ["days"]);
+  return rows.days.find((d) => d.client_id === clientId && d.date === date)?.day_type ?? "training";
+}
+
+/** Whether opening this day has a Rest pick to let go (releaseEmptyRestDay would change something): FOOD_STORE=pg reads first. */
+export function restDayToRelease(rows: FoodRows, clientId: number, date: string): boolean {
+  rows.need("restDayToRelease", clientId, { dates: [date] }, ["days", "entries"]);
+  const row = rows.days.find((d) => d.client_id === clientId && d.date === date);
+  return row?.day_type === "rest" && listFoodEntries(rows, clientId, date).length === 0;
 }
 
 /** A day being opened: Rest picked on it counts only with something logged under it (10 Nov, Alex). While the day stays open the pick holds. */
-export function releaseEmptyRestDay(clientId: number, date: string) {
-  const data = getData();
-  const row = data.food_days.find((d) => d.client_id === clientId && d.date === date);
-  if (row?.day_type !== "rest" || listFoodEntries(clientId, date).length > 0) return;
-  data.food_days = data.food_days.filter((d) => d !== row);
-  persist();
+export function releaseEmptyRestDay(box: FoodBox, clientId: number, date: string) {
+  const data = box;
+  box.need("releaseEmptyRestDay", clientId, { dates: [date] }, ["days", "entries"]);
+  const row = data.days.find((d) => d.client_id === clientId && d.date === date);
+  if (row?.day_type !== "rest" || listFoodEntries(box, clientId, date).length > 0) return;
+  data.days = data.days.filter((d) => d !== row);
+  box.persist();
 }
 
-export function setFoodDayType(clientId: number, date: string, dayType: "training" | "rest") {
-  const data = getData();
-  const row = data.food_days.find((d) => d.client_id === clientId && d.date === date);
+export function setFoodDayType(box: FoodBox, clientId: number, date: string, dayType: "training" | "rest") {
+  const data = box;
+  box.need("setFoodDayType", clientId, { dates: [date] }, ["days", "calories"]);
+  const row = data.days.find((d) => d.client_id === clientId && d.date === date);
   if (row) row.day_type = dayType;
-  else data.food_days.push({ id: allocId("food_days"), client_id: clientId, date, day_type: dayType } as FoodDay);
+  else data.days.push({ id: box.alloc("days"), client_id: clientId, date, day_type: dayType } as FoodDay);
   // The calorie log the coach reads says the same.
-  const log = getCalorieLog(clientId, date);
-  if (log) setCalorieLog(clientId, date, log.kcal, undefined, dayType);
-  persist();
+  const log = getCalorieLog(box, clientId, date);
+  if (log) setCalorieLog(box, clientId, date, log.kcal, undefined, dayType);
+  box.persist();
 }
 
 /** The kcal and macro targets the diary counts down from on a date: the ring's, for the kind of day it is. */
-export function foodDiaryTargetOn(clientId: number, date: string): FoodDiaryView["target"] {
-  return foodDiaryTargetsFor(clientId)[foodDayType(clientId, date)];
+export function foodDiaryTargetOn(rows: FoodRows, clientId: number, date: string): FoodDiaryView["target"] {
+  return foodDiaryTargetsFor(clientId)[foodDayType(rows, clientId, date)];
 }
 
 /** A training day's targets and a rest day's, each null without targets. */
@@ -14438,12 +14468,14 @@ export type LoggedDaysView = {
 };
 
 /** The days a client logged food on, newest first, inside a date range. */
-export function getLoggedDays(clientId: number, from: string, to: string, comments: ChatThread | "no-comments"): LoggedDaysView {
-  const data = getData();
+export function getLoggedDays(food: FoodRows, clientId: number, from: string, to: string, comments: ChatThread | "no-comments"): LoggedDaysView {
+  // The calorie logs whole (the day-type map keeps the last of each date), the rest over the window.
+  food.need("getLoggedDays", clientId, "all", ["calories"]);
+  food.need("getLoggedDays", clientId, { from, to }, ["entries", "meals", "photos"]);
   const derived = getNutritionGoalsSummary(clientId);
   const trainedOn = trainingDates(clientId);
-  const dayType = new Map(data.calorie_logs.filter((c) => c.client_id === clientId).map((c) => [c.date, c] as const));
-  const entries = data.food_entries.filter((e) => e.client_id === clientId && e.date >= from && e.date <= to);
+  const dayType = new Map(food.calories.filter((c) => c.client_id === clientId).map((c) => [c.date, c] as const));
+  const entries = food.entries.filter((e) => e.client_id === clientId && e.date >= from && e.date <= to);
 
   const byDate = new Map<string, typeof entries>();
   for (const e of entries) {
@@ -14455,8 +14487,8 @@ export function getLoggedDays(clientId: number, from: string, to: string, commen
   const days: LoggedDay[] = [...byDate.entries()]
     .sort((a, b) => b[0].localeCompare(a[0]))
     .map(([date, rows]) => {
-      const labels = new Map(listFoodMeals(clientId, date).map((m) => [m.id, m.label] as const));
-      const photos = mealPhotosOn(clientId, date);
+      const labels = new Map(listFoodMeals(food, clientId, date).map((m) => [m.id, m.label] as const));
+      const photos = mealPhotosOn(food, clientId, date);
       // "no-comments": a reader that throws the comments away (macroSeries) reads no chat for them.
       const commentsOn = comments === "no-comments" ? new Map<string, MealComment[]>() : mealCommentsOn(comments, clientId, date);
       const order = [...labels.keys()];
@@ -14690,17 +14722,19 @@ export function yesterdaysOpenMetrics(clientId: number): { date: string; metrics
   return metrics.length ? { date, metrics } : null;
 }
 
-export function getFoodDiary(clientId: number, date: string, chat: ChatThread): FoodDiaryView {
+export function getFoodDiary(food: FoodRows, clientId: number, date: string, chat: ChatThread): FoodDiaryView {
+  // Every day of the client (Recent reads them all), and the pictures' thumbs by file.
+  food.need("getFoodDiary", clientId, "all");
   const today = localDateStr();
-  const entries = listFoodEntries(clientId, date);
+  const entries = listFoodEntries(food, clientId, date);
   const sum = (k: "kcal" | "protein" | "carbs" | "fat") => r1(entries.reduce((s, e) => s + e[k], 0));
-  const meals = listFoodMeals(clientId, date);
-  const labelOf = new Map<string, string>([...FOOD_MEALS.map((m) => [m.id, m.label] as [string, string]), ...getData().food_meals.filter((m) => m.client_id === clientId).map((m) => [`m:${m.id}`, m.name] as [string, string])]);
+  const meals = listFoodMeals(food, clientId, date);
+  const labelOf = new Map<string, string>([...FOOD_MEALS.map((m) => [m.id, m.label] as [string, string]), ...food.meals.filter((m) => m.client_id === clientId).map((m) => [`m:${m.id}`, m.name] as [string, string])]);
   // The same foods in the same amounts as a saved meal: it is that meal.
-  const savedKeys = getData()
-    .saved_meals.filter((s) => s.client_id === clientId)
+  const savedKeys = food.savedMeals
+    .filter((s) => s.client_id === clientId)
     .map((s) => ({ name: s.name, key: foodsKey(s.items) }));
-  const savedMeals = getData().saved_meals.filter((s) => s.client_id === clientId);
+  const savedMeals = food.savedMeals.filter((s) => s.client_id === clientId);
   // The other days' meals, newest first, so a day can be built from one before it.
   const since = new Date(`${today}T00:00:00`);
   since.setDate(since.getDate() - 14);
@@ -14709,14 +14743,14 @@ export function getFoodDiary(clientId: number, date: string, chat: ChatThread): 
   month.setDate(month.getDate() - 31);
   const monthAgo = localDateStr(month);
   const previousMap = new Map<string, FoodDiaryView["previous"][number]>();
-  for (const e of getData().food_entries.filter((x) => x.client_id === clientId && x.date !== date && x.date >= sinceStr && x.date <= today)) {
+  for (const e of food.entries.filter((x) => x.client_id === clientId && x.date !== date && x.date >= sinceStr && x.date <= today)) {
     const key = `${e.date}|${e.meal}`;
     const row = previousMap.get(key) ?? { date: e.date, dateLabel: dayLabelFor(e.date, today), meal: e.meal, mealLabel: labelOf.get(e.meal) ?? "Meal", kcal: 0, names: [] };
     row.kcal += e.kcal;
     if (!row.names.includes(e.name)) row.names.push(e.name);
     previousMap.set(key, row);
   }
-  const photos = mealPhotosOn(clientId, date);
+  const photos = mealPhotosOn(food, clientId, date);
   const comments = mealCommentsOn(chat, clientId, date);
   const order = new Map(meals.map((m, i) => [m.id, i]));
   const previous = [...previousMap.values()]
@@ -14725,12 +14759,12 @@ export function getFoodDiary(clientId: number, date: string, chat: ChatThread): 
   return {
     date,
     dateLabel: dayLabelFor(date, today),
-    target: foodDiaryTargetOn(clientId, date),
+    target: foodDiaryTargetOn(food, clientId, date),
     targets: foodDiaryTargetsFor(clientId),
-    dayType: foodDayType(clientId, date),
-    loggedKcal: getCalorieLog(clientId, date)?.kcal ?? null,
+    dayType: foodDayType(food, clientId, date),
+    loggedKcal: getCalorieLog(food, clientId, date)?.kcal ?? null,
     // The phone's figure (17 Nov; lib/healthSync.ts): read-only in the diary, "From Apple Health".
-    loggedFromPhone: getCalorieLog(clientId, date)?.source === "health",
+    loggedFromPhone: getCalorieLog(food, clientId, date)?.source === "health",
     eaten: { kcal: sum("kcal"), protein: sum("protein"), carbs: sum("carbs"), fat: sum("fat") },
     meals: meals.map((m) => {
       const rows = entries.filter((e) => e.meal === m.id);
@@ -14739,23 +14773,23 @@ export function getFoodDiary(clientId: number, date: string, chat: ChatThread): 
       const linked = savedMealOfRows(rows, savedMeals);
       const savedAs = linked?.name ?? (rows.length ? savedKeys.find((s) => s.key === key)?.name ?? null : null);
       const photo = photos.get(m.id) ?? null;
-      return { ...m, kcal: Math.round(tot("kcal")), protein: tot("protein"), carbs: tot("carbs"), fat: tot("fat"), entries: rows, savedAs, savedMealId: linked?.id ?? null, savedDiffers: !!linked && slotAddsToSavedMeal(rows, linked), photo, picture: linked?.picture ?? photo, thumb: (linked?.picture ? linked.picture_thumb : null) ?? getData().meal_photos.find((p) => p.file_path === (linked?.picture ?? photo))?.thumb ?? null, comments: comments.get(m.id) ?? [] };
+      return { ...m, kcal: Math.round(tot("kcal")), protein: tot("protein"), carbs: tot("carbs"), fat: tot("fat"), entries: rows, savedAs, savedMealId: linked?.id ?? null, savedDiffers: !!linked && slotAddsToSavedMeal(rows, linked), photo, picture: linked?.picture ?? photo, thumb: (linked?.picture ? linked.picture_thumb : null) ?? food.photos.find((p) => p.file_path === (linked?.picture ?? photo))?.thumb ?? null, comments: comments.get(m.id) ?? [] };
     }),
-    recent: recentFoods(clientId),
-    saved: listSavedMeals(clientId),
-    savedDays: listSavedDays(clientId),
+    recent: recentFoods(food, clientId),
+    saved: listSavedMeals(food, clientId),
+    savedDays: listSavedDays(food, clientId),
     ...(() => {
       if (entries.length === 0) return { savedDayAs: null, savedDayId: null };
       // Meals by name, since a copied custom meal gets a new id on its day.
       const nameOf = (meal: string) => labelOf.get(meal)?.toLowerCase() ?? meal;
       const key = entries.map((e) => `${nameOf(e.meal)}@${e.food_id}@${e.grams}`).sort().join("|");
-      const hit = getData()
-        .saved_days.filter((d) => d.client_id === clientId)
+      const hit = food.savedDays
+        .filter((d) => d.client_id === clientId)
         .find((d) => d.items.map((i) => `${d.cards?.find((c) => c.key === i.meal)?.name.toLowerCase() ?? nameOf(i.meal)}@${i.food_id}@${i.grams}`).sort().join("|") === key);
       return { savedDayAs: hit?.name ?? null, savedDayId: hit?.id ?? null };
     })(),
     previous,
-    loggedDays: [...new Set(getData().food_entries.filter((e) => e.client_id === clientId && e.date >= monthAgo && e.date <= today).map((e) => e.date))],
+    loggedDays: [...new Set(food.entries.filter((e) => e.client_id === clientId && e.date >= monthAgo && e.date <= today).map((e) => e.date))],
   };
 }
 
@@ -15309,8 +15343,9 @@ export type ActivityDay = {
  * training, the food and the check-ins, each a third of the day's ring. A
  * record of what was done, not a score.
  */
-export function getActivityCalendar(clientId: number): ActivityDay[] {
+export function getActivityCalendar(food: FoodRows, clientId: number): ActivityDay[] {
   const data = getData();
+  food.need("getActivityCalendar", clientId, "all", ["entries", "calories"]);
   const days = new Map<string, ActivityDay>();
   const day = (date: string) => {
     let d = days.get(date);
@@ -15328,7 +15363,7 @@ export function getActivityCalendar(clientId: number): ActivityDay[] {
 
   // Food: the diary's totals where there is a diary, else the typed calories.
   const totals = new Map<string, { kcal: number; protein: number; carbs: number; fat: number }>();
-  for (const e of data.food_entries) {
+  for (const e of food.entries) {
     if (e.client_id !== clientId) continue;
     const t = totals.get(e.date) ?? { kcal: 0, protein: 0, carbs: 0, fat: 0 };
     t.kcal += e.kcal;
@@ -15338,7 +15373,7 @@ export function getActivityCalendar(clientId: number): ActivityDay[] {
     totals.set(e.date, t);
   }
   for (const [date, t] of totals) day(date).food = { kcal: Math.round(t.kcal), protein: Math.round(t.protein), carbs: Math.round(t.carbs), fat: Math.round(t.fat) };
-  for (const c of data.calorie_logs) {
+  for (const c of food.calories) {
     if (c.client_id !== clientId || totals.has(c.date) || !(c.kcal > 0)) continue;
     day(c.date).food = { kcal: Math.round(c.kcal), protein: null, carbs: null, fat: null };
   }

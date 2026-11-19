@@ -9,6 +9,7 @@
     "lint": "eslint",
     "check:chat": "node scripts/check-chat-door.mjs",
     "check:notes": "node scripts/check-notes-door.mjs",
+    "check:food": "node scripts/check-food-door.mjs",
     "audit:ui": "node scripts/ui-audit.mjs"
   },
   "dependencies": {

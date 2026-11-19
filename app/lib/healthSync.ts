@@ -9,6 +9,7 @@ import { getData, MAX_DAY_STEPS, persist, allocId, type HealthWorkout } from "./
 import { checkInEditable, foodDayType, getMetricEntries, listMetricDefinitions, listMonthlyMetricsAsked, localDateStr, monthStart, setMetricEntry, weekStart, weightInUnit, type MetricCadence, type MetricDefinition } from "./queries";
 import { healthKindOf, type HealthKind } from "./healthKind";
 import { cleanText } from "./pg/store";
+import { writeFood, type FoodBox } from "./food/rows";
 
 export { healthKindOf, type HealthKind };
 
@@ -54,7 +55,7 @@ function editablePeriods(frequency: MetricCadence, today: string): Set<string> {
 }
 const periodOf = (frequency: MetricCadence, day: string) => (frequency === "weekly" ? weekStart(day) : frequency === "monthly" ? monthStart(day) : day);
 
-export function syncHealthForClient(clientId: number, input: HealthSyncInput): HealthSyncResult {
+export async function syncHealthForClient(clientId: number, input: HealthSyncInput): Promise<HealthSyncResult> {
   const today = localDateStr();
   const now = new Date().toISOString();
   // The metrics the client is asked: monthly ones only while monthly check-ins are on for them (listMonthlyMetricsAsked).
@@ -134,7 +135,7 @@ export function syncHealthForClient(clientId: number, input: HealthSyncInput): H
   }
 
   const w = syncWorkouts(clientId, input);
-  const c = syncCalories(clientId, input, today);
+  const c = await syncCalories(clientId, input, today);
   return { tracked, saved: saved + c.saved, workouts: w.count, workoutsChanged: w.changed, calories: c.count };
 }
 
@@ -152,12 +153,19 @@ const shiftDay = (day: string, by: number) => {
  *  it is there (a typed figure emptied, or the day's food all taken out, leaves the day to the phone again on the next
  *  sync). A later sync updates the phone's figure, its day keeping its time; a day the phone
  *  no longer has calories for, within the window it read, loses the phone's figure. Never a check-in. */
-function syncCalories(clientId: number, input: HealthSyncInput, today: string): { saved: number; count: number } {
+async function syncCalories(clientId: number, input: HealthSyncInput, today: string): Promise<{ saved: number; count: number }> {
   if (!Array.isArray(input.calories)) return { saved: 0, count: 0 };
-  const data = getData();
   // The phone's days (its zone may be a day ahead of the server's), the last eight and no further back.
   const first = shiftDay(today, -9);
   const last = shiftDay(today, 1);
+  // Through the food diary's door (quest 8 part 1): its window of the client's food, one write.
+  const asked = { ...input, calories: input.calories };
+  return writeFood("w.calories.health", clientId, { span: { from: first, to: last } }, (box) => syncCaloriesOn(box, clientId, asked, first, last));
+}
+
+function syncCaloriesOn(box: FoodBox, clientId: number, input: HealthSyncInput & { calories: NonNullable<HealthSyncInput["calories"]> }, first: string, last: string): { saved: number; count: number } {
+  box.need("syncCalories", clientId, { from: first, to: last }, ["entries", "calories", "days"]);
+  const data = box;
   const days = new Map<string, number>();
   for (const d of input.calories.slice(0, 20)) {
     const date = String(d?.date);
@@ -165,32 +173,32 @@ function syncCalories(clientId: number, input: HealthSyncInput, today: string): 
     if (!DAY.test(date) || date < first || date > last || !Number.isFinite(kcal) || kcal <= 0 || kcal > MAX_DAY_KCAL) continue;
     days.set(date, kcal);
   }
-  const withFood = new Set((data.food_entries ?? []).filter((e) => e.client_id === clientId).map((e) => e.date));
+  const withFood = new Set(data.entries.filter((e) => e.client_id === clientId).map((e) => e.date));
   const now = new Date().toISOString();
   let saved = 0;
   for (const [date, kcal] of days) {
     if (withFood.has(date)) continue;
-    const was = data.calorie_logs.find((l) => l.client_id === clientId && l.date === date);
+    const was = data.calories.find((l) => l.client_id === clientId && l.date === date);
     if (was && was.source !== "health") continue;
     if (was) {
       if (was.kcal === kcal) continue;
       was.kcal = kcal;
       was.logged_at ??= now;
     } else {
-      data.calorie_logs.push({ id: allocId("calorie_logs"), client_id: clientId, date, kcal, logged_at: now, note: null, day_type: foodDayType(clientId, date), source: "health" });
+      data.calories.push({ id: box.alloc("calories"), client_id: clientId, date, kcal, logged_at: now, note: null, day_type: foodDayType(box, clientId, date), source: "health" });
     }
     saved++;
   }
   // Gone from the phone (deleted in the food app) within the days it read: the phone's figure goes.
   const from = String(input.caloriesFrom ?? "");
   if (DAY.test(from)) {
-    const keep = data.calorie_logs.filter((l) => !(l.client_id === clientId && l.source === "health" && l.date >= (from < first ? first : from) && l.date <= last && !days.has(l.date)));
-    if (keep.length !== data.calorie_logs.length) {
-      saved += data.calorie_logs.length - keep.length;
-      data.calorie_logs = keep;
+    const keep = data.calories.filter((l) => !(l.client_id === clientId && l.source === "health" && l.date >= (from < first ? first : from) && l.date <= last && !days.has(l.date)));
+    if (keep.length !== data.calories.length) {
+      saved += data.calories.length - keep.length;
+      data.calories = keep;
     }
   }
-  if (saved) persist();
+  if (saved) box.persist();
   return { saved, count: days.size };
 }
 

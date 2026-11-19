@@ -7,6 +7,8 @@ import { CHAT_PG } from "./chat/mode";
 import { fetchAllChat, withChatKey } from "./chat/rows";
 import { NOTES_PG } from "./notes/mode";
 import { fetchAllNotes, notesBackupCopy, withNotesKey } from "./notes/rows";
+import { FOOD_PG } from "./food/mode";
+import { fetchFoodExport, withFoodKeys } from "./food/rows";
 
 // Nightly copy of everything on the volume to a bucket that is not the
 // volume: the JSON store as a dated snapshot, the uploads folder mirrored
@@ -108,7 +110,7 @@ export type BackupResult = {
  * goes gets that one's answer): each holds a chat connection for its whole read of the table.
  */
 export function runBackup(): Promise<BackupResult | null> {
-  if (!CHAT_PG && !NOTES_PG) return runBackupOnce();
+  if (!CHAT_PG && !NOTES_PG && !FOOD_PG) return runBackupOnce();
   const g = globalThis as unknown as { __norcoachBackupRun?: Promise<BackupResult | null> | null };
   if (g.__norcoachBackupRun) return g.__norcoachBackupRun;
   const run = runBackupOnce().finally(() => {
@@ -138,6 +140,7 @@ async function runBackupOnce(): Promise<BackupResult | null> {
     try {
       // chat-door: the store copied whole, the chat read from its table when it is not in memory
       // notes-door: the notifications swapped in below when they are in Postgres (NOTES_STORE=pg)
+      // food-door: the food diary swapped in below when it is in Postgres (FOOD_STORE=pg)
       store = withChatKey(getData() as unknown as Record<string, unknown>, await fetchAllChat("backup"));
     } catch (error) {
       chatReadFailed = true;
@@ -158,6 +161,20 @@ async function runBackupOnce(): Promise<BackupResult | null> {
       console.error("[backup] the notifications could not be read from Postgres: today's JSON snapshot skipped, the rest goes on:", error instanceof Error ? error.message : error);
       import("@sentry/nextjs")
         .then((S) => S.captureMessage("Backup: the notifications could not be read; the JSON snapshot was skipped", { level: "error", tags: { alert: "backup-notes-read" } }))
+        .catch(() => {});
+    }
+  }
+  // The food diary the same with FOOD_STORE=pg (quest 8 part 1): its seven tables read in one snapshot, put in their keys'
+  // places (withFoodKeys). In memory mode nothing changes here: the store holds them.
+  if (FOOD_PG && !chatReadFailed) {
+    try {
+      // food-door: the store copied whole, the food diary read from its tables
+      store = withFoodKeys((store ?? getData()) as unknown as Record<string, unknown>, await fetchFoodExport("all", "backup"));
+    } catch (error) {
+      chatReadFailed = true;
+      console.error("[backup] the food diary could not be read from Postgres: today's JSON snapshot skipped, the rest goes on:", error instanceof Error ? error.message : error);
+      import("@sentry/nextjs")
+        .then((S) => S.captureMessage("Backup: the food diary could not be read; the JSON snapshot was skipped", { level: "error", tags: { alert: "backup-food-read" } }))
         .catch(() => {});
     }
   }

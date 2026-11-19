@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { appLockFor, appLocked, openClientApp, type AppLock } from "./appLock";
+import { appLockFor, appLocked, fetchAppLockFood, openClientApp, type AppLock } from "./appLock";
 import { coachForClient, getSessionUser } from "./auth";
 
 // The locked app's two actions (19 Nov, Alex: B of docs/boards/locked-app-mockup.html; app/lib/appLock.ts).
@@ -12,7 +12,7 @@ import { coachForClient, getSessionUser } from "./auth";
 export async function appLockNowAction(): Promise<{ open: true } | { open: false; lock: AppLock } | null> {
   const user = await getSessionUser();
   if (!user || user.role !== "client" || user.client_id == null) return null;
-  const lock = appLockFor(user.client_id);
+  const lock = appLockFor(user.client_id, await fetchAppLockFood([user.client_id], "action.appLock"));
   return lock ? { open: false, lock } : { open: true };
 }
 
@@ -21,7 +21,7 @@ export async function openClientAppAction(clientId: number): Promise<boolean> {
   const id = Number(clientId);
   if (!Number.isInteger(id) || !(await coachForClient(id))) return false;
   // Already open (a phase went live meanwhile) answers true too: there is nothing left to open.
-  const opened = (await openClientApp(id, "coach")) || !appLocked(id);
+  const opened = (await openClientApp(id, "coach")) || !appLocked(id, await fetchAppLockFood([id], "action.appLock"));
   revalidatePath("/admin");
   revalidatePath("/client");
   return opened;

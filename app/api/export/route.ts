@@ -3,6 +3,7 @@ import { getRequestUser } from "../../lib/auth";
 import { getData } from "../../lib/db";
 import { CHAT_TABLE, fetchChatExport, withChatKey } from "../../lib/chat/rows";
 import { fetchNotesExport, NOTES_TABLE, withNotesKey } from "../../lib/notes/rows";
+import { fetchFoodExport, withFoodKeys } from "../../lib/food/rows";
 
 // Settings, Your data (27 Oct, Alex): everything a coach's coaching holds, as one file they keep. Every row of every
 // table that belongs to one of their clients (by client_id), their own rows (by coach_id: the library, programmes,
@@ -19,17 +20,22 @@ const LEFT_OUT = new Set(["users", "login_lock_events", "support_messages", "joi
 export async function GET(request: Request) {
   const user = await getRequestUser(request);
   if (!user || user.pending || user.role !== "coach") return NextResponse.json({ error: "Not found" }, { status: 404 });
+  // food-door: the food diary's lists from fetchFoodExport below (withFoodKeys)
   const data = getData() as unknown as Record<string, unknown>; // chat-door: the chat's rows are swapped in from fetchChatExport below; notes-door: the notifications from fetchNotesExport
   const clientIds = new Set((getData().clients ?? []).filter((c) => c.coach_id === user.id).map((c) => c.id));
   // The chat through its door (Step 5), in its place among the tables, so the file is as it was.
   const exported = await fetchChatExport([...clientIds], "export");
   // The notifications through theirs (quest 7), in their place the same way.
   const notes = await fetchNotesExport([...clientIds], "export");
+  // The food diary through its door (quest 8 part 1): in memory the store's own lists; with FOOD_STORE=pg its rows of
+  // these clients put in their keys' places (withFoodKeys).
+  const food = await fetchFoodExport([...clientIds], "export");
   const out: Record<string, unknown> = {};
   // chat-door: chat rows come from fetchChatExport
   // notes-door: the notifications from fetchNotesExport, their key put in its place with NOTES_STORE=pg (withNotesKey)
   // With CHAT_STORE=pg the store has no chat key: withChatKey puts it where it would be, so the file reads as before.
-  for (const [table, stored] of Object.entries(withNotesKey(withChatKey(data, exported.rows), notes))) {
+  // food-door: the food diary's keys from fetchFoodExport (withFoodKeys; the store's own in memory mode).
+  for (const [table, stored] of Object.entries(withFoodKeys(withNotesKey(withChatKey(data, exported.rows), notes), food))) {
     const rows = table === CHAT_TABLE ? exported.rows : table === NOTES_TABLE ? notes : stored;
     if (LEFT_OUT.has(table) || !Array.isArray(rows)) continue;
     const mine = rows.filter((r) => {

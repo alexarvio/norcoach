@@ -6,6 +6,7 @@ import { msInstant, msInstantMs, stampInstant, stampInstantMs } from "./stamps";
 import { WRITER_COLLECTIONS } from "./writerTables";
 import { CHAT_PG } from "../chat/mode";
 import { NOTES_PG } from "../notes/mode";
+import { FOOD_PG, FOOD_TABLES } from "../food/mode";
 
 // Loads the whole store from Postgres and saves changes back (phase 1).
 //
@@ -343,6 +344,12 @@ function chatTripwire(next: Snapshot, last: Snapshot) {
     throw new Error("[store] !!! chat_messages reached the store's writer with CHAT_STORE=pg: the save is refused");
   }
   // The notifications the same with NOTES_STORE=pg (quest 7).
+  // The food diary's seven tables the same with FOOD_STORE=pg (quest 8 part 1).
+  if (FOOD_PG) {
+    for (const t of FOOD_TABLES) {
+      if (next.rows.has(t) || last.rows.has(t)) throw new Error(`[store] !!! ${t} reached the store's writer with FOOD_STORE=pg: the save is refused`);
+    }
+  }
   if (NOTES_PG && (next.rows.has("coach_activity") || last.rows.has("coach_activity"))) {
     throw new Error("[store] !!! coach_activity reached the store's writer with NOTES_STORE=pg: the save is refused");
   }
@@ -354,6 +361,24 @@ function chatTripwire(next: Snapshot, last: Snapshot) {
  * whose table the writer no longer fills, and the boot's move of the phone's workouts (pg/healthWorkouts.ts). In one
  * transaction (a savepoint inside the caller's), 500 rows a statement. How many were offered.
  */
+/**
+ * One row of a collection as the writer writes it (toRecord, cleanJson, its derived columns), or null when the writer
+ * would leave it out (no usable key, a value that can't be JSON): for a door that writes its rows itself (the food
+ * diary with FOOD_STORE=pg, app/lib/food/rows.ts), so the door and the writer can never encode a row two ways.
+ */
+export function recordForWrite(name: string, row: Row): Row | null {
+  const c = COLLECTIONS.find((x) => x.name === name);
+  if (!c) throw new Error(`recordForWrite: no collection named ${name}`);
+  if (!row || typeof row !== "object" || Array.isArray(row)) return null;
+  const record = toRecord(c.table, row);
+  if (c.key.some((k) => record[k] == null)) return null;
+  const json = cleanJson(record);
+  if (json == null) return null;
+  const parsed = JSON.parse(json) as Row;
+  for (const d of DERIVED_OF.get(c.table) ?? []) parsed[d.column] = derivedValue(d, parsed);
+  return parsed;
+}
+
 export async function insertRowsOnce(db: AnyDb, name: string, list: unknown[]): Promise<number> {
   const c = COLLECTIONS.find((x) => x.name === name);
   if (!c) throw new Error(`insertRowsOnce: no collection named ${name}`);

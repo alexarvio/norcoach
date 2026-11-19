@@ -13,6 +13,9 @@ if (door.status !== 0) process.exit(door.status ?? 1);
 // The notifications' door the same (19 Nov, quest 7).
 const notesDoor = spawnSync(process.execPath, [fileURLToPath(new URL("./check-notes-door.mjs", import.meta.url))], { stdio: "inherit" });
 if (notesDoor.status !== 0) process.exit(notesDoor.status ?? 1);
+// The food diary's door the same (19 Nov, quest 8 part 1).
+const foodDoor = spawnSync(process.execPath, [fileURLToPath(new URL("./check-food-door.mjs", import.meta.url))], { stdio: "inherit" });
+if (foodDoor.status !== 0) process.exit(foodDoor.status ?? 1);
 const nextBin = require.resolve("next/dist/bin/next");
 const env = { ...process.env, NODE_OPTIONS: "--max-old-space-size=4096" };
 const result = spawnSync(process.execPath, [nextBin, "build"], { stdio: "inherit", env });

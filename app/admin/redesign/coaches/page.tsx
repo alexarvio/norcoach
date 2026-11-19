@@ -3,6 +3,7 @@ import { isOwner, requireCoach } from "../../../lib/auth";
 import { getCoachProfileView, getCoachSettings, listCoachAccounts, listCoachEmails } from "../../../lib/queries";
 import { ensureJoinCode } from "../../../lib/joinRequests";
 import { fetchCoachChat, fetchCoachPageChat } from "../../../lib/chat/rows";
+import { fetchCoachFood } from "../../../lib/food/rows";
 import { listSupportThreads } from "../../../lib/support";
 import { billingOn, billingView } from "../../../lib/billing";
 import { startTiming } from "../../../lib/timing";
@@ -34,8 +35,11 @@ export default async function CoachesPage() {
   // The chat first (Step 5, app/lib/chat/rows.ts): the rail's view and the chat list's, and every coach's for their last activity.
   const chat = await t.time("chat", () => fetchCoachPageChat(coach.id, "page.coaches"));
   const everyCoach = await t.time("chatAll", () => fetchCoachChat(listCoachEmails().map((c) => c.id), "page.coaches.accounts"));
+  // The food diary the same (quest 8 part 1): the rail's coach, and every coach's for their last activity.
+  const food = await t.time("food", () => fetchCoachFood([coach.id], "page.coaches"));
+  const everyCoachFood = await t.time("foodAll", () => fetchCoachFood(listCoachEmails().map((c) => c.id), "page.coaches.accounts"));
   const accounts: CoachRow[] = t.time("coachAccounts", () =>
-    listCoachAccounts(everyCoach)
+    listCoachAccounts(everyCoach, everyCoachFood)
       .map((c) => {
         const b = billingView(c.id, c.id === coach.id);
         const view = getCoachProfileView(c.id);
@@ -45,7 +49,7 @@ export default async function CoachesPage() {
   );
   return t.end(
     <div className="rd-frame">
-      <RedesignRail rail={t.time("rail", () => loadRail(coach, chat.coach))} clientId={0} />
+      <RedesignRail rail={t.time("rail", () => loadRail(coach, chat.coach, food))} clientId={0} />
       <ChatDock chats={t.time("chatDock", () => loadChatDock(coach, chat.dock))} />
       <div className="rd-page">
         <CoachesDraft accounts={accounts} support={t.time("supportThreads", () => listSupportThreads())} billingOn={billingOn()} />

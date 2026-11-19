@@ -4,6 +4,7 @@ import { CopyObjectCommand, DeleteObjectCommand, DeleteObjectsCommand, GetObject
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { DATA_DIR, getData, persist } from "./db";
 import { chatMediaWithoutLook, chatShowsFile } from "./chat/rows";
+import { fetchFoodPictures } from "./food/rows";
 import { loadSharp } from "./sharpSetup";
 
 // Uploaded files (progress photos, avatars, chat media, demo videos) in the
@@ -831,7 +832,9 @@ export async function prepareAllChatMedia(): Promise<number> {
     items.push({ path: v.file_path, type: v.media === "photo" ? "image" : "video", chat: false });
   }
   // A meal's picture, day's or saved, from before they had a preview (10 Nov, Alex): the card draws its 1080 as well.
-  for (const p of [...data.meal_photos.filter((m) => !m.thumb).map((m) => m.file_path), ...data.saved_meals.filter((m) => m.picture && !m.picture_thumb).map((m) => m.picture!)]) {
+  // The food diary's door (quest 8 part 1): every client's day photos and saved meals.
+  const food = await fetchFoodPictures("job.media.prepare");
+  for (const p of [...food.photos.filter((m) => !m.thumb).map((m) => m.file_path), ...food.savedMeals.filter((m) => m.picture && !m.picture_thumb).map((m) => m.picture!)]) {
     if (seen.has(p)) continue;
     seen.add(p);
     items.push({ path: p, type: "image", chat: true, card: true });

@@ -8,6 +8,7 @@ import { flushStore } from "./pg/runtime";
 import { releaseLease } from "./pg/lease";
 import { CHAT_PG } from "./chat/mode";
 import { NOTES_PG } from "./notes/mode";
+import { FOOD_PG } from "./food/mode";
 
 // Shutting down without losing a save (17 Nov, the safety net). Railway stops a deploy with SIGTERM; Next's own
 // handler (next/dist/server/lib/start-server.js) closes the HTTP server, waits for the requests still open, then
@@ -49,8 +50,9 @@ function dumpStore(why: string): string | null {
     // be unsaved, and the file says so (pg/runtime.ts refuses to import one as a whole store).
     // With NOTES_STORE=pg the notifications are in Postgres too (quest 7): the file says so, and keeps the outbox (its ops not
     // yet in the table), which a pg boot drains and a memory boot of this build applies.
-    const flags = { ...(CHAT_PG ? { _chat_in_postgres: true } : {}), ...(NOTES_PG ? { _notes_in_postgres: true } : {}) };
-    body = CHAT_PG || NOTES_PG ? JSON.stringify({ ...getData(), ...flags }) : JSON.stringify(getData());
+    // With FOOD_STORE=pg the food diary the same (quest 8 part 1): each write committed before its answer, the file says so.
+    const flags = { ...(CHAT_PG ? { _chat_in_postgres: true } : {}), ...(NOTES_PG ? { _notes_in_postgres: true } : {}), ...(FOOD_PG ? { _food_in_postgres: true } : {}) };
+    body = CHAT_PG || NOTES_PG || FOOD_PG ? JSON.stringify({ ...getData(), ...flags }) : JSON.stringify(getData());
   } catch (e) {
     console.error(`[shutdown] !!! the last save to Postgres failed (${why}), and the store can't even be written as JSON:`, e);
     return null;
@@ -117,6 +119,12 @@ export function registerShutdown() {
         if (NOTES_PG) {
           const { drainOutbox } = await import("./notes/outbox");
           await until(first.catch(() => {}).then(() => drainOutbox(Math.max(0, Math.min(8_000, deadline - Date.now() - 1500)))), deadline - 1000);
+        }
+        // FOOD_STORE=pg: the food writes still on their chains settled first (a background one, a picture's look), so none
+        // commits after the lease is let go and the next instance has loaded; the last save below then takes their meal order.
+        if (FOOD_PG) {
+          const { foodChainsSettled } = await import("./food/pg");
+          await until(foodChainsSettled(), deadline - 1000);
         }
         const problem = STORE_MODE === "postgres" ? await until(first.catch(() => {}).then(() => flushStore() ?? undefined), deadline) : null;
         if (problem) {

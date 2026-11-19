@@ -8,6 +8,8 @@ import { wipeAllChat } from "./chat/rows";
 import { CHAT_PG } from "./chat/mode";
 import { wipeAllNotes } from "./notes/rows";
 import { NOTES_PG } from "./notes/mode";
+import { wipeFoodPhotos } from "./food/rows";
+import { FOOD_PG } from "./food/mode";
 import { clearLockoutsFor } from "./loginLockout";
 import { coachOwnsClient, seedCoachLibrary } from "./tenancy";
 import { clerkOn, clerkUserIdFromRequest, clerkUserRow, deleteClerkUser } from "./clerk";
@@ -456,6 +458,8 @@ async function resetWorkspaceOnce(): Promise<void> {
   if (CHAT_PG) await wipeAllChat("w.wipe");
   // The notifications the same with NOTES_STORE=pg (quest 7).
   if (NOTES_PG) await wipeAllNotes("w.wipe");
+  // The day photos the same with FOOD_STORE=pg (quest 8 part 1).
+  if (FOOD_PG) await wipeFoodPhotos();
 
   const before = data.clients.length;
   data.users = data.users.filter((u) => u.role === "coach");
@@ -474,7 +478,9 @@ async function resetWorkspaceOnce(): Promise<void> {
   data.photo_uploads = [];
   data.photo_settings = [];
   data.photo_period_notes = [];
-  data.meal_photos = [];
+  // Through the food diary's door (quest 8 part 1): memory at once, synchronously, as before (the day photos alone, as
+  // always; the rest of the food diary is left as it was).
+  if (!FOOD_PG) void wipeFoodPhotos();
   data.client_profiles = [];
   data.client_goals = [];
   data.meetings = [];

@@ -9,6 +9,7 @@
 // again for a fresh one.
 
 import { getData, persist, allocId } from "./db";
+import { writeFood } from "./food/rows";
 import {
   addExerciseToDay,
   addClientGym,
@@ -200,7 +201,12 @@ export async function buildDemoClient(coachId: number, name: string): Promise<nu
     if (rand() < 0.9 && weight) setMetricEntry(weight.id, date, kg);
     if (rand() < 0.85 && sleep) setMetricEntry(sleep.id, date, Math.round((6 + rand() * 2.5) * 2) / 2);
     if (rand() < 0.85 && steps) setMetricEntry(steps.id, date, 5000 + Math.floor(rand() * 7000));
-    if (rand() < 0.8) setCalorieLog(id, date, 2400 + Math.floor((rand() - 0.5) * 700), null, rand() < 0.6 ? "training" : "rest");
+    if (rand() < 0.8) {
+      // Through the food diary's door (quest 8 part 1), its figures drawn in the order they always were.
+      const kcal = 2400 + Math.floor((rand() - 0.5) * 700);
+      const dayType = rand() < 0.6 ? "training" : "rest";
+      await writeFood("w.calories.demo", id, { span: { dates: [date] } }, (box) => setCalorieLog(box, id, date, kcal, null, dayType));
+    }
   }
   persist();
 

@@ -9,6 +9,7 @@ import { COUNTRIES } from "../../../../../lib/countries";
 import CoachesPanel from "../../../../CoachesPanel";
 import { loadRail } from "../../../loaders";
 import { fetchCoachChat } from "../../../../../lib/chat/rows";
+import { fetchCoachFood } from "../../../../../lib/food/rows";
 import { listCoachEmails } from "../../../../../lib/queries";
 import DemoFrame, { DialogScreen } from "../../DemoFrame";
 import "../../../training/draft.css";
@@ -26,7 +27,7 @@ const SAMPLE = { firstName: "Sam", lastName: "Jansen", birthdate: "1994-03-12", 
 export default async function OnboardingScreen({ params }: { params: Promise<{ screen: string }> }) {
   const coach = await requireCoach();
   const { screen } = await params;
-  const rail = loadRail(coach, await fetchCoachChat([coach.id], "page.onboarding.screen"));
+  const rail = loadRail(coach, await fetchCoachChat([coach.id], "page.onboarding.screen"), await fetchCoachFood([coach.id], "page.onboarding.screen"));
   switch (screen) {
     case "login":
       return (
@@ -44,7 +45,7 @@ export default async function OnboardingScreen({ params }: { params: Promise<{ s
       return (
         <DemoFrame>
           <div className="ad-pad">
-            <CoachesPanel ownerId={coach.id} chat={await fetchCoachChat(listCoachEmails().map((c) => c.id), "page.onboarding.screen.accounts")} />
+            <CoachesPanel ownerId={coach.id} chat={await fetchCoachChat(listCoachEmails().map((c) => c.id), "page.onboarding.screen.accounts")} food={await fetchCoachFood(listCoachEmails().map((c) => c.id), "page.onboarding.screen.accounts")} />
           </div>
         </DemoFrame>
       );

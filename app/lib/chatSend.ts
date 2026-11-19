@@ -7,6 +7,7 @@ import { claimUpload, discardUpload, placeUpload } from "./streamUpload";
 import { onceKeyKnown, releaseOnce, takenKeyOf, takeOnce } from "./once";
 import { chatOnceTaken, fetchFoodComments } from "./chat/rows";
 import { CHAT_PG } from "./chat/mode";
+import { fetchClientFood, noFoodRows } from "./food/rows";
 import { parseMessageLink, type MessageLink } from "./messageLinks";
 import { pushCoachMessage } from "./coachPush";
 import type { SessionUser } from "./auth";
@@ -55,7 +56,7 @@ export async function sendChatAs(user: Pick<SessionUser, "id" | "role">, clientI
   // from the workout); describeMessageLink checks the day is theirs.
   let link: MessageLink | null = null;
   {
-    link = linkOf(formData, sender, clientId);
+    link = await linkOf(formData, sender, clientId);
     // A meal takes one comment: a second send (two tabs, a double click) is dropped. Its comments fetched, then checked and
     // the message made with nothing awaited between (the door writes memory before it yields).
     if (link?.kind === "food" && link.meal && hasMealComment(await fetchFoodComments(clientId, "send.mealGuard"), clientId, link.date, link.meal)) return false;
@@ -104,7 +105,7 @@ async function fileUpload(up: NonNullable<ReturnType<typeof claimUpload>>, clien
 }
 
 /** The message's link: only one that parses, and only one the client can actually open. */
-function linkOf(formData: FormData, sender: "client" | "coach", clientId: number): MessageLink | null {
+async function linkOf(formData: FormData, sender: "client" | "coach", clientId: number): Promise<MessageLink | null> {
   let link: MessageLink | null;
   try {
     link = parseMessageLink(JSON.parse(String(formData.get("link") || "null")));
@@ -112,7 +113,9 @@ function linkOf(formData: FormData, sender: "client" | "coach", clientId: number
     link = null;
   }
   if (link && sender === "client" && link.kind !== "session" && link.kind !== "exercise") link = null;
-  if (link && describeMessageLink(clientId, link).gone) link = null;
+  // A meal's link reads its day's meals (the food diary's door); any other link reads no food.
+  const food = link?.kind === "food" && link.meal ? await fetchClientFood(clientId, "api.send.link", { dates: [link.date] }) : noFoodRows("api.send.link");
+  if (link && describeMessageLink(food, clientId, link).gone) link = null;
   return link;
 }
 
@@ -147,7 +150,7 @@ async function sendChatInPg(user: Pick<SessionUser, "id" | "role">, clientId: nu
     // Filing the file can fail (the disk, the bucket): thrown, and no key was taken, so the send going again goes through.
     const media = up ? await fileUpload(up, clientId, formData) : undefined;
     if (!text && !media) return false;
-    const link = linkOf(formData, sender, clientId);
+    const link = await linkOf(formData, sender, clientId);
     const meal = link?.kind === "food" && link.meal ? { date: link.date, meal: link.meal } : null;
     // A meal takes one comment: the fetched comments first, a fast way out; the insert's lock and check are the guard.
     if (meal && hasMealComment(await fetchFoodComments(clientId, "send.mealGuard"), clientId, meal.date, meal.meal)) {

@@ -82,6 +82,8 @@ async function main() {
   const loaders = await import("../app/admin/redesign/loaders");
   const feedBoard = await import("../app/lib/feedBoardData");
   const rows = await import("../app/lib/chat/rows");
+  // The food diary's views (quest 8 part 1), beside the chat's: the same paths' fetches.
+  const food = await import("../app/lib/food/rows");
   const data = db.getData();
   const out: Record<string, unknown> = {};
   const errors: string[] = [];
@@ -97,20 +99,21 @@ async function main() {
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const coaches = (data.users as any[]).filter((u) => u.role === "coach");
   const clients = (data.clients as any[]).map((c) => ({ id: c.id as number, coach_id: (c.coach_id ?? null) as number | null }));
-  await safe("listCoachAccounts", async () => q.listCoachAccounts(await rows.fetchCoachChat(coaches.map((c) => c.id), "page.coaches.accounts")));
+  await safe("listCoachAccounts", async () => q.listCoachAccounts(await rows.fetchCoachChat(coaches.map((c) => c.id), "page.coaches.accounts"), await food.fetchCoachFood(coaches.map((c) => c.id), "page.coaches.accounts")));
   for (const coach of coaches) {
-    await safe(`rail:${coach.id}`, async () => loaders.loadRail(coach, (await rows.fetchCoachPageChat(coach.id, "page.business")).coach));
-    await safe(`phaseNeeds:${coach.id}`, async () => loaders.loadPhaseNeeds(coach.id, (await rows.fetchCoachPageChat(coach.id, "page.phases")).coach));
+    await safe(`rail:${coach.id}`, async () => loaders.loadRail(coach, (await rows.fetchCoachPageChat(coach.id, "page.business")).coach, await food.fetchCoachFood([coach.id], "page.business")));
+    await safe(`phaseNeeds:${coach.id}`, async () => loaders.loadPhaseNeeds(coach.id, (await rows.fetchCoachPageChat(coach.id, "page.phases")).coach, await food.fetchCoachFood([coach.id], "page.phases")));
     await safe(`dock:${coach.id}`, async () => loaders.loadChatDock(coach, (await rows.fetchCoachPageChat(coach.id, "page.calendar")).dock));
     // The Feed as it stands (its Since from the visit before, as kept; no visit noted here).
-    await safe(`feedBoard:${coach.id}`, async () => feedBoard.getFeedBoard(coach.id, (await rows.fetchCoachPageChat(coach.id, "page.feed")).coach));
+    await safe(`feedBoard:${coach.id}`, async () => feedBoard.getFeedBoard(coach.id, (await rows.fetchCoachPageChat(coach.id, "page.feed")).coach, await food.fetchCoachFood([coach.id], "page.feed")));
   }
   for (const c of clients) {
     await safe(`tabHome:${c.id}`, async () => {
       const tab = await rows.fetchClientTabChat(c.coach_id ?? 0, c.id, "page.tab.home");
-      return { home: q.getClientHome(c.id, tab.coach), attention: q.clientAttention(c.id, tab.coach), dots: loaders.loadDots(c.id, tab.coach), draft: loaders.loadHome(c.id, tab) };
+      const f = await food.fetchClientTabFood(c.coach_id ?? 0, c.id, "page.tab.home");
+      return { home: q.getClientHome(c.id, tab.coach, f), attention: q.clientAttention(c.id, tab.coach, f), dots: loaders.loadDots(c.id, tab.coach, f), draft: loaders.loadHome(c.id, tab, f) };
     });
-    await safe(`dismissHome:${c.id}`, async () => q.getClientHome(c.id, await rows.fetchCoachChatOfClient(c.id, "action.dismissHome")));
+    await safe(`dismissHome:${c.id}`, async () => q.getClientHome(c.id, await rows.fetchCoachChatOfClient(c.id, "action.dismissHome"), await food.fetchCoachFoodOfClient(c.id, "action.dismissHome")));
   }
   out._errors = errors;
   fs.writeFileSync(process.env.OUT!, JSON.stringify(out));

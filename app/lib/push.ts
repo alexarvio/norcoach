@@ -210,6 +210,7 @@ const HELD_KEY = "notif_held";
 const HELD_MAX_MS = 2 * 24 * 60 * 60 * 1000;
 
 function heldBox(): HeldBox {
+  // chat-door: notes-door: food-door: its own key alone (notif_held); no chat, notifications or food.
   const d = getData() as unknown as Record<string, unknown>;
   const box = d[HELD_KEY];
   if (box && typeof box === "object" && !Array.isArray(box)) return box as HeldBox;

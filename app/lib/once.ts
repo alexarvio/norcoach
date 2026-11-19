@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { getData, persist, type OnceKey } from "./db";
 import { findOnceKey, keepOnceKey, onceRows } from "./onceKeep";
+import { OnceAnswered } from "./food/onceAnswered";
 
 export { noteTakenKey } from "./onceKeep";
 
@@ -105,6 +106,12 @@ export async function once<T>(name: string, key: string | null | undefined, run:
       }
       return result;
     } catch (err) {
+      // A food write with FOOD_STORE=pg found its key taken in its own transaction (food/onceAnswered.ts): answered as a
+      // key known here is, and kept. Never thrown in memory mode.
+      if (err instanceof OnceAnswered) {
+        keep(err.row);
+        return answerAgain<T>(err.row);
+      }
       const digest = redirectDigest(err);
       if (digest && !errorRedirect(digest)) keep({ key: full, at: Date.now(), redirect: digest });
       throw err;

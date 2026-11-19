@@ -5,6 +5,7 @@
 import type { ConsistencyDay, HomeBoard, MuscleGroup, MuscleWindow, PerGroup, StrengthWindow } from "./homeBoard";
 import { getData, persist, type Data, type PhaseTrack } from "./db";
 import type { ChatThread } from "./chat/rows";
+import type { FoodRows } from "./food/rows";
 import {
   coachGroups,
   getActivityCalendar,
@@ -169,8 +170,9 @@ type Ctx = {
   bodyOn: (day: string | null | undefined) => number | null;
 };
 
-/** withCalendar false: the activity calendar left empty, for a read that never looks at it (exerciseTrends; 23 Oct, speed). */
-function context(clientId: number, today: string, withCalendar = true): Ctx {
+/** No food view (null): the activity calendar left empty, for a read that never looks at it (exerciseTrends; 23 Oct, speed). */
+function context(clientId: number, today: string, food: FoodRows | null): Ctx {
+  const withCalendar = food != null;
   const data = getData();
   const client = data.clients.find((c) => c.id === clientId);
   const phases = sub("phases", () => Object.fromEntries(TRACK_ORDER.map((t) => [t, getCurrentPhase(clientId, t)])) as Record<PhaseTrack, PhaseRow | null>);
@@ -286,7 +288,7 @@ function context(clientId: number, today: string, withCalendar = true): Ctx {
     today,
     client,
     phases,
-    calendar: withCalendar ? new Map(sub("calendar", () => getActivityCalendar(clientId)).map((d) => [d.date, d] as const)) : new Map(),
+    calendar: withCalendar && food ? new Map(sub("calendar", () => getActivityCalendar(food, clientId)).map((d) => [d.date, d] as const)) : new Map(),
     days,
     byDay,
     logsByAssignment,
@@ -319,12 +321,12 @@ function safe<T>(part: string, fn: () => T, fallback: T): T {
 
 // ---- The board ------------------------------------------------------------------------
 
-export function getHomeBoard(clientId: number, thread: ChatThread): HomeBoard {
+export function getHomeBoard(clientId: number, thread: ChatThread, food: FoodRows): HomeBoard {
   const today = localDateStr();
   const empty = emptyBoard(today);
   let ctx: Ctx;
   try {
-    ctx = sub("read", () => context(clientId, today));
+    ctx = sub("read", () => context(clientId, today, food));
   } catch (e) {
     console.error("[homeBoard] read:", e);
     return empty;
@@ -338,7 +340,7 @@ export function getHomeBoard(clientId: number, thread: ChatThread): HomeBoard {
     lastPaid: part("lastPaid", () => lastPaidOf(ctx), null),
     outstanding: part("outstanding", () => outstandingOf(ctx), null),
     nextInvoice: part("nextInvoice", () => nextInvoiceOf(ctx), null),
-    since: part("since", () => sinceOf(ctx, thread), null),
+    since: part("since", () => sinceOf(ctx, thread, food), null),
     muscles: part("muscles", () => musclesOf(ctx), empty.muscles),
     strength: part("strength", () => strengthOf(ctx), empty.strength),
     weight: part("weight", () => weightOf(ctx), null),
@@ -523,7 +525,7 @@ function lastPaidOf(ctx: Ctx): HomeBoard["lastPaid"] {
 
 // ---- Since the coach last looked ------------------------------------------------------------
 
-function sinceOf(ctx: Ctx, thread: ChatThread): HomeBoard["since"] {
+function sinceOf(ctx: Ctx, thread: ChatThread, foodRows: FoodRows): HomeBoard["since"] {
   const prev = ctx.client?.home_looked?.prev;
   if (prev == null || !Number.isFinite(prev)) return null;
   const data = getData();
@@ -572,8 +574,9 @@ function sinceOf(ctx: Ctx, thread: ChatThread): HomeBoard["since"] {
 
   // Days with food logged since: a diary entry, or a typed day's calories.
   const food = new Set<string>();
-  for (const f of data.food_entries) if (f.client_id === ctx.clientId && f.date <= ctx.today && savedSince(f.logged_at, f.date)) food.add(f.date);
-  for (const c of data.calorie_logs) if (c.client_id === ctx.clientId && c.source !== "health" && c.kcal > 0 && c.date <= ctx.today && savedSince(c.logged_at, c.date)) food.add(c.date);
+  foodRows.need("home.sinceOf", ctx.clientId, "all", ["entries", "calories"]);
+  for (const f of foodRows.entries) if (f.client_id === ctx.clientId && f.date <= ctx.today && savedSince(f.logged_at, f.date)) food.add(f.date);
+  for (const c of foodRows.calories) if (c.client_id === ctx.clientId && c.source !== "health" && c.kcal > 0 && c.date <= ctx.today && savedSince(c.logged_at, c.date)) food.add(c.date);
 
   const messages = thread.rows(ctx.clientId).filter((m) => m.client_id === ctx.clientId && m.sender === "client" && (m.text?.trim() || m.media_path) && stampMs(m.created_at) > prev).length;
 
@@ -930,7 +933,7 @@ export type ExerciseSession = {
 };
 export function exerciseTrends(clientId: number, today: string = localDateStr()): Map<string, { d7: number | null; d30: number | null; d7Since: string | null; d30Since: string | null; sessions: ExerciseSession[] }> {
   // The sets alone: the calendar is the board's, and the costliest part of the read.
-  const ctx = context(clientId, today, false);
+  const ctx = context(clientId, today, null);
   const byKey = new Map<string, Map<string, number>>();
   const weekOfDay = new Map(ctx.days.map((d) => [d.id, d.week_number] as const));
   const dayOf = new Map<number, number>();
@@ -1045,7 +1048,7 @@ function bestIndex(ctx: Ctx): { rowOf: Map<number, AssignmentRow>; byKey: Map<st
  * time (nothing to beat), an assisted lift with no body weight known. Worked out per row only when asked.
  */
 export function trainingBests(clientId: number, today: string = localDateStr()): { bests: Map<number, PersonalBest>; barOf: (assignmentId: number) => PbBar | null } {
-  const ctx = context(clientId, today, false);
+  const ctx = context(clientId, today, null);
   const { rowOf, byKey } = bestIndex(ctx);
   const out = new Map<number, PersonalBest>();
   for (const list of byKey.values()) {

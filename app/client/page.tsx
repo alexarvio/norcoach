@@ -8,6 +8,7 @@ import { touchPresence } from "../lib/presence";
 import { getData } from "../lib/db";
 import { fetchThread, type ChatThread } from "../lib/chat/rows";
 import { fetchClientNotes, type ClientNotes } from "../lib/notes/rows";
+import { fetchClientPageFood, noFoodRows, type FoodRows } from "../lib/food/rows";
 import {
   getAssignmentsForDay,
   getFreeSessions,
@@ -394,7 +395,7 @@ function isoPlusDays(iso: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function HomeTab({ CLIENT_ID, chat, notes, photos, food, phoneTz }: { CLIENT_ID: number; chat: ChatThread; notes: ClientNotes; photos: ProgressPics; food: PhaseFoodToday; phoneTz: string | null }) {
+function HomeTab({ CLIENT_ID, chat, notes, photos, food, phoneTz, foodRows }: { CLIENT_ID: number; chat: ChatThread; notes: ClientNotes; photos: ProgressPics; food: PhaseFoodToday; phoneTz: string | null; /** The client's food diary (app/lib/food/rows.ts): the coach's meal links' labels. */ foodRows: FoodRows }) {
   const client = getClient(CLIENT_ID);
   const today = localDateStr();
 
@@ -486,7 +487,7 @@ function HomeTab({ CLIENT_ID, chat, notes, photos, food, phoneTz }: { CLIENT_ID:
       coach={{ firstName: coachFirst, photoPath: getCoachAvatarPath(CLIENT_ID) }}
       session={session}
       progressPics={photos}
-      latestActivity={latestCoachActivity(CLIENT_ID, chat, notes, coachFirst, phoneTz)}
+      latestActivity={latestCoachActivity(CLIENT_ID, chat, foodRows, notes, coachFirst, phoneTz)}
       upcoming={upcoming}
       recap={getLastMeetingRecap(CLIENT_ID)}
       phases={phases}
@@ -540,9 +541,9 @@ function actionOnly(message: string): string {
 // What a comment was on, in words: "Commented on your nutrition".
 const COMMENT_ON = { nutrition: "your nutrition", checkin: "your check-in", photos: "your shape update", training: "your training" } as const;
 
-function latestCoachActivity(clientId: number, chat: ChatThread, noteView: ClientNotes, coachFirst: string, phoneTz: string | null = null): LatestActivity {
+function latestCoachActivity(clientId: number, chat: ChatThread, foodRows: FoodRows, noteView: ClientNotes, coachFirst: string, phoneTz: string | null = null): LatestActivity {
   const weekAgo = Date.now() - 7 * 86400000;
-  const sent = coachMessagesFor(chat).filter((m) => !m.mine && (m.text.trim() || m.media));
+  const sent = coachMessagesFor(chat, foodRows).filter((m) => !m.mine && (m.text.trim() || m.media));
   const latestMsg = sent[sent.length - 1] ?? null;
   // A coach chat message's own notification ("Your coach sent you a video")
   // is only its echo: read the message itself (17 Oct), so a form review shows
@@ -920,7 +921,7 @@ function TrainingTab({
   );
 }
 
-function NutritionTab({ CLIENT_ID, diary, readOnly = false }: { CLIENT_ID: number; diary: FoodDiaryProps; readOnly?: boolean }) {
+function NutritionTab({ CLIENT_ID, diary, readOnly = false, foodRows }: { CLIENT_ID: number; diary: FoodDiaryProps; readOnly?: boolean; /** The client's food diary (app/lib/food/rows.ts): Last 7 days. */ foodRows: FoodRows }) {
   const summary = getNutritionGoalsSummary(CLIENT_ID);
   const plan = getNutritionPlan(CLIENT_ID);
   const storedPlan = getStoredNutritionPlan(CLIENT_ID);
@@ -985,7 +986,7 @@ function NutritionTab({ CLIENT_ID, diary, readOnly = false }: { CLIENT_ID: numbe
     return kcal > 0 ? kcal : null;
   };
   const weekAgo = addDays(today, -7);
-  const lastWeek = listCalorieDays(CLIENT_ID, 14)
+  const lastWeek = listCalorieDays(foodRows, CLIENT_ID, 14)
     .filter((c) => c.date < today && c.date >= weekAgo && c.kcal != null)
     .map((c) => {
       const kcal = c.kcal as number;
@@ -1206,7 +1207,7 @@ function NotificationsPanel({ CLIENT_ID, notes, phoneTz = null }: { CLIENT_ID: n
         actionRef,
         videoReply: n.action_tab === "video" ? videoReplies.find((r) => r.id === n.action_ref) ?? null : null,
         // The exact thing it is about, as a message link (24 Oct, Alex): a session, an exercise, the shape update.
-        link: category === "pics_reviewed" ? describeMessageLink(CLIENT_ID, { kind: "photos" }) : notificationLink(CLIENT_ID, n),
+        link: category === "pics_reviewed" ? describeMessageLink(noFoodRows("page.client"), CLIENT_ID, { kind: "photos" }) : notificationLink(CLIENT_ID, n),
       };
     });
   return <NotificationsScreen items={items} clientId={CLIENT_ID} coachName={coachFirst} />;
@@ -1343,6 +1344,8 @@ export default async function ClientPage({
   const chatThread = await fetchThread(CLIENT_ID, "page.client");
   // The notifications the same (quest 7, app/lib/notes/rows.ts): the newest 500, every cut below is inside them.
   const notes = await fetchClientNotes(CLIENT_ID, phone ? "page.client.phone" : "page.client");
+  // The food diary the same (quest 8 part 1, app/lib/food/rows.ts): the client's whole diary, every cut below is inside it.
+  const foodRows = await fetchClientPageFood(CLIENT_ID, phone ? "page.client.phone" : "page.client");
   // The Check-in screen's three sections, the measurement deltas and this
   // period's photo slots. Built here rather than in HomeTab because the
   // screen is a full-screen push view owned by AppShell.
@@ -1394,7 +1397,7 @@ export default async function ClientPage({
         workoutsThisMonth: calendar.filter((d) => d.date.startsWith(month)).reduce((n, d) => n + d.sessions.length, 0),
       };
     })(),
-    calendar: getActivityCalendar(CLIENT_ID),
+    calendar: getActivityCalendar(foodRows, CLIENT_ID),
   };
   const progressPictures = progressPicturesData(CLIENT_ID);
   // The bell: anything unread but the chat, which has its own dot on the Messages tab (7 Oct).
@@ -1470,7 +1473,7 @@ export default async function ClientPage({
   })();
 
   // Today's food diary, opened from the ring on Nutrition.
-  const foodDiary = getFoodDiary(CLIENT_ID, localDateStr(), chatThread);
+  const foodDiary = getFoodDiary(foodRows, CLIENT_ID, localDateStr(), chatThread);
 
   // The Meetings screen (9 Oct): every call still to come, then the ones that
   // happened, each with the events made from it. Cancelled calls are left out.
@@ -1521,7 +1524,7 @@ export default async function ClientPage({
 
   const tabs: AppTab[] = [
     // Draws its own light banner (name and main goal); the top bar floats over it.
-    { id: "home", label: "Home", icon: <HomeIcon />, bare: true, content: <HomeTab CLIENT_ID={CLIENT_ID} chat={chatThread} notes={notes} phoneTz={phoneTz} photos={homePhotos} food={{ eaten: foodDiary.eaten.kcal, target: foodDiary.target?.kcal ?? null, mealsLogged: foodDiary.meals.filter((m) => m.entries.length > 0).length, mealsTotal: foodDiary.meals.length }} /> },
+    { id: "home", label: "Home", icon: <HomeIcon />, bare: true, content: <HomeTab CLIENT_ID={CLIENT_ID} chat={chatThread} foodRows={foodRows} notes={notes} phoneTz={phoneTz} photos={homePhotos}food={{ eaten: foodDiary.eaten.kcal, target: foodDiary.target?.kcal ?? null, mealsLogged: foodDiary.meals.filter((m) => m.entries.length > 0).length, mealsTotal: foodDiary.meals.length }} /> },
     {
       id: "training",
       label: "Training",
@@ -1550,12 +1553,12 @@ export default async function ClientPage({
       // Draws its own photo banner, darkened; the top bar floats over it in white.
       bare: true,
       darkBanner: true,
-      content: <NutritionTab CLIENT_ID={CLIENT_ID} diary={foodDiary} readOnly={phone} />,
+      content: <NutritionTab CLIENT_ID={CLIENT_ID} diary={foodDiary} readOnly={phone} foodRows={foodRows} />,
     },
   ];
   // Locked until the first phase goes live (19 Nov, Alex: B of docs/boards/locked-app-mockup.html): the client's own
   // app alone, never the coach's phone preview or a coach looking.
-  const lockView = phone || !viewerIsClient ? null : await appLockFor(CLIENT_ID);
+  const lockView = phone || !viewerIsClient ? null : await appLockFor(CLIENT_ID, foodRows);
 
   return (
     <>
@@ -1577,7 +1580,7 @@ export default async function ClientPage({
         coachPhoto: getCoachAvatarPath(CLIENT_ID),
         myPhoto: client?.avatar_path ?? null,
         myName: client?.name ?? "You",
-        messages: coachMessagesFor(chatThread),
+        messages: coachMessagesFor(chatThread, foodRows),
         // The coach's quiet hours: the chat says they are away while they hold (27 Oct, Alex).
         quiet: coachQuietHours(CLIENT_ID),
         viewerIsClient,
@@ -1640,6 +1643,6 @@ function arrivalFrom(clientId: number, notes: ClientNotes, n: string | undefined
     category,
     actionTab: note.action_tab,
     actionRef: note.action_ref,
-    link: category === "pics_reviewed" ? describeMessageLink(clientId, { kind: "photos" }) : notificationLink(clientId, note),
+    link: category === "pics_reviewed" ? describeMessageLink(noFoodRows("page.client"), clientId, { kind: "photos" }) : notificationLink(clientId, note),
   };
 }

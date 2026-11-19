@@ -7,6 +7,9 @@ import { storeHealth } from "../../lib/pg/health";
 import { chatShadowReport } from "../../lib/chat/shadow";
 import { notesShadowReport } from "../../lib/notes/shadow";
 import { notesStoreReport } from "../../lib/notes/rows";
+import { foodShadowReport } from "../../lib/food/shadow";
+import { foodStoreReport } from "../../lib/food/rows";
+import { foodPgReport } from "../../lib/food/pg";
 
 // The admin screens' server render times (23 Oct; app/lib/timing.ts): the last 200 renders newest first, and per
 // screen and per label the count, median and p90 ms. Any signed-in coach (23 Oct: the owner's email on Railway is not the
@@ -26,7 +29,7 @@ export async function GET(request: Request) {
   // How the Postgres saves are doing (17 Nov): failures in a row, the last save that went through, a retry waiting.
   return NextResponse.json(
     // The chat's door and shadow (Step 5, app/lib/chat/shadow.ts): each path's counts and timings, no ids, no text.
-    { memory: memoryReport(), bucket, storage: await storageStats(), store: { mode: STORE_MODE, ...storeHealth() }, chat: chatShadowReport(), notes: notesShadowReport({ store: notesStoreReport() }), ...timingReport() },
+    { memory: memoryReport(), bucket, storage: await storageStats(), store: { mode: STORE_MODE, ...storeHealth() }, chat: chatShadowReport(), notes: notesShadowReport({ store: notesStoreReport() }), food: foodShadowReport({ store: foodStoreReport(), pg: foodPgReport() }), ...timingReport() },
     { headers: { "Cache-Control": "no-store" } }
   );
 }

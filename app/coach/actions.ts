@@ -7,6 +7,7 @@ import { loadPhoneCalendar, type PhoneCalendar } from "./calendar";
 import { listPhoneVideos, phoneReview, type PhoneReview, type PhoneVideos } from "../lib/coachPhone";
 import { loadChatDock, loadMessages, type DockChat } from "../admin/redesign/loaders";
 import { fetchChatDock, fetchThread } from "../lib/chat/rows";
+import { fetchMessagesFood } from "../lib/food/rows";
 import type { DraftMessages } from "../admin/redesign/messages/MessagesDraft";
 import { noteCoachReading } from "../lib/coachPush";
 
@@ -33,7 +34,8 @@ export async function coachThreadAction(clientId: number, known?: string | null)
   if (chatCurrent(id, known)) return null;
   const t0 = performance.now();
   const thread = await fetchThread(id, "action.coachThread");
-  return timedChatRead("chat · phone", () => loadMessages(id, thread), t0);
+  const food = await fetchMessagesFood(id, thread, "action.coachThread");
+  return timedChatRead("chat · phone", () => loadMessages(id, thread, food), t0);
 }
 
 /** One week of the Calendar (from its Monday), as the phone's Calendar tab draws it; today is the phone's, for the clashes still to come. */

@@ -1,0 +1,898 @@
+// The one door to the food diary (food_entries, calorie_logs, food_days, food_meals, saved_meals, saved_days,
+// meal_photos; 19 Nov, Step 6 quest 8 part 1 of docs/database-plan.md). Every read and write of them goes through here;
+// nothing else in app/ touches the store's lists (Data's seven keys are a sealed type in db.ts, so tsc refuses any
+// other reach for them, and scripts/check-food-door.mjs, run by the build, refuses the names). Built on chat's and the
+// notes' recipe, their own files untouched.
+//
+// The code that reads and writes the rows stays where it was (queries.ts, healthSync.ts, the boards): it is handed a
+// FoodRows (a reader's view) or a FoodBox (a writer's), the seven lists as properties under short names (entries,
+// calories, days, meals, savedMeals, savedDays, photos), and runs on them exactly as it ran on the store.
+//
+//   memory, FOOD_VIEWS=wide  (the default) a view and a box are the store itself: every list is the store's own array,
+//                            read and replaced in place, so every line behaves exactly as before. A reader asking a view
+//                            for a client or a span its fetch didn't take is a miss, said once and counted.
+//   memory, FOOD_VIEWS=narrow a view holds only the rows its fetch took (the same objects, in store order): what the
+//                            cut-over's queries hand back. A miss throws. Writes always run on the store.
+//   FOOD_STORE=pg            (food/mode.ts) the rows are in Postgres alone: a fetch reads its scope in one snapshot,
+//                            ordered by id as the store holds them; a write is one transaction under the client's lock
+//                            (writeFood): the scope loaded, the code run on it, the rows it changed written back, the
+//                            pictures nothing shows any more found in SQL, and the once key claimed in the same
+//                            transaction. A miss throws.
+//
+// A reader handed no view doesn't compile (every reader takes one); a page, route, action or job fetches first.
+
+import { getTableColumns, sql, type Column, type SQL } from "drizzle-orm";
+import type { PgTable } from "drizzle-orm/pg-core";
+import { allocId, getData, persist, DATA_DIR, type CalorieLog, type FoodDay, type FoodEntry, type FoodMealSlot, type MealPhoto, type SavedDay, type SavedMeal } from "../db";
+import { calorie_logs, food_days, food_entries, food_meals, meal_photos, once_keys, saved_days, saved_meals } from "../pg/schema";
+import { fromRecord, recordForWrite } from "../pg/store";
+import { FOOD_PG, FOOD_TABLES, type FoodTable } from "./mode";
+import type { FoodReadPath, FoodWritePath } from "./paths";
+import { foodChainsSettled, foodRead, foodWriteRaw, type Q, type Row } from "./pg";
+import { noteFoodMissed, noteFoodSeen, noteFoodWrite, onFoodFetch } from "./shadow";
+import { OnceAnswered } from "./onceAnswered";
+import nodePath from "path";
+import { trashFile } from "../storage";
+
+export { FOOD_TABLES };
+
+/** The short names the code uses for the seven lists. */
+export const FOOD_SHORT = { entries: "food_entries", calories: "calorie_logs", days: "food_days", meals: "food_meals", savedMeals: "saved_meals", savedDays: "saved_days", photos: "meal_photos" } as const;
+export type FoodShort = keyof typeof FOOD_SHORT;
+const SHORTS = Object.keys(FOOD_SHORT) as FoodShort[];
+/** The tables keyed by day: a scope takes them by date. The others (meals, saved meals, saved days) are a client's whole. */
+const DATED: ReadonlySet<FoodShort> = new Set<FoodShort>(["entries", "calories", "days", "photos"]);
+const TABLE_OF = { food_entries, calorie_logs, food_days, food_meals, saved_meals, saved_days, meal_photos } as const;
+
+type Lists = { entries: FoodEntry[]; calories: CalorieLog[]; days: FoodDay[]; meals: FoodMealSlot[]; savedMeals: SavedMeal[]; savedDays: SavedDay[]; photos: MealPhoto[] };
+
+const MODE: "wide" | "narrow" = FOOD_PG || process.env.FOOD_VIEWS === "narrow" ? "narrow" : "wide";
+/** Where a miss throws rather than being said: always with the rows in Postgres (there is no store to fall back on). */
+const STRICT = FOOD_PG || MODE === "narrow" || process.env.NODE_ENV === "test" || process.env.FOOD_STRICT === "1";
+
+/** A view asked for what it doesn't hold. */
+export class FoodViewMiss extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "FoodViewMiss";
+  }
+}
+
+// ---- What a fetch took ---------------------------------------------------------------------------------------------
+
+/** The days a reader reads: every day, some days, or a run of them (ISO dates, inclusive). */
+export type FoodSpan = "all" | { dates: readonly string[] } | { from: string; to: string };
+
+type ClientScope = { all: boolean; dates: Set<string>; ranges: { from: string; to: string }[]; meals: Set<string>; ids: Set<number> };
+type Scope = {
+  clients: Map<number, ClientScope>;
+  tables: ReadonlySet<FoodShort>;
+  /** meal_photos by file, any client (a picture's thumb: getFoodDiary, saveMeal). */
+  paths: Set<string>;
+};
+
+const emptyClientScope = (): ClientScope => ({ all: false, dates: new Set(), ranges: [], meals: new Set(), ids: new Set() });
+function addSpan(s: ClientScope, span: FoodSpan) {
+  if (span === "all") s.all = true;
+  else if ("dates" in span) for (const d of span.dates) s.dates.add(d);
+  else s.ranges.push({ from: span.from, to: span.to });
+}
+function makeScope(clientIds: readonly number[], spans: readonly FoodSpan[], tables: readonly FoodShort[] = SHORTS, meals: readonly string[] = [], entryIds: readonly number[] = []): Scope {
+  const clients = new Map<number, ClientScope>();
+  for (const id of clientIds) {
+    const s = clients.get(id) ?? emptyClientScope();
+    for (const span of spans) addSpan(s, span);
+    for (const m of meals) s.meals.add(m);
+    for (const e of entryIds) s.ids.add(e);
+    clients.set(id, s);
+  }
+  return { clients, tables: new Set(tables), paths: new Set() };
+}
+const inDay = (s: ClientScope, date: string) => s.all || s.dates.has(date) || s.ranges.some((r) => date >= r.from && date <= r.to);
+/** Whether a stored row is inside the scope (the predicate every slice, store or SQL, follows). */
+function rowIn(scope: Scope, short: FoodShort, row: { id?: number; client_id: number; date?: string; meal?: string; file_path?: string }): boolean {
+  if (!scope.tables.has(short)) return false;
+  if (short === "photos" && row.file_path != null && scope.paths.has(row.file_path)) return true;
+  const s = scope.clients.get(row.client_id);
+  if (!s) return false;
+  if (!DATED.has(short)) return true;
+  if (short === "entries" && row.meal != null && s.meals.has(row.meal)) return true;
+  if (short === "entries" && row.id != null && s.ids.has(row.id)) return true;
+  return typeof row.date === "string" && inDay(s, row.date);
+}
+function covers(scope: Scope, clientId: number, span: FoodSpan, tables: readonly FoodShort[]): string | null {
+  for (const t of tables) if (!scope.tables.has(t)) return `the ${t} list was not fetched`;
+  const s = scope.clients.get(clientId);
+  if (!s) return `client ${clientId} was not fetched`;
+  if (!tables.some((t) => DATED.has(t)) || s.all) return null;
+  if (span === "all") return `client ${clientId}'s whole history was not fetched`;
+  if ("dates" in span) {
+    const out = span.dates.filter((d) => !inDay(s, d));
+    return out.length ? `${out.length} day(s) of client ${clientId} were not fetched` : null;
+  }
+  return s.ranges.some((r) => r.from <= span.from && r.to >= span.to) ? null : `client ${clientId} from ${span.from} to ${span.to} was not fetched`;
+}
+
+// ---- The lists: the store's, or a slice of them --------------------------------------------------------------------
+
+type Holder = { get(short: FoodShort): unknown[]; set(short: FoodShort, rows: unknown[]): void };
+/** The store's own arrays, read fresh each time (a delete puts a new list in its place). Memory mode alone. */
+// chat-door: notes-door: one food list by its own name, never a walk of the store: no chat or notification row is read.
+const storeHolder: Holder = {
+  get(short) {
+    if (FOOD_PG) throw new Error(`[food] !!! the store's ${FOOD_SHORT[short]} was read with FOOD_STORE=pg (it lives in Postgres alone)`);
+    // chat-door: notes-door: one food list by name (not a walk of the store).
+    const held = getData() as unknown as Record<string, unknown[] | undefined>;
+    return (held[FOOD_SHORT[short]] ??= []);
+  },
+  set(short, rows) {
+    // chat-door: notes-door: the same, one food list replaced by name.
+    if (FOOD_PG) throw new Error(`[food] !!! the store's ${FOOD_SHORT[short]} was written with FOOD_STORE=pg`);
+    (getData() as unknown as Record<string, unknown[]>)[FOOD_SHORT[short]] = rows;
+  },
+};
+function listHolder(lists: Lists): Holder {
+  return {
+    get: (short) => lists[short],
+    set: (short, rows) => {
+      (lists as Record<FoodShort, unknown[]>)[short] = rows;
+    },
+  };
+}
+
+/** What the food code reads and changes of a client row: its meal order (clients.meal_order, in memory with the client). */
+export type MealOrderHolder = { meal_order?: string[] | null };
+
+const MINT = Symbol("food-door");
+const said = new Set<string>();
+
+/**
+ * One fetch's food: the seven lists under their short names, and what was taken. A reader says what it reads first
+ * (need), then reads the lists as it read the store; a list it was handed is the store's own or a superset slice of it,
+ * in the store's order, so its own filters and sorts give what they always gave.
+ */
+export class FoodRows {
+  readonly path: FoodReadPath | FoodWritePath;
+  protected readonly holder: Holder;
+  protected readonly scope: Scope | null;
+  /** The clients' meal order (clients.meal_order lives in memory with the client): a box keeps its own copy until its commit. */
+  protected readonly orders: Map<number, MealOrderHolder> | null;
+  constructor(token: symbol, path: FoodReadPath | FoodWritePath, holder: Holder, scope: Scope | null, orders: Map<number, MealOrderHolder> | null = null) {
+    if (token !== MINT) throw new Error("Food rows are made by the door (app/lib/food/rows.ts) alone.");
+    this.path = path;
+    this.holder = holder;
+    this.scope = scope;
+    this.orders = orders;
+  }
+  get entries(): FoodEntry[] {
+    return this.holder.get("entries") as FoodEntry[];
+  }
+  get calories(): CalorieLog[] {
+    return this.holder.get("calories") as CalorieLog[];
+  }
+  get days(): FoodDay[] {
+    return this.holder.get("days") as FoodDay[];
+  }
+  get meals(): FoodMealSlot[] {
+    return this.holder.get("meals") as FoodMealSlot[];
+  }
+  get savedMeals(): SavedMeal[] {
+    return this.holder.get("savedMeals") as SavedMeal[];
+  }
+  get savedDays(): SavedDay[] {
+    return this.holder.get("savedDays") as SavedDay[];
+  }
+  get photos(): MealPhoto[] {
+    return this.holder.get("photos") as MealPhoto[];
+  }
+  /** The client row's meal order (a reader: the store's; a pg box: its own copy, put on the client after its commit). */
+  client(clientId: number): MealOrderHolder | undefined {
+    if (this.orders) {
+      let o = this.orders.get(clientId);
+      if (!o) {
+        const c = getData().clients.find((x) => x.id === clientId);
+        if (!c) return undefined;
+        o = c.meal_order ? { meal_order: [...c.meal_order] } : {};
+        this.orders.set(clientId, o);
+      }
+      return o;
+    }
+    return getData().clients.find((c) => c.id === clientId);
+  }
+  /**
+   * What a reader is about to read: these clients (every client of the view: "fetched"), these days, these lists.
+   * Answered nothing; a miss throws where views are narrow, else is said once and counted.
+   */
+  need(reader: string, clientIds: number | readonly number[], span: FoodSpan = "all", tables: readonly FoodShort[] = SHORTS): void {
+    if (!this.scope) return;
+    for (const id of typeof clientIds === "number" ? [clientIds] : clientIds) {
+      const why = covers(this.scope, id, span, tables);
+      if (!why) continue;
+      const message = `[food] ${reader} on ${this.path}: ${why}`;
+      noteFoodMissed(this.path, message);
+      if (STRICT) throw new FoodViewMiss(message);
+      if (!said.has(message)) {
+        said.add(message);
+        console.warn(message);
+      }
+    }
+  }
+}
+
+/** A writer's rows: a view whose lists can be replaced, ids allocated, and the save and the pictures' clean-up asked for. */
+export class FoodBox extends FoodRows {
+  private readonly onPersist: () => void;
+  private readonly onGc: (paths: (string | null | undefined)[]) => string[];
+  constructor(token: symbol, path: FoodWritePath, holder: Holder, scope: Scope | null, orders: Map<number, MealOrderHolder> | null, onPersist: () => void, onGc: (paths: (string | null | undefined)[]) => string[]) {
+    super(token, path, holder, scope, orders);
+    this.onPersist = onPersist;
+    this.onGc = onGc;
+  }
+  override get entries(): FoodEntry[] {
+    return super.entries;
+  }
+  override set entries(rows: FoodEntry[]) {
+    this.holder.set("entries", rows);
+  }
+  override get calories(): CalorieLog[] {
+    return super.calories;
+  }
+  override set calories(rows: CalorieLog[]) {
+    this.holder.set("calories", rows);
+  }
+  override get days(): FoodDay[] {
+    return super.days;
+  }
+  override set days(rows: FoodDay[]) {
+    this.holder.set("days", rows);
+  }
+  override get meals(): FoodMealSlot[] {
+    return super.meals;
+  }
+  override set meals(rows: FoodMealSlot[]) {
+    this.holder.set("meals", rows);
+  }
+  override get savedMeals(): SavedMeal[] {
+    return super.savedMeals;
+  }
+  override set savedMeals(rows: SavedMeal[]) {
+    this.holder.set("savedMeals", rows);
+  }
+  override get savedDays(): SavedDay[] {
+    return super.savedDays;
+  }
+  override set savedDays(rows: SavedDay[]) {
+    this.holder.set("savedDays", rows);
+  }
+  override get photos(): MealPhoto[] {
+    return super.photos;
+  }
+  override set photos(rows: MealPhoto[]) {
+    this.holder.set("photos", rows);
+  }
+  /** A new id for a row of this list (the store's counter, or its sequence in Postgres mode: db.ts allocId). */
+  alloc(short: FoodShort): number {
+    return allocId(FOOD_SHORT[short]);
+  }
+  /** The store's save (memory); nothing in Postgres mode, where writeFood writes what changed when the code is done. */
+  persist(): void {
+    this.onPersist();
+  }
+  /**
+   * Of these picture files, the ones no saved meal, day's photo or saved day shows any more. Memory: taken off the disk
+   * now and returned, as always. Postgres: the list handed back is filled by writeFood once the rows are written, from
+   * SQL in the same transaction, and the files go to the trash after the commit.
+   */
+  gc(paths: (string | null | undefined)[]): string[] {
+    return this.onGc(paths);
+  }
+}
+
+/** Today's dropUnusedMealPictures, on the store: every client's rows, by file. */
+function storeGc(paths: (string | null | undefined)[]): string[] {
+  const savedMeals = storeHolder.get("savedMeals") as SavedMeal[];
+  const photos = storeHolder.get("photos") as MealPhoto[];
+  const savedDays = storeHolder.get("savedDays") as SavedDay[];
+  const gone = [...new Set(paths.filter((p): p is string => !!p))].filter((p) => !savedMeals.some((s) => s.picture === p) && !photos.some((m) => m.file_path === p) && !savedDays.some((d) => d.picture === p || d.cards?.some((c) => c.picture === p)));
+  for (const p of gone) trashFile(nodePath.join(DATA_DIR, p.startsWith("/") ? p.slice(1) : p));
+  return gone;
+}
+
+const storeBox = (p: FoodWritePath) => new FoodBox(MINT, p, storeHolder, null, null, persist, storeGc);
+
+// ---- Fetch first ---------------------------------------------------------------------------------------------------
+
+const decodeOf = (t: FoodTable) => (r: Row) => fromRecord(TABLE_OF[t], r);
+const byId = (a: { id: number }, b: { id: number }) => a.id - b.id;
+const ints = (ids: readonly number[]) => `{${ids.filter((n) => Number.isInteger(n)).join(",")}}`;
+const textJson = (list: Iterable<string>) => JSON.stringify([...list]);
+
+/** The store's rows inside the scope, the same objects in the store's order (FOOD_VIEWS=narrow). */
+function sliceStore(scope: Scope): Lists {
+  const out = {} as Record<FoodShort, unknown[]>;
+  for (const short of SHORTS) {
+    out[short] = scope.tables.has(short) ? (storeHolder.get(short) as { client_id: number }[]).filter((r) => rowIn(scope, short, r as never)) : [];
+  }
+  return out as unknown as Lists;
+}
+
+/** The scope's SQL for one table: its clients, its days, its meal keys, its files (any client). */
+function scopeSql(short: FoodShort, scope: Scope): SQL | null {
+  if (!scope.tables.has(short)) return null;
+  const t = sql.identifier(FOOD_SHORT[short]);
+  const parts: SQL[] = [];
+  const whole: number[] = [];
+  for (const [id, s] of scope.clients) {
+    if (!DATED.has(short) || s.all) {
+      whole.push(id);
+      continue;
+    }
+    const days: SQL[] = [];
+    if (s.dates.size) days.push(sql`date IN (SELECT jsonb_array_elements_text(${textJson(s.dates)}::jsonb))`);
+    for (const r of s.ranges) days.push(sql`(date >= ${r.from}::text AND date <= ${r.to}::text)`);
+    if (short === "entries" && s.meals.size) days.push(sql`meal IN (SELECT jsonb_array_elements_text(${textJson(s.meals)}::jsonb))`);
+    if (short === "entries" && s.ids.size) days.push(sql`id = ANY(${ints([...s.ids])}::int[])`);
+    if (days.length) parts.push(sql`(client_id = ${id}::int AND (${sql.join(days, sql` OR `)}))`);
+  }
+  if (whole.length) parts.push(sql`client_id = ANY(${ints(whole)}::int[])`);
+  if (short === "photos" && scope.paths.size) parts.push(sql`file_path IN (SELECT jsonb_array_elements_text(${textJson(scope.paths)}::jsonb))`);
+  if (!parts.length) return null;
+  return sql`SELECT * FROM ${t} WHERE ${sql.join(parts, sql` OR `)} ORDER BY id`;
+}
+
+/** The scope read from Postgres in one snapshot (or inside a write's transaction), each list by id. */
+async function loadScope(q: Q, scope: Scope): Promise<Lists> {
+  const out = {} as Record<FoodShort, unknown[]>;
+  for (const short of SHORTS) {
+    const query = scopeSql(short, scope);
+    out[short] = query ? (await q(query)).map(decodeOf(FOOD_SHORT[short])).sort(byId as never) : [];
+  }
+  return out as unknown as Lists;
+}
+
+/** The files a client's pictures are: their thumbs are looked up by file in meal_photos, any client (getFoodDiary). */
+function picturePathsOf(lists: Lists): string[] {
+  const paths = new Set<string>();
+  for (const s of lists.savedMeals) if (s.picture) paths.add(s.picture);
+  for (const p of lists.photos) if (p.file_path) paths.add(p.file_path);
+  return [...paths];
+}
+
+/**
+ * The scope read, and with `withPictures` the day photos by file of every picture its saved meals and photos show (a
+ * thumb looked up by file, any client): the cut-over's own statements, the same in pg mode and in the shadow. The files
+ * taken are added to `scope.paths`, so the scope's predicate (rowIn) holds the rows the second statement took.
+ */
+async function loadScopeWithPictures(q: Q, scope: Scope, withPictures: boolean): Promise<Lists> {
+  const got = await loadScope(q, scope);
+  if (withPictures && scope.tables.has("photos")) {
+    const more = picturePathsOf(got).filter((p) => !got.photos.some((m) => m.file_path === p));
+    if (more.length) {
+      const extra: Scope = { clients: new Map(), tables: new Set<FoodShort>(["photos"]), paths: new Set(more) };
+      const seen = new Set(got.photos.map((p) => p.id));
+      got.photos = [...got.photos, ...(await loadScope(q, extra)).photos.filter((p) => !seen.has(p.id))].sort(byId);
+    }
+    for (const p of picturePathsOf(got)) scope.paths.add(p);
+  }
+  return got;
+}
+
+async function fetchScope(path: FoodReadPath, scope: Scope, withPictures: boolean): Promise<FoodRows> {
+  noteFoodSeen(path);
+  if (FOOD_PG) {
+    const lists = await foodRead((q) => loadScopeWithPictures(q, scope, withPictures));
+    return new FoodRows(MINT, path, listHolder(lists), scope);
+  }
+  if (MODE === "narrow" && withPictures && scope.tables.has("photos")) for (const p of picturePathsOf(sliceStore(scope))) scope.paths.add(p);
+  // The shadow (FOOD_SHADOW=read): the same scope's SQL, the pictures' second statement too, compared with what the
+  // last save committed. Behind the answer, on its own copy of the scope (the view's own is never touched by it).
+  const shadowScope: Scope = { clients: scope.clients, tables: scope.tables, paths: new Set(scope.paths) };
+  onFoodFetch(path, {
+    tables: SHORTS.filter((s) => scope.tables.has(s)).map((s) => FOOD_SHORT[s]),
+    sqlRows: async (q) => {
+      const lists = await loadScopeWithPictures(q, shadowScope, withPictures);
+      return Object.fromEntries(SHORTS.map((s) => [FOOD_SHORT[s], lists[s] as unknown as Row[]]));
+    },
+    committedIn: (t, row) => rowIn(shadowScope, SHORT_OF[t], row as never),
+    decode: (t, record) => decodeOf(t)(record),
+    clients: [...scope.clients.keys()],
+    anyClient: (t) => t === "meal_photos" && shadowScope.paths.size > 0,
+  });
+  if (MODE === "narrow") return new FoodRows(MINT, path, listHolder(sliceStore(scope)), scope);
+  return new FoodRows(MINT, path, storeHolder, scope);
+}
+const SHORT_OF = Object.fromEntries(SHORTS.map((s) => [FOOD_SHORT[s], s])) as Record<FoodTable, FoodShort>;
+
+/** One client's food over these days (every day by default): the diary, its links, the client's own screens. */
+export function fetchClientFood(clientId: number, path: FoodReadPath, spans: FoodSpan | readonly FoodSpan[] = "all"): Promise<FoodRows> {
+  return fetchScope(path, makeScope([clientId], Array.isArray(spans) ? (spans as FoodSpan[]) : [spans as FoodSpan]), true);
+}
+
+/** The client's own app: their whole food diary (the diary, Last 7 days, the calendar, the chat's meal links), and the
+ *  clients the locked app's one-time sweep reads while it hasn't run (appLockFor). */
+export function fetchClientPageFood(clientId: number, path: FoodReadPath): Promise<FoodRows> {
+  return fetchScope(path, makeScope([...new Set([clientId, ...unsweptClients()])], ["all"]), true);
+}
+
+/** Several clients' food, whole (the old admin's screens, the coach's tabs over one client and their coach's others). */
+export function fetchClientsFood(clientIds: readonly number[], path: FoodReadPath, tables: readonly FoodShort[] = SHORTS): Promise<FoodRows> {
+  return fetchScope(path, makeScope([...new Set(clientIds)], ["all"], tables), tables.includes("photos"));
+}
+
+/** What a coach's feed reads of food (entries and calorie logs) for every client of these coaches, and the client in focus. */
+export function fetchCoachFood(coachIds: readonly number[], path: FoodReadPath, focus?: number): Promise<FoodRows> {
+  const coaches = new Set(coachIds);
+  const ids = getData().clients.filter((c) => c.coach_id != null && coaches.has(c.coach_id)).map((c) => c.id);
+  if (focus != null) ids.push(focus);
+  return fetchScope(path, makeScope([...new Set(ids)], ["all"], ["entries", "calories"]), false);
+}
+
+/**
+ * A client's tab in the admin: one view for the rail, the dots and Home's feed (the coach's clients, and the client's
+ * own coach's should the owner open another coach's client) and for every tab's reading of the client (their whole food
+ * diary). As fetchClientTabChat asks for the chat.
+ */
+export function fetchClientTabFood(coachId: number, clientId: number, path: FoodReadPath): Promise<FoodRows> {
+  const own = getData().clients.find((c) => c.id === clientId)?.coach_id ?? 0;
+  const coaches = new Set(own !== coachId ? [coachId, own] : [coachId]);
+  const ids = getData().clients.filter((c) => c.coach_id != null && coaches.has(c.coach_id)).map((c) => c.id);
+  return fetchScope(path, makeScope([...new Set([...ids, clientId, ...unsweptClients()])], ["all"]), true);
+}
+
+/** Every client still unopened while the locked app's one-time sweep hasn't run (lib/appLock.ts reads their food). */
+function unsweptClients(): number[] {
+  const data = getData() as unknown as { app_lock_swept?: string | null; clients: { id: number; app_opened_at?: string | null }[] };
+  return data.app_lock_swept ? [] : data.clients.filter((c) => !c.app_opened_at).map((c) => c.id);
+}
+
+/** Every list of these coaches' clients and the client in focus, whole (the old admin: its rail, feed and client panels). */
+export function fetchCoachClientsFood(coachIds: readonly number[], path: FoodReadPath, focus?: number | null): Promise<FoodRows> {
+  const coaches = new Set(coachIds);
+  const ids = getData().clients.filter((c) => c.coach_id != null && coaches.has(c.coach_id)).map((c) => c.id);
+  if (focus != null) ids.push(focus);
+  return fetchScope(path, makeScope([...new Set(ids)], ["all"]), true);
+}
+
+/** The coach's food view of the client's coach (an action about one client). */
+export function fetchCoachFoodOfClient(clientId: number, path: FoodReadPath): Promise<FoodRows> {
+  return fetchCoachFood([getData().clients.find((c) => c.id === clientId)?.coach_id ?? 0], path, clientId);
+}
+
+/** Whether these clients logged any food or a figure of their own (lib/appLock.ts): their entries and calorie logs. */
+export function fetchFoodLogged(clientIds: readonly number[], path: FoodReadPath): Promise<FoodRows> {
+  return fetchScope(path, makeScope([...new Set(clientIds)], ["all"], ["entries", "calories"]), false);
+}
+
+/** Every client's meal photos and saved meals still without a look (the start-up's back-fill, storage.ts). */
+export function fetchFoodPictures(path: FoodReadPath): Promise<FoodRows> {
+  return fetchScope(path, makeScope(getData().clients.map((c) => c.id), ["all"], ["photos", "savedMeals"]), false);
+}
+
+/**
+ * These clients' seven lists whole (the export), or every row of the seven tables (the nightly backup, the snapshot:
+ * with "all" no client filter, so a row whose client is gone is kept as memory mode's snapshot keeps it). With
+ * FOOD_STORE=pg each table is read 2000 rows at a time by id in one snapshot, its statements allowed 60 s, so neither
+ * grows into the pool's 5 s statement or 10 s idle limits as the tables grow.
+ */
+export async function fetchFoodExport(clientIds: readonly number[] | "all", path: FoodReadPath): Promise<FoodRows> {
+  if (!FOOD_PG) return fetchScope(path, makeScope(clientIds === "all" ? allClientIdsWithFood() : [...new Set(clientIds)], ["all"]), false);
+  noteFoodSeen(path);
+  const ids = clientIds === "all" ? null : [...new Set(clientIds)];
+  const lists = await foodRead(async (q) => {
+    await q(sql`SET LOCAL statement_timeout = '60s'`);
+    await q(sql`SET LOCAL idle_in_transaction_session_timeout = '60s'`);
+    return loadPaged(q, ids);
+  });
+  return new FoodRows(MINT, path, listHolder(lists), ids ? makeScope(ids, ["all"]) : null);
+}
+const allClientIdsWithFood = () => getData().clients.map((c) => c.id);
+const PAGE = 2000;
+/** Each table by id, a page at a time: these clients' rows, or (null) every row. */
+async function loadPaged(q: Q, clientIds: readonly number[] | null): Promise<Lists> {
+  const out = {} as Record<FoodShort, unknown[]>;
+  for (const short of SHORTS) {
+    const t = sql.identifier(FOOD_SHORT[short]);
+    const decode = decodeOf(FOOD_SHORT[short]);
+    const list: unknown[] = [];
+    for (let after = 0; ; ) {
+      const page = await q(
+        clientIds
+          ? sql`SELECT * FROM ${t} WHERE id > ${after}::int AND client_id = ANY(${ints(clientIds)}::int[]) ORDER BY id LIMIT ${PAGE}`
+          : sql`SELECT * FROM ${t} WHERE id > ${after}::int ORDER BY id LIMIT ${PAGE}`
+      );
+      for (const r of page) list.push(decode(r));
+      if (page.length < PAGE) break;
+      after = Number(page[page.length - 1].id);
+    }
+    out[short] = list;
+  }
+  return out as unknown as Lists;
+}
+
+/**
+ * No food at all, for a caller that knows its reader reads none (a link it knows is no food link, a notification's
+ * training link): any need of it is a miss, thrown where views are narrow, else said, counted and answered from the store.
+ */
+export function noFoodRows(path: FoodReadPath): FoodRows {
+  const scope = makeScope([], []);
+  if (FOOD_PG || MODE === "narrow") return new FoodRows(MINT, path, listHolder({ entries: [], calories: [], days: [], meals: [], savedMeals: [], savedDays: [], photos: [] }), scope);
+  return new FoodRows(MINT, path, storeHolder, scope);
+}
+
+/** A view of the store whole, for code that runs where no request fetched (a script comparing readers, memory mode). */
+export function storeFoodRows(path: FoodReadPath): FoodRows {
+  if (FOOD_PG) throw new Error("[food] storeFoodRows with FOOD_STORE=pg: fetch instead");
+  return new FoodRows(MINT, path, storeHolder, null);
+}
+
+// ---- Writes --------------------------------------------------------------------------------------------------------
+
+/** What a write reads and may change: its client's small lists whole, and of the dated ones these days and meal keys. */
+export type FoodReach = {
+  span?: FoodSpan | readonly FoodSpan[];
+  meals?: readonly string[];
+  entryIds?: readonly number[];
+  /** Only these lists (every list by default): a write that touches a few reads and locks no more of the client. */
+  tables?: readonly FoodShort[];
+  /** Day photos by file, whatever their day (a picture's look). */
+  paths?: readonly string[];
+};
+
+/** A local date (the server's zone, as queries.ts localDateStr), `back` days ago. */
+function localDay(back: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - back);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** What a coach's thread reads of food (loadMessages): its meal links' days, and with the link targets the last two weeks. */
+export function fetchMessagesFood(clientId: number, thread: { rows(clientId: number): readonly { link?: unknown }[] }, path: FoodReadPath, targets = true): Promise<FoodRows> {
+  const spans: FoodSpan[] = [foodLinkSpan(thread, clientId)];
+  // A day either side of listMessageLinkTargets' window: a superset, whatever the clock says between here and there.
+  if (targets) spans.push({ from: localDay(15), to: localDay(-1) });
+  return fetchClientFood(clientId, path, spans);
+}
+
+/** The days a chat thread's food links name (a meal's link is labelled from its day's meals): the view it needs. */
+export function foodLinkSpan(thread: { rows(clientId: number): readonly { link?: unknown }[] }, clientId: number): FoodSpan {
+  const dates = new Set<string>();
+  for (const m of thread.rows(clientId)) {
+    const l = m.link as { kind?: unknown; date?: unknown; meal?: unknown } | null | undefined;
+    if (l && l.kind === "food" && l.meal && typeof l.date === "string") dates.add(l.date);
+  }
+  return { dates: [...dates] };
+}
+
+export { OnceAnswered };
+
+const foodLock = (clientId: number) => sql`SELECT pg_advisory_xact_lock(20253, ${clientId}::int)`;
+
+/** The writer's encoding of a row of this table (store.ts recordForWrite), or null when the writer would leave it out. */
+function encoded(t: FoodTable, row: unknown): Row | null {
+  return recordForWrite(t, row as Row);
+}
+
+function changedRows(t: FoodTable, before: readonly { id: number }[], after: readonly { id: number }[]) {
+  const was = new Map(before.map((r) => [r.id, JSON.stringify(encoded(t, r))] as const));
+  const upserts: Row[] = [];
+  const seen = new Set<number>();
+  for (const r of after) {
+    seen.add(r.id);
+    const rec = encoded(t, r);
+    if (!rec) throw new Error(`[food] a ${t} row the writer can't encode (id ${String(r.id)})`);
+    if (was.get(r.id) !== JSON.stringify(rec)) upserts.push(rec);
+  }
+  const deletes = before.filter((r) => !seen.has(r.id)).map((r) => r.id);
+  return { upserts, deletes };
+}
+
+/**
+ * A table's columns as this build's schema has them (the store's writer writes exactly these: store.ts columnsOf), each
+ * its row field and its column name. Never the database's own list: a column a later build added keeps what it holds
+ * on an update and its default on an insert, as the store's writer leaves it, never set to NULL by a rolled-back build.
+ */
+const COLUMNS = new Map<string, { field: string; name: string }[]>();
+function schemaColumns(name: string, table: PgTable): { field: string; name: string }[] {
+  let cols = COLUMNS.get(name);
+  if (!cols) {
+    cols = Object.entries(getTableColumns(table) as Record<string, Column>).map(([field, c]) => ({ field, name: c.name }));
+    COLUMNS.set(name, cols);
+  }
+  return cols;
+}
+/** A record (by field) as jsonb_populate_recordset reads it (by column name), only the schema's columns. */
+function byColumnName(rec: Row, cols: readonly { field: string; name: string }[]): Row {
+  const out: Row = {};
+  for (const c of cols) if (c.field in rec) out[c.name] = rec[c.field];
+  return out;
+}
+const quoted = (n: string) => `"${n.replace(/"/g, '""')}"`;
+
+async function writeRows(q: Q, t: FoodTable, clientId: number, upserts: Row[], deletes: number[]) {
+  const table = sql.identifier(t);
+  if (deletes.length) await q(sql`DELETE FROM ${table} WHERE client_id = ${clientId}::int AND id = ANY(${ints(deletes)}::int[])`);
+  if (!upserts.length) return;
+  const cols = schemaColumns(t, TABLE_OF[t]);
+  const list = sql.raw(cols.map((c) => quoted(c.name)).join(", "));
+  const set = sql.raw(cols.filter((c) => c.name !== "id").map((c) => `${quoted(c.name)} = EXCLUDED.${quoted(c.name)}`).join(", "));
+  for (let i = 0; i < upserts.length; i += 500) {
+    const slice = upserts.slice(i, i + 500);
+    const batch = JSON.stringify(slice.map((r) => byColumnName(r, cols)));
+    // A row is only ever rewritten by its own client's: an id held by another client's row (a counter run back, two
+    // writers overlapping in a rollback) fails the write whole instead of rewriting that client's row.
+    const done = await q(
+      sql`INSERT INTO ${table} (${list}) SELECT ${list} FROM jsonb_populate_recordset(NULL::${table}, ${batch}::jsonb) ON CONFLICT (id) DO UPDATE SET ${set} WHERE ${table}.client_id IS NOT DISTINCT FROM EXCLUDED.client_id RETURNING id`
+    );
+    if (done.length !== slice.length) throw new Error(`${t}: ${slice.length - done.length} row(s) whose id another client's row holds; nothing written`);
+  }
+}
+
+/**
+ * A once key as the store's writer writes it (once_keys, keyed by `key`): claimed (nothing written when it is there
+ * already; true when this write took it), or kept with its answer.
+ */
+async function writeOnceKey(q: Q, row: { key: string; at: number; result?: unknown }, mode: "claim" | "keep"): Promise<boolean> {
+  const rec = recordForWrite("once_keys", row as unknown as Row);
+  if (!rec) throw new Error("[food] a once key the writer can't encode");
+  const cols = schemaColumns("once_keys", once_keys);
+  const list = sql.raw(cols.map((c) => quoted(c.name)).join(", "));
+  const set = sql.raw(cols.filter((c) => c.name !== "key").map((c) => `${quoted(c.name)} = EXCLUDED.${quoted(c.name)}`).join(", "));
+  const rows = await q(
+    sql`INSERT INTO once_keys (${list}) SELECT ${list} FROM jsonb_populate_recordset(NULL::once_keys, ${JSON.stringify([byColumnName(rec, cols)])}::jsonb) ${mode === "claim" ? sql`ON CONFLICT (key) DO NOTHING` : sql`ON CONFLICT (key) DO UPDATE SET ${set}`} RETURNING key`
+  );
+  return rows.length > 0;
+}
+
+/** A refusal is answered, not kept (once.ts refused, the same three lines: food/ can't import once.ts, which imports it). */
+function refusedAnswer(result: unknown): boolean {
+  if (!result || typeof result !== "object") return false;
+  const r = result as { ok?: unknown; error?: unknown };
+  return r.ok === false || (typeof r.error === "string" && r.error.length > 0);
+}
+
+/**
+ * Of these files, those no row of any client shows any more (dropUnusedMealPictures in SQL). Day photos and saved meals
+ * by their indexes (meal_photos_path_idx, saved_meals_picture_idx); saved days, which have no index on their pictures,
+ * by the files' own client when every file is in that client's folder (/uploads/meals/<client>/: where every meal
+ * picture is made, the preflight's P6 counting any that isn't), else every client's as before.
+ */
+async function unusedPictures(q: Q, paths: readonly string[], clientId: number): Promise<string[]> {
+  if (!paths.length) return [];
+  const own = paths.every((p) => p.startsWith(`/uploads/meals/${clientId}/`));
+  const whose = own ? sql`client_id = ${clientId}::int AND ` : sql``;
+  const rows = await q(sql`SELECT p FROM jsonb_array_elements_text(${textJson(paths)}::jsonb) AS p
+    WHERE NOT EXISTS (SELECT 1 FROM meal_photos WHERE file_path = p)
+      AND NOT EXISTS (SELECT 1 FROM saved_meals WHERE extra->>'picture' = p)
+      AND NOT EXISTS (SELECT 1 FROM saved_days WHERE ${whose}(extra->>'picture' = p OR extra->'cards' @> jsonb_build_array(jsonb_build_object('picture', p))))`);
+  const gone = new Set(rows.map((r) => String(r.p)));
+  return paths.filter((p) => gone.has(p));
+}
+
+/**
+ * One write of a client's food. Memory: `body` runs on the store, today's code exactly (it saves and cleans up as it
+ * always did), and its answer comes back. Postgres: one transaction under the client's lock: the once key claimed (a key
+ * taken already throws OnceAnswered, which once() answers), the reach loaded, `body` run on it, the rows it changed
+ * written, the files nothing shows found, the answer kept with the key; after the commit the meal order goes onto the
+ * client in memory and the files to the trash.
+ */
+export async function writeFood<T>(path: FoodWritePath, clientId: number, reach: FoodReach, body: (box: FoodBox) => T, opts: { once?: string | null } = {}): Promise<T> {
+  noteFoodWrite(path);
+  if (!FOOD_PG) return body(storeBox(path));
+  const spans = reach.span == null ? [] : Array.isArray(reach.span) ? (reach.span as FoodSpan[]) : [reach.span as FoodSpan];
+  const scope = makeScope([clientId], spans, reach.tables ?? SHORTS, reach.meals ?? [], reach.entryIds ?? []);
+  for (const p of reach.paths ?? []) scope.paths.add(p);
+  const orders = new Map<number, MealOrderHolder>();
+  const asked: string[] = [];
+  const gone: string[][] = [];
+  let answer: T | undefined;
+  let found: string[] = [];
+  // What the code itself threw (its own error, or OnceAnswered): handed on as it is, never as a database error.
+  let inner: { error: unknown } | null = null;
+  try {
+  await foodWriteRaw(`food:${clientId}`, {
+    op: path,
+    run: async (_q, inTx) =>
+      inTx(async (q) => {
+        inner = null;
+        asked.length = 0;
+        gone.length = 0;
+        orders.clear();
+        await q(foodLock(clientId));
+        // A client erased meanwhile (removeClient: a write queued on this chain behind its DELETE) writes nothing: no
+        // row of a client no longer here is ever made.
+        if (!getData().clients.some((c) => c.id === clientId)) {
+          const error = new Error(`[food] client ${clientId} is gone; nothing written`);
+          inner = { error };
+          throw error;
+        }
+        const at = Date.now();
+        if (opts.once && !(await writeOnceKey(q, { key: opts.once, at }, "claim"))) {
+          const held = (await q(sql`SELECT * FROM once_keys WHERE key = ${opts.once}::text`))[0];
+          const row = (held ? fromRecord(once_keys, held) : { key: opts.once, at }) as { key: string; at: number; result?: unknown; redirect?: string };
+          const error = new OnceAnswered(row);
+          inner = { error };
+          throw error;
+        }
+        const before = await loadScope(q, scope);
+        const lists = Object.fromEntries(SHORTS.map((s) => [s, [...(before[s] as unknown[]).map((r) => structuredClone(r))]])) as unknown as Lists;
+        const box = new FoodBox(MINT, path, listHolder(lists), scope, orders, () => {}, (paths) => {
+          const out: string[] = [];
+          for (const p of paths) if (p) asked.push(p);
+          gone.push(out);
+          return out;
+        });
+        try {
+          answer = body(box);
+        } catch (error) {
+          inner = { error };
+          throw error;
+        }
+        for (const s of SHORTS) {
+          const t = FOOD_SHORT[s];
+          const { upserts, deletes } = changedRows(t, before[s] as { id: number }[], lists[s] as { id: number }[]);
+          await writeRows(q, t, clientId, upserts, deletes);
+        }
+        found = await unusedPictures(q, [...new Set(asked)], clientId);
+        // A refusal is answered, not kept (once.ts): its claim given back in the same transaction, so sent again it runs again.
+        if (opts.once && refusedAnswer(answer)) await q(sql`DELETE FROM once_keys WHERE key = ${opts.once}::text`);
+        else if (opts.once) {
+          let stored: unknown;
+          try {
+            stored = answer === undefined ? undefined : JSON.parse(JSON.stringify(answer));
+          } catch {
+            stored = undefined;
+          }
+          await writeOnceKey(q, { key: opts.once, at, ...(stored === undefined ? {} : { result: stored }) }, "keep");
+        }
+        return answer;
+      }),
+  });
+  } catch (error) {
+    // Rolled back whole. The code's own error as it threw it (memory mode's), else the database's (made safe, pg.ts).
+    const thrown = inner as { error: unknown } | null;
+    throw thrown ? thrown.error : error;
+  }
+  // The files nothing shows, into every list the code was handed back (its answer holds them).
+  for (const list of gone) list.push(...found.filter((p) => !list.includes(p)));
+  // The meal order onto the client in memory, and the store saved, only where it changed (a box hands out its copy to
+  // every write that reads it: most change nothing).
+  let reordered = false;
+  for (const [id, o] of orders) {
+    const c = getData().clients.find((x) => x.id === id);
+    if (c && JSON.stringify(c.meal_order ?? null) !== JSON.stringify(o.meal_order ?? null)) {
+      if (o.meal_order) c.meal_order = o.meal_order;
+      else delete c.meal_order;
+      reordered = true;
+    }
+  }
+  if (reordered) persist();
+  for (const p of found) trashFile(nodePath.join(DATA_DIR, p.startsWith("/") ? p.slice(1) : p));
+  return answer as T;
+}
+
+/** Every row of a client's food, deleted (the erase, before memory's own): one transaction, or the store's lists in memory. */
+export async function deleteClientFood(clientId: number, p: FoodWritePath = "w.client.delete"): Promise<void> {
+  noteFoodWrite(p);
+  if (!FOOD_PG) return;
+  await foodWriteRaw(`food:${clientId}`, {
+    op: p,
+    run: async (_q, inTx) =>
+      inTx(async (q) => {
+        await q(sql`SET LOCAL statement_timeout = '60s'`);
+        await q(foodLock(clientId));
+        for (const t of FOOD_TABLES) await q(sql`DELETE FROM ${sql.identifier(t)} WHERE client_id = ${clientId}::int`);
+      }),
+  });
+}
+
+/** Every day's photo row, gone (the workspace reset): the store's list emptied, or the table. */
+export async function wipeFoodPhotos(): Promise<void> {
+  noteFoodWrite("w.wipePhotos");
+  if (!FOOD_PG) {
+    storeHolder.set("photos", []);
+    return;
+  }
+  // Every write still on a client's chain settled first, so a photo saved while the reset ran never lands after its DELETE.
+  await foodChainsSettled();
+  await foodWriteRaw(null, { op: "w.wipePhotos", run: async (_q, inTx) => inTx(async (q) => void (await q(sql`DELETE FROM meal_photos`))) });
+}
+
+/**
+ * A picture's tiny preview, onto every day's photo, saved meal and saved day showing that file (setChatMediaLook's food
+ * half). How many rows took it. Memory: the store's rows changed in place, saved by the caller.
+ */
+export async function setFoodLook(file: string, thumb: string | null): Promise<number> {
+  noteFoodWrite("w.look");
+  const apply = (lists: Pick<Lists, "photos" | "savedMeals" | "savedDays">) => {
+    let n = 0;
+    for (const p of lists.photos) {
+      if (p.file_path !== file) continue;
+      p.thumb = thumb;
+      n++;
+    }
+    for (const s of lists.savedMeals) {
+      if (s.picture !== file) continue;
+      s.picture_thumb = thumb;
+      n++;
+    }
+    for (const d of lists.savedDays) {
+      if (d.picture === file) {
+        d.picture_thumb = thumb;
+        n++;
+      }
+      for (const c of d.cards ?? []) {
+        if (c.picture !== file) continue;
+        c.picture_thumb = thumb;
+        n++;
+      }
+    }
+    return n;
+  };
+  if (!FOOD_PG) {
+    return apply({ photos: storeHolder.get("photos") as MealPhoto[], savedMeals: storeHolder.get("savedMeals") as SavedMeal[], savedDays: storeHolder.get("savedDays") as SavedDay[] });
+  }
+  // The file's own client, from its path (/uploads/meals/<client>/…); the rows showing it are that client's. Only the
+  // three lists a picture is on, the day photos by the file itself (whatever their day): never the client's whole diary.
+  const m = /^\/uploads\/meals\/(\d+)\//.exec(file);
+  if (!m) return 0;
+  const clientId = Number(m[1]);
+  if (!getData().clients.some((c) => c.id === clientId)) return 0;
+  return writeFood("w.look", clientId, { tables: ["photos", "savedMeals", "savedDays"], paths: [file] }, (box) => apply(box));
+}
+
+// ---- Whole-store copies --------------------------------------------------------------------------------------------
+
+/** The seven lists of these rows, under the store's own names (the export, the backup's JSON, the snapshot). */
+export function foodKeysOf(rows: FoodRows): Record<FoodTable, unknown[]> {
+  return Object.fromEntries(SHORTS.map((s) => [FOOD_SHORT[s], [...(rows as unknown as Record<FoodShort, unknown[]>)[s]]])) as Record<FoodTable, unknown[]>;
+}
+
+/** Where each food key sits among the store's keys (db.ts emptyData's order): after this one. */
+const FOOD_KEY_AFTER: Record<FoodTable, string> = {
+  calorie_logs: "event_categories",
+  food_entries: "calorie_logs",
+  food_meals: "custom_foods",
+  food_days: "food_meals",
+  saved_meals: "food_days",
+  saved_days: "off_foods",
+  meal_photos: "photo_period_notes",
+};
+
+/**
+ * A whole-store copy with the seven food keys in their places (the export, the backup's JSON, the shutdown dump). In
+ * memory mode the store holds them already: the same object back, so nothing changes. With FOOD_STORE=pg they are put
+ * where the store would hold them, from these rows, and `_food_in_postgres` says so, so a build that doesn't know refuses it.
+ */
+export function withFoodKeys<T extends Record<string, unknown>>(data: T, rows: FoodRows | null): T {
+  if (!FOOD_PG) return data;
+  const lists = rows ? foodKeysOf(rows) : null;
+  const out: Record<string, unknown> = {};
+  const pending = new Map<string, FoodTable[]>();
+  for (const t of FOOD_TABLES) pending.set(FOOD_KEY_AFTER[t], [...(pending.get(FOOD_KEY_AFTER[t]) ?? []), t]);
+  const placed = new Set<string>();
+  const place = (key: string) => {
+    for (const t of pending.get(key) ?? []) {
+      if (placed.has(t)) continue;
+      placed.add(t);
+      out[t] = lists ? lists[t] : [];
+      place(t);
+    }
+  };
+  // chat-door: notes-door: a copy of the keys as they are handed in (the chat's and the notes' already put in place by
+  // withChatKey and withNotesKey); only the food keys are added here.
+  for (const [k, v] of Object.entries(data)) {
+    if ((FOOD_TABLES as readonly string[]).includes(k)) continue;
+    out[k] = v;
+    place(k);
+  }
+  for (const t of FOOD_TABLES) if (!placed.has(t)) out[t] = lists ? lists[t] : [];
+  if (!lists) out._food_in_postgres = true;
+  return out as T;
+}
+
+/** For /api/timing. */
+export function foodStoreReport() {
+  return { pg: FOOD_PG, views: MODE, strict: STRICT };
+}
+
+export type { Q, Row };

@@ -23,6 +23,10 @@ import { startNotesPg } from "../notes/pg";
 import { freshBox, outbox, startDrainer } from "../notes/outbox";
 import { setNotesStrays } from "../notes/rows";
 import { startNotesShadow } from "../notes/shadow";
+import { FOOD_PG, FOOD_STORE_ASKED } from "../food/mode";
+import { checkFoodJson, foodBootMemory, foodBootPg, foodMaxIds, foodProblems, importFood, kvHoldsFoodMark, markFoodPg } from "../food/boot";
+import { startFoodPg } from "../food/pg";
+import { startFoodShadow } from "../food/shadow";
 
 // Starts the Postgres store (STORE=postgres). Called once from
 // instrumentation.ts, which Next awaits before the server takes requests:
@@ -164,8 +168,13 @@ async function start() {
   // The notifications (quest 7) the same with NOTES_STORE=pg; and a memory boot of this build waits too when kv holds an
   // outbox a pg instance left (its last ops must be in it before this boot applies it, notes/boot.ts).
   const notesLeftover = !NOTES_PG && (await kvHoldsOutbox(db));
-  const why = [CHAT_PG && "CHAT_STORE=pg", NOTES_PG && "NOTES_STORE=pg", notesLeftover && "a notes outbox left in kv"].filter(Boolean).join(" and ") || undefined;
-  await takeLease(process.env.DATABASE_URL!, { mustHold: CHAT_PG || NOTES_PG || notesLeftover, name: `norcoach-lease-${BOOT_ID}`, why });
+  // The food diary (quest 8 part 1) the same with FOOD_STORE=pg; and a memory boot of this build waits too when kv holds
+  // the mark a pg instance left (it may still commit a write; this boot drops the unique rule only once it is gone).
+  const foodLeftover = !FOOD_PG && (await kvHoldsFoodMark(db));
+  const why =
+    [CHAT_PG && "CHAT_STORE=pg", NOTES_PG && "NOTES_STORE=pg", notesLeftover && "a notes outbox left in kv", FOOD_PG && "FOOD_STORE=pg", foodLeftover && "a Postgres food store left by the last boot"].filter(Boolean).join(" and ") ||
+    undefined;
+  await takeLease(process.env.DATABASE_URL!, { mustHold: CHAT_PG || NOTES_PG || notesLeftover || FOOD_PG || foodLeftover, name: `norcoach-lease-${BOOT_ID}`, why });
   // With the chat in Postgres alone (CHAT_STORE=pg, Step 5's cut-over): what its SQL leans on is there and runs, or the
   // boot stops here with nothing changed.
   if (CHAT_PG) await chatPreflight(db);
@@ -185,6 +194,13 @@ async function start() {
       await notesPreflight(db);
     }
   }
+  // The food diary the same with FOOD_STORE=pg (quest 8 part 1): migration 0021's objects there, then calorie_logs'
+  // twins out and the unique rule (food/boot.ts). On an empty database after the JSON's rows are in (below).
+  if (FOOD_PG) {
+    const problems = await foodProblems(db, { unique: false });
+    if (problems.length) throw new Error(`[food] Refusing to start with FOOD_STORE=pg: ${problems.join("; ")}`);
+    if (hasData) await foodBootPg(db);
+  }
   let raw: Partial<Data>;
   // Lists still kept in kv under a collection's name while its table is empty: moved into the table by the first save.
   const moved: string[] = [];
@@ -194,6 +210,8 @@ async function start() {
   let healthDirty = false;
   // The notifications' leftover outbox applied (a memory boot after pg mode): the boot's save writes it.
   let notesChanged = false;
+  // The food diary's kv mark set or taken out (quest 8 part 1): the boot's save writes it.
+  let foodChanged = false;
   if (hasData) {
     // The saves taken once, as the last build to save left them (step 4B: a build before it writes only the kv copy).
     const onceKeys = await onceKeysFromKvCopy(db);
@@ -219,6 +237,8 @@ async function start() {
     writer.prime(loaded, moved);
     // A memory boot of this build: the notes' unique rule dropped, an outbox left by a pg instance applied (quest 7).
     if (!NOTES_PG) notesChanged = await notesBootMemory(db, raw);
+    // The food diary the same (quest 8 part 1): a memory boot drops the unique rule and the pg boot's mark; a pg boot sets it.
+    foodChanged = FOOD_PG ? markFoodPg(raw) : await foodBootMemory(db, raw);
     const stale = await derivedStale(db, raw as Row);
     for (const [name, keys] of stale) {
       log(`${name}: ${keys.size} row${keys.size === 1 ? "" : "s"} with an instant column to write again`);
@@ -246,6 +266,12 @@ async function start() {
       notesBoot = await notesBootPg(db);
       await notesPreflight(db);
     } else notesChanged = await importNotesMemory(db, raw);
+    // The food diary the same with FOOD_STORE=pg (quest 8 part 1), then the pg boot's work on its tables.
+    if (FOOD_PG) {
+      await importFood(db, raw);
+      await foodBootPg(db);
+      foodChanged = markFoodPg(raw);
+    } else checkFoodJson(raw);
   }
   // The chat's own boot checks (CHAT_STORE=pg): its stamps' instants put right, its strays, its highest id.
   const chat = CHAT_PG ? await chatBoot(db) : null;
@@ -280,11 +306,22 @@ async function start() {
       notesRaised = true;
     }
   }
+  // The food diary's counters at least their tables' highest ids (FOOD_STORE=pg: raiseCounters no longer sees the rows).
+  let foodRaised = false;
+  if (FOOD_PG) {
+    for (const [t, top] of Object.entries(await foodMaxIds(db))) {
+      if (top > (data._seq[t] ?? 0)) {
+        foodRaised = true;
+        log(`raised the id counter of ${t} from ${data._seq[t] ?? "none"} to ${top}, its highest id`);
+        data._seq[t] = top;
+      }
+    }
+  }
   // Ids from Postgres for the tables that will move (step 4A), before anything can take one; the counters as raised.
   const ids = new IdPools(db, () => (data._seq ??= {}));
   await ids.start();
   (globalThis as unknown as { _pgIds?: IdPools })._pgIds = ids;
-  const changed = prepared.changed || raised > 0 || chatRaised || moved.length > 0 || restamped > 0 || healthDirty || notesChanged || notesRaised;
+  const changed = prepared.changed || raised > 0 || chatRaised || moved.length > 0 || restamped > 0 || healthDirty || notesChanged || notesRaised || foodChanged || foodRaised;
   // The import, or a tidy's changes, are written before any request arrives,
   // so a failure stops the boot instead of surfacing later.
   if (!hasData || changed) await writer.save(() => data as unknown as Row);
@@ -295,6 +332,13 @@ async function start() {
   await startChatShadow({ db, url: process.env.DATABASE_URL!, writer }).catch(() => {});
   // The notifications' shadow (quest 7, app/lib/notes/shadow.ts; NOTES_SHADOW, off by default), the same way.
   await startNotesShadow({ db, url: process.env.DATABASE_URL!, writer }).catch(() => {});
+  // The food diary's shadow (quest 8 part 1, app/lib/food/shadow.ts; FOOD_SHADOW, off by default), the same way.
+  await startFoodShadow({ db, url: process.env.DATABASE_URL!, writer }).catch(() => {});
+  // The food diary's own connection (FOOD_STORE=pg), before any request.
+  if (FOOD_PG) {
+    await startFoodPg({ db, url: process.env.DATABASE_URL! });
+    console.log("[food] pg: the food diary is in Postgres alone");
+  }
   // The notifications' own connection (NOTES_STORE=pg), before any request, the stray clients known, the orphans said.
   if (NOTES_PG) {
     await startNotesPg({ db, url: process.env.DATABASE_URL! });
@@ -405,6 +449,11 @@ export function initStore(): Promise<void> {
   if (!["", "memory", "pg"].includes(NOTES_STORE_ASKED)) return Promise.reject(new Error(`[store] Refusing to start: NOTES_STORE=${NOTES_STORE_ASKED} is not memory or pg`));
   if (NOTES_STORE_ASKED === "pg" && STORE_MODE !== "postgres" && process.env.NEXT_PHASE !== "phase-production-build") {
     return Promise.reject(new Error("[store] Refusing to start: NOTES_STORE=pg needs the Postgres store (STORE=postgres and DATABASE_URL)"));
+  }
+  // FOOD_STORE (food/mode.ts) the same (quest 8 part 1).
+  if (!["", "memory", "pg"].includes(FOOD_STORE_ASKED)) return Promise.reject(new Error(`[store] Refusing to start: FOOD_STORE=${FOOD_STORE_ASKED} is not memory or pg`));
+  if (FOOD_STORE_ASKED === "pg" && STORE_MODE !== "postgres" && process.env.NEXT_PHASE !== "phase-production-build") {
+    return Promise.reject(new Error("[store] Refusing to start: FOOD_STORE=pg needs the Postgres store (STORE=postgres and DATABASE_URL)"));
   }
   if (STORE_MODE !== "postgres") return Promise.resolve();
   const g = globalThis as unknown as { _pgInit?: Promise<void> };
