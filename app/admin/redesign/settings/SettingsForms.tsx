@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -374,6 +374,40 @@ export function BrandColourSettings({ picked }: { picked: string | null }) {
   const ink = BRAND_SWATCHES[0].hex;
   const shown = now ?? ink;
   const used = brandColour(shown) ?? { hex: ink, changed: false };
+  // The admin takes the colour the moment it is picked (19 Nov, Alex: "just have the ui change the color when i click on
+  // a color so they see immediately how it is"; no Start pill): --brand on the page at once, the save following, and
+  // the faint mark behind the page redrawn in it here (the server's own tinted copy comes with the save).
+  useEffect(() => {
+    const body = document.body.style;
+    if (used.hex === ink) {
+      body.removeProperty("--brand");
+      body.removeProperty("--brand-mark");
+      return;
+    }
+    body.setProperty("--brand", used.hex);
+    let gone = false;
+    const mark = /url\(["']?([^"')]+)["']?\)/.exec(getComputedStyle(document.body).getPropertyValue("--bg-mark"))?.[1] ?? "/brand/mark.svg";
+    const img = new Image();
+    img.onload = () => {
+      if (gone) return;
+      // The star's SVG has no size of its own: drawn in the mark's box (448:430, doubled).
+      const svg = mark.endsWith(".svg") || mark.startsWith("data:image/svg");
+      const c = document.createElement("canvas");
+      c.width = svg || !img.naturalWidth ? 896 : img.naturalWidth;
+      c.height = svg || !img.naturalHeight ? 860 : img.naturalHeight;
+      const g = c.getContext("2d");
+      if (!g) return;
+      g.drawImage(img, 0, 0, c.width, c.height);
+      g.globalCompositeOperation = "source-in";
+      g.fillStyle = used.hex;
+      g.fillRect(0, 0, c.width, c.height);
+      body.setProperty("--brand-mark", `url("${c.toDataURL("image/png")}")`);
+    };
+    img.src = mark;
+    return () => {
+      gone = true;
+    };
+  }, [used.hex, ink]);
   const save = (hex: string | null) => {
     if (timer.current) clearTimeout(timer.current);
     // Ink is today's look: none kept.
@@ -454,16 +488,11 @@ export function BrandColourSettings({ picked }: { picked: string | null }) {
             />
           </div>
         )}
-        <div className="rst-brand-demo">
-          <span className="rst-brand-pill" style={{ background: used.hex }}>
-            Start
+        {used.changed && (
+          <span className="rst-brand-fact">
+            {shown.toUpperCase()} shows as {used.hex.toUpperCase()}
           </span>
-          {used.changed && (
-            <span className="rst-brand-fact">
-              {shown.toUpperCase()} shows as {used.hex.toUpperCase()}
-            </span>
-          )}
-        </div>
+        )}
         {error && <small className="rst-err">{error}</small>}
       </div>
     </Section>
