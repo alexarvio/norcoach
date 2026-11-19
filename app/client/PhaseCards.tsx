@@ -6,7 +6,7 @@ import { useNavigateTab, useOpenCheckIn } from "./CheckInContext";
 import FitTitle from "./FitTitle";
 import CardPictureSheet, { useLongPress, type CardCovers } from "./CardPictureSheet";
 import PictureCycle from "./PictureCycle";
-import { PHASE_COVERS } from "../lib/phaseCovers";
+import { trackPictures, type TrackPictures } from "../lib/phaseCovers";
 import CheckInDialog, { type CheckInForm } from "./CheckInDialog";
 import { FEATURES } from "../lib/features";
 import { pic } from "../lib/pic";
@@ -114,8 +114,11 @@ export default function PhaseCards({
   checkIn = null,
   clientId,
   ownCovers = {},
+  coachCards = {},
 }: {
   phases: HomePhase[];
+  /** The coach's own card pictures (19 Nov, Alex), in place of the stock ones where they set some. */
+  coachCards?: TrackPictures;
   /** Today's check-in lines (13 Oct): the lifestyle card's Log opens them in a pop-up. */
   checkIn?: CheckInForm | null;
   clientId: number;
@@ -149,7 +152,7 @@ export default function PhaseCards({
     // No heading: the cards sit straight under the greeting.
     <section className={`pc-plan ${mode}`} aria-label="Your plan">
       {mode === "carousel" ? (
-        <PhaseCardCarousel phases={phases} coachName={coachName} today={today} nextSession={nextSession} food={food} weekDone={weekDone} checkInCount={checkInCount} checkIn={checkIn} clientId={clientId} ownCovers={ownCovers} />
+        <PhaseCardCarousel phases={phases} coachName={coachName} today={today} nextSession={nextSession} food={food} weekDone={weekDone} checkInCount={checkInCount} checkIn={checkIn} clientId={clientId} ownCovers={ownCovers} coachCards={coachCards} />
       ) : (
         <div className="pc-stack">
           {phases.map((ph, i) => (
@@ -255,7 +258,7 @@ function EmptyPhaseCard({ ph, eager, onOpen }: { ph: HomePhase; eager?: boolean;
 
 // ---- A · carousel ---------------------------------------------------------
 
-function PhaseCardCarousel({ phases, coachName, today, nextSession, food, weekDone, checkInCount, checkIn, clientId, ownCovers }: { phases: HomePhase[]; coachName: string; today: string; nextSession: PhaseNextSession; food: PhaseFoodToday; weekDone: { nextWeekLabel: string } | null; checkInCount: { done: number; total: number } | null; checkIn: CheckInForm | null; clientId: number; ownCovers: CardCovers }) {
+function PhaseCardCarousel({ phases, coachName, today, nextSession, food, weekDone, checkInCount, checkIn, clientId, ownCovers, coachCards }: { phases: HomePhase[]; coachName: string; today: string; nextSession: PhaseNextSession; food: PhaseFoodToday; weekDone: { nextWeekLabel: string } | null; checkInCount: { done: number; total: number } | null; checkIn: CheckInForm | null; clientId: number; ownCovers: CardCovers; coachCards: TrackPictures }) {
   // Today's check-in in a pop-up (13 Oct): Log on the lifestyle card opens
   // it; Save folds it away and Home stays where it was.
   const [logOpen, setLogOpen] = useState(false);
@@ -269,13 +272,14 @@ function PhaseCardCarousel({ phases, coachName, today, nextSession, food, weekDo
   const coachCoverOf = (track: HomePhase["track"]) => phases.find((p) => p.track === track)?.coverUrl ?? null;
   // Only a cover the coach chose is theirs (22 Oct); a stock one is the default.
   const coachChoseOf = (track: HomePhase["track"]) => !!phases.find((p) => p.track === track)?.coachCover;
-  // The client's own pictures, taking turns (14 Oct); none, the one the coach chose; neither, the track's stock
-  // pictures taking turns (18 Nov, Alex: "these 5 are going to be in rotation").
+  // The client's own pictures, taking turns (14 Oct); none, the one the coach chose; neither, the coach's own card
+  // pictures (19 Nov, Alex), else the track's stock pictures, taking turns (18 Nov, Alex: "these 5 are going to be in rotation").
   const coverFor = (track: HomePhase["track"]): string[] => {
     const own = ownFor(track);
     if (own.length) return own;
     const coach = coachCoverOf(track);
-    if (!coachChoseOf(track) && PHASE_COVERS[track].length) return PHASE_COVERS[track];
+    const shared = trackPictures(track, coachCards);
+    if (!coachChoseOf(track) && shared.length) return shared;
     return coach ? [coach] : [];
   };
   const count = phases.length;
@@ -371,6 +375,7 @@ function PhaseCardCarousel({ phases, coachName, today, nextSession, food, weekDo
           own={ownFor(holdTrack)}
           coach={coachCoverOf(holdTrack)}
           coachChose={coachChoseOf(holdTrack)}
+          coachCards={!!coachCards[holdTrack]?.length}
           onSaved={(t, pictures) => setOverride((o) => ({ ...o, [t]: pictures }))}
           onClose={() => setHoldTrack(null)}
         />

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import type { PhaseTrack } from "../lib/db";
-import { PHASE_COVERS } from "../lib/phaseCovers";
+import { trackPictures, type TrackPictures } from "../lib/phaseCovers";
 import { discardCardPicturesAction, resetCardCoverAction, saveCardPicturesAction, stageCardPictureAction } from "../lib/actions";
 import { coverJpeg } from "../lib/coverJpeg";
 import { newOnceKey } from "../lib/onceKey";
@@ -134,12 +134,15 @@ export default function CardPictureSheet({
   coachName,
   own,
   coachChose,
+  coachCards = false,
   onSaved,
   onClose,
 }: {
   clientId: number;
   track: PhaseTrack;
   coachName: string;
+  /** The coach set card pictures of their own for this track (19 Nov): theirs show, not the default. */
+  coachCards?: boolean;
   /** The client's own pictures, in order; none, the coach's shows. */
   own: string[];
   /** The coach's picture, behind the card when there is no own. */
@@ -229,7 +232,7 @@ export default function CardPictureSheet({
             <h2 className="cv-title">
               {TRACK_LABEL[track]} card <span className="cv-count">{items.length}/{MAX_PICTURES}</span>
             </h2>
-            {items.length === 0 && <p className="cv-sub">{`${coachChose ? `${coachName}'s picture` : "The default picture"} shows.`}</p>}
+            {items.length === 0 && <p className="cv-sub">{coachChose ? `${coachName}'s picture shows.` : coachCards ? `${coachName}'s pictures show.` : "The default picture shows."}</p>}
           </div>
         </div>
         <div className="cv-grid">
@@ -261,7 +264,7 @@ export default function CardPictureSheet({
           </button>
           {(items.length > 0 || own.length > 0) && (
             <button type="button" className="cv-btn plain" disabled={saving} onClick={reset}>
-              {coachChose ? <>Use {coachName}&rsquo;s picture</> : "Use the default"}
+              {coachChose ? <>Use {coachName}&rsquo;s picture</> : coachCards ? <>Use {coachName}&rsquo;s pictures</> : "Use the default"}
             </button>
           )}
         </div>
@@ -286,8 +289,10 @@ type Row = {
     with a chevron; a tap folds it open in place on its photos, one track at
     a time. Add, remove and going back to the coach's picture all save at once.
     Under the client's own, the track's stock pictures (18 Nov, Alex): Default
-    pictures, each with a + that puts it among their own. */
-export function CardPicturesRows({ clientId, coachName, rows }: { clientId: number; coachName: string; rows: Row[] }) {
+    pictures, each with a + that puts it among their own. The coach's own card
+    pictures take the stock ones' place where they set some (19 Nov, Alex),
+    under {Coach}'s pictures. */
+export function CardPicturesRows({ clientId, coachName, coachCards = {}, rows }: { clientId: number; coachName: string; coachCards?: TrackPictures; rows: Row[] }) {
   const [open, setOpen] = useState<PhaseTrack | null>(null);
   // What was just saved (or cleared), until the page comes back with it.
   const [fresh, setFresh] = useState<Partial<Record<PhaseTrack, string[]>>>({});
@@ -299,6 +304,8 @@ export function CardPicturesRows({ clientId, coachName, rows }: { clientId: numb
           key={r.track}
           clientId={clientId}
           coachName={coachName}
+          shared={trackPictures(r.track, coachCards)}
+          coachShared={!!coachCards[r.track]?.length}
           row={r}
           own={fresh[r.track] ?? r.own}
           open={open === r.track}
@@ -316,6 +323,8 @@ type Pending = { key: string; preview: string; path?: string | null; failed?: bo
 function CardPictureFold({
   clientId,
   coachName,
+  shared,
+  coachShared,
   row,
   own,
   open,
@@ -324,6 +333,10 @@ function CardPictureFold({
 }: {
   clientId: number;
   coachName: string;
+  /** The track's pictures where no one chose (19 Nov): the coach's own, else the stock ones. */
+  shared: string[];
+  /** Those are the coach's own. */
+  coachShared: boolean;
   row: Row;
   own: string[];
   open: boolean;
@@ -426,8 +439,9 @@ function CardPictureFold({
   const full = own.length + going >= MAX_PICTURES;
   // None of their own: the picture the card shows instead, as the one photo.
   const standIn = !own.length && !pending.length;
-  // The track's stock pictures not on the card yet: a tap puts one among the client's own, saved at once.
-  const stock = PHASE_COVERS[track].filter((p) => !own.includes(p));
+  // The track's stock pictures (the coach's own in their place, 19 Nov) not on the card yet: a tap puts one among the
+  // client's own, saved at once.
+  const stock = shared.filter((p) => !own.includes(p));
   const addStock = (p: string) => {
     if (full || ownRef.current.includes(p)) return;
     const next = [...ownRef.current, p].slice(0, MAX_PICTURES);
@@ -492,17 +506,17 @@ function CardPictureFold({
               coachChose ? <p className="cv-fold-words">{`${coachName}'s picture`}</p> : null
             ) : own.length > 0 ? (
               <button type="button" className="cv-fold-reset" onClick={reset}>
-                {coachChose ? <>Use {coachName}&rsquo;s picture</> : "Use the default"}
+                {coachChose ? <>Use {coachName}&rsquo;s picture</> : coachShared ? <>Use {coachName}&rsquo;s pictures</> : "Use the default"}
               </button>
             ) : null}
             {stock.length > 0 && (
               <>
-                <p className="cv-fold-label">Default pictures</p>
+                <p className="cv-fold-label">{coachShared ? `${coachName}'s pictures` : "Default pictures"}</p>
                 <div className="cv-fold-grid">
                   {stock.map((p) => (
                     <span key={p} className="cv-fold-pic">
-                      {/* eslint-disable-next-line @next/next/no-img-element -- a public file */}
-                      <img src={p} alt="" loading="lazy" decoding="async" />
+                      {/* eslint-disable-next-line @next/next/no-img-element -- a public file, or the coach's upload */}
+                      <img src={pic(p, 480)} alt="" loading="lazy" decoding="async" />
                       <button type="button" className="cv-fold-x" disabled={full} onClick={() => addStock(p)} aria-label="Add this picture to your own">
                         <span aria-hidden="true">
                           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">

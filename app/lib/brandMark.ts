@@ -3,6 +3,7 @@ import path from "path";
 import { DATA_DIR, getData, persist, type CoachSettings } from "./db";
 import { loadSharp } from "./sharpSetup";
 import { brandColour } from "./brandColour";
+import { trashUploadFile } from "./storage";
 
 // The coach's logo behind the screens (28 Oct, Alex: "their logo would be the one in the background"). Where the
 // Norcoach star sits very faint today (the client's Home, every chat, every admin screen, the coach's phone), a coach
@@ -365,13 +366,10 @@ export function bannerInline(banner: string): Promise<string | null> {
   return hit;
 }
 
+// The old file on the disk to trash (19 Nov: the path missed the uploads folder, so old logos stayed on the volume).
 function unlinkUpload(publicPath: string | null | undefined) {
   if (!publicPath?.startsWith("/uploads/")) return;
-  try {
-    fs.unlinkSync(path.join(DATA_DIR, ...publicPath.split("?")[0].slice("/uploads/".length).split("/")));
-  } catch {
-    /* already gone */
-  }
+  trashUploadFile(publicPath);
 }
 
 /** The mark as a small picture inside the page itself (13 Nov, Alex: "the background image takes quite a little bit to

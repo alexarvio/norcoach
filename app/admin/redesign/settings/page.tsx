@@ -15,6 +15,8 @@ import ChatDock from "../ChatDock";
 import "../messages/messages.css";
 import { AccountSettings, BannerSettings, BrandColourSettings, BusinessSettings, InvoicingSettings, LogoSettings, PrivacySettings } from "./SettingsForms";
 import { coachBrandInline } from "../../../lib/brandMark";
+import { coachCardPictures } from "../../../lib/coachCards";
+import CardPicturesSettings from "./CardPicturesSettings";
 import SupportSection from "./SupportSection";
 import BillingSettings from "./BillingSettings";
 import { billingView } from "../../../lib/billing";
@@ -152,6 +154,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           {/* Beside the logo, the banner and the brand colour (19 Nov, Alex: docs/boards/coach-brand-mockup.html). */}
           <BannerSettings banner={brandNow.banner ?? null} ratio={brandNow.bannerRatio ?? null} />
           <BrandColourSettings picked={settings.brand?.color ?? null} />
+          {/* The coach's own card pictures, up to five a track, for all their clients (19 Nov, Alex). */}
+          <CardPicturesSettings cards={coachCardPictures(coach.id)} />
           <BusinessSettings key={JSON.stringify(business)} initial={business} />
         </>
       ),

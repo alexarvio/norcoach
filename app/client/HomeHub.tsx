@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { markNotificationReadAction } from "../lib/actions";
 import VideoReplySheet, { type VideoReplyView } from "./VideoReplySheet";
 import PhaseCards, { TRACK_ICON, type HomePhase, type PhaseFoodToday } from "./PhaseCards";
-import { defaultPhaseCover } from "../lib/phaseCovers";
+import { trackPictures, type TrackPictures } from "../lib/phaseCovers";
 import { type ProgressPics } from "./ProgressPicsCard";
 
 import type { HomeEvent, HomeEvents } from "./EventsCard";
@@ -131,9 +131,12 @@ export default function HomeHub({
   clientId = 0,
   meetingRequest = null,
   cardCovers = {},
+  coachCards = {},
   focus = null,
   weight = null,
 }: {
+  /** The coach's own card pictures (19 Nov, Alex), in place of the stock ones on the tracks where they set some. */
+  coachCards?: TrackPictures;
   /** To focus on (23 Oct, Alex): the coach's goals until the next call, under the coach's latest since 3 Nov; null, none. */
   focus?: HomeFocus | null;
   /** The weight row (3 Nov, Alex); null with no weigh-in. */
@@ -181,9 +184,9 @@ export default function HomeHub({
   // training and nutrition.
   // Every track always has its card (17 Oct, Alex): one with nothing deployed is an empty card that says so,
   // and names the phase the coach has scheduled, if any.
-  const empty = (track: HomePhase["track"], id: number): HomePhase => ({ id, track, name: "No plan yet", start: today, end: null, coverUrl: defaultPhaseCover(track, 0), objectives: [], note: null, next: planGap?.next?.track === track ? { name: planGap.next.name, start: planGap.next.start } : null, placeholder: true });
+  const empty = (track: HomePhase["track"], id: number): HomePhase => ({ id, track, name: "No plan yet", start: today, end: null, coverUrl: trackPictures(track, coachCards)[0] ?? null, objectives: [], note: null, next: planGap?.next?.track === track ? { name: planGap.next.name, start: planGap.next.start } : null, placeholder: true });
   const cards: HomePhase[] = [
-    ...(lifestyle ? [lifestyle] : hasCheckIns ? [{ id: -1, track: "lifestyle" as const, name: "Check-in", start: today, end: null, coverUrl: defaultPhaseCover("lifestyle", 0), objectives: [], note: null, next: null }] : [empty("lifestyle", -10)]),
+    ...(lifestyle ? [lifestyle] : hasCheckIns ? [{ id: -1, track: "lifestyle" as const, name: "Check-in", start: today, end: null, coverUrl: trackPictures("lifestyle", coachCards)[0] ?? null, objectives: [], note: null, next: null }] : [empty("lifestyle", -10)]),
     ...(["training", "nutrition"] as const).flatMap((t, i) => {
       const own = plan.filter((p) => p.track === t);
       return own.length ? own : [empty(t, -11 - i)];
@@ -241,6 +244,7 @@ export default function HomeHub({
             checkIn={hasCheckIns ? checkInForm : null}
             clientId={clientId}
             ownCovers={cardCovers}
+            coachCards={coachCards}
           />
         )}
         {/* The weight, always (3 Nov, Alex): Goal | 7d | 30d | Phase as the coach's card. */}
