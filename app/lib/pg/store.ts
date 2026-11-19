@@ -3,6 +3,8 @@ import type { PgColumn as Column, PgDatabase, PgTable } from "drizzle-orm/pg-cor
 import { reportSkipped, health, noteSaveCost, noteSaveTx } from "./health";
 import { COLLECTIONS, DERIVED, kv, ROLLBACK_KV_COPIES, TABLE_NAMES_NOT_IN_KV } from "./schema";
 import { msInstant, msInstantMs, stampInstant, stampInstantMs } from "./stamps";
+import { WRITER_COLLECTIONS } from "./writerTables";
+import { CHAT_PG } from "../chat/mode";
 
 // Loads the whole store from Postgres and saves changes back (phase 1).
 //
@@ -173,7 +175,7 @@ export function cleanJson(value: unknown): string | null {
 const NOT_KV = new Set<string>([...COLLECTIONS.map((c) => c.name), ...TABLE_NAMES_NOT_IN_KV]);
 export const isTableName = (key: string) => NOT_KV.has(key);
 
-const COLLECTION_NAMES = new Set<string>(COLLECTIONS.map((c) => c.name));
+const COLLECTION_NAMES = new Set<string>(WRITER_COLLECTIONS.map((c) => c.name));
 
 /**
  * Every collection and top-level value, as the store object db.ts works on. A list still kept in kv under a
@@ -182,7 +184,7 @@ const COLLECTION_NAMES = new Set<string>(COLLECTIONS.map((c) => c.name));
  */
 export async function loadStore(db: AnyDb, moved: string[] = []): Promise<Row> {
   const out: Row = {};
-  for (const c of COLLECTIONS) {
+  for (const c of WRITER_COLLECTIONS) {
     const columns = columnsOf(c.table);
     const order: readonly string[] = "order" in c ? c.order : c.key;
     const records = (await db
@@ -219,7 +221,7 @@ export async function loadStore(db: AnyDb, moved: string[] = []): Promise<Row> {
  */
 export async function derivedStale(db: AnyDb, data: Row): Promise<Map<string, Set<string>>> {
   const stale = new Map<string, Set<string>>();
-  for (const c of COLLECTIONS) {
+  for (const c of WRITER_COLLECTIONS) {
     const derived = DERIVED_OF.get(c.table);
     if (!derived || c.key.length !== 1) continue;
     const keyColumn = columnsOf(c.table)[c.key[0]].name;
@@ -271,7 +273,7 @@ function snapshotOf(data: Row): Snapshot {
     skipped[table] = (skipped[table] ?? 0) + 1;
     reportSkipped(table, why, sample);
   };
-  for (const c of COLLECTIONS) {
+  for (const c of WRITER_COLLECTIONS) {
     const byKey = new Map<string, string>();
     const list = data[c.name];
     for (const row of Array.isArray(list) ? (list as unknown[]) : []) {
@@ -330,6 +332,49 @@ function snapshotOf(data: Row): Snapshot {
 const CHUNK = 500;
 
 /**
+ * With CHAT_STORE=pg (Step 5's cut-over) chat_messages is not among the writer's collections, so neither snapshot can
+ * hold it; should one ever (a list put back by mistake), the save stops here, before any transaction, rather than
+ * writing old rows over the table or deleting what the snapshot lacks.
+ */
+function chatTripwire(next: Snapshot, last: Snapshot) {
+  if (CHAT_PG && (next.rows.has("chat_messages") || last.rows.has("chat_messages"))) {
+    throw new Error("[store] !!! chat_messages reached the store's writer with CHAT_STORE=pg: the save is refused");
+  }
+}
+
+/**
+ * Rows of one collection written into its table as the writer would write them (toRecord, cleanJson, its derived
+ * columns), a row already there left as it is: for the boot's JSON import of chat rows with CHAT_STORE=pg (runtime.ts),
+ * whose table the writer no longer fills. In one transaction, 500 rows a statement. How many were offered.
+ */
+export async function insertRowsOnce(db: AnyDb, name: string, list: unknown[]): Promise<number> {
+  const c = COLLECTIONS.find((x) => x.name === name);
+  if (!c) throw new Error(`insertRowsOnce: no collection named ${name}`);
+  const records: Row[] = [];
+  for (const row of list) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+    const record = toRecord(c.table, row as Row);
+    if (c.key.some((k) => record[k] == null)) continue;
+    const json = cleanJson(record);
+    if (json == null) continue;
+    const parsed = JSON.parse(json) as Row;
+    for (const d of DERIVED_OF.get(c.table) ?? []) parsed[d.column] = derivedValue(d, parsed);
+    records.push(parsed);
+  }
+  if (!records.length) return 0;
+  const columns = columnsOf(c.table);
+  await db.transaction(async (tx) => {
+    for (let i = 0; i < records.length; i += CHUNK) {
+      await (tx as unknown as AnyDb)
+        .insert(c.table)
+        .values(records.slice(i, i + CHUNK) as any)
+        .onConflictDoNothing({ target: c.key.map((k) => columns[k]) as any });
+    }
+  });
+  return records.length;
+}
+
+/**
  * Saves a store to Postgres. Only what differs from the last save it knows
  * about is written; the first save after construction writes everything
  * unless prime() was called with what the database already holds.
@@ -365,6 +410,7 @@ export class PgStoreWriter {
   prime(data: Row, moved: readonly string[] = []) {
     this.committedSaves++;
     this.last = snapshotOf(data);
+    chatTripwire(this.last, this.last);
     for (const name of moved) {
       this.last.rows.set(name, new Map());
       this.last.kv.set(name, "");
@@ -411,12 +457,14 @@ export class PgStoreWriter {
   }
 
   private async writeDiff(next: Snapshot, started = performance.now(), snapped = started) {
+    // Before any transaction: with chat in Postgres alone the writer never holds a chat row (Step 5's cut-over).
+    chatTripwire(next, this.last);
     const work: ((tx: AnyDb) => Promise<unknown>)[] = [];
     // Rows and kv values compared, and those that differed or went: measured only (noteSaveCost).
     let compared = 0;
     let changed = 0;
 
-    for (const c of COLLECTIONS) {
+    for (const c of WRITER_COLLECTIONS) {
       const before = this.last.rows.get(c.name) ?? new Map<string, string>();
       let after = next.rows.get(c.name);
       if (!after) next.rows.set(c.name, (after = new Map<string, string>()));

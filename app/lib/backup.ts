@@ -3,6 +3,8 @@ import path from "path";
 import { PutObjectCommand, HeadObjectCommand, ListObjectsV2Command, DeleteObjectsCommand, S3Client } from "@aws-sdk/client-s3";
 import { DATA_DIR, getData, STORE_MODE } from "./db";
 import { deleteAllUnder } from "./storage";
+import { CHAT_PG } from "./chat/mode";
+import { fetchAllChat, withChatKey } from "./chat/rows";
 
 // Nightly copy of everything on the volume to a bucket that is not the
 // volume: the JSON store as a dated snapshot, the uploads folder mirrored
@@ -87,10 +89,26 @@ export type BackupResult = {
   pruned: number;
   /** The database's own backup (Postgres mode): where, how many tables and rows, and files pruned. */
   pg: { prefix: string; tables: number; rows: number; pruned: number } | null;
+  /** CHAT_STORE=pg: the chat's read failed, so today's JSON snapshot was skipped (snapshot ""); the rest ran. */
+  chatReadFailed?: true;
 };
 
-/** One full run. Throws on a failure the caller should log. */
-export async function runBackup(): Promise<BackupResult | null> {
+/**
+ * One full run. Throws on a failure the caller should log. With CHAT_STORE=pg one run at a time (a run asked while one
+ * goes gets that one's answer): each holds a chat connection for its whole read of the table.
+ */
+export function runBackup(): Promise<BackupResult | null> {
+  if (!CHAT_PG) return runBackupOnce();
+  const g = globalThis as unknown as { __norcoachBackupRun?: Promise<BackupResult | null> | null };
+  if (g.__norcoachBackupRun) return g.__norcoachBackupRun;
+  const run = runBackupOnce().finally(() => {
+    g.__norcoachBackupRun = null;
+  });
+  g.__norcoachBackupRun = run;
+  return run;
+}
+
+async function runBackupOnce(): Promise<BackupResult | null> {
   const c = client();
   if (!c) return null;
   const { s3, bucket } = c;
@@ -100,10 +118,30 @@ export async function runBackup(): Promise<BackupResult | null> {
   // Exported from the in-memory store rather than read from ironline.json, so
   // it is the same complete snapshot whether the data lives in the file or
   // in Postgres.
-  const body = Buffer.from(JSON.stringify(getData(), null, 2));
+  // With CHAT_STORE=pg the chat is not in memory: its rows are read from the table (one snapshot) and put in their key's
+  // place, so latest.json stays the whole store any build can import (Step 5's cut-over). Should that read fail, the
+  // JSON is not written today (yesterday's latest.json stays, whole) and the rest still runs: the uploads and, above all,
+  // the database's own backup (step 4), which holds the chat's table itself.
+  let store: unknown = null;
+  let chatReadFailed = false;
+  if (CHAT_PG) {
+    try {
+      // chat-door: the store copied whole, the chat read from its table when it is not in memory
+      store = withChatKey(getData() as unknown as Record<string, unknown>, await fetchAllChat("backup"));
+    } catch (error) {
+      chatReadFailed = true;
+      console.error("[backup] the chat could not be read from Postgres: today's JSON snapshot skipped, the rest goes on:", error instanceof Error ? error.message : error);
+      import("@sentry/nextjs")
+        .then((S) => S.captureMessage("Backup: the chat could not be read; the JSON snapshot was skipped", { level: "error", tags: { alert: "backup-chat-read" } }))
+        .catch(() => {});
+    }
+  } else store = getData();
   const snapshot = `snapshots/${day}/ironline.json`;
-  await s3.send(new PutObjectCommand({ Bucket: bucket, Key: snapshot, Body: body, ContentType: "application/json" }));
-  await s3.send(new PutObjectCommand({ Bucket: bucket, Key: "latest.json", Body: body, ContentType: "application/json" }));
+  if (!chatReadFailed) {
+    const body = Buffer.from(JSON.stringify(store, null, 2));
+    await s3.send(new PutObjectCommand({ Bucket: bucket, Key: snapshot, Body: body, ContentType: "application/json" }));
+    await s3.send(new PutObjectCommand({ Bucket: bucket, Key: "latest.json", Body: body, ContentType: "application/json" }));
+  }
 
   // 2. Uploads, mirrored. A file that is already there is left alone, so a
   //    night's run costs one HEAD per file and one PUT per new file.
@@ -162,7 +200,7 @@ export async function runBackup(): Promise<BackupResult | null> {
     }
   }
 
-  return { snapshot, uploadsCopied: copied, uploadsSkipped: skipped, pruned, pg };
+  return { snapshot: chatReadFailed ? "" : snapshot, uploadsCopied: copied, uploadsSkipped: skipped, pruned, pg, ...(chatReadFailed ? { chatReadFailed: true as const } : {}) };
 }
 
 /**

@@ -3,6 +3,8 @@
 import { chatChanged, chatCurrent, chatTyping, timedChatRead } from "./chatBus";
 import { once, onceKeyOf } from "./once";
 import { sendChatAs } from "./chatSend";
+import { CHAT_PG } from "./chat/mode";
+import { createHash } from "crypto";
 import { fetchCoachChatOfClient, fetchFoodComments, fetchThread } from "./chat/rows";
 import { isDialCode, splitTypedPhone } from "./phone";
 import { isMeetingTypeId } from "./meetingTypes";
@@ -3138,7 +3140,8 @@ export async function replyToMediaAction(id: number, text: string, onceKey?: str
       afterResponse(() => prepareChatMedia(target.publicPath, "image", bytes));
       withPicture = true;
     }
-    const ok = await replyToMedia(id, String(text ?? ""), withPicture);
+    // With CHAT_STORE=pg the chat message carries a key of its own, so a retry after a crash between the two never posts it twice.
+    const ok = await replyToMedia(id, String(text ?? ""), withPicture, chatOnceKeyOf("chatReplyMedia", id, onceKey));
     // A failure is thrown, never kept against the key (a plain false would answer every retry of these words).
     if (!ok) throw new Error("The reply did not save.");
     revalidatePath("/admin");
@@ -3158,7 +3161,7 @@ export async function mediaReviewClientAction(id: number): Promise<{ name: strin
 export async function sendFormReviewAction(id: number, message: string, meta: { durationMs: number; annotations: number }, onceKey?: string): Promise<boolean> {
   if (!Number.isInteger(id) || !(await coachForClient(getClientIdForVideoRequest(id)))) return false;
   return once(`sendFormReviewAction:${id}`, onceKeyOf(onceKey), async () => {
-    const ok = await sendFormReview(id, String(message ?? ""), { durationMs: Number(meta?.durationMs), annotations: Number(meta?.annotations) });
+    const ok = await sendFormReview(id, String(message ?? ""), { durationMs: Number(meta?.durationMs), annotations: Number(meta?.annotations) }, chatOnceKeyOf("chatFormReview", id, onceKey));
     // The clip's size and preview onto its chat message, from the frame made as it came in (videoReplyUpload.ts).
     const clip = ok ? getData().video_requests.find((r) => r.id === id)?.reply_file_path : null;
     if (clip) afterResponse(() => prepareChatMedia(clip, "video"));
@@ -4038,13 +4041,27 @@ export async function startSessionAction(programDayId: number, at?: string): Pro
 export async function endSessionAction(programDayId: number, opts?: { note?: string; at?: string; answers?: { id: string; value: number | string | null }[]; enjoyment?: number | null; adherence?: number | null }) {
   const owner = clientIdForProgramDay(Number(programDayId));
   if (owner == null || !(await canAccessClient(owner))) return;
-  endSessionFor(owner, Number(programDayId), opts, (await getSessionUser())?.role === "client");
+  await endSessionFor(owner, Number(programDayId), opts, (await getSessionUser())?.role === "client");
   revalidatePath("/client");
   revalidatePath("/admin");
 }
 
-/** Ending a session, its caller checked: the note to the chat once per wording, and never from a coach's preview. */
-function endSessionFor(owner: number, programDayId: number, opts: { note?: string; at?: string; answers?: { id: string; value: number | string | null }[]; enjoyment?: number | null; adherence?: number | null } | undefined, fromClient: boolean) {
+/**
+ * The chat message's own once key for a review's reply (CHAT_STORE=pg), from the device's key: `chatReplyMedia<id>:k` or
+ * `chatFormReview<id>:k`, never once()'s own (`replyToMediaAction:<id>:k`). once() keeps its key only after the whole
+ * save ran and the store has it, so a crash between the chat's commit and the store's save lets the retry run again,
+ * putting back the reply's memory side, while this key stops a second message. None in memory mode or without a key.
+ */
+function chatOnceKeyOf(name: "chatReplyMedia" | "chatFormReview", id: number, key: string | undefined): { key: string; at: number; result: true } | null {
+  const k = onceKeyOf(key);
+  return CHAT_PG && k ? { key: `${name}${id}:${k}`, at: Date.now(), result: true } : null;
+}
+
+/**
+ * Ending a session, its caller checked: the note to the chat once per wording, and never from a coach's preview. The
+ * note's send is handed back (null when there is none), for the caller to await; the session's end is done either way.
+ */
+function endSessionFor(owner: number, programDayId: number, opts: { note?: string; at?: string; answers?: { id: string; value: number | string | null }[]; enjoyment?: number | null; adherence?: number | null } | undefined, fromClient: boolean): Promise<void> | null {
   const answers = Array.isArray(opts?.answers)
     ? opts.answers
     : [
@@ -4058,13 +4075,59 @@ function endSessionFor(owner: number, programDayId: number, opts: { note?: strin
   // easy to miss. Once per wording, and never from a coach's preview.
   const after = getData().program_days.find((pd) => pd.id === Number(programDayId))?.session_note ?? "";
   if (after && after !== before && fromClient) {
-    // Not awaited: this runs inside the workout outbox's synchronous apply. The door writes memory as it is called; the
-    // save and the stream follow a moment later. (At the cut-over this becomes an await, with the outbox's apply async.)
-    void sendChatMessage(owner, "client", after, undefined, { kind: "session", dayId: Number(programDayId) }, null, { path: "w.insert.sessionNote" }).catch((error) =>
-      console.error("[chat] the session's note did not reach the chat:", error instanceof Error ? error.message : error)
-    );
+    // Called inside the workout outbox's synchronous apply: in memory the door writes as it is called; with CHAT_STORE=pg
+    // the insert commits a moment later. Either way its promise goes back to the caller, who awaits it once the session
+    // itself is saved (saveWorkoutAction, endSessionAction); a failure is said and, in Postgres, tried again (below).
+    const sent = sendSessionNote(owner, Number(programDayId), after, before);
     pushCoachMessage(owner, { text: after });
+    return sent;
   }
+  return null;
+}
+
+/**
+ * The session note into the chat. With CHAT_STORE=pg its once key (the day, and the note before and after this change)
+ * makes a retry safe: the same change again (the outbox resending an end whose save was lost) posts once, while a note
+ * changed back to earlier words (A, B, then A again) is a new change and posts, as memory mode posts it. Tried again at
+ * 2 s, 10 s and 60 s while the client is still here, then Sentry.
+ */
+function sendSessionNote(owner: number, dayId: number, note: string, before: string): Promise<void> {
+  const link = { kind: "session" as const, dayId };
+  if (!CHAT_PG)
+    return sendChatMessage(owner, "client", note, undefined, link, null, { path: "w.insert.sessionNote" }).then(
+      () => undefined,
+      (error) => console.error("[chat] the session's note did not reach the chat:", error instanceof Error ? error.message : error)
+    );
+  // Never the words: a chat error is a clean one (chat/pg.ts ChatPgError); anything else is said by its name alone.
+  const said = (error: unknown) => console.error("[chat] the session's note did not reach the chat:", error instanceof Error ? (error.name === "ChatPgError" ? error.message : error.name) : "error");
+  const change = createHash("sha1").update(before).update("\u0000").update(note).digest("hex").slice(0, 16);
+  const key = { key: `sessionNote${owner}:${dayId}-${change}`, at: Date.now() };
+  const send = () => {
+    return sendChatMessage(owner, "client", note, undefined, link, null, { path: "w.insert.sessionNote", onceKey: key });
+  };
+  return send().then(
+    () => undefined,
+    (error) => {
+      said(error);
+      // Behind the answer: the workout is saved; the note follows when Postgres answers again (a false back: it went).
+      void (async () => {
+        for (const wait of [2_000, 10_000, 60_000]) {
+          await new Promise((resolve) => setTimeout(resolve, wait));
+          // Erased meanwhile: nothing to send (it would leave a chat row of a client no longer here).
+          if (!getData().clients.some((c) => c.id === owner)) return;
+          try {
+            await send();
+            return;
+          } catch (again) {
+            said(again);
+          }
+        }
+        import("@sentry/nextjs")
+          .then((S) => S.captureMessage("A session note did not reach the chat", { level: "error", tags: { alert: "chat-session-note-lost" } }))
+          .catch(() => {});
+      })();
+    }
+  );
 }
 
 /** A training phase's workout questionnaire, in order (the Training tab). */
@@ -4287,6 +4350,8 @@ export async function saveWorkoutAction(clientId: number, entries: unknown): Pro
   // A start refused (another session going): the rest of that day says the same, never lost without a word.
   const refusedDays = new Map<number, string>();
   const results: WorkoutSaveResult[] = [];
+  /** The session notes' sends (endSessionFor), awaited once the batch is saved. */
+  const notes: Promise<void>[] = [];
 
   const applyOne = (e: Record<string, unknown>): WorkoutSaveResult => {
     const kind = typeof e?.kind === "string" ? e.kind : "";
@@ -4381,7 +4446,8 @@ export async function saveWorkoutAction(clientId: number, entries: unknown): Pro
           .map((a: { id?: unknown; value?: unknown }) => ({ id: str(a?.id, 40), value: typeof a?.value === "number" || typeof a?.value === "string" ? (a.value as number | string) : null }));
         // An edit keeps the end the session has; a live end is when it was swiped, on the phone.
         const at = e.edit === true && day.session_ended_at ? day.session_ended_at : clamped(e.endAt).toISOString();
-        endSessionFor(owner, day.id, { note: str(e.note, 2000), at, answers }, fromClient);
+        const note = endSessionFor(owner, day.id, { note: str(e.note, 2000), at, answers }, fromClient);
+        if (note) notes.push(note);
         return "done";
       }
       case "discard":
@@ -4409,6 +4475,9 @@ export async function saveWorkoutAction(clientId: number, entries: unknown): Pro
   // Written, not only in memory, before the phone is told so. A failed write throws: the phone keeps the batch and
   // tries again (each change lands once, above), and the next save writes the store's whole difference anyway.
   await persistNow();
+  // The session notes' sends, once the sessions themselves are saved: their failures are said (and, in Postgres, tried
+  // again), never the workout's.
+  await Promise.allSettled(notes);
   revalidatePath("/client");
   revalidatePath("/admin");
   return { ok: true, results };

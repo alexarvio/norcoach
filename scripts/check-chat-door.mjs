@@ -4,6 +4,9 @@
 // getData(), of a `Data`, or of what is cast from either; any other `data` is not the store); (c) a door write left
 // unawaited, and any function round the door that answers a promise since Step 5 (ASYNC_ROUND_THE_DOOR) called without
 // await, under its own name, an alias or a namespace (`Q.setChatReaction(…)`), or returned but read as a value; (d) a "use client" file importing app/lib/chat for more than types; (e) the seeds' own handle in the app.
+// (f) CHAT_STORE read anywhere but app/lib/chat/mode.ts (one switch, read once); (g) a loop over the store's COLLECTIONS
+// anywhere but pg/runtime.ts (tablesWithRows looks at every table on purpose): every other walk takes WRITER_COLLECTIONS
+// (pg/writerTables.ts), which leaves chat out with CHAT_STORE=pg, so the writer can never see an empty chat list.
 // Imports are resolved (relative and `@/`), so `./chat/rows` and `../lib/chat/rows` are the same door.
 //   node scripts/check-chat-door.mjs     (npm run check:chat; scripts/build.mjs runs it before next build)
 // A line that must name the chat or walk the store says why with `// chat-door:` on it or just before it.
@@ -50,6 +53,11 @@ const ASYNC_ROUND_THE_DOOR = new Set([
   "chatShowsFile",
   "chatFileLacksLook",
   "chatMediaWithoutLook",
+  // Step 5's cut-over: the workspace reset waits for the chat's DELETE; a send's losing upload is checked, then deleted.
+  "resetWorkspaceFromEnv",
+  "discardLosingUpload",
+  "fetchAllChat",
+  "chatOnceTaken",
 ]);
 
 function walk(dir, out = []) {
@@ -148,6 +156,10 @@ for (const file of walk(APP)) {
       if (walks.test(line)) say(file, n, "walks the store's collections (chat is not among them after the cut-over): mark it `// chat-door:` with how chat is handled");
       if (casts.test(line)) say(file, n, "casts the store to walk it: mark it `// chat-door:` with how chat is handled");
     }
+    // (f) The chat's store switch, read in one place.
+    if (r !== "app/lib/chat/mode.ts" && /process\.env\.CHAT_STORE\b|process\.env\[\s*["']CHAT_STORE["']\s*\]/.test(line)) say(file, n, "reads CHAT_STORE outside app/lib/chat/mode.ts (import CHAT_PG from there)");
+    // (g) A walk of every collection: the writer's list, never COLLECTIONS (chat leaves it with CHAT_STORE=pg).
+    if (r !== "app/lib/pg/runtime.ts" && /\bfor\s*\(\s*(?:const|let|var)\s+\w+\s+of\s+COLLECTIONS\b/.test(line)) say(file, n, "loops over COLLECTIONS: use WRITER_COLLECTIONS (pg/writerTables.ts), which leaves chat out with CHAT_STORE=pg");
     // (e) The seeds' handle, in the app.
     if (r !== "app/lib/chat/rows.ts" && /\bseedChatRows\b/.test(line)) say(file, n, "seedChatRows is for scripts/ alone");
   });

@@ -2,6 +2,7 @@ import type { MessageLink } from "./messageLinks";
 import fs from "fs";
 import type { GoalTracking } from "./goalView";
 import path from "path";
+import { CHAT_PG } from "./chat/mode";
 
 // Pure-JS JSON file store — no native module, no compiler, works identically
 // on any machine. Swap this file for a real database later without touching
@@ -234,6 +235,9 @@ export type VideoRequest = {
   replied_at?: string | null;
   /** When the client first opened the reply. */
   reply_seen_at?: string | null;
+  /** CHAT_STORE=pg only (Step 5's cut-over): the one-time key of the review that sent the current reply, so the same send
+      arriving again after its chat message failed doesn't log and push the reply twice (sendVideoReply). Kept in extra. */
+  reply_once?: string | null;
   /** Marked done by the coach without a reply (25 Oct, Alex: "maybe we won't review and send back… so it doesn't stay
       there for ever"): no longer waiting anywhere; a new file from the client opens it again. */
   closed_at?: string | null;
@@ -1233,6 +1237,9 @@ type CoachActivity = {
   // deep-links to Settings with that report expanded.
   action_ref: number | null;
   dedupe_key: string | null;
+  /** A coach message's note (kind coach_note): the message it carried, so an edit or a delete finds it by id (Step 5's
+   *  cut-over; written only with CHAT_STORE=pg, kept in `extra`, which older builds carry along untouched). */
+  message_id?: number;
 };
 
 // Coach-level, reusable report templates (mirrors the metric_template_*
@@ -1453,7 +1460,8 @@ export type Data = {
   meeting_notes: MeetingNote[];
   training_columns: TrainingColumn[];
   assignment_custom_values: AssignmentCustomValue[];
-  chat_messages: ChatStoreRows;
+  // Absent with CHAT_STORE=pg (Step 5's cut-over): the rows live in Postgres alone, read and written by the door.
+  chat_messages?: ChatStoreRows;
   coach_activity: CoachActivity[];
   report_templates: ReportTemplate[];
   report_template_sections: ReportTemplateSection[];
@@ -1572,7 +1580,9 @@ function emptyData(): Data {
     meeting_notes: [],
     training_columns: [],
     assignment_custom_values: [],
-    chat_messages: [] as unknown as ChatStoreRows,
+    // Not with CHAT_STORE=pg: the rows live in Postgres alone, and neither prepareStore nor getData's self-heal may put
+    // an empty list back into the store (Step 5's cut-over).
+    ...(CHAT_PG ? {} : { chat_messages: [] as unknown as ChatStoreRows }),
     support_messages: [],
     coach_activity: [],
     report_templates: [],

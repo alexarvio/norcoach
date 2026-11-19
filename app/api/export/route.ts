@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getRequestUser } from "../../lib/auth";
 import { getData } from "../../lib/db";
-import { CHAT_TABLE, fetchChatExport } from "../../lib/chat/rows";
+import { CHAT_TABLE, fetchChatExport, withChatKey } from "../../lib/chat/rows";
 
 // Settings, Your data (27 Oct, Alex): everything a coach's coaching holds, as one file they keep. Every row of every
 // table that belongs to one of their clients (by client_id), their own rows (by coach_id: the library, programmes,
@@ -23,7 +23,8 @@ export async function GET(request: Request) {
   const exported = await fetchChatExport([...clientIds], "export");
   const out: Record<string, unknown> = {};
   // chat-door: chat rows come from fetchChatExport
-  for (const [table, stored] of Object.entries(data)) {
+  // With CHAT_STORE=pg the store has no chat key: withChatKey puts it where it would be, so the file reads as before.
+  for (const [table, stored] of Object.entries(withChatKey(data, exported.rows))) {
     const rows = table === CHAT_TABLE ? exported.rows : stored;
     if (LEFT_OUT.has(table) || !Array.isArray(rows)) continue;
     const mine = rows.filter((r) => {

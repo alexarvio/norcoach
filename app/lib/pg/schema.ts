@@ -838,4 +838,6 @@ export const program_days_id_seq = idSeq("program_days");
  * outside COLLECTIONS, and kv itself. A collection that ever leaves COLLECTIONS (to be queried directly) keeps its name
  * on this list, so a stray copy of it is never written to kv either.
  */
-export const TABLE_NAMES_NOT_IN_KV = ["kv", "push_subscriptions", "password_resets", "chat_messages_shadow", "once_keys_shadow"] as const;
+// chat_messages is here too (Step 5's cut-over): with CHAT_STORE=pg it leaves the writer's collections, and a stray
+// `chat_messages` in the store must never be written to kv. A no-op while it is a collection (store.ts adds those anyway).
+export const TABLE_NAMES_NOT_IN_KV = ["kv", "push_subscriptions", "password_resets", "chat_messages_shadow", "once_keys_shadow", "chat_messages"] as const;
