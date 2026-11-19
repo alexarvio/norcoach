@@ -165,8 +165,6 @@ body:has(.rd.rst) .rd-picker-menu [data-slot="dropdown-menu-item"] small { font-
 /* The code on a clean line, as every field on the page (`dlh-line`: the hairline under it, ink while typing). */
 .rd.rst .rst-hex.dlh-line { width: 120px; letter-spacing: 0.04em; text-transform: uppercase; }
 .rd.rst .rst-wheel { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
-.rd.rst .rst-brand-demo { display: flex; align-items: center; gap: 14px; }
-.rd.rst .rst-brand-pill { display: inline-flex; align-items: center; height: 36px; padding: 0 18px; border-radius: 999px; font-size: 13.5px; font-weight: 600; color: #fff; }
 .rd.rst .rst-brand-fact { font-size: 13px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; }
 /* Card pictures (19 Nov, Alex: "do up to 5 per track"; CardPicturesSettings.tsx): a row a track, its icon and name in
    its colour in small caps, then its pictures as 3:4 tiles (radius 10) and the dashed Add tile; the round × on a tile's
