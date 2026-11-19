@@ -68,6 +68,8 @@ export default function WorkoutScreen({
   coachPhoto = null,
   clientName = "",
   focusExercise,
+  openFinish = false,
+  onFinishOpened,
   onBack,
   onEnded,
   onDiscarded,
@@ -75,6 +77,9 @@ export default function WorkoutScreen({
   library,
   onAddExercise,
 }: {
+  /** The lock-screen pill's Finish (19 Nov, Alex: C): on the wrap-up, the swipe still to do; told once it is open. */
+  openFinish?: boolean;
+  onFinishOpened?: () => void;
   /** A free session (19 Oct): the coach's library, and how an exercise is added to it. */
   library?: LibraryPick[];
   onAddExercise?: (pick: { exerciseId: number | null; name: string; group: string }) => Promise<number | null>;
@@ -151,6 +156,16 @@ export default function WorkoutScreen({
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on opening
   }, []);
+  // The pill's Finish (19 Nov, Alex: C): after the opening's jump, onto the wrap-up; never ending it, never when editing.
+  useEffect(() => {
+    if (!openFinish || editing || day.endedAt) return;
+    const t = setTimeout(() => {
+      jumpTo(pages.length - 1, true);
+      onFinishOpened?.();
+    }, 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- on the ask alone
+  }, [openFinish]);
   const onScroll = () => {
     const el = pagerRef.current;
     if (!el || animating.current) return;

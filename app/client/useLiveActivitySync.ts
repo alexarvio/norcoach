@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useWorkoutOutbox, type WorkoutEntry } from "../components/workoutOutbox";
-import { liveActivityAvailable, liveStart, liveSync, liveUpdate, type LiveNow } from "../lib/liveActivity";
+import { liveActivityAvailable, liveStart, liveSync, liveUpdate, type LiveExercise, type LiveNext, type LiveNow } from "../lib/liveActivity";
 import { liveSessionNowAction } from "../lib/liveSessionActions";
+import { fmtWeight, planToDisplay, unitLabel, type Unit } from "../lib/units";
 import { hintsVersion, readHints, subscribeHints, type LiveHint } from "./liveHints";
 
 // The lock-screen pill follows the session going (19 Nov, Alex: "I forget to complete the workout and it runs"). There is
@@ -14,9 +15,75 @@ import { hintsVersion, readHints, subscribeHints, type LiveHint } from "./liveHi
 // coach's phone preview, and nothing at all in a browser or an app without the plugin.
 
 type Read = { now: LiveNow; t: number };
-type Shown = { dayId: number; startedAt: number; name?: string; gym?: string | null; sets: number };
+/** `next` undefined: the session's exercises aren't known here yet (started on this phone, the server not told). */
+type Shown = { dayId: number; startedAt: number; name?: string; gym?: string | null; sets: number; next?: LiveNext };
 
 const SETTLE_MS = 400;
+
+/** The set planned as words (19 Nov, Alex: C): `60 kg × 10–12` in the exercise's unit, the band's dash in a range; the
+    weight or the reps alone when the coach set only one; null with neither. */
+export function targetWords(kg: number | null, reps: string, unit: Unit): string | null {
+  const r = reps.trim().replace(/\s*(?:-|–|to)\s*/i, "–");
+  const w = kg != null ? `${fmtWeight(planToDisplay(kg, unit))} ${unitLabel(unit)}` : null;
+  if (w && r) return `${w} × ${r}`;
+  if (w) return w;
+  if (r) return /^\d+(–\d+)?\+?$/.test(r) ? `${r} reps` : r;
+  return null;
+}
+
+/** The set next (19 Nov, Alex: C of docs/boards/live-activity-mockup.html): the server's exercises with what waits on the
+    phone laid over them (a set, a set taken off, the unit, a swap; warm-ups are never sets). The exercise is where the
+    last set was logged while it has sets left, else the next one in the session with sets left (round to the earlier
+    ones skipped); before any set the first; every set in, none (`All sets done`). A swap names the substitute and has no
+    target; a rogue session has no total and no targets, its set count the sets it has. */
+export function nextSet(exercises: readonly LiveExercise[], rogue: boolean, overlay: readonly WorkoutEntry[], dayId: number, gymId: number | null | undefined): LiveNext & { done?: number } {
+  type Ex = { name: string; swap: string | null; sets: number; coachSets: number; reps: string; kg: number | null; kgAt: Record<string, number | null>; unit: Unit | null; logs: Map<number, number> };
+  const exs: Ex[] = exercises.map((x) => ({ ...x, logs: new Map(x.logs.map((l) => [l.n, l.at])) }));
+  const byId = new Map(exercises.map((x, i) => [x.id, exs[i]]));
+  for (const e of overlay) {
+    if (e.dayId !== dayId) continue;
+    if (e.kind === "discard") {
+      for (const x of exs) x.logs.clear();
+      continue;
+    }
+    if (e.kind !== "set" && e.kind !== "rows" && e.kind !== "unit" && e.kind !== "swap") continue;
+    const x = byId.get(e.assignmentId);
+    if (!x) continue;
+    if (e.kind === "set") {
+      x.logs.set(e.setNumber, Date.parse(e.at) || Date.now());
+      x.unit = e.unit;
+    } else if (e.kind === "rows") {
+      // As the workout lays it over (applyWorkoutOutbox): the sets past it go.
+      x.sets = Math.min(x.coachSets, e.rows);
+      for (const n of [...x.logs.keys()]) if (n > e.rows) x.logs.delete(n);
+    } else if (e.kind === "unit") x.unit = e.unit;
+    else x.swap = e.libraryExerciseId == null && !e.customName ? null : e.name ?? e.customName ?? "Another exercise";
+  }
+  const total = rogue || !exs.length ? null : exs.reduce((t, x) => t + x.sets, 0);
+  // The planned sets done, against the total (19 Nov, Alex: an extra set read "19 of 18 sets"; extras are past x.sets).
+  const done = total == null ? undefined : exs.reduce((t, x) => t + [...x.logs.keys()].filter((n) => n <= x.sets).length, 0);
+  const left = (x: Ex) => {
+    for (let n = 1; n <= x.sets; n++) if (!x.logs.has(n)) return n;
+    return null;
+  };
+  let last = -1;
+  let lastAt = -Infinity;
+  exs.forEach((x, i) => {
+    for (const at of x.logs.values()) if (at >= lastAt) [last, lastAt] = [i, at];
+  });
+  let pick = last >= 0 && left(exs[last]) != null ? last : -1;
+  for (let k = 0; pick < 0 && k < exs.length; k++) {
+    const j = (last + 1 + k) % exs.length;
+    if (left(exs[j]) != null) pick = j;
+  }
+  if (pick < 0) return { total, done, exercise: null, setNo: null, setOf: null, target: null };
+  const x = exs[pick];
+  const setNo = left(x)!;
+  const setOf = rogue ? Math.max(x.sets, ...x.logs.keys()) : x.sets;
+  const kg = gymId != null && String(gymId) in x.kgAt ? x.kgAt[gymId] : x.kg;
+  const target = rogue || x.swap ? null : targetWords(kg, x.reps, x.unit ?? "kg");
+  return { total, done, exercise: x.swap ?? x.name, setNo, setOf, target };
+}
 
 /** What the pill shows, or null for nothing going. `name` or `gym` undefined: not known here (the pill keeps its own). */
 export function liveShown(read: Read | null, overlay: readonly WorkoutEntry[], h: ReturnType<typeof readHints>, endsSeen: ReadonlyMap<number, number> = new Map()): Shown | null {
@@ -74,7 +141,13 @@ export function liveShown(read: Read | null, overlay: readonly WorkoutEntry[], h
       }
     }
   }
-  return { dayId, startedAt: cur.startedMs, ...(name ? { name } : {}), ...(gym !== undefined ? { gym } : {}), sets: sets.size };
+  // The set next, from the server's exercises of this session (19 Nov, Alex: C); not known before it has the session.
+  // (A read from the build before C has no exercises: not known either.)
+  const found = fromServer?.exercises ? nextSet(fromServer.exercises, !!fromServer.rogue, overlay, dayId, gymId === undefined ? fromServer.gymId : gymId) : undefined;
+  const { done, ...next } = found ?? {};
+  // With a total, the sets are the planned ones done, so an extra set never reads past it; without, every set logged.
+  const count = found && next.total != null && done != null ? done : sets.size;
+  return { dayId, startedAt: cur.startedMs, ...(name ? { name } : {}), ...(gym !== undefined ? { gym } : {}), sets: count, ...(found ? { next } : {}) };
 }
 
 export function useLiveActivitySync(clientId: number, enabled: boolean, fromPage: LiveNow | null) {
@@ -108,11 +181,15 @@ export function useLiveActivitySync(clientId: number, enabled: boolean, fromPage
       return;
     }
     const url = `${window.location.origin}/client?workout=${shown.dayId}`;
-    if (shown.name) liveStart({ dayId: shown.dayId, startedAt: shown.startedAt, name: shown.name, gym: shown.gym ?? null, sets: shown.sets, url });
+    // Finish on the pill opens the wrap-up (19 Nov, Alex: C); the coach's name and colour as the latest read has them.
+    const finishUrl = `${url}&finish=1`;
+    const coach = read?.now.coach ?? null;
+    const brand = read?.now.brand ?? null;
+    if (shown.name) liveStart({ dayId: shown.dayId, startedAt: shown.startedAt, name: shown.name, gym: shown.gym ?? null, sets: shown.sets, url, finishUrl, coach, brand, ...shown.next });
     else {
       // Started on this phone before a reload (its name only in the outbox's day): the pill showing is kept as it is.
       liveSync({ dayId: shown.dayId, startedAt: shown.startedAt });
-      liveUpdate({ dayId: shown.dayId, sets: shown.sets, ...(shown.gym !== undefined ? { gym: shown.gym } : {}) });
+      liveUpdate({ dayId: shown.dayId, sets: shown.sets, ...(shown.gym !== undefined ? { gym: shown.gym } : {}), ...shown.next });
     }
   };
   const schedule = (again = false) => {

@@ -1297,7 +1297,7 @@ function progressPicturesData(CLIENT_ID: number): ProgressPicturesProps {
 export default async function ClientPage({
   searchParams,
 }: {
-  searchParams: Promise<{ client?: string; open?: string; phone?: string; screen?: string; /** A push's notification (24 Oct). */ n?: string; /** A meeting reminder's call. */ meeting?: string; /** A "still going" reminder's session (19 Nov). */ workout?: string }>;
+  searchParams: Promise<{ client?: string; open?: string; phone?: string; screen?: string; /** A push's notification (24 Oct). */ n?: string; /** A meeting reminder's call. */ meeting?: string; /** A "still going" reminder's session (19 Nov). */ workout?: string; /** The lock-screen pill's Finish: "1" (19 Nov, Alex: C). */ finish?: string }>;
 }) {
   const params = await searchParams;
   const CLIENT_ID = await resolveClientId(params.client);
@@ -1601,7 +1601,7 @@ export default async function ClientPage({
       foodDiary={foodDiary}
       meetings={meetings}
       invoices={invoices}
-      arrival={phone ? null : arrivalFrom(CLIENT_ID, notes, params.n, params.meeting, params.workout)}
+      arrival={phone ? null : arrivalFrom(CLIENT_ID, notes, params.n, params.meeting, params.workout, params.finish === "1")}
       initialPush={phone ? (PHONE_TAB_SCREENS.has(phoneScreen) ? null : (phoneScreen as Exclude<PhoneScreen, "home" | "training" | "nutrition">)) : params.open === "invoices" ? "invoices" : params.open === "messages" ? "messages" : null}
       initialTab={initialTab}
       readOnly={phone}
@@ -1618,14 +1618,17 @@ export default async function ClientPage({
 /**
  * What a phone push asks the app to open (24 Oct, Alex: a push lands on its thing): its notification (?n=), worked out
  * as the notifications list does, or a meeting reminder's call (?meeting=), or a "still going" reminder's session
- * (?workout=, 19 Nov, Alex): into the workout while it runs, else its session overview. Null for anything else or another client's.
+ * (?workout=, 19 Nov, Alex): into the workout while it runs, else its session overview. With &finish=1, the lock-screen
+ * pill's Finish (19 Nov, Alex: C), its wrap-up open too while it runs; over, as ?workout= alone. Null for anything else
+ * or another client's.
  */
-function arrivalFrom(clientId: number, notes: ClientNotes, n: string | undefined, meeting: string | undefined, workout?: string): Arrival | null {
+function arrivalFrom(clientId: number, notes: ClientNotes, n: string | undefined, meeting: string | undefined, workout?: string, finish = false): Arrival | null {
   if (meeting && Number.isInteger(Number(meeting))) return { meetingId: Number(meeting) };
   if (workout && Number.isInteger(Number(workout))) {
     const day = getData().program_days.find((pd) => pd.id === Number(workout) && pd.client_id === clientId);
     if (!day) return null;
-    return { workoutDayId: day.id, week: day.week_number, live: !!day.session_started_at && !day.session_ended_at };
+    const live = !!day.session_started_at && !day.session_ended_at;
+    return { workoutDayId: day.id, week: day.week_number, live, ...(live && finish ? { finish: true } : {}) };
   }
   const id = Number(n);
   if (!n || !Number.isInteger(id)) return null;
