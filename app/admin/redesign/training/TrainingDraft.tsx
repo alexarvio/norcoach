@@ -25,7 +25,7 @@ import PhaseDatesDialog from "../PhaseDatesDialog";
 import PhaseSwitcher from "../PhaseSwitcher";
 import { goToHash, TodoStrip } from "../TodoStrip";
 import { landOn, landOnSoon } from "../../../lib/landOn";
-import { pinOnScreen } from "./pinOnScreen";
+import { pinOnScreen, putOnScreen } from "./pinOnScreen";
 import { AfterWorkoutCheck, GoalsNotePills, GripIcon, WeekRail } from "./TrainingParts";
 import "./trn.css";
 import { SortableItem, SortableList } from "../Sortable";
@@ -195,6 +195,8 @@ const restOf = (s: number | null) => (s == null ? null : s >= 60 && s % 60 === 0
 const MAX_SESSIONS = 7;
 /** The clock, for autosave's pauses (kept out of render). */
 const nowMs = () => Date.now();
+/** The session a save was last made in, kept for the tab: opened again when the page loads anew right after it. */
+const REOPEN_KEY = "trn-reopen";
 const MAX_COLS = 6;
 /** Weeks in as few words as they take: "week 5", "weeks 5–6", "weeks 4 and 6", "weeks 2, 4 and 6". */
 const weeksWords = (indexes: number[]) => {
@@ -515,6 +517,16 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
     renamed: now.renamed ?? old.renamed,
     alsoRemaining: false,
   });
+  // A save that lands on a newer build makes Next load the whole page again, and the page came back with every session
+  // folded (18 Nov, Alex: "added a new exercise and the thing collapsed in itself"; a push had gone live that minute).
+  // So each save notes the session it is in and where it sits on screen, and a page loaded within 20 seconds of one
+  // opens that session again in the same place (the effect under the # arrival).
+  const noteSaving = (sessionId: number) => {
+    try {
+      const top = document.getElementById(`session-${sessionId}`)?.getBoundingClientRect().top ?? null;
+      sessionStorage.setItem(REOPEN_KEY, JSON.stringify({ program: program.id, session: sessionId, top, at: nowMs() }));
+    } catch {}
+  };
   const flush = (sessionId: number) => {
     const p = pend(sessionId);
     if (pendingCount(p) === 0) return;
@@ -527,6 +539,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
     // A cardio still open in its form is saved now: the form closes, so the next keystroke can't add it twice.
     if (adding?.session === sessionId && adding.kind === "cardio" && adding.key != null && p.added.some((x) => x.key === adding.key)) setAdding(null);
     inFlight.current[sessionId] = true;
+    noteSaving(sessionId);
     setSaving((x) => ({ ...x, [sessionId]: true }));
     setFailed((x) => ({ ...x, [sessionId]: false }));
     // The save that failed before this goes again with its own key (6 Nov, one-time key): as it was, when nothing
@@ -580,6 +593,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
       .finally(() => {
         inFlight.current[sessionId] = false;
         setSaving((x) => ({ ...x, [sessionId]: false }));
+        noteSaving(sessionId);
         router.refresh();
         if (again.current[sessionId]) {
           again.current[sessionId] = false;
@@ -779,6 +793,31 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
       window.removeEventListener("hashchange", arrive);
       cancelAnimationFrame(frame);
     };
+  }, []);
+  // The page loaded anew right after a save here (a newer build, noteSaving): its session opens again where it was.
+  // Not over a link's own #session, and only this programme's.
+  useEffect(() => {
+    let frame = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      const was = JSON.parse(sessionStorage.getItem(REOPEN_KEY) ?? "null") as { program: number; session: number; top: number | null; at: number } | null;
+      if (was && was.program === program.id && nowMs() - was.at < 20_000 && !/^#session-d+/.test(window.location.hash) && document.getElementById(`session-${was.session}`)) {
+        frame = requestAnimationFrame(() => {
+          sessionStorage.removeItem(REOPEN_KEY);
+          setOpen(was.session);
+          const put = () => typeof was.top === "number" && putOnScreen(document.getElementById(`session-${was.session}`), was.top);
+          put();
+          // Again once it has unfolded (the fold takes 340ms): a page too short to scroll before is long enough now.
+          timer = setTimeout(put, 380);
+        });
+      }
+    } catch {}
+    return () => {
+      cancelAnimationFrame(frame);
+      if (timer) clearTimeout(timer);
+    };
+    // On arrival alone.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [videos, setVideos] = useState<Record<number, DraftRow["video"]>>(() => Object.fromEntries([...program.sessions, ...(program.copySessions ?? []), ...(program.rogueSessions ?? [])].flatMap((s) => s.rows.map((r) => [r.id, r.video]))));
   const [seenVideos, setSeenVideos] = useState(sessionsKey);
