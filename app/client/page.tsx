@@ -142,7 +142,8 @@ import OpeningSplash from "./OpeningSplash";
 import { NATIVE_COOKIE, QUIET_COOKIE } from "../lib/quietLoad";
 import AvatarUpload from "./AvatarUpload";
 import { phaseCovers, phaseLastDay } from "../lib/phases";
-import { defaultPhaseCover, liveCover, PHASE_COVERS } from "../lib/phaseCovers";
+import { liveCover, trackPictures } from "../lib/phaseCovers";
+import { coachCardsForClient } from "../lib/coachCards";
 import { CardPicturesRows } from "./CardPictureSheet";
 import { isGymColor } from "../lib/gymColors";
 import { SERVER_TZ, hourIn, isTimezone, meetingLabelsIn, zonedToUtc } from "../lib/timezones";
@@ -444,6 +445,8 @@ function HomeTab({ CLIENT_ID, chat, photos, food, phoneTz }: { CLIENT_ID: number
     : false;
 
   const coachFirst = getCoachFirstName(CLIENT_ID);
+  // The coach's own card pictures (19 Nov, Alex), in place of the stock ones where they set some.
+  const coachCards = coachCardsForClient(CLIENT_ID);
   // "Your plan": the live phase on each track, in this order; none, no section.
   const phases: HomePhase[] = (["training", "nutrition", "lifestyle"] as const).flatMap((track) => {
     const ph = getCurrentPhase(CLIENT_ID, track);
@@ -456,7 +459,7 @@ function HomeTab({ CLIENT_ID, chat, photos, food, phoneTz }: { CLIENT_ID: number
         start: ph.start_week,
         // No end (26 Oct): the card says the week it is in, no countdown.
         end: ph.open_ended ? null : phaseLastDay(ph.end_week),
-        coverUrl: liveCover(ph.cover_path) ?? defaultPhaseCover(track, ph.id),
+        coverUrl: liveCover(ph.cover_path) ?? trackPictures(track, coachCards)[0] ?? null,
         coachCover: !!liveCover(ph.cover_path),
         objectives: FEATURES.phaseGoals ? ph.objectives ?? [] : [],
         note: ph.nutrition?.coach_notes?.trim() || null,
@@ -473,6 +476,7 @@ function HomeTab({ CLIENT_ID, chat, photos, food, phoneTz }: { CLIENT_ID: number
       clientId={CLIENT_ID}
       meetingRequest={openMeetingRequest(CLIENT_ID)}
       cardCovers={getClientCardPictures(CLIENT_ID)}
+      coachCards={coachCards}
       dateLabel={dateLabel}
       firstName={(client?.name ?? "").trim().split(/\s+/)[0] || "there"}
       coach={{ firstName: coachFirst, photoPath: getCoachAvatarPath(CLIENT_ID) }}
@@ -637,12 +641,13 @@ const coachMessagesFor = chatThreadViews;
 
 /** Behind a track's banner (14 Oct): the client's own card pictures, taking
     turns; else the coach's phase cover, when they chose one; else the
-    track's stock pictures, taking turns as on its Home card (18 Nov). */
+    coach's own card pictures (19 Nov), else the track's stock pictures,
+    taking turns as on its Home card (18 Nov). */
 function bannerPictures(clientId: number, track: "training" | "nutrition" | "lifestyle"): string[] {
   const own = getClientCardPictures(clientId)[track];
   if (own?.length) return own;
   const cover = liveCover(getCurrentPhase(clientId, track)?.cover_path);
-  return cover ? [cover] : PHASE_COVERS[track];
+  return cover ? [cover] : trackPictures(track, coachCardsForClient(clientId));
 }
 
 function TrainingTab({
@@ -1118,10 +1123,11 @@ function SettingsTab({ CLIENT_ID, own = false, passwordsHint = null }: { CLIENT_
           <CardPicturesRows
             clientId={CLIENT_ID}
             coachName={getCoachFirstName(CLIENT_ID)}
+            coachCards={coachCardsForClient(CLIENT_ID)}
             rows={(["lifestyle", "training", "nutrition"] as const).map((track) => {
               const ph = getCurrentPhase(CLIENT_ID, track);
               const own = getClientCardPictures(CLIENT_ID)[track] ?? [];
-              const coach = ph ? (liveCover(ph.cover_path) ?? defaultPhaseCover(track, ph.id)) : defaultPhaseCover(track, 0);
+              const coach = (ph ? liveCover(ph.cover_path) : null) ?? trackPictures(track, coachCardsForClient(CLIENT_ID))[0] ?? null;
               // A stock cover the coach never chose is the default, not theirs (22 Oct).
               return { track, own, coach, coachChose: !!liveCover(ph?.cover_path) };
             })}

@@ -4,7 +4,8 @@ import type { PhaseTrack } from "./db";
 // in the phase dialog, and the default for a phase without a cover (always
 // the first, 13 Nov). Files live in public/; add one here, with its source, and it is offered.
 // A track with none shows its deep colour. While the client has no pictures of their own and the coach chose none, a
-// track's stock pictures take turns on its Home card and behind its banner (18 Nov, Alex; PictureCycle).
+// track's stock pictures take turns on its Home card and behind its banner (18 Nov, Alex; PictureCycle). A coach's own
+// card pictures take their place for that coach's clients (19 Nov, Alex; trackPictures, lib/coachCards.ts).
 export const PHASE_COVERS: Record<PhaseTrack, string[]> = {
   // Five, taking turns (18 Nov, Alex: "these 5 are going to be in rotation"; Unsplash, free to use):
   // unsplash.com/photos/variety-of-cooked-foods-NOAzwcMzZJA, /vegetable-dish-in-white-ceramic-bowl-Ww8eQWjMJWk,
@@ -39,6 +40,16 @@ export function defaultPhaseCover(track: PhaseTrack, phaseId: number): string | 
   const list = PHASE_COVERS[track];
   void phaseId;
   return list[0] ?? null;
+}
+
+/** Pictures by track: a coach's own card pictures (lib/coachCards.ts), a client's. */
+export type TrackPictures = Partial<Record<PhaseTrack, string[]>>;
+
+/** What a track shows where no one chose a picture (19 Nov, Alex: "do up to 5 per track"): the coach's own card
+ *  pictures, taking turns; only with none set for that track, Norcoach's stock ones. */
+export function trackPictures(track: PhaseTrack, coachCards?: TrackPictures | null): string[] {
+  const theirs = coachCards?.[track];
+  return theirs?.length ? theirs : PHASE_COVERS[track];
 }
 
 export function isStockCover(p: string): boolean {

@@ -16,6 +16,7 @@ import type { OffProduct } from "./foods/openfoodfacts";
 import type { LinkView, MessageLink } from "./messageLinks";
 import { coachIdOfClient } from "./tenancy";
 import { isStockCover, PHASE_COVERS } from "./phaseCovers";
+import { coachCardOfClient, dropUnusedCoachCards, isCoachCardPicture } from "./coachCards";
 import { inViewZone, viewZone } from "./viewZone";
 import { isTimezone, SERVER_TZ, zonedToUtc } from "./timezones";
 import { meetingTypeOf } from "./meetingTypes";
@@ -12743,14 +12744,16 @@ export function stageClientCardPicture(clientId: number, track: PhaseTrack, buff
 export function setClientCardPictures(clientId: number, track: PhaseTrack, paths: string[]): string[] {
   const client = getData().clients.find((c) => c.id === clientId);
   if (!client) return [];
-  const mine = (p: string) => p.startsWith(`/uploads/covers/${clientId}/${track}-`) || PHASE_COVERS[track].includes(p);
-  const next = [...new Set(paths.filter(mine))].slice(0, MAX_CARD_PICTURES);
   const have = getClientCardPictures(clientId)[track] ?? [];
+  // Their coach's own card pictures too (19 Nov, Alex: "have the clients set their own also"), and one already on the list.
+  const mine = (p: string) => p.startsWith(`/uploads/covers/${clientId}/${track}-`) || PHASE_COVERS[track].includes(p) || coachCardOfClient(clientId, track, p) || (isCoachCardPicture(p) && have.includes(p));
+  const next = [...new Set(paths.filter(mine))].slice(0, MAX_CARD_PICTURES);
   const dropped = have.filter((p) => !next.includes(p) && !isStockCover(p));
   setCardPictures(client, track, next);
   persist();
-  dropped.forEach((p) => unlinkQuietly(coverFile(p)));
-  return dropped;
+  // A coach's picture is the coach's: its file goes only once nothing shows it.
+  dropped.filter((p) => !isCoachCardPicture(p)).forEach((p) => unlinkQuietly(coverFile(p)));
+  return [...dropped.filter((p) => !isCoachCardPicture(p)), ...dropUnusedCoachCards(dropped)];
 }
 
 /** Pictures put up and then not kept (the sheet closed without Done): their files go. Only ones not on the card. */
@@ -12768,8 +12771,9 @@ export function removeClientCardPicture(clientId: number, track: PhaseTrack, pub
   if (!client || !have.includes(publicPath)) return null;
   setCardPictures(client, track, have.filter((p) => p !== publicPath));
   persist();
-  // A stock picture is everyone's: it leaves the list, its file stays.
+  // A stock picture is everyone's: it leaves the list, its file stays. A coach's goes once nothing shows it (19 Nov).
   if (isStockCover(publicPath)) return null;
+  if (isCoachCardPicture(publicPath)) return dropUnusedCoachCards([publicPath])[0] ?? null;
   unlinkQuietly(coverFile(publicPath));
   return publicPath;
 }
@@ -12781,9 +12785,9 @@ export function clearClientCardCover(clientId: number, track: PhaseTrack): strin
   if (!client || !have.length) return [];
   setCardPictures(client, track, []);
   persist();
-  const files = have.filter((p) => !isStockCover(p));
+  const files = have.filter((p) => !isStockCover(p) && !isCoachCardPicture(p));
   files.forEach((p) => unlinkQuietly(coverFile(p)));
-  return files;
+  return [...files, ...dropUnusedCoachCards(have)];
 }
 
 export function saveClientAvatar(clientId: number, buffer: Buffer, mimeType: string): string {

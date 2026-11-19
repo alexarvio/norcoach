@@ -411,6 +411,7 @@ import { deleteUpload, fitPhoto, keyOf, prepareChatMedia, putUpload, putUploadFr
 import fs from "fs";
 import { claimUpload, discardUpload, placeUpload, UPLOAD_CAPS, type StagedUpload, type UploadKind } from "./streamUpload";
 import { coachBrand, logoAsPng, makeBannerMark, makeLogoMark, removeCoachBanner, removeCoachLogo, saveBrandColour, saveCoachBanner, saveCoachLogo } from "./brandMark";
+import { addCoachCardPicture, cardJpeg, removeCoachCardPicture } from "./coachCards";
 import { brandColour, normalHex } from "./brandColour";
 import { setPhaseObjectives, savePhaseCover, setPhaseCoverPath, editClientChatMessage, deleteClientChatMessage, setPhaseClientNote, chatThreadViews, type ChatThreadView } from "./queries";
 import { isStockCover } from "./phaseCovers";
@@ -4730,6 +4731,35 @@ export async function uploadCoachBannerAction(formData: FormData): Promise<{ ok:
   await putUpload(saved.banner, made.png, "image/png");
   revalidatePath("/", "layout");
   return { ok: true, banner: coachBrand(coach.id).banner ?? saved.banner, ratio: made.ratio };
+}
+
+/** One of the coach's own card pictures (19 Nov, Alex: "do up to 5 per track"; lib/coachCards.ts), for all their
+ *  clients in place of the stock ones. Saved at once; its path, or why not (a sixth is refused). */
+export async function addCoachCardPictureAction(track: PhaseTrack, formData: FormData): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
+  const coach = await requireCoach();
+  if (!CARD_TRACKS.has(track)) return { ok: false, error: "Not saved. Try again." };
+  const file = formData.get("file") as File | null;
+  if (!file || file.size === 0) return { ok: false, error: "Pick a picture first." };
+  if (file.size > 10 * 1024 * 1024) return { ok: false, error: `${Math.round(file.size / 1024 / 1024)} MB is over 10 MB.` };
+  if (!file.type.startsWith("image/")) return { ok: false, error: "That file isn't a picture." };
+  const jpeg = await cardJpeg(Buffer.from(await file.arrayBuffer()));
+  if (!jpeg) return { ok: false, error: "That file isn't a picture we can read." };
+  const saved = addCoachCardPicture(coach.id, track, jpeg);
+  if (!saved.ok) return saved;
+  await putUpload(saved.saved, jpeg, "image/jpeg");
+  revalidatePath("/", "layout");
+  return { ok: true, path: saved.saved };
+}
+
+/** One of them taken off; a client who put it among their own keeps it. */
+export async function removeCoachCardPictureAction(track: PhaseTrack, publicPath: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const coach = await requireCoach();
+  if (!CARD_TRACKS.has(track)) return { ok: false, error: "Not removed. Try again." };
+  const { removed, drop } = removeCoachCardPicture(coach.id, track, String(publicPath));
+  if (!removed) return { ok: false, error: "Not removed. Try again." };
+  if (drop) await deleteUpload(drop);
+  revalidatePath("/", "layout");
+  return { ok: true };
 }
 
 /** Back to the business name, else NORCOACH. */
