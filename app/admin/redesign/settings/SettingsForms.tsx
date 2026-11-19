@@ -368,7 +368,7 @@ export function BrandColourSettings({ picked }: { picked: string | null }) {
   const [error, setError] = useState("");
   const custom = !!now && !BRAND_SWATCHES.some((s) => s.hex === now);
   const [open, setOpen] = useState(custom);
-  const [typed, setTyped] = useState(custom && now ? now.toUpperCase() : "");
+  const [typed, setTyped] = useState((now ?? BRAND_SWATCHES[0].hex).toUpperCase());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ink = BRAND_SWATCHES[0].hex;
   const shown = now ?? ink;
@@ -412,6 +412,7 @@ export function BrandColourSettings({ picked }: { picked: string | null }) {
     // Ink is today's look: none kept.
     const value = hex && hex !== ink ? hex : null;
     setNow(value);
+    setTyped((value ?? ink).toUpperCase());
     setError("");
     void setBrandColourAction(value)
       .then((r) => (r.ok ? router.refresh() : setError(r.error)))
