@@ -22,6 +22,8 @@ import { SERVER_TZ, zonedToUtc } from "../../lib/timezones";
 import { hasBankDetails, invoicingFor } from "../../lib/countries";
 import { clientActions, coachNeeds } from "../../lib/coachNeeds";
 import type { ChatCoachView, ChatDockView, ChatThread } from "../../lib/chat/rows";
+import { fetchNoteKeys, type NoteKeys } from "../../lib/notes/rows";
+import type { NoteTab } from "../../lib/notes/paths";
 import { HOME_KIND_ROWS as HOME_KIND_ROWS_CHAT } from "../../lib/chat/pick";
 import {
   getActivityFeed,
@@ -933,7 +935,10 @@ export function loadMeasurements(clientId: number, params: { phase?: string }): 
 const stampDay = (iso: string) => dayMonth(localDateStr(new Date(iso)));
 const stampDayTime = dayMonthTime;
 
-export function loadPictures(clientId: number, thread: ChatThread): DraftPictures {
+/** The notes the Shape update tab reads (quest 7): the client's Remind notes (photos-remind:<sheet>:<day>), fetched first. */
+export const fetchPictureNotes = (clientId: number, path: `page.tab.${NoteTab}`) => fetchNoteKeys(clientId, { family: { prefix: "photos-remind:", suffix: "" } }, path);
+
+export function loadPictures(clientId: number, thread: ChatThread, notes: NoteKeys): DraftPictures {
   // Their photos' small copies made behind the page where missing (27 Oct, Alex: Compare loading slowly).
   warmClientPhotos(clientId);
   const cadence = getPhotoCadence(clientId);
@@ -1016,7 +1021,7 @@ export function loadPictures(clientId: number, thread: ChatThread): DraftPicture
     : null;
 
   // The coach has nudged the client about the open sheet today already (Remind, 21 Oct).
-  const remindedToday = !!live && getData().coach_activity.some((a) => a.client_id === clientId && a.dedupe_key === `photos-remind:${live}:${today}`);
+  const remindedToday = !!live && notes.has(`photos-remind:${live}:${today}`);
 
   return {
     cadence,

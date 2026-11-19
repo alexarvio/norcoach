@@ -7,6 +7,7 @@ import { getSessionUser } from "../lib/auth";
 import { touchPresence } from "../lib/presence";
 import { getData } from "../lib/db";
 import { fetchThread, type ChatThread } from "../lib/chat/rows";
+import { fetchClientNotes, type ClientNotes } from "../lib/notes/rows";
 import {
   getAssignmentsForDay,
   getFreeSessions,
@@ -390,7 +391,7 @@ function isoPlusDays(iso: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function HomeTab({ CLIENT_ID, chat, photos, food, phoneTz }: { CLIENT_ID: number; chat: ChatThread; photos: ProgressPics; food: PhaseFoodToday; phoneTz: string | null }) {
+function HomeTab({ CLIENT_ID, chat, notes, photos, food, phoneTz }: { CLIENT_ID: number; chat: ChatThread; notes: ClientNotes; photos: ProgressPics; food: PhaseFoodToday; phoneTz: string | null }) {
   const client = getClient(CLIENT_ID);
   const today = localDateStr();
 
@@ -482,7 +483,7 @@ function HomeTab({ CLIENT_ID, chat, photos, food, phoneTz }: { CLIENT_ID: number
       coach={{ firstName: coachFirst, photoPath: getCoachAvatarPath(CLIENT_ID) }}
       session={session}
       progressPics={photos}
-      latestActivity={latestCoachActivity(CLIENT_ID, chat, coachFirst, phoneTz)}
+      latestActivity={latestCoachActivity(CLIENT_ID, chat, notes, coachFirst, phoneTz)}
       upcoming={upcoming}
       recap={getLastMeetingRecap(CLIENT_ID)}
       phases={phases}
@@ -536,7 +537,7 @@ function actionOnly(message: string): string {
 // What a comment was on, in words: "Commented on your nutrition".
 const COMMENT_ON = { nutrition: "your nutrition", checkin: "your check-in", photos: "your shape update", training: "your training" } as const;
 
-function latestCoachActivity(clientId: number, chat: ChatThread, coachFirst: string, phoneTz: string | null = null): LatestActivity {
+function latestCoachActivity(clientId: number, chat: ChatThread, noteView: ClientNotes, coachFirst: string, phoneTz: string | null = null): LatestActivity {
   const weekAgo = Date.now() - 7 * 86400000;
   const sent = coachMessagesFor(chat).filter((m) => !m.mine && (m.text.trim() || m.media));
   const latestMsg = sent[sent.length - 1] ?? null;
@@ -544,7 +545,7 @@ function latestCoachActivity(clientId: number, chat: ChatThread, coachFirst: str
   // is only its echo: read the message itself (17 Oct), so a form review shows
   // as the reply it is rather than a bare "Sent you a note".
   // A time in the coach's zone read in the client's own (12 Nov, Alex).
-  const notes = getNotifications(clientId).filter(isListed).map((n) => ({ ...n, message: clockToZone(n.message, phoneTz) }));
+  const notes = getNotifications(noteView, clientId).filter(isListed).map((n) => ({ ...n, message: clockToZone(n.message, phoneTz) }));
   const latestNote = notes[0] ?? null;
   const msgAt = latestMsg ? new Date(`${latestMsg.dateIso}T${latestMsg.timeLabel}:00`).getTime() : 0;
   const noteAt = latestNote ? new Date(latestNote.created_at).getTime() : 0;
@@ -552,7 +553,7 @@ function latestCoachActivity(clientId: number, chat: ChatThread, coachFirst: str
     sent.filter((m) => new Date(`${m.dateIso}T00:00:00`).getTime() >= weekAgo).length +
     notes.filter((n) => new Date(n.created_at).getTime() >= weekAgo).length;
   const moreThisWeek = Math.max(0, more - 1);
-  const unread = getNotifications(clientId).filter((n) => n.kind === "coach_note" && !n.read).length;
+  const unread = getNotifications(noteView, clientId).filter((n) => n.kind === "coach_note" && !n.read).length;
 
   if (latestMsg && msgAt >= noteAt) {
     const iso = `${latestMsg.dateIso}T${latestMsg.timeLabel}:00`;
@@ -1169,7 +1170,7 @@ function SettingsTab({ CLIENT_ID, own = false, passwordsHint = null }: { CLIENT_
 // The Notifications screen (9 Oct): every row the coach caused, as a
 // category with a title and a body, newest first; reminders and chat
 // messages stay out (Home and the chat tab have them).
-function NotificationsPanel({ CLIENT_ID, phoneTz = null }: { CLIENT_ID: number; phoneTz?: string | null }) {
+function NotificationsPanel({ CLIENT_ID, notes, phoneTz = null }: { CLIENT_ID: number; notes: ClientNotes; phoneTz?: string | null }) {
   const coachFirst = getCoachFirstName(CLIENT_ID);
   const videoReplies = listVideoReplies(CLIENT_ID);
   // A call-notes notification from before 10 Oct carries no meeting: it is read as the latest call with a recap on or before its day.
@@ -1192,7 +1193,7 @@ function NotificationsPanel({ CLIENT_ID, phoneTz = null }: { CLIENT_ID: number; 
     if (byTopic) return byTopic.id;
     return [...allMeetings].filter((m) => m.date >= day).sort((x, y) => (x.date < y.date ? -1 : 1))[0]?.id ?? null;
   };
-  const items: NotifView[] = getNotifications(CLIENT_ID, 300)
+  const items: NotifView[] = getNotifications(notes, CLIENT_ID, 300)
     .filter(isListed)
     .map((n) => {
       const { title, body } = titleAndBody(clockToZone(n.message, phoneTz), coachFirst);
@@ -1347,6 +1348,8 @@ export default async function ClientPage({
   const client = getClient(CLIENT_ID);
   // The chat first (Step 5, app/lib/chat/rows.ts): the thread, Home's latest from the coach and the diary's comments.
   const chatThread = await fetchThread(CLIENT_ID, "page.client");
+  // The notifications the same (quest 7, app/lib/notes/rows.ts): the newest 500, every cut below is inside them.
+  const notes = await fetchClientNotes(CLIENT_ID, phone ? "page.client.phone" : "page.client");
   // The Check-in screen's three sections, the measurement deltas and this
   // period's photo slots. Built here rather than in HomeTab because the
   // screen is a full-screen push view owned by AppShell.
@@ -1403,7 +1406,7 @@ export default async function ClientPage({
   const progressPictures = progressPicturesData(CLIENT_ID);
   // The bell: anything unread but the chat, which has its own dot on the Messages tab (7 Oct).
   // Reminders and chat messages are not notifications (9 Oct): neither counts for the bell.
-  const hasUnreadNotifications = getNotifications(CLIENT_ID).some((n) => isListed(n) && !n.read);
+  const hasUnreadNotifications = getNotifications(notes, CLIENT_ID).some((n) => isListed(n) && !n.read);
 
   const currentWeekNum = getCurrentWeekNumber(CLIENT_ID);
   // Only the currently deployed program's own weeks — not every published
@@ -1525,7 +1528,7 @@ export default async function ClientPage({
 
   const tabs: AppTab[] = [
     // Draws its own light banner (name and main goal); the top bar floats over it.
-    { id: "home", label: "Home", icon: <HomeIcon />, bare: true, content: <HomeTab CLIENT_ID={CLIENT_ID} chat={chatThread} phoneTz={phoneTz} photos={homePhotos} food={{ eaten: foodDiary.eaten.kcal, target: foodDiary.target?.kcal ?? null, mealsLogged: foodDiary.meals.filter((m) => m.entries.length > 0).length, mealsTotal: foodDiary.meals.length }} /> },
+    { id: "home", label: "Home", icon: <HomeIcon />, bare: true, content: <HomeTab CLIENT_ID={CLIENT_ID} chat={chatThread} notes={notes} phoneTz={phoneTz} photos={homePhotos} food={{ eaten: foodDiary.eaten.kcal, target: foodDiary.target?.kcal ?? null, mealsLogged: foodDiary.meals.filter((m) => m.entries.length > 0).length, mealsTotal: foodDiary.meals.length }} /> },
     {
       id: "training",
       label: "Training",
@@ -1567,7 +1570,7 @@ export default async function ClientPage({
     <AppShell
       clientName={client?.name ?? ""}
       tabs={tabs}
-      notificationsContent={<NotificationsPanel CLIENT_ID={CLIENT_ID} phoneTz={phoneTz} />}
+      notificationsContent={<NotificationsPanel CLIENT_ID={CLIENT_ID} notes={notes} phoneTz={phoneTz} />}
       hasUnreadNotifications={hasUnreadNotifications}
       clientId={CLIENT_ID}
       preview={preview}
@@ -1583,10 +1586,10 @@ export default async function ClientPage({
         quiet: coachQuietHours(CLIENT_ID),
         viewerIsClient,
         // How many of the coach's messages are new, so the chat opens on the first of them (25 Oct, Alex).
-        unreadCount: getNotifications(CLIENT_ID).filter((n) => n.kind === "coach_note" && !n.read).length,
+        unreadCount: getNotifications(notes, CLIENT_ID).filter((n) => n.kind === "coach_note" && !n.read).length,
         events: { categories: listEventCategories(client?.coach_id ?? 0).map(({ id, label, color }) => ({ id, label, color })), today: localDateStr() },
       }}
-      chatUnread={getNotifications(CLIENT_ID).some((n) => n.kind === "coach_note" && !n.read)}
+      chatUnread={getNotifications(notes, CLIENT_ID).some((n) => n.kind === "coach_note" && !n.read)}
       // Settings left the bottom nav for the burger (7 Oct): the chat has its tab.
       settingsContent={<SettingsTab CLIENT_ID={CLIENT_ID} own={viewerIsClient} passwordsHint={viewerIsClient ? await passwordsOnHint() : null} />}
       events={homeEvents(CLIENT_ID)}
@@ -1597,7 +1600,7 @@ export default async function ClientPage({
       foodDiary={foodDiary}
       meetings={meetings}
       invoices={invoices}
-      arrival={phone ? null : arrivalFrom(CLIENT_ID, params.n, params.meeting)}
+      arrival={phone ? null : arrivalFrom(CLIENT_ID, notes, params.n, params.meeting)}
       initialPush={phone ? (PHONE_TAB_SCREENS.has(phoneScreen) ? null : (phoneScreen as Exclude<PhoneScreen, "home" | "training" | "nutrition">)) : params.open === "invoices" ? "invoices" : params.open === "messages" ? "messages" : null}
       initialTab={initialTab}
       readOnly={phone}
@@ -1613,11 +1616,11 @@ export default async function ClientPage({
  * What a phone push asks the app to open (24 Oct, Alex: a push lands on its thing): its notification (?n=), worked out
  * as the notifications list does, or a meeting reminder's call (?meeting=). Null for anything else or another client's.
  */
-function arrivalFrom(clientId: number, n: string | undefined, meeting: string | undefined): Arrival | null {
+function arrivalFrom(clientId: number, notes: ClientNotes, n: string | undefined, meeting: string | undefined): Arrival | null {
   if (meeting && Number.isInteger(Number(meeting))) return { meetingId: Number(meeting) };
   const id = Number(n);
   if (!n || !Number.isInteger(id)) return null;
-  const note = getNotifications(clientId, 500).find((x) => x.id === id);
+  const note = getNotifications(notes, clientId, 500).find((x) => x.id === id);
   // An old push about a progress report opens the app as it is (18 Nov, Alex: reports are gone).
   if (!note || note.kind === "report") return null;
   const category = categorize(note);

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getRequestUser } from "../../lib/auth";
 import { getData } from "../../lib/db";
 import { CHAT_TABLE, fetchChatExport, withChatKey } from "../../lib/chat/rows";
+import { fetchNotesExport, NOTES_TABLE, withNotesKey } from "../../lib/notes/rows";
 
 // Settings, Your data (27 Oct, Alex): everything a coach's coaching holds, as one file they keep. Every row of every
 // table that belongs to one of their clients (by client_id), their own rows (by coach_id: the library, programmes,
@@ -12,20 +13,24 @@ import { CHAT_TABLE, fetchChatExport, withChatKey } from "../../lib/chat/rows";
 export const dynamic = "force-dynamic";
 
 /** Tables that are about sign-in or the company, never part of a coach's export. */
-const LEFT_OUT = new Set(["users", "login_lock_events", "support_messages", "join_requests", "coach_reset_applied", "workspace_reset_applied", "sessions_migrated", "_seq"]);
+// notes-door: the notifications' outbox and its dead letters (NOTES_STORE=pg) are the store's plumbing, their rows in the table.
+const LEFT_OUT = new Set(["users", "login_lock_events", "support_messages", "join_requests", "coach_reset_applied", "workspace_reset_applied", "sessions_migrated", "_seq", "notes_outbox", "notes_outbox_dead", "notes_shadow_totals"]);
 
 export async function GET(request: Request) {
   const user = await getRequestUser(request);
   if (!user || user.pending || user.role !== "coach") return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const data = getData() as unknown as Record<string, unknown>; // chat-door: the chat's rows are swapped in from fetchChatExport below
+  const data = getData() as unknown as Record<string, unknown>; // chat-door: the chat's rows are swapped in from fetchChatExport below; notes-door: the notifications from fetchNotesExport
   const clientIds = new Set((getData().clients ?? []).filter((c) => c.coach_id === user.id).map((c) => c.id));
   // The chat through its door (Step 5), in its place among the tables, so the file is as it was.
   const exported = await fetchChatExport([...clientIds], "export");
+  // The notifications through theirs (quest 7), in their place the same way.
+  const notes = await fetchNotesExport([...clientIds], "export");
   const out: Record<string, unknown> = {};
   // chat-door: chat rows come from fetchChatExport
+  // notes-door: the notifications from fetchNotesExport, their key put in its place with NOTES_STORE=pg (withNotesKey)
   // With CHAT_STORE=pg the store has no chat key: withChatKey puts it where it would be, so the file reads as before.
-  for (const [table, stored] of Object.entries(withChatKey(data, exported.rows))) {
-    const rows = table === CHAT_TABLE ? exported.rows : stored;
+  for (const [table, stored] of Object.entries(withNotesKey(withChatKey(data, exported.rows), notes))) {
+    const rows = table === CHAT_TABLE ? exported.rows : table === NOTES_TABLE ? notes : stored;
     if (LEFT_OUT.has(table) || !Array.isArray(rows)) continue;
     const mine = rows.filter((r) => {
       if (!r || typeof r !== "object") return false;

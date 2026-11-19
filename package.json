@@ -8,6 +8,7 @@
     "start": "node --max-old-space-size=768 scripts/start-server.mjs",
     "lint": "eslint",
     "check:chat": "node scripts/check-chat-door.mjs",
+    "check:notes": "node scripts/check-notes-door.mjs",
     "audit:ui": "node scripts/ui-audit.mjs"
   },
   "dependencies": {

@@ -6,6 +6,8 @@ import { redirect } from "next/navigation";
 import { allocId, claimUnownedRows, getData, persist } from "./db";
 import { wipeAllChat } from "./chat/rows";
 import { CHAT_PG } from "./chat/mode";
+import { wipeAllNotes } from "./notes/rows";
+import { NOTES_PG } from "./notes/mode";
 import { clearLockoutsFor } from "./loginLockout";
 import { coachOwnsClient, seedCoachLibrary } from "./tenancy";
 import { clerkOn, clerkUserIdFromRequest, clerkUserRow, deleteClerkUser } from "./clerk";
@@ -452,6 +454,8 @@ async function resetWorkspaceOnce(): Promise<void> {
   // With CHAT_STORE=pg the chat goes first, in Postgres: a DELETE that fails stops the reset here, before anything is
   // cleared or the token saved, so the next sign-in page tries it again (Step 5's cut-over).
   if (CHAT_PG) await wipeAllChat("w.wipe");
+  // The notifications the same with NOTES_STORE=pg (quest 7).
+  if (NOTES_PG) await wipeAllNotes("w.wipe");
 
   const before = data.clients.length;
   data.users = data.users.filter((u) => u.role === "coach");
@@ -480,7 +484,8 @@ async function resetWorkspaceOnce(): Promise<void> {
   // Through the chat's door: memory at once (this stays synchronous for the sign-in page that calls it); after the
   // cut-over a DELETE, which app/login/page.tsx will then await (docs/database-plan.md, Step 5).
   if (!CHAT_PG) void wipeAllChat("w.wipe").catch(() => {});
-  data.coach_activity = [];
+  // Through the notes' door (quest 7): memory at once, synchronously, as before.
+  if (!NOTES_PG) void wipeAllNotes("w.wipe");
   data.client_reports = [];
   data.training_programs = [];
   data.client_preferences = [];
@@ -490,6 +495,7 @@ async function resetWorkspaceOnce(): Promise<void> {
   // With CHAT_STORE=pg once more, now no client is left in memory: a send already past its checks when the first DELETE
   // ran commits after it. Safe to repeat; a failure leaves at most such rows, which the boot's orphan report names.
   if (CHAT_PG) await wipeAllChat("w.wipe").catch((error) => console.error("[workspace-reset] the second chat sweep failed:", error instanceof Error ? error.message : error));
+  if (NOTES_PG) await wipeAllNotes("w.wipe").catch((error) => console.error("[workspace-reset] the second notes sweep failed:", error instanceof Error ? error.message : error));
   console.log(`[workspace-reset ${token}] applied: removed ${before} client(s) and their data; kept coach logins, exercises, templates`);
 }
 

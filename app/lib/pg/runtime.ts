@@ -16,6 +16,13 @@ import { takeLease } from "./lease";
 import { setPgStrays } from "../chat/strays";
 import { stampInstantMs } from "./stamps";
 import { stampMs } from "../targetRule";
+import { NOTES_OUTBOX, NOTES_PG, NOTES_STORE_ASKED } from "../notes/mode";
+import { importNotes, importNotesMemory, kvHoldsOutbox, notesBootMemory, notesBootPg, pruneOpTokens, reportNotesOrphans } from "../notes/boot";
+import { notesPreflight, notesProblems } from "../notes/preflight";
+import { startNotesPg } from "../notes/pg";
+import { freshBox, outbox, startDrainer } from "../notes/outbox";
+import { setNotesStrays } from "../notes/rows";
+import { startNotesShadow } from "../notes/shadow";
 
 // Starts the Postgres store (STORE=postgres). Called once from
 // instrumentation.ts, which Next awaits before the server takes requests:
@@ -154,13 +161,30 @@ async function start() {
   const writer = new PgStoreWriter(db);
   // One instance on the database at a time (pg/lease.ts): with CHAT_STORE=pg the boot waits for the lease and refuses
   // without it; in memory mode it is taken in the background, never waited on, so a pg boot over this one waits.
-  await takeLease(process.env.DATABASE_URL!, { mustHold: CHAT_PG, name: `norcoach-lease-${BOOT_ID}` });
+  // The notifications (quest 7) the same with NOTES_STORE=pg; and a memory boot of this build waits too when kv holds an
+  // outbox a pg instance left (its last ops must be in it before this boot applies it, notes/boot.ts).
+  const notesLeftover = !NOTES_PG && (await kvHoldsOutbox(db));
+  const why = [CHAT_PG && "CHAT_STORE=pg", NOTES_PG && "NOTES_STORE=pg", notesLeftover && "a notes outbox left in kv"].filter(Boolean).join(" and ") || undefined;
+  await takeLease(process.env.DATABASE_URL!, { mustHold: CHAT_PG || NOTES_PG || notesLeftover, name: `norcoach-lease-${BOOT_ID}`, why });
   // With the chat in Postgres alone (CHAT_STORE=pg, Step 5's cut-over): what its SQL leans on is there and runs, or the
   // boot stops here with nothing changed.
   if (CHAT_PG) await chatPreflight(db);
 
   // The id counters are always saved, so their absence means an empty database (or a damaged one: emptyStart).
   const hasData = (await db.select().from(kv).where(eq(kv.key, "_seq"))).length > 0;
+  // With the notifications in Postgres alone: what their SQL leans on is there, then the boot's own work on the table
+  // (twins out, the unique rule, stamps, links; notes/boot.ts), then every statement run (notes/preflight.ts). On an
+  // empty database that work waits for the JSON's rows to be in the table (below), so the import never meets the
+  // unique rule with a twin, and its stamps, strays and links are looked at too.
+  let notesBoot: Awaited<ReturnType<typeof notesBootPg>> | null = null;
+  if (NOTES_PG) {
+    const problems = await notesProblems(db, { unique: false });
+    if (problems.length) throw new Error(`[notes] Refusing to start with NOTES_STORE=pg: ${problems.join("; ")}`);
+    if (hasData) {
+      notesBoot = await notesBootPg(db);
+      await notesPreflight(db);
+    }
+  }
   let raw: Partial<Data>;
   // Lists still kept in kv under a collection's name while its table is empty: moved into the table by the first save.
   const moved: string[] = [];
@@ -168,6 +192,8 @@ async function start() {
   let restamped = 0;
   // The phone's workouts' kv copy to write again on the boot's save (cleaned, broken, or missing beside rows).
   let healthDirty = false;
+  // The notifications' leftover outbox applied (a memory boot after pg mode): the boot's save writes it.
+  let notesChanged = false;
   if (hasData) {
     // The saves taken once, as the last build to save left them (step 4B: a build before it writes only the kv copy).
     const onceKeys = await onceKeysFromKvCopy(db);
@@ -191,6 +217,8 @@ async function start() {
     else if (!hw && Array.isArray(loaded.health_workouts) && loaded.health_workouts.length === 0) delete loaded.health_workouts;
     // What the database holds right now, before the load-time tidies touch it.
     writer.prime(loaded, moved);
+    // A memory boot of this build: the notes' unique rule dropped, an outbox left by a pg instance applied (quest 7).
+    if (!NOTES_PG) notesChanged = await notesBootMemory(db, raw);
     const stale = await derivedStale(db, raw as Row);
     for (const [name, keys] of stale) {
       log(`${name}: ${keys.size} row${keys.size === 1 ? "" : "s"} with an instant column to write again`);
@@ -212,6 +240,12 @@ async function start() {
     // A whole-store JSON (local, or ALLOW_JSON_IMPORT=1) carries its chat; with CHAT_STORE=pg it goes into the table,
     // never into memory or kv (a file the shutdown wrote with the chat left out is refused: its chat is in Postgres).
     if (CHAT_PG) await importChat(db, raw);
+    // The notifications the same with NOTES_STORE=pg (quest 7), then the pg boot's work on the table they are in now.
+    if (NOTES_PG) {
+      await importNotes(db, raw);
+      notesBoot = await notesBootPg(db);
+      await notesPreflight(db);
+    } else notesChanged = await importNotesMemory(db, raw);
   }
   // The chat's own boot checks (CHAT_STORE=pg): its stamps' instants put right, its strays, its highest id.
   const chat = CHAT_PG ? await chatBoot(db) : null;
@@ -227,11 +261,30 @@ async function start() {
     log(`raised the id counter of chat_messages from ${data._seq.chat_messages ?? "none"} to ${chat.maxId}, its highest id`);
     data._seq.chat_messages = chat.maxId;
   }
+  // The notifications' counter at least their table's highest id and any id an outbox left holds (NOTES_STORE=pg).
+  let notesRaised = false;
+  if (NOTES_PG) {
+    const box = (data as unknown as Record<string, unknown>).notes_outbox as { ops?: { op: { op: string; row?: { id?: number } } }[] } | undefined;
+    const queued = Math.max(0, ...(box?.ops ?? []).map((e) => (e.op.op === "insert" ? Number(e.op.row?.id) || 0 : 0)));
+    const top = Math.max(notesBoot?.maxId ?? 0, queued);
+    if (top > (data._seq.coach_activity ?? 0)) {
+      notesRaised = true;
+      log(`raised the id counter of coach_activity from ${data._seq.coach_activity ?? "none"} to ${top}, its highest id`);
+      data._seq.coach_activity = top;
+    }
+    // The outbox's key in kv from this boot's own save, so a memory boot started at any moment after it waits for the
+    // lease (and never drops the unique rule under this instance), quiet night or not.
+    const d = data as unknown as Record<string, unknown>;
+    if (!d[NOTES_OUTBOX] || typeof d[NOTES_OUTBOX] !== "object") {
+      d[NOTES_OUTBOX] = freshBox();
+      notesRaised = true;
+    }
+  }
   // Ids from Postgres for the tables that will move (step 4A), before anything can take one; the counters as raised.
   const ids = new IdPools(db, () => (data._seq ??= {}));
   await ids.start();
   (globalThis as unknown as { _pgIds?: IdPools })._pgIds = ids;
-  const changed = prepared.changed || raised > 0 || chatRaised || moved.length > 0 || restamped > 0 || healthDirty;
+  const changed = prepared.changed || raised > 0 || chatRaised || moved.length > 0 || restamped > 0 || healthDirty || notesChanged || notesRaised;
   // The import, or a tidy's changes, are written before any request arrives,
   // so a failure stops the boot instead of surfacing later.
   if (!hasData || changed) await writer.save(() => data as unknown as Row);
@@ -240,6 +293,14 @@ async function start() {
   // to it, and in write mode its tables seeded, before any request. It catches everything itself; the boot never fails over it.
   (globalThis as unknown as { _pgWriter?: PgStoreWriter })._pgWriter = writer;
   await startChatShadow({ db, url: process.env.DATABASE_URL!, writer }).catch(() => {});
+  // The notifications' shadow (quest 7, app/lib/notes/shadow.ts; NOTES_SHADOW, off by default), the same way.
+  await startNotesShadow({ db, url: process.env.DATABASE_URL!, writer }).catch(() => {});
+  // The notifications' own connection (NOTES_STORE=pg), before any request, the stray clients known, the orphans said.
+  if (NOTES_PG) {
+    await startNotesPg({ db, url: process.env.DATABASE_URL! });
+    setNotesStrays(notesBoot?.strays ?? []);
+    await reportNotesOrphans(db, data);
+  }
   // Chat's own connection (CHAT_STORE=pg), before any request, and the orphans said (an erase whose chat stayed).
   if (CHAT_PG) {
     await startChatPg({ db, url: process.env.DATABASE_URL! });
@@ -323,6 +384,13 @@ async function start() {
     current = latest;
     return save("persist");
   });
+  // NOTES_STORE=pg: the outbox always in kv (a memory boot knows to wait for the lease), and its drainer started.
+  if (NOTES_PG) {
+    outbox();
+    startDrainer(writer);
+    // The op tokens past 30 days, after the boot (nothing waits on it).
+    void pruneOpTokens(db);
+  }
   log(`ready: ${data.users.length} users, ${data.clients.length} clients`);
 }
 
@@ -332,6 +400,11 @@ export function initStore(): Promise<void> {
   if (!["", "memory", "pg"].includes(CHAT_STORE_ASKED)) return Promise.reject(new Error(`[store] Refusing to start: CHAT_STORE=${CHAT_STORE_ASKED} is not memory or pg`));
   if (CHAT_STORE_ASKED === "pg" && STORE_MODE !== "postgres" && process.env.NEXT_PHASE !== "phase-production-build") {
     return Promise.reject(new Error("[store] Refusing to start: CHAT_STORE=pg needs the Postgres store (STORE=postgres and DATABASE_URL)"));
+  }
+  // NOTES_STORE (notes/mode.ts) the same (quest 7).
+  if (!["", "memory", "pg"].includes(NOTES_STORE_ASKED)) return Promise.reject(new Error(`[store] Refusing to start: NOTES_STORE=${NOTES_STORE_ASKED} is not memory or pg`));
+  if (NOTES_STORE_ASKED === "pg" && STORE_MODE !== "postgres" && process.env.NEXT_PHASE !== "phase-production-build") {
+    return Promise.reject(new Error("[store] Refusing to start: NOTES_STORE=pg needs the Postgres store (STORE=postgres and DATABASE_URL)"));
   }
   if (STORE_MODE !== "postgres") return Promise.resolve();
   const g = globalThis as unknown as { _pgInit?: Promise<void> };

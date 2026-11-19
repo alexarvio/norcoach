@@ -25,13 +25,10 @@ export async function register() {
   // for them; now once ~20 s after start and every minute, so one still comes in within the minute its day, week or
   // photo period opens, and goes once it is no longer due. Not in `next build`'s prerender workers.
   if (process.env.NEXT_PHASE !== "phase-production-build") {
-    const { applyDueClientReminders } = await import("./app/lib/queries");
+    // Fetches the notes it reads first since quest 7 (app/lib/notes/rows.ts), so it answers a promise; one tick at a time.
+    const { runClientReminders } = await import("./app/lib/queries");
     const remindCheckIns = () => {
-      try {
-        applyDueClientReminders();
-      } catch (e) {
-        console.error("[reminders] check-in reminders failed:", e instanceof Error ? e.message : e);
-      }
+      void runClientReminders().catch((e) => console.error("[reminders] check-in reminders failed:", e instanceof Error ? e.message : e));
     };
     setInterval(remindCheckIns, 60_000).unref?.();
     setTimeout(remindCheckIns, 20_000).unref?.();

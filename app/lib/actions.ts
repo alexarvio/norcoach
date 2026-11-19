@@ -6,6 +6,7 @@ import { sendChatAs } from "./chatSend";
 import { CHAT_PG } from "./chat/mode";
 import { createHash } from "crypto";
 import { fetchCoachChatOfClient, fetchFoodComments, fetchThread } from "./chat/rows";
+import { fetchNoteOwner, notesKeyed } from "./notes/rows";
 import { isDialCode, splitTypedPhone } from "./phone";
 import { isMeetingTypeId } from "./meetingTypes";
 import { isClientCall, takesClient } from "./calendarKinds";
@@ -271,7 +272,6 @@ import {
   updateSetLog,
   publishWeek,
   getClientIdForPhotoSlot,
-  getClientIdForNotification,
   markExerciseNoteRead,
   setExerciseNoteKind,
   setAssignmentDemoUrl,
@@ -1875,7 +1875,9 @@ export async function saveNutritionTargetsAction(formData: FormData) {
     // One note a day (21 Oct: the tab saves as the coach types, so 180 → 1 → 19 → 190
     // mustn't reach the client as three notes): each figure from how the day began to now.
     const key = `nutrition-targets:${localDateStr()}`;
-    const today = data.coach_activity.find((a) => a.client_id === clientId && a.dedupe_key === key);
+    // The day's note read and its change written as one step, one at a time per client and day (the notes' door, quest 7).
+    await notesKeyed(clientId, key, (notes) => {
+    const today = notes.row(key);
     const began = new Map<string, string>();
     for (const part of today ? today.message.slice(today.message.indexOf(": ") + 2).split(" · ") : []) {
       const m = /^(.+) (\S+) → \S+ (?:g|L)$/.exec(part);
@@ -1897,6 +1899,7 @@ export async function saveNutritionTargetsAction(formData: FormData) {
     // Back where the day began: nothing to tell the client, and the day's note goes.
     if (moved.length > 0) logCoachActivity(clientId, `Updated your nutrition targets: ${moved.join(" · ")}`, { kind: "general", actionTab: "nutrition", actionLabel: "See your targets", dedupeKey: key, replace: true });
     else if (today) dropCoachActivity(clientId, key);
+    }, "action.nutritionTargets");
   }
   revalidatePath("/admin");
   revalidatePath("/client");
@@ -2846,9 +2849,9 @@ export async function editMealCommentAction(clientId: number, messageId: number,
 // the view changes is a bad place to be mid-submit.
 export async function markNotificationReadAction(id: number) {
   if (!id || (await coachLooking())) return;
-  const owner = getClientIdForNotification(id);
+  const owner = await fetchNoteOwner(id, "action.markRead");
   if (owner == null || !(await canAccessClient(owner))) return;
-  markNotificationRead(id);
+  markNotificationRead(id, owner);
   revalidatePath("/client");
 }
 

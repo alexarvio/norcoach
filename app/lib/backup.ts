@@ -5,6 +5,8 @@ import { DATA_DIR, getData, STORE_MODE } from "./db";
 import { deleteAllUnder } from "./storage";
 import { CHAT_PG } from "./chat/mode";
 import { fetchAllChat, withChatKey } from "./chat/rows";
+import { NOTES_PG } from "./notes/mode";
+import { fetchAllNotes, notesBackupCopy, withNotesKey } from "./notes/rows";
 
 // Nightly copy of everything on the volume to a bucket that is not the
 // volume: the JSON store as a dated snapshot, the uploads folder mirrored
@@ -98,7 +100,7 @@ export type BackupResult = {
  * goes gets that one's answer): each holds a chat connection for its whole read of the table.
  */
 export function runBackup(): Promise<BackupResult | null> {
-  if (!CHAT_PG) return runBackupOnce();
+  if (!CHAT_PG && !NOTES_PG) return runBackupOnce();
   const g = globalThis as unknown as { __norcoachBackupRun?: Promise<BackupResult | null> | null };
   if (g.__norcoachBackupRun) return g.__norcoachBackupRun;
   const run = runBackupOnce().finally(() => {
@@ -127,6 +129,7 @@ async function runBackupOnce(): Promise<BackupResult | null> {
   if (CHAT_PG) {
     try {
       // chat-door: the store copied whole, the chat read from its table when it is not in memory
+      // notes-door: the notifications swapped in below when they are in Postgres (NOTES_STORE=pg)
       store = withChatKey(getData() as unknown as Record<string, unknown>, await fetchAllChat("backup"));
     } catch (error) {
       chatReadFailed = true;
@@ -136,6 +139,20 @@ async function runBackupOnce(): Promise<BackupResult | null> {
         .catch(() => {});
     }
   } else store = getData();
+  // The notifications the same with NOTES_STORE=pg (quest 7): read from the table with the ops still queued laid over,
+  // put in their key's place, and the outbox left out of the copy (its ops are in the rows now).
+  if (NOTES_PG && !chatReadFailed) {
+    try {
+      // notes-door: the store copied whole, the notifications read from their table
+      store = notesBackupCopy(withNotesKey((store ?? getData()) as unknown as Record<string, unknown>, await fetchAllNotes("backup")));
+    } catch (error) {
+      chatReadFailed = true;
+      console.error("[backup] the notifications could not be read from Postgres: today's JSON snapshot skipped, the rest goes on:", error instanceof Error ? error.message : error);
+      import("@sentry/nextjs")
+        .then((S) => S.captureMessage("Backup: the notifications could not be read; the JSON snapshot was skipped", { level: "error", tags: { alert: "backup-notes-read" } }))
+        .catch(() => {});
+    }
+  }
   const snapshot = `snapshots/${day}/ironline.json`;
   if (!chatReadFailed) {
     const body = Buffer.from(JSON.stringify(store, null, 2));

@@ -2,7 +2,7 @@ import { requireCoach } from "../../../lib/auth";
 import { touchPresence } from "../../../lib/presence";
 import { startTiming } from "../../../lib/timing";
 import { fetchClientTabChat, fetchCoachChat } from "../../../lib/chat/rows";
-import { loadHome, loadMeasurements, loadMeetings, loadMessages, loadNutrition, loadPictures, loadPlan, loadRail, loadTraining, pickClient, loadInvoices, loadDots } from "../loaders";
+import { loadHome, loadMeasurements, loadMeetings, loadMessages, loadNutrition, loadPictures, fetchPictureNotes, loadPlan, loadRail, loadTraining, pickClient, loadInvoices, loadDots } from "../loaders";
 import RedesignShell from "../RedesignShell";
 import { tabFromParams } from "../tabs";
 import NoClients from "../NoClients";
@@ -37,6 +37,8 @@ export default async function InvoicesRedesignPage({ searchParams }: { searchPar
   }
   // The chat first (Step 5, app/lib/chat/rows.ts): the coach's view for the rail and the dots, the client's thread.
   const chat = await t.time("chat", () => fetchClientTabChat(coach.id, client.id, "page.tab.invoices"));
+  // The notes the Shape update reads (quest 7, app/lib/notes/rows.ts), fetched first as the chat is.
+  const notes = await t.time("notes", () => fetchPictureNotes(client.id, "page.tab.invoices"));
   return t.end(
     <RedesignShell
       clientId={client.id}
@@ -49,7 +51,7 @@ export default async function InvoicesRedesignPage({ searchParams }: { searchPar
       training={t.time("training", () => loadTraining(coach.id, client.id, params, chat.thread))}
       nutrition={t.time("nutrition", () => loadNutrition(client.id, params, chat.thread))}
       measurements={t.time("measurements", () => loadMeasurements(client.id, params))}
-      pictures={t.time("pictures", () => loadPictures(client.id, chat.thread))}
+      pictures={t.time("pictures", () => loadPictures(client.id, chat.thread, notes))}
       meetings={t.time("meetings", () => loadMeetings(client.id))}
       plan={t.time("plan", () => loadPlan(client.id))}
       messages={t.time("messages", () => loadMessages(client.id, chat.thread))}

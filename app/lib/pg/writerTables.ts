@@ -1,4 +1,5 @@
 import { CHAT_PG } from "../chat/mode";
+import { NOTES_PG } from "../notes/mode";
 import { COLLECTIONS } from "./schema";
 
 // The collections the store loads into memory and its writer saves (Step 5's cut-over). With CHAT_STORE=pg chat rows
@@ -7,4 +8,6 @@ import { COLLECTIONS } from "./schema";
 // same array. Every loop over the store's collections uses this list (scripts/check-chat-door.mjs refuses a loop over
 // COLLECTIONS anywhere but pg/runtime.ts tablesWithRows, which looks at every table on purpose).
 
-export const WRITER_COLLECTIONS: typeof COLLECTIONS = CHAT_PG ? (COLLECTIONS.filter((c) => c.name !== "chat_messages") as unknown as typeof COLLECTIONS) : COLLECTIONS;
+// The notifications the same with NOTES_STORE=pg (quest 7, notes/mode.ts); either switch alone, or both.
+const OUT = new Set<string>([...(CHAT_PG ? ["chat_messages"] : []), ...(NOTES_PG ? ["coach_activity"] : [])]);
+export const WRITER_COLLECTIONS: typeof COLLECTIONS = OUT.size ? (COLLECTIONS.filter((c) => !OUT.has(c.name)) as unknown as typeof COLLECTIONS) : COLLECTIONS;

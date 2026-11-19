@@ -7,6 +7,7 @@ import { errorReason, health, toSentry } from "./pg/health";
 import { flushStore } from "./pg/runtime";
 import { releaseLease } from "./pg/lease";
 import { CHAT_PG } from "./chat/mode";
+import { NOTES_PG } from "./notes/mode";
 
 // Shutting down without losing a save (17 Nov, the safety net). Railway stops a deploy with SIGTERM; Next's own
 // handler (next/dist/server/lib/start-server.js) closes the HTTP server, waits for the requests still open, then
@@ -46,7 +47,10 @@ function dumpStore(why: string): string | null {
   try {
     // With CHAT_STORE=pg the chat is in Postgres alone, every write of it committed before its answer: nothing of it can
     // be unsaved, and the file says so (pg/runtime.ts refuses to import one as a whole store).
-    body = CHAT_PG ? JSON.stringify({ ...getData(), _chat_in_postgres: true }) : JSON.stringify(getData());
+    // With NOTES_STORE=pg the notifications are in Postgres too (quest 7): the file says so, and keeps the outbox (its ops not
+    // yet in the table), which a pg boot drains and a memory boot of this build applies.
+    const flags = { ...(CHAT_PG ? { _chat_in_postgres: true } : {}), ...(NOTES_PG ? { _notes_in_postgres: true } : {}) };
+    body = CHAT_PG || NOTES_PG ? JSON.stringify({ ...getData(), ...flags }) : JSON.stringify(getData());
   } catch (e) {
     console.error(`[shutdown] !!! the last save to Postgres failed (${why}), and the store can't even be written as JSON:`, e);
     return null;
@@ -108,6 +112,12 @@ export function registerShutdown() {
       finishing = (async () => {
         // 10 s from the signal; a last save asked late (Next slow to close) still gets a moment, inside the hard cap.
         const deadline = Math.min(Math.max(startedAt + SAVE_MS, Date.now() + 1500), startedAt + HARD_CAP_MS - 300);
+        // NOTES_STORE=pg: the notifications' outbox drained first, as far as 8 s and the deadline allow (quest 7); what is
+        // left stays in kv with the last save, for the next boot.
+        if (NOTES_PG) {
+          const { drainOutbox } = await import("./notes/outbox");
+          await until(first.catch(() => {}).then(() => drainOutbox(Math.max(0, Math.min(8_000, deadline - Date.now() - 1500)))), deadline - 1000);
+        }
         const problem = STORE_MODE === "postgres" ? await until(first.catch(() => {}).then(() => flushStore() ?? undefined), deadline) : null;
         if (problem) {
           const file = dumpStore(problem);

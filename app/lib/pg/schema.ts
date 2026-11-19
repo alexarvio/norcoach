@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, doublePrecision, index, integer, jsonb, pgSequence, pgTable, primaryKey, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, doublePrecision, index, integer, jsonb, pgSequence, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 // The Postgres tables behind the store (phase 1 of moving off ironline.json).
 //
@@ -491,7 +491,7 @@ export const event_categories = pgTable("event_categories", {
   extra: extra(),
 });
 
-export const coach_activity = pgTable("coach_activity", {
+const noteColumns = () => ({
   id: id(),
   client_id: fk("client_id"),
   message: text("message"),
@@ -505,6 +505,47 @@ export const coach_activity = pgTable("coach_activity", {
   extra: extra(),
   created_at_tz: instant("created_at_tz"),
 });
+// The indexes the notifications' queries lean on (19 Nov, Step 6, quest 7; app/lib/notes/statements.ts): a client's
+// newest in the list's own order (the text stamp, then id), a client's notes by their dedupe key, the unread reminders
+// the minute job looks at, a coach message's note by the message's id, and the older notes with none (matched by words).
+// The unique rule on (client_id, dedupe_key) is NOT here: it is made only by a NOTES_STORE=pg boot, under the lease, and
+// dropped by a memory boot (app/lib/notes/boot.ts), so a twin can never block a memory-mode save.
+export const coach_activity = pgTable("coach_activity", noteColumns(), (t) => [
+  index("coach_activity_client_text_idx").on(t.client_id, sql`(created_at COLLATE "C") DESC`, t.id.desc().nullsFirst()),
+  // Keys and words by their md5: a key carries a goal's or an event's own words, and a btree row past ~2.7 kB would
+  // fail the store's save; each statement asks `md5(x) = md5($) AND x = $`.
+  index("coach_activity_client_key_idx").on(t.client_id, sql`md5(dedupe_key)`, t.id).where(sql`dedupe_key IS NOT NULL`),
+  index("coach_activity_unread_reminder_idx").on(t.client_id, t.id).where(sql`kind = 'reminder' AND read IS NOT TRUE`),
+  index("coach_activity_message_idx").on(t.client_id, sql`(extra ->> 'message_id')`).where(sql`kind = 'coach_note'`),
+  index("coach_activity_note_words_idx").on(t.client_id, sql`md5(message)`).where(sql`kind = 'coach_note'`),
+]);
+/**
+ * The notifications' shadow (19 Nov, quest 7; app/lib/notes/shadow.ts, NOTES_SHADOW=write on staging): coach_activity's
+ * shape with the unique dedupe rule the cut-over will have, written by the new statements beside the store's own saves.
+ * Not a collection: never loaded into memory, never written by the store's writer.
+ */
+export const coach_activity_shadow = pgTable("coach_activity_shadow", noteColumns(), (t) => [
+  uniqueIndex("coach_activity_shadow_dedupe_uq").on(t.client_id, sql`md5(dedupe_key)`).where(sql`dedupe_key IS NOT NULL`),
+  index("coach_activity_shadow_client_idx").on(t.client_id, t.id),
+]);
+/** Twins on (client_id, dedupe_key) the pg boot took out before making the unique rule, kept here, never deleted (notes/boot.ts). */
+export const coach_activity_twins = pgTable("coach_activity_twins", { ...noteColumns(), removed_at: timestamp("removed_at", { withTimezone: true, mode: "string" }).notNull().defaultNow() });
+/**
+ * The notifications' ops already written (NOTES_STORE=pg, quest 7; app/lib/notes/outbox.ts): each outbox op's own token,
+ * put in by the same transaction as the op's statement, so an op run again (a crash after its commit, a connection lost
+ * as it committed) is known and does nothing: no second row, no second buzz. Pruned after 30 days, after a pg boot
+ * (on `at`'s index).
+ */
+export const coach_activity_ops = pgTable(
+  "coach_activity_ops",
+  {
+    token: text("token").primaryKey(),
+    at: timestamp("at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+    /** What the op did when it ran ("inserted"…), so a retry in this process after a lost connection still buzzes once. */
+    outcome: text("outcome"),
+  },
+  (t) => [index("coach_activity_ops_at_idx").on(t.at)]
+);
 
 export const report_templates = pgTable("report_templates", {
   id: id(),
@@ -875,4 +916,5 @@ export const health_workouts_id_seq = idSeq("health_workouts");
  */
 // chat_messages is here too (Step 5's cut-over): with CHAT_STORE=pg it leaves the writer's collections, and a stray
 // `chat_messages` in the store must never be written to kv. A no-op while it is a collection (store.ts adds those anyway).
-export const TABLE_NAMES_NOT_IN_KV = ["kv", "push_subscriptions", "password_resets", "chat_messages_shadow", "once_keys_shadow", "chat_messages"] as const;
+// coach_activity, its shadow, its twins and its ops' tokens the same (quest 7, NOTES_STORE=pg; app/lib/notes/).
+export const TABLE_NAMES_NOT_IN_KV = ["kv", "push_subscriptions", "password_resets", "chat_messages_shadow", "once_keys_shadow", "chat_messages", "coach_activity", "coach_activity_shadow", "coach_activity_twins", "coach_activity_ops"] as const;

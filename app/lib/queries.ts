@@ -6,6 +6,10 @@ import { CHAT_TABLE, chatFileLacksLook, chatShowsFile, deleteClientChat, deleteR
 import { chatNeedOf, dockLineOf, HOME_EVENTS, HOME_NEW_DAYS } from "./chat/pick";
 import type { ChatWritePath } from "./chat/paths";
 import { CHAT_PG } from "./chat/mode";
+import { NOTES_PG, NOTES_TABLE } from "./notes/mode";
+import { deleteClientNotes, fetchChatNote, fetchReminderState, fetchUnreadReminderClients, writeNote, writeReminderTick, type ClientNotes } from "./notes/rows";
+import type { NoteOp } from "./notes/apply";
+import type { ClientNotification } from "./notes/pick";
 import { noteTakenKey } from "./onceKeep";
 import { healthStoreName, healthWorkoutFacts, healthWorkoutWords } from "./healthWorkouts";
 import { allocId, DATA_DIR, DAY_NAMES_FULL, getData, persist, mergeDuplicateMetricDefinitions, CardioEntry } from "./db";
@@ -305,6 +309,8 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
   // With CHAT_STORE=pg their chat goes first, in Postgres: a DELETE that fails stops the erase here, before anything in
   // memory changes, so it never reports done with their messages left behind (eraseClient says it failed; again is safe).
   if (CHAT_PG) await deleteClientChat(clientId, "w.client.delete");
+  // With NOTES_STORE=pg their notifications the same (quest 7): a DELETE that fails stops the erase before anything changes.
+  if (NOTES_PG) await deleteClientNotes(clientId, "w.client.delete");
   // A Personal block that still has them saved is the coach's own: it stays.
   detachStrayEntryClients();
 
@@ -359,7 +365,13 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
   })();
   const store = data as unknown as Record<string, unknown>;
   // chat-door: chat rows go through deleteClientChat
+  // notes-door: the notifications go through deleteClientNotes, in their turn among the collections (memory: at once, the
+  // same filter; with NOTES_STORE=pg they went first, above)
   for (const [name, value] of Object.entries(store)) {
+    if (name === NOTES_TABLE) {
+      if (!NOTES_PG) void deleteClientNotes(clientId, "w.client.delete");
+      continue;
+    }
     if (!Array.isArray(value) || name === "users" || name === "account_deletions" || name === "client_departures" || name === CHAT_TABLE) continue;
     if (name === "invoices" && opts.keepInvoices) continue;
     store[name] = value.filter((row) => !(row && typeof row === "object" && (row as { client_id?: unknown }).client_id === clientId));
@@ -375,6 +387,14 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
       await deleteClientChat(clientId, "w.client.delete");
     } catch (error) {
       console.error(`[chat] the second sweep of client ${clientId}'s chat failed; the boot's orphan report will name what is left:`, error instanceof Error ? error.message : error);
+    }
+  }
+  // The notifications the same (NOTES_STORE=pg): a job (the reminders, a recurring invoice) may have queued one between.
+  if (NOTES_PG) {
+    try {
+      await deleteClientNotes(clientId, "w.client.delete");
+    } catch (error) {
+      console.error(`[notes] the second sweep of client ${clientId}'s notifications failed; the boot's orphan report will name what is left:`, error instanceof Error ? error.message : error);
     }
   }
 }
@@ -1373,7 +1393,22 @@ export function endOpenPhaseBefore(clientId: number, track: PhaseTrack, newStart
 // notification feed. dedupeKey is scoped to the due item's own period (day,
 // week, or photo period) so it only fires once per rollover, not once per
 // request — logCoachActivity no-ops if that key already exists.
-export function applyDueClientReminders() {
+//
+// Since quest 7 it fetches the notes it reads first (the clients with an unread reminder, then those clients' keys and
+// unread reminders), then works as before; it writes only the keys missing (memory mode did nothing for the others
+// anyway), so with NOTES_STORE=pg a minute's tick queues no op for a reminder already there. One tick at a time: one
+// still running when the next is due makes the next skip.
+let remindersRunning = false;
+export async function runClientReminders(): Promise<void> {
+  if (remindersRunning) return;
+  remindersRunning = true;
+  try {
+    await applyDueClientReminders();
+  } finally {
+    remindersRunning = false;
+  }
+}
+async function applyDueClientReminders() {
   const data = getData();
   const today = localDateStr();
   const weekKey = weekStart(today);
@@ -1392,12 +1427,11 @@ export function applyDueClientReminders() {
   // A reminder ticks itself off once it is no longer due: the check-in was
   // done, or its day, week or photo period has passed. So clients with an
   // unread reminder are looked at too, whatever they have set up now.
-  for (const a of data.coach_activity) if (a.kind === "reminder" && !a.read) clientIds.add(a.client_id);
+  for (const id of await fetchUnreadReminderClients("job.reminders.unread")) clientIds.add(id);
 
-  let cleared = false;
-  clientIds.forEach((clientId) => {
-    const dueKeys = new Set<string>();
-    getDueItems(clientId).forEach((item) => {
+  // Each client's due items and their keys, worked out as before (nothing here reads the notes).
+  const due = [...clientIds].map((clientId) => {
+    const items = getDueItems(clientId).map((item) => {
       const periodKey =
         item.id === "weekly"
           ? weekKey
@@ -1406,18 +1440,33 @@ export function applyDueClientReminders() {
           : item.id === "photos"
           ? photoSheetFor(clientId, today) ?? today
           : today;
-      const dedupeKey = `reminder:${item.id}:${clientId}:${periodKey}`;
+      return { item, dedupeKey: `reminder:${item.id}:${clientId}:${periodKey}` };
+    });
+    return { clientId, items };
+  });
+  const state = await fetchReminderState(
+    [...clientIds],
+    due.flatMap((d) => d.items.map((i) => ({ clientId: d.clientId, key: i.dedupeKey }))),
+    "job.reminders.state"
+  );
+
+  // Each client's reminders to add and those to tick off, worked out first, then written by the door (in memory mode
+  // through logCoachActivity, client by client, as before; with NOTES_STORE=pg as a few statements, never the outbox).
+  // Worked out before the writes: a new reminder's key is due, so it is never one of the tick-offs.
+  const plans = due.map(({ clientId, items }) => {
+    const dueKeys = new Set<string>();
+    const add: { message: string; dedupeKey: string }[] = [];
+    items.forEach(({ item, dedupeKey }) => {
       dueKeys.add(dedupeKey);
       if (!getClientPreferences(clientId).checkin_reminders) return;
-      logCoachActivity(clientId, `${item.label}: ${item.detail}`, { kind: "reminder", dedupeKey });
+      // A key there already, read or not: nothing to do (logCoachActivity's own duplicate check, asked first).
+      if (state.exists(clientId, dedupeKey)) return;
+      add.push({ message: `${item.label}: ${item.detail}`, dedupeKey });
     });
-    for (const a of data.coach_activity) {
-      if (a.client_id !== clientId || a.kind !== "reminder" || a.read || !a.dedupe_key) continue;
-      if (dueKeys.has(a.dedupe_key)) continue;
-      a.read = true;
-      cleared = true;
-    }
+    const off = state.unread(clientId).filter((a) => !dueKeys.has(a.dedupe_key)).map((a) => a.id);
+    return { clientId, add, off };
   });
+  const cleared = await writeReminderTick(plans, (clientId, message, dedupeKey) => logCoachActivity(clientId, message, { kind: "reminder", dedupeKey }));
   if (cleared) persist();
 }
 
@@ -2446,9 +2495,6 @@ export function getClientIdForPhotoSlot(slotId: number): number | null {
   return getData().photo_slots.find((s) => s.id === slotId)?.client_id ?? null;
 }
 
-export function getClientIdForNotification(notificationId: number): number | null {
-  return getData().coach_activity.find((a) => a.id === notificationId)?.client_id ?? null;
-}
 
 export function getLogsForAssignment(workoutAssignmentId: number): SetLog[] {
   return getData()
@@ -5741,19 +5787,6 @@ export function reorderPhotoSlots(clientId: number, orderedIds: number[]) {
   persist();
 }
 
-// When the client was last reminded about this sheet. Photo reminders carry
-// a reminder:photos… dedupe key that ends in the client and period.
-export function lastPhotoReminderAt(clientId: number, period: string): string | null {
-  const tail = `:${clientId}:${period}`;
-  const stamps = getData()
-    .coach_activity.filter(
-      (a) => a.client_id === clientId && a.kind === "reminder" && !!a.dedupe_key?.startsWith("reminder:photos") && a.dedupe_key.includes(tail)
-    )
-    .map((a) => a.created_at)
-    .sort();
-  return stamps[stamps.length - 1] ?? null;
-}
-
 // Writes the uploaded file under DATA_DIR/uploads and records it — this is
 // the only place in the app that touches the filesystem outside db.ts, since
 // it deals with actual image bytes rather than JSON data. Served back out by
@@ -7018,6 +7051,10 @@ export async function sendChatMessage(
     // chose (21 Oct: with "Messages from your coach" off, a new message never
     // showed as unread). The setting decides the buzz on the lock screen.
     // With CHAT_STORE=pg the note carries the message's id, so an edit or a delete finds it however late it lands.
+    // Not for NOTES_STORE=pg alone (quest 7, 19 Nov proof): the note is stamped as the message is, so the words-and-5-s
+    // match still finds it there, and an id would also tie a past-stamped message's note (the demo client's) that memory
+    // mode never finds: an edit or delete would change the client's list where memory mode leaves it. The pg boot's
+    // backfill links old notes only where that match picks exactly the pair, so it changes nothing either.
     logCoachActivity(clientId, text || `Your coach sent you ${mediaWords(media?.type ?? null)}`, { kind: "coach_note", push: getClientPreferences(clientId).coach_notes, ...(CHAT_PG ? { messageId: row.id } : {}) });
   }
   return true;
@@ -7032,20 +7069,17 @@ export async function setChatReaction(clientId: number, messageId: number, who: 
 }
 
 /**
- * The notification a coach message was logged with: by the message's id where the note carries it (CHAT_STORE=pg, Step
- * 5's cut-over: an insert can take longer than the 5 s the words-and-time match allows), else in the same breath and
- * the same words, as always.
+ * The notification a coach message was logged with: by the message's id where the note carries it (CHAT_STORE=pg or
+ * NOTES_STORE=pg: an insert can take longer than the 5 s the words-and-time match allows), else in the same breath and
+ * the same words, as always. Through the notes' door since quest 7 (notes/pick.ts chatNoteOf holds the rule, verbatim);
+ * then the note reworded or removed by its id.
  */
-function noteFor(msg: { id: number; client_id: number; text: string | null; created_at: string | null; unknown?: true }) {
-  const notes = getData().coach_activity;
-  // By id, with the same words the memory match asks, so pg mode touches exactly the notes memory mode does (a photo-only
-  // message's "sent you a photo" note never matched its empty words, and still doesn't). Its words unknown (a write that
-  // committed as its connection was lost, rows.ts): by id alone.
-  const byMessage = notes.find((a) => a.client_id === msg.client_id && a.kind === "coach_note" && a.message_id === msg.id && (msg.unknown || a.message === msg.text));
-  if (byMessage) return byMessage;
-  if (msg.unknown || msg.created_at == null) return null;
-  const sent = new Date(msg.created_at).getTime();
-  return notes.find((a) => a.client_id === msg.client_id && a.kind === "coach_note" && a.message_id == null && a.message === msg.text && Math.abs(new Date(a.created_at).getTime() - sent) < 5000) ?? null;
+async function chatNoteFollows(msg:{ id: number; client_id: number; text: string | null; created_at: string | null; unknown?: true }, path: "action.chatNote.edit" | "action.chatNote.delete" | "action.chatNote.mealEdit" | "action.chatNote.mealRemove", to: { reword: string } | "delete") {
+  const note = await fetchChatNote(msg, path);
+  if (!note) return;
+  const op: NoteOp = to === "delete" ? { op: "delete", clientId: msg.client_id, id: note.id } : { op: "reword", clientId: msg.client_id, id: note.id, text: to.reword };
+  // The caller persists, as it did.
+  writeNote(op, { persist: false });
 }
 
 /**
@@ -7058,19 +7092,16 @@ export async function editChatMessage(clientId: number, messageId: number, text:
   // Only the coach's own message (the door matches the sender), the chat first, then the notification it carried.
   const was = await editText(clientId, messageId, { sender: "coach", text: clean, editedAt: new Date().toISOString() }, "w.edit.coach");
   if (!was) return;
-  const note = noteFor({ id: messageId, client_id: clientId, text: was.was_text, created_at: was.was_at, unknown: was.unknown });
-  if (note) note.message = clean;
+  await chatNoteFollows({ id: messageId, client_id: clientId, text: was.was_text, created_at: was.was_at, unknown: was.unknown }, "action.chatNote.edit", { reword: clean });
   persist();
   chatChanged(clientId);
 }
 
 /** Takes a coach message back: from the chat, the client's Home and their notifications. Returns its file to delete from the bucket, when nothing else shows it (chatFileLeft). */
 export async function deleteChatMessage(clientId: number, messageId: number): Promise<string | null> {
-  const data = getData();
   const gone = await deleteRow(clientId, messageId, { sender: "coach" }, "w.delete.coach");
   if (!gone) return null;
-  const note = noteFor({ id: messageId, client_id: clientId, text: gone.text, created_at: gone.created_at, unknown: gone.unknown });
-  if (note) data.coach_activity = data.coach_activity.filter((a) => a !== note);
+  await chatNoteFollows({ id: messageId, client_id: clientId, text: gone.text, created_at: gone.created_at, unknown: gone.unknown }, "action.chatNote.delete", "delete");
   persist();
   chatChanged(clientId);
   return chatFileLeft(gone.media_path);
@@ -8991,27 +9022,11 @@ export type CoachActivityKind = "coach_note" | "report" | "programme" | "reminde
 // bottom-nav tabs, or "chat" to open the chat/notifications panel itself.
 export type CoachActivityActionTab = "home" | "training" | "nutrition" | "settings" | "chat" | "video" | "invoices" | "checkin";
 
-export type ClientNotification = {
-  id: number;
-  client_id: number;
-  message: string;
-  created_at: string;
-  kind: CoachActivityKind;
-  read: boolean;
-  action_tab: CoachActivityActionTab | null;
-  action_label: string | null;
-  action_ref: number | null;
-  /** What it is about, as its writer keyed it ("training:{day}:…", "video-ask:{row}:…"): read by notificationLink. */
-  dedupe_key: string | null;
-};
+export type { ClientNotification };
 
 /** A note taken back: what it said was undone the same day (a target put back where the day began). */
 export function dropCoachActivity(clientId: number, dedupeKey: string) {
-  const data = getData();
-  const note = data.coach_activity.find((a) => a.client_id === clientId && a.dedupe_key === dedupeKey);
-  if (!note) return;
-  data.coach_activity = data.coach_activity.filter((a) => a !== note);
-  persist();
+  writeNote({ op: "drop", clientId, key: dedupeKey });
 }
 
 export function logCoachActivity(
@@ -9042,128 +9057,70 @@ export function logCoachActivity(
     mergeDetail?: string;
     /** With a dedupe key that already has a row: that row says this instead, unread again (a day's targets, from how the day began to now). */
     replace?: boolean;
-    /** A coach message's note: the message it carries (CHAT_STORE=pg; noteFor finds it by this). */
+    /** A coach message's note: the message it carries (CHAT_STORE=pg; edits and deletes find it by this; NOTES_STORE=pg's backfill sets it on old notes). */
     messageId?: number;
   }
 ) {
-  const data = getData();
-  const dup = opts.dedupeKey ? data.coach_activity.find((a) => a.client_id === clientId && a.dedupe_key === opts.dedupeKey) : null;
-  if (dup) {
-    if (opts.replace) {
-      dup.message = message;
-      dup.created_at = new Date().toISOString();
-      dup.read = false;
-      if (opts.actionRef != null) dup.action_ref = opts.actionRef;
-      persist();
-      return;
+  // The duplicate check, replace, merge and insert are the notes' door's since quest 7 (notes/apply.ts, the code moved
+  // verbatim): applied to the store at once (memory), or queued and written once the store's save has it (NOTES_STORE=pg).
+  const mode = !opts.dedupeKey ? "plain" : opts.replace ? "replace" : opts.mergeDetail ? "merge" : "keep";
+  writeNote(
+    {
+      op: "insert",
+      mode,
+      ...(opts.mergeDetail ? { detail: opts.mergeDetail } : {}),
+      row: {
+        id: 0,
+        client_id: clientId,
+        message,
+        created_at: "",
+        kind: opts.kind,
+        read: false,
+        action_tab: opts.actionTab ?? null,
+        action_label: opts.actionLabel ?? null,
+        action_ref: opts.actionRef ?? null,
+        dedupe_key: opts.dedupeKey ?? null,
+        ...(opts.messageId != null ? { message_id: opts.messageId } : {}),
+      },
+    },
+    {
+      // To the lock screen too, when the client has notifications on, for the
+      // moments that are worth it (see opts.push). Never reminders: those are
+      // made whenever someone happens to load a page, so their timing means
+      // nothing and they would arrive at random hours. Worked out only for a row that goes in.
+      push: () => {
+        const worthABuzz = opts.push ?? (opts.kind === "coach_note" || opts.kind === "programme" || opts.kind === "report");
+        if (opts.kind === "reminder" || !worthABuzz) return null;
+        const user = getData().users.find((u) => u.role === "client" && u.client_id === clientId);
+        if (!user) return null;
+        // The phone shows "Norcoach" and the icon above this already, so the
+        // title says what kind of news it is and the body what happened.
+        const coach = getCoachDisplayName(clientId);
+        const title =
+          opts.actionTab === "video" ? `${coach} replied to your video`
+          : opts.kind === "coach_note" ? `Message from ${coach}`
+          : opts.kind === "report" ? `New progress report from ${coach}`
+          : opts.kind === "programme" ? `New program from ${coach}`
+          : `Update from ${coach}`;
+        // Tapped, it opens where the news is: the chat for a message (21 Oct: it opened whatever tab was last), else this
+        // notification's own thing, as a tap on it in the list does (24 Oct, Alex: a session, an exercise, an invoice…).
+        // The coach by name on the lock screen too, never "Your coach" (3 Nov, Alex: as the app's list reads it).
+        const body = message.replace(/\byour coach\b/gi, () => coach.split(" ")[0]);
+        // url null: this notification's own (`/client?n=<its id>`), filled in once the id is known.
+        return { userId: user.id, title, body, url: opts.kind === "coach_note" ? "/client?open=messages" : null, tag: opts.dedupeKey };
+      },
     }
-    if (opts.mergeDetail) {
-      const colon = dup.message.indexOf(": ");
-      const base = colon > 0 ? dup.message.slice(0, colon) : dup.message;
-      const details = colon > 0 ? dup.message.slice(colon + 2).split(" · ") : [];
-      if (!details.includes(opts.mergeDetail)) details.push(opts.mergeDetail);
-      dup.message = `${base}: ${details.slice(-4).join(" · ")}`;
-      dup.created_at = new Date().toISOString();
-      dup.read = false;
-      if (opts.actionRef != null) dup.action_ref = opts.actionRef;
-      persist();
-    }
-    return;
-  }
-  const noteId = allocId("coach_activity");
-  data.coach_activity.push({
-    id: noteId,
-    client_id: clientId,
-    message,
-    created_at: new Date().toISOString(),
-    kind: opts.kind,
-    read: false,
-    action_tab: opts.actionTab ?? null,
-    action_label: opts.actionLabel ?? null,
-    action_ref: opts.actionRef ?? null,
-    dedupe_key: opts.dedupeKey ?? null,
-    ...(opts.messageId != null ? { message_id: opts.messageId } : {}),
-  });
-  persist();
-  // To the lock screen too, when the client has notifications on, for the
-  // moments that are worth it (see opts.push). Never reminders: those are
-  // made whenever someone happens to load a page, so their timing means
-  // nothing and they would arrive at random hours.
-  const worthABuzz = opts.push ?? (opts.kind === "coach_note" || opts.kind === "programme" || opts.kind === "report");
-  if (opts.kind !== "reminder" && worthABuzz) {
-    const user = data.users.find((u) => u.role === "client" && u.client_id === clientId);
-    if (user) {
-      // The phone shows "Norcoach" and the icon above this already, so the
-      // title says what kind of news it is and the body what happened.
-      const coach = getCoachDisplayName(clientId);
-      const title =
-        opts.actionTab === "video" ? `${coach} replied to your video`
-        : opts.kind === "coach_note" ? `Message from ${coach}`
-        : opts.kind === "report" ? `New progress report from ${coach}`
-        : opts.kind === "programme" ? `New program from ${coach}`
-        : `Update from ${coach}`;
-      // Tapped, it opens where the news is: the chat for a message (21 Oct: it opened whatever tab was last), else this
-      // notification's own thing, as a tap on it in the list does (24 Oct, Alex: a session, an exercise, an invoice…).
-      // The coach by name on the lock screen too, never "Your coach" (3 Nov, Alex: as the app's list reads it).
-      const body = message.replace(/\byour coach\b/gi, () => coach.split(" ")[0]);
-      const lockScreen = { title, body, url: opts.kind === "coach_note" ? "/client?open=messages" : `/client?n=${noteId}`, tag: opts.dedupeKey };
-      void import("./push").then((push) => push.sendPushInBackground(user.id, lockScreen)).catch(() => {});
-    }
-  }
+  );
 }
 
-export function getLatestCoachActivity(clientId: number) {
-  const data = getData();
-  const entries = data.coach_activity.filter((a) => a.client_id === clientId);
-  if (entries.length === 0) return null;
-  return entries.reduce((latest, e) => (e.created_at > latest.created_at ? e : latest));
+/** The client's newest notifications, from the view their page fetched (notes/rows.ts fetchClientNotes). */
+export function getNotifications(view: ClientNotes, clientId: number, limit = 50): ClientNotification[] {
+  return view.newest(clientId, limit);
 }
 
-// Rows written before `kind`/`read`/etc. existed (or restored from an older
-// export) won't have them — default defensively rather than trusting the
-// stored shape to match the current type. Old, kind-less rows default to
-// read so they don't surface as a wall of new unread notifications.
-function normalizeNotification(a: {
-  id: number;
-  client_id: number;
-  message: string;
-  created_at: string;
-  kind?: CoachActivityKind;
-  read?: boolean;
-  action_tab?: CoachActivityActionTab | null;
-  action_label?: string | null;
-  action_ref?: number | null;
-  dedupe_key?: string | null;
-}): ClientNotification {
-  return {
-    id: a.id,
-    client_id: a.client_id,
-    message: a.message,
-    created_at: a.created_at,
-    kind: a.kind ?? "general",
-    read: a.read ?? true,
-    action_tab: a.action_tab ?? null,
-    action_label: a.action_label ?? null,
-    action_ref: a.action_ref ?? null,
-    dedupe_key: a.dedupe_key ?? null,
-  };
-}
-
-export function getNotifications(clientId: number, limit = 50): ClientNotification[] {
-  const data = getData();
-  return data.coach_activity
-    .filter((a) => a.client_id === clientId)
-    .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : b.id - a.id))
-    .slice(0, limit)
-    .map(normalizeNotification);
-}
-
-export function markNotificationRead(id: number) {
-  const data = getData();
-  const entry = data.coach_activity.find((a) => a.id === id);
-  if (!entry) return;
-  entry.read = true;
-  persist();
+/** A notification read, by its id and the client it belongs to (markNotificationReadAction checks the owner first). */
+export function markNotificationRead(id: number, clientId: number) {
+  writeNote({ op: "read", clientId, id });
 }
 
 // Opening the coach's message feed reads every message at once.
@@ -9176,22 +9133,11 @@ export function markCoachNotesRead(clientId: number) {
     persist();
     chatChanged(clientId);
   }
-  let changed = false;
-  data.coach_activity.forEach((a) => {
-    if (a.client_id === clientId && a.kind === "coach_note" && !a.read) {
-      a.read = true;
-      changed = true;
-    }
-  });
-  if (changed) persist();
+  writeNote({ op: "readCoachNotes", clientId });
 }
 
 export function markAllNotificationsRead(clientId: number) {
-  const data = getData();
-  data.coach_activity.forEach((a) => {
-    if (a.client_id === clientId) a.read = true;
-  });
-  persist();
+  writeNote({ op: "readAll", clientId });
 }
 
 // Chat attachments: same "write to DATA_DIR/uploads, store the public path"
@@ -14289,12 +14235,10 @@ export type MealComment = { id: number; text: string; when: string };
  * comment of this client's; anything else is left alone.
  */
 export async function removeMealComment(clientId: number, messageId: number) {
-  const data = getData();
   const msg = await deleteRow(clientId, messageId, { sender: "coach", foodMeal: true }, "w.mealComment.remove");
   if (!msg) return;
-  // Its notification: by the message's id, else logged in the same breath, with the same words (noteFor).
-  const note = noteFor({ id: messageId, client_id: clientId, text: msg.text, created_at: msg.created_at, unknown: msg.unknown });
-  if (note) data.coach_activity = data.coach_activity.filter((a) => a !== note);
+  // Its notification: by the message's id, else logged in the same breath, with the same words (chatNoteFollows).
+  await chatNoteFollows({ id: messageId, client_id: clientId, text: msg.text, created_at: msg.created_at, unknown: msg.unknown }, "action.chatNote.mealRemove", "delete");
   persist();
   chatChanged(clientId);
 }
@@ -14310,8 +14254,7 @@ export async function editMealComment(clientId: number, messageId: number, text:
   // No edited_at on a meal comment (as it always was): the door leaves it alone when given none.
   const msg = await editText(clientId, messageId, { sender: "coach", text: clean, editedAt: null, foodMeal: true }, "w.mealComment.edit");
   if (!msg) return;
-  const note = noteFor({ id: messageId, client_id: clientId, text: msg.was_text, created_at: msg.was_at, unknown: msg.unknown });
-  if (note) note.message = clean;
+  await chatNoteFollows({ id: messageId, client_id: clientId, text: msg.was_text, created_at: msg.was_at, unknown: msg.unknown }, "action.chatNote.mealEdit", { reword: clean });
   persist();
   chatChanged(clientId);
 }

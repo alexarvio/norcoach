@@ -5,6 +5,7 @@ import { COLLECTIONS, DERIVED, kv, ROLLBACK_KV_COPIES, TABLE_NAMES_NOT_IN_KV } f
 import { msInstant, msInstantMs, stampInstant, stampInstantMs } from "./stamps";
 import { WRITER_COLLECTIONS } from "./writerTables";
 import { CHAT_PG } from "../chat/mode";
+import { NOTES_PG } from "../notes/mode";
 
 // Loads the whole store from Postgres and saves changes back (phase 1).
 //
@@ -341,6 +342,10 @@ function chatTripwire(next: Snapshot, last: Snapshot) {
   if (CHAT_PG && (next.rows.has("chat_messages") || last.rows.has("chat_messages"))) {
     throw new Error("[store] !!! chat_messages reached the store's writer with CHAT_STORE=pg: the save is refused");
   }
+  // The notifications the same with NOTES_STORE=pg (quest 7).
+  if (NOTES_PG && (next.rows.has("coach_activity") || last.rows.has("coach_activity"))) {
+    throw new Error("[store] !!! coach_activity reached the store's writer with NOTES_STORE=pg: the save is refused");
+  }
 }
 
 /**
@@ -403,6 +408,24 @@ export class PgStoreWriter {
   /** What the database holds for a collection, as the last save committed it: row key → the record's JSON. Read only. */
   committed(name: string): ReadonlyMap<string, string> | undefined {
     return this.last.rows.get(name);
+  }
+  /** A kv value as the last save committed it (its JSON), for the notes' outbox drainer (quest 7). Read only. */
+  committedKv(key: string): string | undefined {
+    return this.last.kv.get(key);
+  }
+  private commitHooks: (() => void)[] = [];
+  /** Called after every save that committed and every prime (the notes' drainer wakes on it). Never throws into the save. */
+  onCommit(cb: () => void) {
+    this.commitHooks.push(cb);
+  }
+  private committedNow() {
+    for (const cb of this.commitHooks) {
+      try {
+        cb();
+      } catch {
+        /* a hook never fails a save */
+      }
+    }
   }
 
   /**
@@ -563,5 +586,6 @@ export class PgStoreWriter {
     this.last = next;
     this.committedSaves++;
     this.lastCommitAt = Date.now();
+    this.committedNow();
   }
 }

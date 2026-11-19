@@ -30,7 +30,8 @@ const OVERLAP_MS = 60_000;
 
 type Client = import("pg").Client;
 type State = { client: Client | null; held: boolean; told: boolean; stopping: boolean; lostAt: string | null };
-const g = globalThis as unknown as { __norcoachLease?: State };
+// `__norcoachLeaseWhy`: the switches that made it must-hold (quest 7), for the lost lease's words.
+const g = globalThis as unknown as { __norcoachLease?: State; __norcoachLeaseWhy?: string };
 const state = (): State => (g.__norcoachLease ??= { client: null, held: false, told: false, stopping: false, lostAt: null });
 
 const say = (m: string) => console.log(`[lease] ${m}`);
@@ -65,7 +66,7 @@ function lost(url: string, name: string, mustHold: boolean, error: unknown) {
   if (!was) return;
   s.lostAt = new Date().toISOString();
   console.error(`[lease] !!! the lease's connection went${error instanceof Error ? ` (${error.message})` : ""}; taking it again`);
-  if (mustHold) toSentry((S) => S.captureMessage("Lease lost: the instance's lock on the database went (CHAT_STORE=pg)", { level: "fatal", tags: { alert: "store-lease-lost" } }));
+  if (mustHold) toSentry((S) => S.captureMessage(`Lease lost: the instance's lock on the database went (${g.__norcoachLeaseWhy ?? "CHAT_STORE=pg"})`, { level: "fatal", tags: { alert: "store-lease-lost" } }));
   void keepAsking(url, name, mustHold);
 }
 
@@ -99,9 +100,11 @@ async function keepAsking(url: string, name: string, mustHold: boolean) {
  * The lease, at boot (Postgres only). `mustHold` (CHAT_STORE=pg): waits for it, then throws when another instance still
  * holds it. Otherwise asks in the background and returns at once.
  */
-export async function takeLease(url: string, opts: { mustHold: boolean; name: string }): Promise<void> {
+// `why`: the switch that makes it must-hold, for the refusal's words (quest 7: NOTES_STORE=pg too; chat's wording kept).
+export async function takeLease(url: string, opts: { mustHold: boolean; name: string; why?: string }): Promise<void> {
   if (url.startsWith("pglite:")) return;
   const s = state();
+  if (opts.why) g.__norcoachLeaseWhy = opts.why;
   const beat = setInterval(() => {
     if (s.held && s.client) s.client.query("SELECT 1").catch(() => {});
   }, HEARTBEAT_MS);
@@ -126,7 +129,7 @@ export async function takeLease(url: string, opts: { mustHold: boolean; name: st
   await s.client?.end().catch(() => {});
   s.client = null;
   throw new Error(
-    `[store] Refusing to start with CHAT_STORE=pg: another instance still holds the database's lease after ${Math.round(WAIT_MS / 1000)} s (two instances at once). Stop it, then start again (app/lib/pg/lease.ts says how to see who holds it).`
+    `[store] Refusing to start with ${opts.why ?? "CHAT_STORE=pg"}: another instance still holds the database's lease after ${Math.round(WAIT_MS / 1000)} s (two instances at once). Stop it, then start again (app/lib/pg/lease.ts says how to see who holds it).`
   );
 }
 
