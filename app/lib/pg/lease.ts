@@ -25,6 +25,8 @@ export const LEASE_KEY = [20251, 1] as const;
 const WAIT_MS = Math.max(0, Number(process.env.CHAT_LEASE_WAIT_MS) || 90_000);
 const HEARTBEAT_MS = 30_000;
 const RETRY_MS = 10_000;
+/** How long a deploy's overlap may hold the lease before memory mode says so (log and Sentry). */
+const OVERLAP_MS = 60_000;
 
 type Client = import("pg").Client;
 type State = { client: Client | null; held: boolean; told: boolean; stopping: boolean; lostAt: string | null };
@@ -70,13 +72,16 @@ function lost(url: string, name: string, mustHold: boolean, error: unknown) {
 /** Asks every 10 s until held (memory mode, or after a lost connection). */
 async function keepAsking(url: string, name: string, mustHold: boolean) {
   const s = state();
+  const since = Date.now();
   while (!s.held && !s.stopping) {
     try {
       if (await tryOnce(url, name, mustHold)) {
         say(`held (${name})`);
         return;
       }
-      if (!s.told) {
+      // A deploy overlaps the old and the new instance for a few seconds (measured 4 s on staging, 19 Nov), so a held
+      // lease is only news once it outlasts that: a minute, or at once where the lease must be held.
+      if (!s.told && (mustHold || Date.now() - since > OVERLAP_MS)) {
         s.told = true;
         console.error(`[lease] !!! another instance holds the database's lease (two instances at once?); asking again every ${RETRY_MS / 1000} s`);
         toSentry((S) => S.captureMessage("Lease held by another instance (two instances on one database?)", { level: mustHold ? "fatal" : "warning", tags: { alert: "store-lease-held" } }));
