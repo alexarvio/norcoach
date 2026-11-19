@@ -1,0 +1,425 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Notification map</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600&display=swap" rel="stylesheet"><style>
+  :root { --ink:#141a24; --body:#3a4250; --sec:#5b6474; --faint:#8b93a1; --label:#98A2B3; --line:#E1E5EB; --div:#EEF0F3; --page:#f5f6f8;
+    --rust:#b8471f; --green:#2f7a3f; --blue:#2f6fd6; --indigo:#3a3390; --teal:#1d7a70; --beige:#a08a5c; --amber:#a8761f; }
+  * { box-sizing:border-box; margin:0; }
+  body { font-family:Archivo,system-ui,sans-serif; font-weight:500; color:var(--ink); background:var(--page); padding:32px 16px 96px; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1080px; margin:0 auto; }
+  h1 { font-size:24px; font-weight:600; margin-bottom:6px; }
+  .lead { color:var(--body); font-size:14px; line-height:1.6; max-width:820px; }
+  .facts { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  .fact { background:#fff; border-radius:999px; box-shadow:inset 0 0 0 1px var(--line); padding:6px 12px; font-size:12.5px; color:var(--body); }
+  .fact b { color:var(--ink); font-weight:600; }
+  .side { font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--sec); margin:52px 0 6px; }
+  h2 { font-size:20px; font-weight:600; margin-bottom:14px; }
+  .group { background:#fff; border-radius:18px; box-shadow:inset 0 0 0 1px var(--line); margin:0 0 16px; overflow:hidden; }
+  .ghead { padding:16px 18px 12px; display:flex; flex-wrap:wrap; gap:6px 14px; align-items:baseline; }
+  .ghead h3 { font-size:16px; font-weight:600; }
+  .ghead .count { font-size:12px; color:var(--faint); }
+  .switch { margin-left:auto; display:flex; align-items:center; gap:8px; font-size:13px; color:var(--body); }
+  .switch i { width:36px; height:22px; border-radius:999px; background:var(--ink); position:relative; flex:none; }
+  .switch i::after { content:""; position:absolute; top:3px; right:3px; width:16px; height:16px; border-radius:50%; background:#fff; }
+  .switch.none i { background:#fff; box-shadow:inset 0 0 0 1px var(--line); }
+  .switch.none i::after { left:3px; right:auto; background:#C9CFD8; }
+  .gnote { padding:0 18px 12px; font-size:12.5px; color:var(--faint); line-height:1.5; }
+  .heads, .row { display:grid; grid-template-columns:1.15fr 1.7fr 128px 1fr; gap:14px; padding:0 18px; }
+  .heads { font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--sec); padding-bottom:8px; }
+  .row { padding-top:12px; padding-bottom:12px; border-top:1px solid var(--div); font-size:13px; line-height:1.5; color:var(--body); }
+  .row .what { color:var(--ink); font-weight:600; }
+  .row .src { display:block; font-size:11.5px; color:var(--label); font-weight:500; margin-top:3px; word-break:break-word; }
+  .row .words b { color:var(--ink); font-weight:600; display:block; }
+  .row .words span { display:block; }
+  .row .today { font-size:12.5px; }
+  .row .today.off { color:var(--faint); }
+  .row .warn { display:block; color:var(--rust); font-size:12px; margin-top:4px; }
+  .tags { display:flex; flex-wrap:wrap; gap:4px; align-content:flex-start; }
+  .tag { font-size:10.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; border-radius:999px; padding:3px 8px; background:#fff; box-shadow:inset 0 0 0 1px var(--line); color:var(--sec); }
+  .tag.push { color:var(--ink); box-shadow:inset 0 0 0 1px var(--ink); }
+  .tag.bell { color:var(--indigo); box-shadow:inset 0 0 0 1px rgba(58,51,144,.45); }
+  .tag.chat { color:var(--teal); box-shadow:inset 0 0 0 1px rgba(29,122,112,.45); }
+  .tag.dot { color:var(--rust); box-shadow:inset 0 0 0 1px rgba(184,71,31,.45); }
+  .tag.email { color:var(--beige); box-shadow:inset 0 0 0 1px rgba(160,138,92,.55); }
+  .tag.hidden { color:var(--label); box-shadow:inset 0 0 0 1px var(--line); text-decoration:line-through; }
+  .list { background:#fff; border-radius:18px; box-shadow:inset 0 0 0 1px var(--line); }
+  .li { display:grid; grid-template-columns:1.2fr 128px 1.6fr; gap:14px; padding:12px 18px; border-top:1px solid var(--div); font-size:13px; line-height:1.5; color:var(--body); }
+  .li:first-child { border-top:0; }
+  .li .what { color:var(--ink); font-weight:600; }
+  .li .src { display:block; font-size:11.5px; color:var(--label); margin-top:3px; word-break:break-word; }
+  .prop { background:#fff; border-radius:18px; box-shadow:inset 0 0 0 1px var(--line); padding:18px; font-size:14px; line-height:1.65; color:var(--body); }
+  .prop h4 { font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--sec); margin:18px 0 6px; }
+  .prop h4:first-child { margin-top:0; }
+  .prop b { color:var(--ink); font-weight:600; }
+  .prop ul { padding-left:18px; }
+  .prop li { margin:3px 0; }
+  .phone { display:flex; flex-wrap:wrap; gap:16px; margin-top:16px; }
+  .ps { width:340px; max-width:100%; background:var(--page); border-radius:18px; padding:16px; }
+  .ps .t { font:600 15px Archivo; letter-spacing:.16em; text-transform:uppercase; text-align:center; margin-bottom:14px; }
+  .ps .sec { font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--sec); margin:14px 0 4px; }
+  .ps .r { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:44px; font-size:15px; }
+  .ps .r small { display:block; font-size:12px; color:var(--faint); }
+  .ps .sw { width:36px; height:22px; border-radius:999px; background:var(--ink); position:relative; flex:none; }
+  .ps .sw::after { content:""; position:absolute; top:3px; right:3px; width:16px; height:16px; border-radius:50%; background:#fff; }
+  .ps .sw.off { background:#fff; box-shadow:inset 0 0 0 1px var(--line); }
+  .ps .sw.off::after { left:3px; right:auto; background:#C9CFD8; }
+  .issues li { margin:4px 0; }
+  @media (max-width:760px) {
+    .heads { display:none; }
+    .row, .li { grid-template-columns:1fr; gap:6px; }
+    .switch { margin-left:0; width:100%; }
+  }
+</style></head><body><div class="wrap">
+
+<h1>Notification map</h1>
+<p class="lead">Everything in Norcoach that tells a client or a coach something happened, read from the code on 19 Nov. Grouped as a Settings screen could switch it. Words are as the app shows them; <b>{Coach}</b> is the coach's first name, <b>{Coach display name}</b> the full name on their profile (Finlay Smith), <b>{First}</b> the client's. A client push is a title over a body: the title by kind, with the full display name; the body the stored line as written, "your coach" swapped for the first name.</p>
+<div class="facts">
+  <span class="fact"><b>41</b> client triggers in 8 groups</span>
+  <span class="fact"><b>9</b> coach triggers in 6 groups</span>
+  <span class="fact"><b>17</b> not toggled, by choice</span>
+  <span class="fact"><b>5</b> switches today</span>
+</div>
+<div class="facts">
+  <span class="tag push">Push</span><span class="tag bell">Bell</span><span class="tag chat">Chat</span><span class="tag dot">Dot</span><span class="tag email">Email</span><span class="tag hidden">Stored</span>
+  <span class="fact" style="padding:3px 10px">Push = lock screen · Bell = the notifications list and Home's Latest from · Chat = a message in the thread · Dot = a badge or count · Stored = written, shown nowhere</span>
+</div>
+
+<!-- ================= CLIENT ================= -->
+<div class="side">Client</div>
+<h2>What reaches the client</h2>
+
+<div class="group">
+  <div class="ghead"><h3>Messages from {Coach}</h3><span class="count">3</span><span class="switch"><i></i>Messages from Finlay</span></div>
+  <div class="gnote">Exists today: the switch stops the push only. The unread mark on the chat tab is always written.</div>
+  <div class="heads"><span>What happens</span><span>Words</span><span>Channels</span><span>Today</span></div>
+  <div class="row"><span><span class="what">Coach sends a chat message</span><span class="src">queries.ts:7123 sendChatMessage</span></span>
+    <span class="words"><b>Message from {Coach display name}</b><span>The message, else "{Coach} sent you a photo | a video | a voice message | a file"</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag chat">Chat</span><span class="tag dot">Dot</span></span>
+    <span class="today">Messages from {Coach} (push only)</span></div>
+  <div class="row"><span><span class="what">Coach comments on a meal, a shape update or a check-in</span><span class="src">chatSend.ts:25-75 · actions.ts:2555</span></span>
+    <span class="words"><b>Message from {Coach display name}</b><span>The comment, linked to the meal, sheet or check-in</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag chat">Chat</span><span class="tag dot">Dot</span></span>
+    <span class="today">Messages from {Coach} (push only)</span></div>
+  <div class="row"><span><span class="what">Coach's review of a photo or video, posted in the chat</span><span class="src">queries.ts:14045 replyToMedia · 14057 sendFormReview · chatReviewUpload.ts:69 · from MediaReviewModal.tsx:582, 623 and the phone's PhoneReview.tsx:455, 509</span></span>
+    <span class="words"><b>Message from {Coach display name}</b><span>The words, the drawn photo as Reply.jpg or the recording as Form review.mp4</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag chat">Chat</span><span class="tag dot">Dot</span></span>
+    <span class="today">Messages from {Coach} (push only)<span class="warn">The review pop-up (laptop and phone, words, drawn photo or recording) also pushes "replied to your video" (Training): two pushes for one reply. The Training tab's own Reply (TrainingDraft.tsx:2366, sendVideoReplyAction, actions.ts:1719) pushes once and posts nothing in the chat</span></span></div>
+</div>
+
+<div class="group">
+  <div class="ghead"><h3>Training</h3><span class="count">9</span><span class="switch none"><i></i>Training</span></div>
+  <div class="heads"><span>What happens</span><span>Words</span><span>Channels</span><span>Today</span></div>
+  <div class="row"><span><span class="what">A programme goes live</span><span class="src">queries.ts:1067 deployProgram (also the scheduled job, applyDueProgramDeployments, queries.ts:1261)</span></span>
+    <span class="words"><b>{Coach} published a new plan</b><span>{Programme}. Check it out</span><span>Push: New program from {Coach display name} over "{Coach} published a new plan: {Programme}. Check it out"</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag bell">Bell</span></span><span class="today off">None<span class="warn">Scheduled: goes out on the first page load after its Monday 00:00, so the push can come about midnight</span></span></div>
+  <div class="row"><span><span class="what">A training phase with a draft programme starts today or is made live now</span><span class="src">queries.ts:9961 schedulePhase · 10016 deployPhaseNow, both into deployProgram</span></span>
+    <span class="words"><b>{Coach} published a new plan</b><span>{Programme}. Check it out (the programme's words, not the phase's)</span><span>Push: New program from {Coach display name} over "{Coach} published a new plan: {Programme}. Check it out"</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag bell">Bell</span></span><span class="today off">None<span class="warn">The usual case. Made live now with a programme already out, deployPhaseNow sends it again (plausible, not traced)</span></span></div>
+  <div class="row"><span><span class="what">A training phase whose programme is already out, or with none, starts today or is made live now</span><span class="src">queries.ts:9970 schedulePhase · 10030 deployPhaseNow (no programme only)</span></span>
+    <span class="words"><b>{Coach} set a new training phase</b><span>{Phase}</span><span>Push: New program from {Coach display name} over "{Coach} set a new training phase: {Phase}"</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag bell">Bell</span></span><span class="today off">None<span class="warn">A phase reaching its start by itself says nothing. Scheduling a phase whose programme is already out announces it as new again (plausible, not traced)</span></span></div>
+  <div class="row"><span><span class="what">Coach edits a session the client can see</span><span class="src">actions.ts:4023 trainingChange (add, remove, change, rename, copy, apply, add session)</span></span>
+    <span class="words"><b>{Coach} updated your training</b><span>The day's changes, last 4: "Added Squat to Lower (week 5) · …"</span></span>
+    <span class="tags"><span class="tag bell">Bell</span></span><span class="today off">None · one row a session a day</span></div>
+  <div class="row"><span><span class="what">Coach adds a week to the live programme</span><span class="src">actions.ts:663</span></span>
+    <span class="words"><b>{Coach} added a week to your programme</b><span>Week {N}, a copy of week {M}</span></span>
+    <span class="tags"><span class="tag bell">Bell</span></span><span class="today off">None · one a day</span></div>
+  <div class="row"><span><span class="what">Coach asks for a video</span><span class="src">actions.ts:1693</span></span>
+    <span class="words"><b>{Coach} asked you for a video of {Exercise} in {Session} (week N)</b><span>", and in every session like it" when it recurs</span></span>
+    <span class="tags"><span class="tag bell">Bell</span></span><span class="today off">None · one an exercise a day</span></div>
+  <div class="row"><span><span class="what">Coach replies to the client's photo or video</span><span class="src">queries.ts:14019 sendVideoReply</span></span>
+    <span class="words"><b>{Coach} replied to your video</b><span>of {Exercise}</span><span>Push: {Coach display name} replied to your video over "{Coach} replied to your video of {Exercise}"</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag bell">Bell</span></span><span class="today off">None</span></div>
+  <div class="row"><span><span class="what">Coach writes Note to {First} on the training phase</span><span class="src">actions.ts:3575</span></span>
+    <span class="words"><b>{Coach} left a note on your training</b></span>
+    <span class="tags"><span class="tag bell">Bell</span></span><span class="today off">None · one a day</span></div>
+  <div class="row"><span><span class="what">A workout left running: 60 min after the last set, again at 3 h</span><span class="src">workoutReminders.ts:71 · every 5 min</span></span>
+    <span class="words"><b>{Session} is still going</b><span>Last set 1 h 30 min ago. Finish it? (Started … ago with no set)</span></span>
+    <span class="tags"><span class="tag push">Push</span></span><span class="today off">None · env WORKOUT_REMINDERS<span class="warn">No quiet hours: can come at night. The rules say no Settings row of its own</span></span></div>
+</div>
+
+<div class="group">
+  <div class="ghead"><h3>Nutrition</h3><span class="count">6</span><span class="switch none"><i></i>Nutrition</span></div>
+  <div class="heads"><span>What happens</span><span>Words</span><span>Channels</span><span>Today</span></div>
+  <div class="row"><span><span class="what">A nutrition phase is made live, or starts today when scheduled</span><span class="src">queries.ts:4162 setNutritionPhaseDraft · 10030 deployPhaseNow · 9970 schedulePhase</span></span>
+    <span class="words"><b>{Coach} set new nutrition targets</b><span>{Phase}. Check them out (made live)</span><b>{Coach} set a new nutrition phase</b><span>{Phase} (scheduled with a start already come, schedulePhase)</span><span>Push: New program from {Coach display name} over "{Coach} set new nutrition targets: {Phase}. Check them out" or "{Coach} set a new nutrition phase: {Phase}"</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag bell">Bell</span></span><span class="today off">None<span class="warn">"New program" reads wrong for nutrition. Two wordings for one moment</span></span></div>
+  <div class="row"><span><span class="what">Coach changes the targets</span><span class="src">actions.ts:1905</span></span>
+    <span class="words"><b>{Coach} updated your nutrition targets</b><span>Calories on training days 2,400 → 2,500 kcal · …</span></span>
+    <span class="tags"><span class="tag bell">Bell</span></span><span class="today off">None · one a day, dropped if put back</span></div>
+  <div class="row"><span><span class="what">Coach changes the water goal</span><span class="src">actions.ts:1920</span></span>
+    <span class="words"><b>{Coach} updated your water goal</b><span>2 → 3 L</span></span>
+    <span class="tags"><span class="tag bell">Bell</span></span><span class="today off">None</span></div>
+  <div class="row"><span><span class="what">Coach changes supplements</span><span class="src">actions.ts:4031 supplementChange</span></span>
+    <span class="words"><b>{Coach} updated your supplements</b><span>Added Creatine · Magnesium dose now 400 mg · Removed Zinc</span></span>
+    <span class="tags"><span class="tag bell">Bell</span></span><span class="today off">None</span></div>
+  <div class="row"><span><span class="what">Coach writes a note on nutrition</span><span class="src">actions.ts:1985</span></span>
+    <span class="words"><b>{Coach} left a note on your nutrition</b></span>
+    <span class="tags"><span class="tag bell">Bell</span></span><span class="today off">None</span></div>
+  <div class="row"><span><span class="what">Old admin's nutrition plan saved</span><span class="src">actions.ts:2039 (no caller found)</span></span>
+    <span class="words"><b>{Coach} updated your nutrition plan</b></span>
+    <span class="tags"><span class="tag bell">Bell</span></span><span class="today off">None · legacy</span></div>
+</div>
+
+<div class="group">
+  <div class="ghead"><h3>Check-ins</h3><span class="count">5</span><span class="switch none"><i></i>Check-ins</span></div>
+  <div class="heads"><span>What happens</span><span>Words</span><span>Channels</span><span>Today</span></div>
+  <div class="row"><span><span class="what">A lifestyle phase starts today or is made live now</span><span class="src">queries.ts:9970 schedulePhase · 10030 deployPhaseNow</span></span>
+    <span class="words"><b>{Coach} set a new lifestyle phase</b><span>{Phase}</span><span>Push: New program from {Coach display name} over "{Coach} set a new lifestyle phase: {Phase}"</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag bell">Bell</span></span><span class="today off">None<span class="warn">Shows as the grey system "Update" with a bell: categorize() (notificationTypes.ts:122-139) knows the training and nutrition phase words only, and its tab is home</span></span></div>
+  <div class="row"><span><span class="what">Coach changes the metrics asked</span><span class="src">actions.ts:4028 checkInChange</span></span>
+    <span class="words"><b>{Coach} changed what you check in</b><span>Added Sleep, Steps · Mood is now Energy · Removed Hunger</span></span>
+    <span class="tags"><span class="tag bell">Bell</span></span><span class="today off">None<span class="warn">Fires on a draft phase too</span></span></div>
+  <div class="row"><span><span class="what">Coach moves the weekly or monthly check-in day</span><span class="src">actions.ts:2059 · 2071</span></span>
+    <span class="words"><b>{Coach} moved your weekly check-in day</b><span>Now Monday · No set day now</span></span>
+    <span class="tags"><span class="tag bell">Bell</span></span><span class="today off">None</span></div>
+  <div class="row"><span><span class="what">Coach writes a note on the lifestyle phase</span><span class="src">actions.ts:3574</span></span>
+    <span class="words"><b>{Coach} left a note on your check-in</b></span>
+    <span class="tags"><span class="tag bell">Bell</span></span><span class="today off">None</span></div>
+  <div class="row"><span><span class="what">A check-in or shape update is due (minute job)</span><span class="src">queries.ts:1459 applyDueClientReminders</span></span>
+    <span class="words"><b>Daily check-in | Weekly | Monthly | Check-in measurements | Shape update</b><span>3 metrics to log for today · 2/5 uploaded for this week</span></span>
+    <span class="tags"><span class="tag hidden">Stored</span></span><span class="today">Check-in reminders<span class="warn">Never listed, never pushed: the switch changes nothing anyone sees</span></span></div>
+</div>
+
+<div class="group">
+  <div class="ghead"><h3>Shape updates</h3><span class="count">3</span><span class="switch none"><i></i>Shape updates</span></div>
+  <div class="heads"><span>What happens</span><span>Words</span><span>Channels</span><span>Today</span></div>
+  <div class="row"><span><span class="what">Coach changes angles, rhythm, start or instructions (Setup)</span><span class="src">actions.ts:1381, 1426 · 1469 savePhotoScheduleAction · 1510, 1537 savePhotoSetupAction</span></span>
+    <span class="words"><b>{Coach} changed your shape update</b><span>Added a Side picture, Removed Back · Now every 2 weeks</span><span>Schedule and instructions: "Every week from 9/11, with instructions" (one note a day, replaced)</span></span>
+    <span class="tags"><span class="tag bell">Bell</span></span><span class="today off">None · only once a sheet has opened<span class="warn">Silent: editing instructions that already exist (the words stay "with instructions"), pausing an angle in Setup or on the tab, and the tab's own Remove under an empty place (actions.ts:1408, 1431)</span></span></div>
+  <div class="row"><span><span class="what">Coach presses Remind</span><span class="src">actions.ts:1574</span></span>
+    <span class="words"><b>Time for your shape update</b><span>2 of 5 in</span><span>Push: Update from {Coach display name} over "Time for your shape update: 2 of 5 in"</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag bell">Bell</span></span><span class="today off">None · once a sheet a day<span class="warn">Shows as the grey system "Update"</span></span></div>
+  <div class="row"><span><span class="what">Old admin's review note on a sheet (shape, strengths, improvements, next steps)</span><span class="src">actions.ts:1543 savePhotoPeriodNoteAction, note at 1557 · PhotoGallery in ProgressPicturesPanel, /admin?old=1</span></span>
+    <span class="words"><b>{Coach} left instructions for your shape update</b></span>
+    <span class="tags"><span class="tag bell">Bell</span></span><span class="today off">None · legacy<span class="warn">No started check: fires before any sheet has opened</span></span></div>
+</div>
+
+<div class="group">
+  <div class="ghead"><h3>Calls</h3><span class="count">8</span><span class="switch none"><i></i>Calls</span></div>
+  <div class="gnote">Silent, so no switch can cover it: a call set to cancelled or no-show from the old admin's status menu (actions.ts:2377 setMeetingStatusAction, MeetingsWorkspace on /admin?old=1) tells the client nothing. Only Delete on Meetings and Remove on the Calendar do.</div>
+  <div class="heads"><span>What happens</span><span>Words</span><span>Channels</span><span>Today</span></div>
+  <div class="row"><span><span class="what">Coach schedules a call or a series</span><span class="src">actions.ts:2327, 3255, 3283, 3312</span></span>
+    <span class="words"><b>{Coach} scheduled a meeting</b><span>… scheduled 6 weekly meetings · "{topic}"</span><span>Push: Update from {Coach display name} over "Scheduled a meeting: "{topic}"", "Scheduled a new meeting" or "Scheduled 6 weekly meetings: "{topic}""</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag bell">Bell</span></span><span class="today off">None</span></div>
+  <div class="row"><span><span class="what">Coach reschedules on Meetings</span><span class="src">actions.ts:2423 updateMeetingAction · 2458 moveMeetingSeriesAction</span></span>
+    <span class="words"><b>Your call moved to Monday 16 Nov at 09:00 GMT+1</b><span>One call (2423): the long weekday; a time with no date reads "Your call moved to the same day at 09:00 GMT+1"</span><span>A series or its one call (2458): "Your call moved to Mon 16 Nov at 09:00", "Your calls moved to Fridays at 09:00, from Fri 20 Nov"</span><span>Push: Update from {Coach display name} over the same line</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag bell">Bell</span></span><span class="today off">None<span class="warn">The push keeps "GMT+1": the phone's zone is applied in the app only. Two date forms for one event</span></span></div>
+  <div class="row"><span><span class="what">Coach moves the call on the Calendar</span><span class="src">actions.ts:3314</span></span>
+    <span class="words"><b>{Coach} moved your call</b><span>Push: Update from {Coach display name} over "Moved your call"</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag bell">Bell</span></span><span class="today off">None<span class="warn">Same event, other words than Meetings'</span></span></div>
+  <div class="row"><span><span class="what">Coach cancels a call or calls</span><span class="src">actions.ts:2527, 3307, 3327</span></span>
+    <span class="words"><b>{Coach} cancelled your call</b><span>{Coach} cancelled 5 calls</span><span>Push: Update from {Coach display name} over "Cancelled your call" or "Cancelled 5 calls"</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag bell">Bell</span></span><span class="today off">None</span></div>
+  <div class="row"><span><span class="what">Coach completes a call with a summary</span><span class="src">actions.ts:2490</span></span>
+    <span class="words"><b>{Coach} wrote up what you agreed on the call</b></span>
+    <span class="tags"><span class="tag bell">Bell</span></span><span class="today off">None</span></div>
+  <div class="row"><span><span class="what">To focus on set, or comes with a completed call</span><span class="src">focus.ts:128 noteFocus</span></span>
+    <span class="words"><b>{Coach} set what to focus on</b><span>The goals, joined</span><span>Push: Update from {Coach display name} over "Set what to focus on: {goal} · {goal}" (middle dots)</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag bell">Bell</span></span><span class="today off">None</span></div>
+  <div class="row"><span><span class="what">Call reminder, the day before (24 h to 23 h)</span><span class="src">meetingReminders.ts:51 · every 5 min</span></span>
+    <span class="words"><b>Call with {Coach} tomorrow</b><span>{Topic} · 30 min, this time tomorrow.</span></span>
+    <span class="tags"><span class="tag push">Push</span></span><span class="today off">None · env MEETING_REMINDERS<span class="warn">Middle dot in the body; the coach gets no reminder</span></span></div>
+  <div class="row"><span><span class="what">Call reminder, an hour before</span><span class="src">meetingReminders.ts:51</span></span>
+    <span class="words"><b>Call with {Coach} in 1 hour</b><span>{Topic} · 30 min. The link is on your Home.</span></span>
+    <span class="tags"><span class="tag push">Push</span></span><span class="today off">None<span class="warn">Says the link is on Home when there is none</span></span></div>
+</div>
+
+<div class="group">
+  <div class="ghead"><h3>Plan and events</h3><span class="count">3</span><span class="switch none"><i></i>Plan and events</span></div>
+  <div class="heads"><span>What happens</span><span>Words</span><span>Channels</span><span>Today</span></div>
+  <div class="row"><span><span class="what">Coach adds an event</span><span class="src">actions.ts:2645, 2509</span></span>
+    <span class="words"><b>{Coach} added to your calendar</b><span>{Event}</span></span>
+    <span class="tags"><span class="tag bell">Bell</span></span><span class="today off">None · edits and deletes say nothing</span></div>
+  <div class="row"><span><span class="what">Coach sets or changes a weight goal</span><span class="src">actions.ts:2679</span></span>
+    <span class="words"><b>{Coach} set a weight goal</b><span>74 kg by 20 Dec · changed: {Coach} changed your weight goal</span><span>Push (new goal): Update from {Coach display name} over "Set a weight goal: 74 kg by 20 Dec"</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag bell">Bell</span></span><span class="today off">None · push on a new goal only</span></div>
+  <div class="row"><span><span class="what">Old goals panel (main goal, goals)</span><span class="src">actions.ts:2118, 2191, 2269</span></span>
+    <span class="words"><b>{Coach} set your main goal</b><span>set a new goal · updated one of your goals</span></span>
+    <span class="tags"><span class="tag bell">Bell</span></span><span class="today off">None · legacy</span></div>
+</div>
+
+<div class="group">
+  <div class="ghead"><h3>Invoices</h3><span class="count">4</span><span class="switch none"><i></i>Invoices</span></div>
+  <div class="heads"><span>What happens</span><span>Words</span><span>Channels</span><span>Today</span></div>
+  <div class="row"><span><span class="what">Coach sends an invoice</span><span class="src">actions.ts:5389</span></span>
+    <span class="words"><b>{Coach} sent you invoice {INV-number}</b><span>Push: Update from {Coach display name} over "Sent you invoice {INV-number}"</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag bell">Bell</span></span><span class="today off">None</span></div>
+  <div class="row"><span><span class="what">A recurring series sends its next invoice</span><span class="src">queries.ts:15049 runRecurringInvoices · every 10 min, instrumentation.ts:129</span></span>
+    <span class="words"><b>{Coach} sent you invoice {INV-number}</b><span>Push: Update from {Coach display name} over "Sent you invoice {INV-number}"</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag bell">Bell</span></span><span class="today off">None · push on the live server only<span class="warn">Made on its issue day by the first check after midnight: the push comes at 00:00–00:10</span></span></div>
+  <div class="row"><span><span class="what">Coach marks it paid</span><span class="src">actions.ts:5391</span></span>
+    <span class="words"><b>{Coach} marked invoice {INV-number} paid</b></span>
+    <span class="tags"><span class="tag bell">Bell</span></span><span class="today off">None</span></div>
+  <div class="row"><span><span class="what">Client pays online (Stripe)</span><span class="src">payments.ts:44</span></span>
+    <span class="words"><b>Received your payment for {INV-number}</b></span>
+    <span class="tags"><span class="tag bell">Bell</span></span><span class="today off">None · once ever</span></div>
+  <div class="row"><span><span class="what">Old admin's invoice panel (dead, not counted)</span><span class="src">actions.ts:939 addInvoiceAction, note at 951 · only InvoicesPanel.tsx calls it, and nothing imports InvoicesPanel</span></span>
+    <span class="words"><b>{Coach} sent a new invoice</b><span>"{description}"</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag bell">Bell</span></span><span class="today off">Never fires · no caller is mounted<span class="warn">Delete with the other dead code</span></span></div>
+</div>
+
+<!-- ================= COACH ================= -->
+<div class="side">Coach</div>
+<h2>What reaches the coach</h2>
+
+<div class="group">
+  <div class="ghead"><h3>Messages</h3><span class="count">3</span><span class="switch"><i></i>Messages from clients</span></div>
+  <div class="gnote">Exists today, on the laptop and the coach's phone. Push only.</div>
+  <div class="heads"><span>What happens</span><span>Words</span><span>Channels</span><span>Today</span></div>
+  <div class="row"><span><span class="what">A client sends a message</span><span class="src">coachPush.ts:60 · chatSend.ts:76, 175</span></span>
+    <span class="words"><b>{Client full name}</b><span>The first line, else Photo | Video | Voice message | File</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag chat">Chat</span><span class="tag dot">Dot</span></span>
+    <span class="today">Messages from clients + quiet hours · off while that chat is open on the phone</span></div>
+  <div class="row"><span><span class="what">A client ends a workout with a note</span><span class="src">actions.ts:4104 endSessionFor</span></span>
+    <span class="words"><b>{Client full name}</b><span>The note, posted in the chat linked to the session</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag chat">Chat</span></span>
+    <span class="today">Messages from clients + quiet hours</span></div>
+  <div class="row"><span><span class="what">Unread marks</span><span class="src">ChatDock.tsx:57 · ChatList.tsx:54 · CoachApp.tsx:153</span></span>
+    <span class="words"><b>Rust dot on the chat tab, counts on All chats and the phone's Chats</b></span>
+    <span class="tags"><span class="tag dot">Dot</span></span><span class="today off">None · clears on opening</span></div>
+</div>
+
+<div class="group">
+  <div class="ghead"><h3>Videos to review</h3><span class="count">2</span><span class="switch"><i></i>Videos to review</span></div>
+  <div class="heads"><span>What happens</span><span>Words</span><span>Channels</span><span>Today</span></div>
+  <div class="row"><span><span class="what">A client sends the video the coach asked for</span><span class="src">actions.ts:1788 · coachPush.ts:89</span></span>
+    <span class="words"><b>{Client full name}</b><span>Video of {Exercise} · Photo of a swap for {Exercise}</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag dot">Dot</span></span><span class="today">Videos to review + quiet hours</span></div>
+  <div class="row"><span><span class="what">A client sends a photo or video unasked</span><span class="src">actions.ts:1836</span></span>
+    <span class="words"><b>{Client full name}</b><span>Photo of {Exercise}</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag dot">Dot</span></span><span class="today">Videos to review + quiet hours</span></div>
+</div>
+
+<div class="group">
+  <div class="ghead"><h3>Join requests</h3><span class="count">1</span><span class="switch none"><i></i>Join requests</span></div>
+  <div class="heads"><span>What happens</span><span>Words</span><span>Channels</span><span>Today</span></div>
+  <div class="row"><span><span class="what">Someone types the coach's Norcode</span><span class="src">coachPush.ts:83 · joinActions.ts:67</span></span>
+    <span class="words"><b>{First} {Last}</b><span>Wants to join you</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag dot">Dot</span></span><span class="today off">Quiet hours only · once a day an account<span class="warn">Opens a laptop page from the phone (/admin/redesign/feed)</span></span></div>
+</div>
+
+<div class="group">
+  <div class="ghead"><h3>Calls asked for</h3><span class="count">1</span><span class="switch none"><i></i>Calls asked for</span></div>
+  <div class="heads"><span>What happens</span><span>Words</span><span>Channels</span><span>Today</span></div>
+  <div class="row"><span><span class="what">A client taps Request a meeting</span><span class="src">actions.ts:2353</span></span>
+    <span class="words"><b>{First} asked for a call</b><span>{Their words}</span></span>
+    <span class="tags"><span class="tag push">Push</span><span class="tag dot">Dot</span></span><span class="today off">Quiet hours only<span class="warn">Opens a laptop page from the phone (/admin/redesign/meetings)</span></span></div>
+</div>
+
+<div class="group">
+  <div class="ghead"><h3>Client activity</h3><span class="count">1</span><span class="switch none"><i></i>Events from clients</span></div>
+  <div class="heads"><span>What happens</span><span>Words</span><span>Channels</span><span>Today</span></div>
+  <div class="row"><span><span class="what">A client adds an event</span><span class="src">actions.ts:2712</span></span>
+    <span class="words"><b>{First} added an event</b><span>{Title} | 20/11 – 24/11</span></span>
+    <span class="tags"><span class="tag push">Push</span></span><span class="today off">Quiet hours only · edits push nothing<span class="warn">Opens a laptop page from the phone (/admin/redesign/plan)</span></span></div>
+</div>
+
+<div class="group">
+  <div class="ghead"><h3>Payments</h3><span class="count">1</span><span class="switch none"><i></i>Payments</span></div>
+  <div class="heads"><span>What happens</span><span>Words</span><span>Channels</span><span>Today</span></div>
+  <div class="row"><span><span class="what">A client pays an invoice online</span><span class="src">payments.ts:48</span></span>
+    <span class="words"><b>Invoice paid</b><span>{Client full name} paid {INV-number}</span></span>
+    <span class="tags"><span class="tag push">Push</span></span><span class="today off">None<span class="warn">Skips quiet hours. Opens a laptop page from the phone (/admin/redesign/invoices)</span></span></div>
+</div>
+
+<!-- ================= NOT TOGGLED ================= -->
+<div class="side">Always on</div>
+<h2>Not toggled, by choice</h2>
+<div class="list">
+  <div class="li"><span><span class="what">Sign-in, sign-up and reset codes</span><span class="src">ClerkFlows.tsx · Clerk's templates</span></span><span class="tags"><span class="tag email">Email</span></span><span>Security. Client and coach.</span></div>
+  <div class="li"><span><span class="what">Clerk invitation</span><span class="src">actions.ts:923 · clerk.ts:92</span></span><span class="tags"><span class="tag email">Email</span></span><span>The only way into the app.</span></div>
+  <div class="li"><span><span class="what">Reset your Norcoach password · Your Norcoach login</span><span class="src">passwordReset.ts:41 · mail.ts:63</span></span><span class="tags"><span class="tag email">Email</span></span><span>Old sign-in only, asked for by the person.</span></div>
+  <div class="li"><span><span class="what">Your app is ready · From {Coach}</span><span class="src">appLock.ts:135</span></span><span class="tags"><span class="tag push">Push</span></span><span>Once ever per client. When a locked client's first phase goes live (openAppIfPhaseLive, actions.ts:690, 711, 3395, 3446…), it comes on top of that phase's own "New program from {Coach display name}": two buzzes for one moment (plausible, with appLockPushOn).</span></div>
+  <div class="li"><span><span class="what">Join wait screen: Request sent, Not accepted, You're in</span><span class="src">JoinFlow.tsx</span></span><span class="tags"><span class="tag dot">Screen</span></span><span>The answer to their own request.</span></div>
+  <div class="li"><span><span class="what">Workout on the lock screen (Live Activity)</span><span class="src">liveActivity.ts · useLiveActivitySync.ts · NorcoachLivePlugin</span></span><span class="tags"><span class="tag dot">Screen</span></span><span>The app draws it on the lock screen and the Dynamic Island while a session is going; not a push, no switch (DESIGN-RULES §6).</span></div>
+  <div class="li"><span><span class="what">The phone's permission ask</span><span class="src">PushToggle.tsx</span></span><span class="tags"><span class="tag push">Push</span></span><span>It is the switch itself.</span></div>
+  <div class="li"><span><span class="what">Bell dot (client)</span><span class="src">page.tsx:1411</span></span><span class="tags"><span class="tag dot">Dot</span></span><span>Shows the list holds something unread.</span></div>
+  <div class="li"><span><span class="what">Video ask lines: {Coach} asked for a video, Video sent, {Coach} replied</span><span class="src">VideoAskSheet.tsx · SessionOverview.tsx:468</span></span><span class="tags"><span class="tag dot">Screen</span></span><span>A state on the exercise, not news.</span></div>
+  <div class="li"><span><span class="what">Typing, Seen, {Coach} is away until 07:00</span><span class="src">CoachMessagesScreen.tsx · ChatThread.tsx</span></span><span class="tags"><span class="tag chat">Chat</span></span><span>Part of the chat. A read-receipts switch could come later.</span></div>
+  <div class="li"><span><span class="what">Needs you: Feed count, rail counts, dot trail, to-do strip</span><span class="src">loaders.ts:631, 696 · TodoStrip.tsx</span></span><span class="tags"><span class="tag dot">Dot</span></span><span>The coach's to-do list. Clears itself when done.</span></div>
+  <div class="li"><span><span class="what">Phases count: No phase yet, still a draft, no sessions</span><span class="src">loaders.ts:679 loadPhaseNeeds</span></span><span class="tags"><span class="tag dot">Dot</span></span><span>The same to-do list, for set-up.</span></div>
+  <div class="li"><span><span class="what">Note from {First} dot</span><span class="src">TrainingDraft.tsx:1882</span></span><span class="tags"><span class="tag dot">Dot</span></span><span>Goes once read.</span></div>
+  <div class="li"><span><span class="what">Support dots (coach and owner)</span><span class="src">support.ts:152 · RedesignRail.tsx:241</span></span><span class="tags"><span class="tag dot">Dot</span></span><span>Our answer to them. No push, no email.</span></div>
+  <div class="li"><span><span class="what">Payment failed · Read-only from 4/11</span><span class="src">RedesignRail.tsx:202</span></span><span class="tags"><span class="tag dot">Dot</span></span><span>Their account is at stake.</span></div>
+  <div class="li"><span><span class="what">Please delete my account (to the owner)</span><span class="src">CoachSettings.tsx:150 · supportActions.ts:28</span></span><span class="tags"><span class="tag chat">Chat</span><span class="tag dot">Dot</span></span><span>An App Store duty.</span></div>
+  <div class="li"><span><span class="what">Owner only: founding coach application · You're in (coach approved)</span><span class="src">api/apply/route.ts:64 · auth-actions.ts:260</span></span><span class="tags"><span class="tag email">Email</span></span><span>Ours, not a user's. The approval email is dead since 17 Nov: delete it.</span></div>
+</div>
+<p class="gnote" style="padding:10px 4px 0">Stripe's own receipts are set in the Stripe dashboard, not here. Norcoach sends no email for an invoice, a join request, support or billing.</p>
+
+<!-- ================= TODAY ================= -->
+<div class="side">Today</div>
+<h2>Today's switches</h2>
+<div class="list">
+  <div class="li"><span><span class="what">Notifications on this phone</span><span class="src">Client Settings · Preferences · PushToggle.tsx</span></span><span class="tags"><span class="tag push">Push</span></span><span>Every push to that phone. Bells and dots stay.</span></div>
+  <div class="li"><span><span class="what">Messages from {Coach}</span><span class="src">client_preferences.coach_notes · queries.ts:7123</span></span><span class="tags"><span class="tag push">Push</span></span><span>The push for a coach's chat message. The unread mark stays.</span></div>
+  <div class="li"><span><span class="what">Check-in reminders</span><span class="src">client_preferences.checkin_reminders · queries.ts:1451</span></span><span class="tags"><span class="tag hidden">Stored</span></span><span>Stops reminder rows nobody sees. In effect nothing.</span></div>
+  <div class="li"><span><span class="what">On this phone (coach)</span><span class="src">/coach Settings · CoachSettings.tsx:215</span></span><span class="tags"><span class="tag push">Push</span></span><span>Every push to that phone. The laptop has none.</span></div>
+  <div class="li"><span><span class="what">Messages from clients · Videos to review · Quiet hours</span><span class="src">coach_settings.notify · coachPush.ts:30 coachWants</span></span><span class="tags"><span class="tag push">Push</span></span><span>The two switches cover chat and video pushes. Quiet hours (laptop only) also hold join requests, calls asked for and events, and drop them: nothing is sent later. Invoice paid ignores all three.</span></div>
+</div>
+<p class="gnote" style="padding:10px 4px 0">Once only, for every client note without a key of its own: the same client, kind, tab, ref and words within 10 s is dropped with its push (logCoachActivity, queries.ts:9125, noteOnce at 9182); a coach's chat message is exempt, and a keyed note is held to one a day by its key. With NOTES_STORE=pg the push is worked out when the note is queued but only sent once the drainer has written the row (notes/outbox.ts:306), so it can come late.</p>
+<p class="gnote" style="padding:10px 4px 0">Also stored, never shown: weekly_digest (default off, nothing built). Android files every push under one channel, Coach updates, which the phone can mute.</p>
+
+<!-- ================= PROPOSAL ================= -->
+<div class="side">Proposal</div>
+<h2>Proposal</h2>
+<div class="prop">
+  <h4>One rule</h4>
+  <p>A switch turns off the <b>push</b>. The bell keeps the record, as Messages from {Coach} does today. Nothing the coach sent ever goes missing from the app.</p>
+
+  <h4>Client · Settings · Notifications</h4>
+  <ul>
+    <li>Notifications on this phone first, then one switch per group: <b>Messages from {Coach}</b>, <b>Training</b>, <b>Nutrition</b>, <b>Check-ins</b>, <b>Shape updates</b>, <b>Calls</b>, <b>Plan and events</b>, <b>Invoices</b>. All on by default.</li>
+    <li>Calls covers the day-before and hour-before reminders.</li>
+    <li>Workout still going: the rules say it has no Settings row. Keep it always on, or let it ride on Training. Your call.</li>
+    <li>Check-in reminders: either make the due reminders real pushes under Check-ins, or drop the switch.</li>
+  </ul>
+
+  <h4>Coach · Settings · Notifications</h4>
+  <ul>
+    <li>Keep <b>Messages from clients</b> and <b>Videos to review</b>; add <b>Join requests</b>, <b>Calls asked for</b>, <b>Events from clients</b>, <b>Payments</b>. Same record on the laptop and the phone.</li>
+    <li>Quiet hours over all of them, Payments too. Decide: drop what comes in quiet hours (today) or send it when they end.</li>
+    <li>Needs you, the rail counts and dots stay as they are: they are the to-do list.</li>
+  </ul>
+
+  <div class="phone">
+    <div class="ps"><div class="t">Settings</div>
+      <div class="sec">Notifications</div>
+      <div class="r"><span>On this phone</span><i class="sw"></i></div>
+      <div class="r"><span>Messages from Finlay</span><i class="sw"></i></div>
+      <div class="r"><span>Training</span><i class="sw"></i></div>
+      <div class="r"><span>Nutrition</span><i class="sw"></i></div>
+      <div class="r"><span>Check-ins</span><i class="sw"></i></div>
+      <div class="r"><span>Shape updates</span><i class="sw off"></i></div>
+      <div class="r"><span>Calls</span><i class="sw"></i></div>
+      <div class="r"><span>Plan and events</span><i class="sw"></i></div>
+      <div class="r"><span>Invoices</span><i class="sw"></i></div>
+    </div>
+    <div class="ps"><div class="t">Settings</div>
+      <div class="sec">Notifications</div>
+      <div class="r"><span>On this phone</span><i class="sw"></i></div>
+      <div class="r"><span>Messages from clients</span><i class="sw"></i></div>
+      <div class="r"><span>Videos to review</span><i class="sw"></i></div>
+      <div class="r"><span>Join requests</span><i class="sw"></i></div>
+      <div class="r"><span>Calls asked for</span><i class="sw"></i></div>
+      <div class="r"><span>Events from clients</span><i class="sw off"></i></div>
+      <div class="r"><span>Payments</span><i class="sw"></i></div>
+      <div class="r"><span>Quiet hours<small>22:00 – 07:00</small></span><i class="sw"></i></div>
+    </div>
+  </div>
+
+  <h4>Found while mapping</h4>
+  <ul class="issues">
+    <li>A video reply from the review pop-up pushes twice: "replied to your video" and "Message from {Coach}". The Training tab's Reply pushes once.</li>
+    <li>A locked client's first phase going live pushes twice: "Your app is ready" and "New program from {Coach}".</li>
+    <li>Push titles: "New program from {Coach}" for nutrition and lifestyle; everything else "Update from {Coach}".</li>
+    <li>Push titles use the coach's full display name ("Update from Finlay Smith"), against DESIGN-RULES §8's first name; only the body swaps in the first name. The body is the stored line, starting with a bare verb and no subject: "Sent you invoice INV-12", "Cancelled your call", "Scheduled a meeting: "Topic"", "Set what to focus on: a · b" (middle dots).</li>
+    <li>A nutrition phase going live reads two ways: "set new nutrition targets. Check them out" (made live) and "set a new nutrition phase" (scheduled with its start already come).</li>
+    <li>A training phase with a draft programme is announced with the programme's words, "published a new plan", not the phase's.</li>
+    <li>A moved call reads three ways (Meetings' one call "Monday 16 Nov", a series "Mon 16 Nov", the Calendar "Moved your call"), and its push keeps "GMT+1".</li>
+    <li>Call reminders use a middle dot and promise a link that may not exist.</li>
+    <li>Time for your shape update, a new lifestyle phase and the old goals show as the grey system "Update".</li>
+    <li>No client push respects quiet hours. Three can come around midnight: the workout reminder, a scheduled programme going live (the every-request job, applyDueProgramDeployments, queries.ts:1261, on the first page load after its Monday 00:00) and a recurring invoice (runRecurringInvoices every 10 min, instrumentation.ts:129, at 00:00–00:10 on its issue day). They decide whether the client needs quiet hours of their own.</li>
+    <li>Built but shown nowhere: overdue invoice, missed check-ins, missed sessions, programme ending, nothing logged.</li>
+  </ul>
+</div>
+
+</div></body></html>

@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notification pop-up</title>
+<style>
+  :root { --ink:#141a24; --body:#3a4250; --sec:#5b6474; --faint:#8b93a1; --label:#98A2B3; --line:#E1E5EB; --page:#F5F6F8; --rust:#b8471f; --green:#2f7a3f; --train:#3a3390; --nutr:#1d7a70; --life:#a08a5c; --meet:#2f6fd6; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:#eef0f3; color:var(--ink); font-family:"Archivo", -apple-system, system-ui, sans-serif; padding:28px 16px 60px; }
+  h1 { font-size:22px; font-weight:600; max-width:1120px; margin:0 auto 6px; }
+  .lead { max-width:1120px; margin:0 auto 26px; color:var(--body); font-size:14px; line-height:1.5; }
+  .opts { max-width:1120px; margin:0 auto; display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:26px; }
+  .opt h2 { font-size:15px; font-weight:600; margin-bottom:4px; }
+  .opt p { font-size:13px; color:var(--body); line-height:1.45; margin-bottom:14px; min-height:56px; }
+  .phone { position:relative; width:300px; height:620px; border-radius:40px; overflow:hidden; background:#f5f5f5; box-shadow:0 0 0 8px #101216, 0 24px 50px -20px rgba(16,24,40,.45); margin:0 auto; }
+  .home { position:absolute; inset:0; padding:46px 16px 0; }
+  .home .bar { display:flex; justify-content:space-between; font-size:12px; font-weight:600; letter-spacing:.16em; }
+  .home .hi { font-size:24px; font-weight:600; margin:22px 0 4px; }
+  .home .date { font-size:12px; color:var(--faint); font-weight:500; }
+  .home .card { height:210px; border-radius:22px; margin-top:60px; background:linear-gradient(160deg,#5c6b80,#2a3240 70%); }
+  .dim { position:absolute; inset:0; background:rgba(20,26,36,.42); }
+
+  /* the coach's face with the kind's badge */
+  .face { width:44px; height:44px; border-radius:50%; background:linear-gradient(140deg,#8a6f5a,#3e3029); color:#fff; display:grid; place-items:center; font-weight:600; font-size:17px; position:relative; flex:none; }
+  .badge { position:absolute; right:-3px; bottom:-3px; width:18px; height:18px; border-radius:50%; display:grid; place-items:center; box-shadow:0 0 0 2px #fff; }
+  .badge svg { width:10px; height:10px; }
+
+  /* A: centred card, a stack edge behind for each more */
+  .pop { position:absolute; left:18px; right:18px; top:50%; transform:translateY(-50%); }
+  .pc { background:#fff; border-radius:24px; padding:20px 20px 16px; position:relative; z-index:2; }
+  .stack1, .stack2 { position:absolute; left:10px; right:10px; height:30px; border-radius:22px; background:#fff; }
+  .stack1 { bottom:-9px; opacity:.85; z-index:1; box-shadow:0 1px 0 rgba(20,26,36,.08); } .stack2 { left:22px; right:22px; bottom:-18px; opacity:.6; z-index:0; }
+  .top { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .kind { font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; }
+  .when { font-size:12px; color:var(--faint); font-weight:500; font-variant-numeric:tabular-nums; }
+  .count { font-size:12px; color:var(--faint); font-weight:600; font-variant-numeric:tabular-nums; }
+  .who { display:flex; gap:12px; align-items:flex-start; }
+  .t { font-size:16px; font-weight:600; line-height:1.3; }
+  .b { font-size:14px; color:var(--body); font-weight:500; line-height:1.4; margin-top:4px; }
+  .facts { white-space:nowrap; font-size:13px; color:var(--faint); font-weight:500; margin-top:8px; display:flex; align-items:center; gap:8px; }
+  .facts i { width:1px; height:12px; background:#C9CFD8; }
+  .foot { display:flex; align-items:center; justify-content:space-between; margin-top:20px; }
+  .words { font-size:13.5px; font-weight:600; color:var(--sec); }
+  .pill { height:40px; padding:0 22px; border-radius:999px; background:var(--ink); color:#fff; font-size:13.5px; font-weight:600; display:inline-flex; align-items:center; gap:6px; }
+  .pill.white { background:#fff; color:var(--ink); box-shadow:inset 0 0 0 1px var(--line); }
+  .arrows { display:flex; gap:6px; }
+  .arrows span { width:34px; height:34px; border-radius:50%; box-shadow:inset 0 0 0 1px var(--line); display:grid; place-items:center; color:var(--ink); }
+  .arrows span.off { color:#C9CFD8; }
+  .arrows svg { width:14px; height:14px; }
+
+  /* B: sheet from the bottom, swiped sideways */
+  .sheet { position:absolute; left:0; right:0; bottom:0; background:#fff; border-radius:28px 28px 0 0; padding:12px 20px 26px; }
+  .grab { width:36px; height:5px; border-radius:3px; background:#E1E5EB; margin:0 auto 16px; }
+  .peek { position:absolute; right:-250px; top:46px; width:240px; height:160px; border-radius:20px; background:#fff; box-shadow:inset 0 0 0 1px var(--line); }
+  .sheet .row-cards { position:relative; }
+
+  /* Settings fold */
+  .set { position:absolute; inset:0; background:var(--page); padding:46px 18px 0; }
+  .set .tb { text-align:center; font-size:13px; font-weight:600; letter-spacing:.16em; margin-bottom:18px; }
+  .srow { display:flex; align-items:center; height:44px; font-size:11.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--ink); gap:6px; }
+  .srow svg { width:12px; height:12px; color:var(--faint); }
+  .srow.open svg { transform:rotate(90deg); }
+  .sw { display:flex; align-items:center; gap:12px; padding:9px 0; }
+  .sw .nm { flex:1; } .sw .nm b { display:block; font-size:14.5px; font-weight:500; } .sw .nm small { display:block; font-size:12px; color:var(--faint); font-weight:500; margin-top:1px; }
+  .tg { width:36px; height:22px; border-radius:11px; background:var(--ink); position:relative; flex:none; }
+  .tg::after { content:""; position:absolute; top:3px; right:3px; width:16px; height:16px; border-radius:50%; background:#fff; }
+  .tg.off { background:#fff; box-shadow:inset 0 0 0 1px var(--line); } .tg.off::after { right:auto; left:3px; background:#C9CFD8; }
+  .qh { display:flex; gap:8px; align-items:center; margin:4px 0 6px; }
+  .qh span { flex:1; height:40px; border-radius:12px; background:#fff; box-shadow:inset 0 0 0 1px var(--line); display:grid; place-items:center; font-size:15px; font-weight:500; font-variant-numeric:tabular-nums; }
+  .qh em { font-style:normal; color:var(--faint); }
+
+  .note { max-width:1120px; margin:34px auto 0; display:grid; gap:10px; font-size:13px; color:var(--body); line-height:1.6; }
+  .q { background:#fff; border-radius:16px; box-shadow:inset 0 0 0 1px var(--line); padding:16px 18px; }
+  .q h4 { font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--sec); margin-bottom:6px; }
+  .q b { color:var(--ink); font-weight:600; }
+</style>
+</head>
+<body>
+<h1>Notification pop-up</h1>
+<p class="lead">A push tapped on the phone opens the app with that notification in a pop-up: what happened, the coach's words, and View to go to it or Close. Any other notifications that came in while the app was shut come after it, one at a time. Last, the client's Settings Â· Notifications, with the groups you picked.</p>
+
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="cal" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4"/></symbol>
+  <symbol id="db" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"/></symbol>
+  <symbol id="nx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="pv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></symbol>
+</svg>
+
+<div class="opts">
+
+  <!-- A one -->
+  <div class="opt">
+    <h2>A Â· A card in the middle, one</h2>
+    <p>The pop-ups' voice: white card, the coach's face with the kind's badge (as the bell list draws it), the kind and when, what happened, their words, the facts. Close in words, View the ink pill.</p>
+    <div class="phone">
+      <div class="home"><div class="bar"><span>â˜°</span><span>FULL POTENTIAL</span><span>ðŸ””</span></div><div class="hi">Good morning, Alex</div><div class="date">Thursday 19 November</div><div class="card"></div></div>
+      <div class="dim"></div>
+      <div class="pop">
+        <div class="pc">
+          <div class="top"><span class="kind" style="color:var(--meet)">Meeting</span><span class="when">09:12</span></div>
+          <div class="who">
+            <div class="face">F<span class="badge" style="background:var(--meet)"><svg><use href="#cal"/></svg></span></div>
+            <div>
+              <div class="t">Finlay moved your call</div>
+              <div class="facts">Check-in<i></i>Fri 20 Nov<i></i>09:00 â€“ 09:30</div>
+            </div>
+          </div>
+          <div class="foot"><span class="words">Close</span><span class="pill">View</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- A several -->
+  <div class="opt">
+    <h2>A Â· Several, stacked</h2>
+    <p>The one tapped first, then the others that came in, as a stack (an edge behind for each more, three at most, as Saved days are drawn). <b>1 of 3</b> in the corner; swipe sideways or the arrows to go through. Close shuts them all; View goes to that one.</p>
+    <div class="phone">
+      <div class="home"><div class="bar"><span>â˜°</span><span>FULL POTENTIAL</span><span>ðŸ””</span></div><div class="hi">Good morning, Alex</div><div class="date">Thursday 19 November</div><div class="card"></div></div>
+      <div class="dim"></div>
+      <div class="pop">
+        <div class="pc">
+          <div class="top"><span class="kind" style="color:var(--train)">Training</span><span class="count">1 of 3</span></div>
+          <div class="who">
+            <div class="face">F<span class="badge" style="background:var(--train)"><svg><use href="#db"/></svg></span></div>
+            <div>
+              <div class="t">Finlay replied to your video</div>
+              <div class="b">Hips rise first. Brace before you drop.</div>
+              <div class="facts">Back squat<i></i>Upper<i></i>08:40</div>
+            </div>
+          </div>
+          <div class="foot">
+            <span class="words">Close</span>
+            <div style="display:flex;gap:8px;align-items:center"><span class="arrows"><span class="off"><svg><use href="#pv"/></svg></span><span><svg><use href="#nx"/></svg></span></span><span class="pill">View</span></div>
+          </div>
+        </div>
+        <div class="stack1"></div><div class="stack2"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- B -->
+  <div class="opt">
+    <h2>B Â· A sheet from the bottom</h2>
+    <p>The same card as a sheet rising from the bottom, nearer the thumb; the next one peeks in from the right edge to swipe across. Close and View at its foot.</p>
+    <div class="phone">
+      <div class="home"><div class="bar"><span>â˜°</span><span>FULL POTENTIAL</span><span>ðŸ””</span></div><div class="hi">Good morning, Alex</div><div class="date">Thursday 19 November</div><div class="card"></div></div>
+      <div class="dim"></div>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="row-cards">
+          <div class="top"><span class="kind" style="color:var(--meet)">Meeting</span><span class="count">1 of 2</span></div>
+          <div class="who">
+            <div class="face">F<span class="badge" style="background:var(--meet)"><svg><use href="#cal"/></svg></span></div>
+            <div>
+              <div class="t">Finlay moved your call</div>
+              <div class="facts">Check-in<i></i>Fri 20 Nov<i></i>09:00 â€“ 09:30</div>
+            </div>
+          </div>
+          <div class="peek"></div>
+        </div>
+        <div class="foot"><span class="words">Close</span><span class="pill">View</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="opt">
+    <h2>Settings Â· Notifications</h2>
+    <p>A row of Settings as the others (its chevron, the shared fold). Open: a switch a group, white while off and ink while on, its fact grey under it; then Quiet hours.</p>
+    <div class="phone">
+      <div class="set">
+        <div class="tb">SETTINGS</div>
+        <div class="srow"><svg><use href="#nx"/></svg>Your details</div>
+        <div class="srow open"><svg><use href="#nx"/></svg>Notifications</div>
+        <div class="sw"><div class="nm"><b>Messages from Finlay</b><small>Messages and photos</small></div><span class="tg"></span></div>
+        <div class="sw"><div class="nm"><b>Training</b><small>Programmes and video replies</small></div><span class="tg"></span></div>
+        <div class="sw"><div class="nm"><b>Nutrition</b><small>Targets and comments</small></div><span class="tg"></span></div>
+        <div class="sw"><div class="nm"><b>Check-ins</b><small>Reminders and comments</small></div><span class="tg off"></span></div>
+        <div class="sw"><div class="nm"><b>Shape updates</b></div><span class="tg"></span></div>
+        <div class="sw"><div class="nm"><b>Calls</b><small>Booked, moved, reminders</small></div><span class="tg"></span></div>
+        <div class="sw"><div class="nm"><b>Plan and events</b></div><span class="tg"></span></div>
+        <div class="sw"><div class="nm"><b>Invoices</b></div><span class="tg"></span></div>
+        <div class="sw"><div class="nm"><b>Quiet hours</b></div><span class="tg"></span></div>
+        <div class="qh"><span>22:00</span><em>â†’</em><span>07:00</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <div class="q"><h4>Which open the pop-up</h4>The push tapped, then every other notification that came in since the app was last open, newest after it, five at most. <b>A message from Finlay never does</b>: it opens the chat straight, as today. Read in the pop-up, a notification is read in the bell too.</div>
+  <div class="q"><h4>The switches</h4>A switch turns off the push to the phone. The bell keeps every notification either way, so nothing is lost. The always-on ones (sign-in codes, the app being ready, a workout left running) have no switch. With notifications blocked in the phone's own settings, the fold says <b>Blocked in phone settings</b> and nothing else.</div>
+  <div class="q"><h4>Quiet hours</h4>In Settings Â· Notifications, under the groups: pushes wait until it ends, then the latest of each comes at once; the bell fills as usual. Times are the phone's own.</div>
+</div>
+</body>
+</html>

@@ -101,6 +101,24 @@ export async function register() {
     setInterval(remindWorkouts, 5 * 60_000).unref?.();
     setTimeout(remindWorkouts, 120_000).unref?.();
   }
+  // A client's quiet hours (19 Nov, Alex: Settings · Notifications; app/lib/push.ts): what was held is sent once they
+  // end, the newest of each, checked every minute on the live server (NOTIF_HOLD, as the reminders).
+  const { notifHoldOn, releaseHeldPushes } = await import("./app/lib/push");
+  if (notifHoldOn() && process.env.NEXT_PHASE !== "phase-production-build") {
+    let busy = false;
+    const release = () => {
+      if (busy) return;
+      busy = true;
+      void releaseHeldPushes()
+        .then((n) => n && console.log(`[push] quiet hours over: sent ${n} held`))
+        .catch((e) => console.error("[push] releasing held pushes failed:", e instanceof Error ? e.message : e))
+        .finally(() => {
+          busy = false;
+        });
+    };
+    setInterval(release, 60_000).unref?.();
+    setTimeout(release, 45_000).unref?.();
+  }
   // The locked app (19 Nov, Alex: "first phase"; app/lib/appLock.ts): a client let in whose first phase has begun (one
   // scheduled for today) opens, with `Your app is ready` pushed once, every five minutes on the live server.
   const { appLockPushOn, checkAppLocks } = await import("./app/lib/appLock");

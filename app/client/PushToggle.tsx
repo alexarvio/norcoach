@@ -44,7 +44,7 @@ async function send(method: "POST" | "DELETE" | "PUT", body: unknown) {
 const noSubscribe = () => () => {};
 
 /** What a switch row draws: the client's Settings row, or the coach's phone's own (21 Oct, app/coach). */
-export type PushRowProps = { on: boolean; disabled: boolean; detail: string; onClick: () => void };
+export type PushRowProps = { on: boolean; disabled: boolean; detail: string; onClick: () => void; /** Turned off in the phone's own settings (19 Nov: Settings · Notifications then says so alone). */ blocked?: boolean };
 
 /** Which phone apps the server can send to (lib/push.ts nativePushReady). */
 export type NativeReady = { android: boolean; ios: boolean };
@@ -54,7 +54,7 @@ function rowOf(state: State, turnOn: () => void, turnOff: () => void): PushRowPr
   const on = state === "on" || state === "turning-on";
   const detail = state === "install" ? "Add to Home Screen first" : state === "blocked" ? "Blocked in phone settings" : state === "unsupported" ? "Not available" : "";
   const disabled = state !== "on" && state !== "off";
-  return { on, disabled, detail, onClick: state === "on" ? turnOff : turnOn };
+  return { on, disabled, detail, onClick: state === "on" ? turnOff : turnOn, blocked: state === "blocked" };
 }
 
 export default function PushToggle({ publicKey, nativeReady }: { publicKey: string | null; nativeReady: NativeReady }) {

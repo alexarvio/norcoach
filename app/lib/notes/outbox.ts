@@ -31,7 +31,7 @@ import { lostConnection, notesWrite, poolWait, safeMessage, type Q } from "./pg"
 import { noteParams, readSql, writeSql } from "./statements";
 
 /** A buzz worked out as the note was written (the client, the words), its address filled in once the row's id is known. */
-export type PushPayload = { userId: number; title: string; body: string; url: string | null; tag?: string };
+export type PushPayload = { userId: number; title: string; body: string; url: string | null; tag?: string; /** Settings · Notifications' group (19 Nov, Alex; lib/push.ts). */ group?: import("../notifGroups").NotifGroup | "always" };
 
 /** `token`: the op's own, written to coach_activity_ops by the transaction that runs it, so running it again does nothing.
  *  `at`: when it was queued (ms), for the stuck alarm and the memory boot's age check (boot.ts). */
@@ -248,7 +248,7 @@ async function ownRowOn(q: Q, t: "coach_activity" | "coach_activity_shadow", row
 /** Sends a buzz worked out at enqueue, to the row's own address when it has none. */
 export function sendPush(p: PushPayload, noteId: number) {
   state().counts.pushes++;
-  const lockScreen = { title: p.title, body: p.body, url: p.url ?? `/client?n=${noteId}`, tag: p.tag };
+  const lockScreen = { title: p.title, body: p.body, url: p.url ?? `/client?n=${noteId}`, tag: p.tag, group: p.group };
   void import("../push").then((push) => push.sendPushInBackground(p.userId, lockScreen)).catch(() => {});
 }
 

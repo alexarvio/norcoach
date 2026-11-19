@@ -74,6 +74,8 @@ export async function runWorkoutReminders(now: number = Date.now()): Promise<num
         url: `/client?workout=${d.dayId}`,
         // The second replaces the first on the lock screen.
         tag: `workout-${d.dayId}`,
+        // Always on (19 Nov, Alex: "I trust you"): no switch, no quiet hours.
+        group: "always",
         ttlSeconds: 30 * 60,
       });
     } catch (e) {

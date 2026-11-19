@@ -132,7 +132,7 @@ export async function openClientApp(clientId: number, by: "coach" | "phase"): Pr
   const { sendPush } = await import("./push");
   for (const u of data.users.filter((x) => x.role === "client" && x.client_id === clientId)) {
     try {
-      await sendPush(u.id, { title: "Your app is ready", body: `From ${coachFirst}`, url: "/client", tag: "app-ready" });
+      await sendPush(u.id, { title: "Your app is ready", body: `From ${coachFirst}`, url: "/client", tag: "app-ready", group: "always" });
     } catch (e) {
       console.error(`[app-lock] push to client ${clientId} failed:`, e instanceof Error ? e.message : e);
     }

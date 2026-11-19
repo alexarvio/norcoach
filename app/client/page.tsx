@@ -122,7 +122,8 @@ import FitTitle from "./FitTitle";
 import { Bars } from "./Bars";
 import PhaseObjectives from "./PhaseObjectives";
 import { FEATURES } from "../lib/features";
-import PushToggle from "./PushToggle";
+import NotificationSettings from "./NotificationSettings";
+import { readNotifPrefs } from "../lib/notifPrefs";
 import { ConnectedApps } from "./HealthSync";
 import { nativePushReady, pushPublicKey } from "../lib/push";
 import SupplementsCard, { type SupplementRow } from "./SupplementsCard";
@@ -139,6 +140,7 @@ import ClientWeekSwitcher from "./ClientWeekSwitcher";
 import AppShell, { AppTab, type Arrival, type PhoneScreen } from "./AppShell";
 import { liveNowFor } from "../lib/liveSessionNow";
 import { appLockFor } from "../lib/appLock";
+import { popupNotesFor } from "../lib/notifPopup";
 import { ownTab } from "../lib/tabMemory";
 import NativeCoachRedirect from "../coach/NativeCoachRedirect";
 import OpeningSplash from "./OpeningSplash";
@@ -158,7 +160,6 @@ import {
   DumbbellIcon,
   HomeIcon,
 } from "../components/icons";
-import PrefSwitch from "./PrefSwitch";
 import { trainingBests } from "../lib/homeBoardData";
 import { workoutSheetOn } from "../lib/workoutSheet";
 import { coachBrandInline, coachMarkInline } from "../lib/brandMark";
@@ -1076,17 +1077,11 @@ function SettingsTab({ CLIENT_ID, own = false, passwordsHint = null }: { CLIENT_
   const client = getClient(CLIENT_ID);
   const coach = getCoachProfileForClient(CLIENT_ID);
   const profile = getClientProfile(CLIENT_ID);
-  const prefs = getClientPreferences(CLIENT_ID);
 
   // Weekly summary and the units toggle are out for now: the summary is
   // not built, and the units live on the Kg | Lbs switch in a session.
   // Push notifications, when this server has keys for them (lib/push.ts).
   const pushKey = pushPublicKey();
-  // The title alone, no line under it (3 Nov, Alex: the words audit).
-  const toggleDefs: { key: "coach_notes" | "checkin_reminders"; label: string }[] = [
-    { key: "coach_notes", label: `Messages from ${getCoachFirstName(CLIENT_ID)}` },
-    { key: "checkin_reminders", label: "Check-in reminders" },
-  ];
 
   return (
     <div className="settings-dark">
@@ -1138,14 +1133,10 @@ function SettingsTab({ CLIENT_ID, own = false, passwordsHint = null }: { CLIENT_
         </div>
       </SettingsFold>
 
-      <SettingsFold title="Preferences">
-        <div className="home-dark-rows">
-          <PushToggle publicKey={pushKey} nativeReady={nativePushReady()} />
-          {toggleDefs.map((t) => (
-            <PrefSwitch key={t.key} clientId={CLIENT_ID} prefKey={t.key} label={t.label} on={prefs[t.key]} />
-          ))}
-        </div>
-      </SettingsFold>
+      {/* Notifications (19 Nov, Alex: docs/boards/notification-popup-mockup.html): this phone's switch, a switch a group
+          (the push alone; the bell keeps them all) and quiet hours. It took Preferences' place, which held only the phone's
+          switch, Messages from {Coach} (now its group) and Check-in reminders (a switch that changed nothing anyone saw). */}
+      <NotificationSettings coachFirst={getCoachFirstName(CLIENT_ID)} prefs={readNotifPrefs(CLIENT_ID)} publicKey={pushKey} nativeReady={nativePushReady()} />
 
       <ConnectedApps coachName={getCoachFirstName(CLIENT_ID)} />
 
@@ -1562,6 +1553,9 @@ export default async function ClientPage({
       content: <NutritionTab CLIENT_ID={CLIENT_ID} diary={foodDiary} readOnly={phone} />,
     },
   ];
+  // Locked until the first phase goes live (19 Nov, Alex: B of docs/boards/locked-app-mockup.html): the client's own
+  // app alone, never the coach's phone preview or a coach looking.
+  const lockView = phone || !viewerIsClient ? null : await appLockFor(CLIENT_ID);
 
   return (
     <>
@@ -1608,9 +1602,10 @@ export default async function ClientPage({
       readOnly={phone}
       // The session going, for the lock-screen pill (19 Nov, Alex): the client's own app alone.
       liveNow={phone || !viewerIsClient ? null : liveNowFor(CLIENT_ID)}
-      // Locked until the first phase goes live (19 Nov, Alex: B of docs/boards/locked-app-mockup.html): the client's own
-      // app alone, never the coach's phone preview or a coach looking.
-      lock={phone || !viewerIsClient ? null : await appLockFor(CLIENT_ID)}
+      lock={lockView}
+      // A push's notification as the pop-up (19 Nov, Alex: A of docs/boards/notification-popup-mockup.html): never in the
+      // coach's phone preview, a coach looking, or while locked (the locked sheet stays).
+      popup={phone || !viewerIsClient || lockView ? null : popupNotesFor(CLIENT_ID, params.n, notes, phoneTz)}
       // Their coach's banner or name where NORCOACH is, and colour (19 Nov, Alex); in the phone preview the client's coach's,
       // their faint mark with it, so the pills and the mark never wear two coaches.
       brand={phone ? { ...(await coachBrandInline(client?.coach_id)), mark: await coachMarkInline(client?.coach_id) } : await coachBrandInline(client?.coach_id)}

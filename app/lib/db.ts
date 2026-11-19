@@ -1319,6 +1319,10 @@ type ClientPreferences = {
   checkin_reminders: boolean;
   weekly_digest: boolean;
   units: "metric" | "imperial";
+  /** Settings · Notifications (19 Nov, Alex): a group's push switched off; a group missing is on (app/lib/notifPrefs.ts). */
+  push_groups?: Partial<Record<import("./notifGroups").NotifGroup, boolean>>;
+  /** Quiet hours, in the phone's own zone (`tz`, IANA): pushes held until they end. */
+  quiet?: { on: boolean; from: string; to: string; tz: string };
 };
 
 // Login accounts. Deliberately separate from Client: a Client is the coach's
@@ -1552,6 +1556,9 @@ export type Data = {
   notes_outbox?: unknown;
   notes_outbox_dead?: unknown;
   notes_shadow_totals?: unknown;
+  // A client's pushes held in their quiet hours (19 Nov, Alex; lib/push.ts holdPush), the newest of each tag a user,
+  // sent when the hours end. In `kv`.
+  notif_held?: unknown;
   _seq: Record<string, number>;
 };
 

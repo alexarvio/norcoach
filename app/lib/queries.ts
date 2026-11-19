@@ -11,6 +11,7 @@ import { deleteClientNotes, fetchChatNote, fetchReminderState, fetchUnreadRemind
 import type { NoteOp } from "./notes/apply";
 import type { ClientNotification } from "./notes/pick";
 import { noteTakenKey } from "./onceKeep";
+import { groupOfNotification } from "./notifGroups";
 import { healthStoreName, healthWorkoutFacts, healthWorkoutWords } from "./healthWorkouts";
 import { allocId, DATA_DIR, DAY_NAMES_FULL, getData, persist, mergeDuplicateMetricDefinitions, CardioEntry } from "./db";
 import type { CalorieLog, CheckInNote, CustomFood, FoodDay, FoodEntry, FoodMealSlot, OffFood, SavedDay, SavedMeal, ClientEvent, ClientGym, ClientPhase, CoachProfile, CoachBusiness, CoachNotify, CoachInvoicing, CoachPayments, CoachSettings, Data, EventCategory, InvoiceEvery, InvoiceLine, InvoiceParty, InvoiceRecipient, InvoiceRepeat, InvoiceTemplate, KeptActivity, MetricAskAt, PhaseTrack, SessionAnswer, VideoRequest, WorkoutQuestion, MeetingRequest } from "./db";
@@ -5974,6 +5975,10 @@ export type ClientPreferences = {
   checkin_reminders: boolean;
   weekly_digest: boolean;
   units: "metric" | "imperial";
+  /** Settings · Notifications (19 Nov, Alex): a group's push switched off; a group missing is on (app/lib/notifPrefs.ts). */
+  push_groups?: Partial<Record<import("./notifGroups").NotifGroup, boolean>>;
+  /** Quiet hours, in the phone's own zone (`tz`, IANA): pushes held until they end. */
+  quiet?: { on: boolean; from: string; to: string; tz: string };
 };
 
 const DEFAULT_CLIENT_PREFERENCES: Omit<ClientPreferences, "client_id"> = {
@@ -7100,7 +7105,7 @@ export async function sendChatMessage(
   link?: MessageLink | null,
   /** The message it answers, one in this chat. */
   replyTo?: number | null,
-  opts: { createdAt?: string; onceKey?: { key: string; at: number; result?: unknown } | null; mealGuard?: { date: string; meal: string } | null; path?: ChatWritePath } = {}
+  opts: { createdAt?: string; onceKey?: { key: string; at: number; result?: unknown } | null; mealGuard?: { date: string; meal: string } | null; path?: ChatWritePath; /** No buzz of its own: the review's reply, whose "replied to your video" buzzed already (19 Nov, Alex: two pushes for one reply). */ silent?: boolean } = {}
 ): Promise<boolean> {
   const row = await insertChatRow(
     { clientId, sender, text, media: media ? { path: media.path, type: media.type, name: media.name ?? null } : null, link, replyTo, createdAt: opts.createdAt, onceKey: opts.onceKey, mealGuard: opts.mealGuard },
@@ -7120,7 +7125,7 @@ export async function sendChatMessage(
     // The note carries the message's id in every mode (19 Nov, Alex: "it should change"), so an edit or a delete finds it
     // by that: a photo-only message's "sent you a photo" too, one logged late, and a past-stamped message's (the demo
     // client's). Notes from before keep the words-and-5-s match (notes/pick.ts chatNoteOf).
-    logCoachActivity(clientId, text || `Your coach sent you ${mediaWords(media?.type ?? null)}`, { kind: "coach_note", push: getClientPreferences(clientId).coach_notes, messageId: row.id });
+    logCoachActivity(clientId, text || `Your coach sent you ${mediaWords(media?.type ?? null)}`, { kind: "coach_note", push: !opts.silent && getClientPreferences(clientId).coach_notes, messageId: row.id });
   }
   return true;
 }
@@ -9093,6 +9098,23 @@ export function dropCoachActivity(clientId: number, dedupeKey: string) {
   writeNote({ op: "drop", clientId, key: dedupeKey });
 }
 
+/**
+ * The locked app's own push wins (19 Nov, Alex): a client let in whose app is still locked (no app_opened_at once every
+ * client from before was swept open, lib/appLock.ts), or whose app opened by a phase or by the coach in the last 15 min,
+ * gets "Your app is ready" and no second buzz for the programme or phase behind it. Before the sweep has run, never.
+ */
+const APP_READY_WINDOW_MS = 15 * 60_000;
+function appReadyHoldsTheBuzz(clientId: number): boolean {
+  const data = getData();
+  if (!data.app_lock_swept) return false;
+  const c = data.clients.find((x) => x.id === clientId);
+  if (!c) return false;
+  if (!c.app_opened_at) return true;
+  if (c.app_opened_by !== "phase" && c.app_opened_by !== "coach") return false;
+  const at = Date.parse(c.app_opened_at);
+  return Number.isFinite(at) && Date.now() - at < APP_READY_WINDOW_MS;
+}
+
 export function logCoachActivity(
   clientId: number,
   message: string,
@@ -9160,6 +9182,9 @@ export function logCoachActivity(
       push: () => {
         const worthABuzz = opts.push ?? (opts.kind === "coach_note" || opts.kind === "programme" || opts.kind === "report");
         if (opts.kind === "reminder" || !worthABuzz) return null;
+        // One push for one moment (19 Nov, Alex: "your app is ready is deffo the more important one"): while the app is
+        // locked, and for 15 min after it opens, only the coach's messages buzz; the rest goes to the bell alone.
+        if (opts.kind !== "coach_note" && appReadyHoldsTheBuzz(clientId)) return null;
         const user = getData().users.find((u) => u.role === "client" && u.client_id === clientId);
         if (!user) return null;
         // The phone shows "Norcoach" and the icon above this already, so the
@@ -9176,7 +9201,9 @@ export function logCoachActivity(
         // The coach by name on the lock screen too, never "Your coach" (3 Nov, Alex: as the app's list reads it).
         const body = message.replace(/\byour coach\b/gi, () => coach.split(" ")[0]);
         // url null: this notification's own (`/client?n=<its id>`), filled in once the id is known.
-        return { userId: user.id, title, body, url: opts.kind === "coach_note" ? "/client?open=messages" : null, tag: opts.dedupeKey };
+        // Its Settings · Notifications group (19 Nov, Alex): off there, no push; in quiet hours, held (lib/push.ts).
+        const group = groupOfNotification({ kind: opts.kind, action_tab: opts.actionTab ?? null, message, dedupe_key: opts.dedupeKey ?? null }) ?? "always";
+        return { userId: user.id, title, body, url: opts.kind === "coach_note" ? "/client?open=messages" : null, tag: opts.dedupeKey, group };
       },
     }
   );
@@ -14044,7 +14071,7 @@ export async function replyToMedia(id: number, text: string, withPicture = false
   const picture = withPicture && row.reply_media === "photo" && row.reply_file_path ? { path: row.reply_file_path, type: "image" as const, name: "Reply.jpg" } : undefined;
   // With CHAT_STORE=pg the message carries a key of its own (chatReplyMedia…, never once()'s, which once() keeps after
   // the store has the reply): a false back means it went already, so this is that reply.
-  await sendChatMessage(row.client_id, "coach", clean, picture, exerciseLinkFor(row), null, { path: "w.insert.replyMedia", ...(CHAT_PG && onceKey ? { onceKey } : {}) });
+  await sendChatMessage(row.client_id, "coach", clean, picture, exerciseLinkFor(row), null, { path: "w.insert.replyMedia", silent: true, ...(CHAT_PG && onceKey ? { onceKey } : {}) });
   return true;
 }
 /** A recorded form review: its file is already up (/api/video-reply); the message, its length and the drawing count follow. */
@@ -14055,7 +14082,7 @@ export async function sendFormReview(id: number, message: string, meta: { durati
   row.reply_annotations = Number.isFinite(meta.annotations) ? Math.max(0, Math.round(meta.annotations)) : null;
   if (!sendVideoReply(id, message, onceKey?.key)) return false;
   // The clip in the chat too, pointing at the exercise.
-  await sendChatMessage(row.client_id, "coach", message.trim().slice(0, 2000), { path: row.reply_file_path, type: "video", name: "Form review.mp4" }, exerciseLinkFor(row), null, { path: "w.insert.formReview", ...(CHAT_PG && onceKey ? { onceKey } : {}) });
+  await sendChatMessage(row.client_id, "coach", message.trim().slice(0, 2000), { path: row.reply_file_path, type: "video", name: "Form review.mp4" }, exerciseLinkFor(row), null, { path: "w.insert.formReview", silent: true, ...(CHAT_PG && onceKey ? { onceKey } : {}) });
   return true;
 }
 /**

@@ -57,6 +57,8 @@ import {
 } from "./CheckInContext";
 import type { LinkView, MessageAbout } from "../lib/messageLinks";
 import { Bars } from "./Bars";
+import NotifPopup, { useLastInStamp, type PopupNote } from "./NotifPopup";
+import VideoReplySheet, { type VideoReplyView } from "./VideoReplySheet";
 
 /** The app locked until the coach's first phase goes live, or they open it (19 Nov, Alex: B of
     docs/boards/locked-app-mockup.html; lib/appLock.ts). */
@@ -175,7 +177,11 @@ export default function AppShell({
   brand = {},
   liveNow = null,
   lock = null,
+  popup = null,
 }: {
+  /** A push's notification as the pop-up (19 Nov, Alex: A of docs/boards/notification-popup-mockup.html): the one tapped,
+      then the other unread ones that buzzed (app/lib/notifPopup.ts). Null in the coach's preview and while locked. */
+  popup?: PopupNote[] | null;
   /** Locked (19 Nov, Alex: B of docs/boards/locked-app-mockup.html): Home blurred under the coach's face and Message
       {First}; null when open, and always in the coach's preview. */
   lock?: AppLockView | null;
@@ -534,6 +540,11 @@ export default function AppShell({
   // A phone push's arrival (24 Oct, Alex: a push lands on its thing): once, what a tap on its notification does, then
   // the address goes back to plain /client so a reload opens the app as usual.
   const arrived = useRef(false);
+  // The pop-up (19 Nov, Alex: A): View reads that one alone and lands on it; Close reads none. Either way it and the
+  // rest go, the rest staying unread in the bell. Never while locked (the locked sheet stays) or in the preview.
+  const [popupNotes, setPopupNotes] = useState<PopupNote[] | null>(readOnly || lock ? null : popup);
+  const [watchingReply, setWatchingReply] = useState<VideoReplyView | null>(null);
+  useLastInStamp(!readOnly);
   useEffect(() => {
     if (!arrival || readOnly || arrived.current) return;
     arrived.current = true;
@@ -552,20 +563,33 @@ export default function AppShell({
         goToTab("training", arrival.workoutDayId, { week: arrival.week, exercise: null, resume: arrival.live, ...(arrival.live && arrival.finish ? { finish: true } : {}) });
         return;
       }
+      // The pop-up holds it (19 Nov, Alex: A): nothing read or opened until View.
+      if (popupNotes?.length && popupNotes[0].id === arrival.notificationId) return;
       void markNotificationReadAction(arrival.notificationId).catch(() => {});
-      const { category, actionTab, actionRef, link } = arrival;
-      if (link && !link.gone) openLink(link);
-      else if (actionTab === "chat" || actionTab === "video") openMessages();
-      else if (category === "event_added" || category === "event_changed") openEventsAt?.(actionRef ?? undefined);
-      // A weight goal (2 Nov, Alex): the Events screen on the goal's row, as a tap in the list does.
-      else if (category === "weight_goal") openEventsAt?.(actionRef != null ? goalItemId(actionRef) : undefined);
-      else if (category === "meeting_booked" || category === "meeting_changed" || category === "meeting_notes") openMeetingsAt?.(actionRef ?? undefined);
-      else if (category === "checkin_comment") openCheckIn("daily");
-      else if (actionTab) goToTab(actionTab, actionTab === "training" ? undefined : actionRef ?? undefined);
+      openNote(arrival);
     }, 0);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arriving
   }, []);
+  // What a tap on a notification opens, as the bell list does: its exact thing, else its screen.
+  function openNote(n: { category: NotificationCategory; actionTab: string | null; actionRef: number | null; link: LinkView | null; videoReply?: VideoReplyView | null }) {
+    const { category, actionTab, actionRef, link } = n;
+    if (link && !link.gone) openLink(link);
+    // A video reply plays in its sheet, as in the list (the pop-up's View); a push straight in opens the chat, as before.
+    else if (actionTab === "video" && n.videoReply) setWatchingReply(n.videoReply);
+    else if (actionTab === "chat" || actionTab === "video") openMessages();
+    else if (category === "event_added" || category === "event_changed") openEventsAt?.(actionRef ?? undefined);
+    // A weight goal (2 Nov, Alex): the Events screen on the goal's row, as a tap in the list does.
+    else if (category === "weight_goal") openEventsAt?.(actionRef != null ? goalItemId(actionRef) : undefined);
+    else if (category === "meeting_booked" || category === "meeting_changed" || category === "meeting_notes") openMeetingsAt?.(actionRef ?? undefined);
+    else if (category === "checkin_comment") openCheckIn("daily");
+    else if (actionTab) goToTab(actionTab, actionTab === "training" ? undefined : actionRef ?? undefined);
+  }
+  const viewPopupNote = (n: PopupNote) => {
+    setPopupNotes(null);
+    void markNotificationReadAction(n.id).catch(() => {});
+    openNote(n);
+  };
   const backToChat = () => {
     setChatReturn(null);
     setMessageAbout(null);
@@ -756,6 +780,10 @@ export default function AppShell({
       <StableInset />
       {!readOnly && <NativeStatusBar />}
       {!readOnly && <NativePush />}
+      {popupNotes && !lockNow && !readOnly && (
+        <NotifPopup notes={popupNotes} coachName={coachMessages.coachName} coachPhoto={coachAvatarPath} onView={viewPopupNote} onClose={() => setPopupNotes(null)} />
+      )}
+      {watchingReply && <VideoReplySheet reply={watchingReply} coachName={coachMessages.coachName.trim().split(/\s+/)[0] || "Coach"} onClose={() => setWatchingReply(null)} />}
       <div
         className={`phone-frame${preview ? " previewing" : ""}${readOnly ? " phone-readonly" : ""}${brandOn ? " brand-on" : ""}`}
         // The coach's phone preview wears the client's coach's colour, not the viewer's (the owner looking at another
