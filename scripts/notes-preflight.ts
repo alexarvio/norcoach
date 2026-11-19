@@ -70,7 +70,7 @@ async function main() {
     const c = (await q(`SELECT count(*)::int AS n, max(id) AS max, count(*) FILTER (WHERE kind = 'reminder')::int AS reminders, count(*) FILTER (WHERE created_at_tz IS NULL)::int AS no_tz FROM coach_activity`))[0];
     console.log(`info P1 coach_activity: ${c.n} rows, max id ${c.max}, ${c.reminders} reminders, created_at_tz null ${c.no_tz}`);
     const twins = (await q(`SELECT count(*)::int AS groups, COALESCE(sum(n - 1), 0)::int AS extra FROM (SELECT client_id, dedupe_key, count(*) n FROM coach_activity WHERE dedupe_key IS NOT NULL GROUP BY 1, 2 HAVING count(*) > 1) t`))[0];
-    console.log(`${twins.groups ? "WARN" : "ok  "} P2 twins on (client, key): ${twins.groups} groups, ${twins.extra} rows the pg boot would move to coach_activity_twins (a question for Alex when not 0)`);
+    console.log(`${twins.groups ? "WARN" : "ok  "} P2 twins on (client, key): ${twins.groups} groups, ${twins.extra} rows the pg boot would move to coach_activity_twins (the lowest id of each kept, made unread where a twin is: 19 Nov, Alex)`);
     const stamps = (await q(`SELECT count(*) FILTER (WHERE created_at IS NULL)::int AS nulls, count(*) FILTER (WHERE created_at !~ '^[ -~]*$')::int AS non_ascii, count(*) FILTER (WHERE created_at !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$')::int AS not_iso, count(DISTINCT client_id) FILTER (WHERE created_at IS NULL OR created_at !~ '^[ -~]*$')::int AS stray_clients FROM coach_activity`))[0];
     console.log(`info P3 stamps: null ${stamps.nulls}, non-ASCII ${stamps.non_ascii}, not ISO-Z ${stamps.not_iso}; ${stamps.stray_clients} clients read whole`);
     const words = (await q(`SELECT count(*)::int AS n FROM coach_activity WHERE message IS NULL`))[0];

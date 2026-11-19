@@ -2,7 +2,7 @@
 //
 // A NOTES_STORE=pg boot, under the lease (pg/lease.ts), before the preflight:
 //   - in one transaction, the table locked against writes: twins on (client, key) moved to coach_activity_twins (the
-//     lowest id kept, as memory's find kept it), then the unique rule on (client_id, md5(dedupe_key)) made, which the
+//     lowest id kept, as memory's find kept it, made unread when a twin was: 19 Nov, Alex), then the unique rule on (client_id, md5(dedupe_key)) made, which the
 //     drainer's ON CONFLICT leans on. Made here and only here: a memory boot drops it, so a twin can never block a
 //     memory-mode save (the writer upserts every changed row in one transaction);
 //   - created_at_tz put right where it isn't what the writer would write (a build that didn't fill it);
@@ -69,11 +69,29 @@ export async function pruneOpTokens(db: AnyDb): Promise<void> {
 /** Twins on (client, key) out to coach_activity_twins, the lowest id kept, then the unique rule; in one transaction, the
  *  table locked against writes. `from`: only keys a row past that id holds (a twin needs a row written since the last
  *  pg boot, when the rule last held); 0 for every key. A row is deleted only once its copy is in coach_activity_twins. */
-async function twinPass(db: AnyDb, from: number): Promise<number> {
+async function twinPass(db: AnyDb, from: number): Promise<{ twins: number; carried: number }> {
   let twins = 0;
+  let carried = 0;
   await db.transaction(async (tx) => {
     const t = tx as unknown as AnyDb;
     await t.execute(sql`LOCK TABLE coach_activity IN SHARE ROW EXCLUSIVE MODE`);
+    // The unread mark carried over (19 Nov, Alex: "Carry unread over"): where a twin about to move is unread, the copy
+    // kept is made unread too, so the client never loses one; at worst something seen shows as new once more. Read is
+    // `false` alone (a null reads as read, normalizeNotification). Before the move, on the same keys, the same order. The
+    // column set as the other read writes set it (norcoach_column_set: off `extra` and its __absent list, so a row stored
+    // with no read field decodes unread too). Said once committed (a 23505 below rolls it back with the rest).
+    carried = rowsOf(
+      await t.execute(sql`WITH fresh AS (
+          SELECT DISTINCT client_id, md5(dedupe_key) AS h FROM coach_activity WHERE dedupe_key IS NOT NULL AND id > ${from}::int),
+        t AS (
+          SELECT c.id, row_number() OVER (w ORDER BY c.id) AS rn, bool_or(c.read IS FALSE) OVER w AS any_unread FROM coach_activity c
+           WHERE c.dedupe_key IS NOT NULL AND (${from}::int = 0 OR (c.client_id, md5(c.dedupe_key)) IN (SELECT client_id, h FROM fresh))
+          WINDOW w AS (PARTITION BY c.client_id, md5(c.dedupe_key), c.dedupe_key))
+        UPDATE coach_activity c SET read = false, extra = norcoach_column_set(c.extra, 'read') FROM t
+         WHERE t.id = c.id AND t.rn = 1 AND t.any_unread
+           AND (c.read IS NOT FALSE OR jsonb_exists(COALESCE(c.extra, '{}'::jsonb), 'read') OR jsonb_exists(COALESCE(c.extra -> '__absent', '[]'::jsonb), 'read'))
+         RETURNING c.id`)
+    ).length;
     const moved = rowsOf(
       await t.execute(sql`WITH fresh AS (
           SELECT DISTINCT client_id, md5(dedupe_key) AS h FROM coach_activity WHERE dedupe_key IS NOT NULL AND id > ${from}::int),
@@ -93,7 +111,7 @@ async function twinPass(db: AnyDb, from: number): Promise<number> {
     twins = moved.length;
     await t.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS "${NOTES_UNIQUE}" ON coach_activity (client_id, md5(dedupe_key)) WHERE dedupe_key IS NOT NULL`));
   });
-  return twins;
+  return { twins, carried };
 }
 
 /** A pg boot's own work on the table (above). */
@@ -113,19 +131,20 @@ export async function notesBootPg(db: AnyDb): Promise<{ maxId: number; strays: n
   // dropped it) the keys written since the mark; should an older twin still stop the rule (a restore), every key.
   const rule = rowsOf(await db.execute(sql`SELECT i.indisvalid AS ok FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE c.relname = ${NOTES_UNIQUE}`))[0];
   let twins = 0;
+  let carried = 0;
   if (rule?.ok !== true) {
     if (rule) await db.execute(sql.raw(`DROP INDEX IF EXISTS "${NOTES_UNIQUE}"`));
     try {
-      twins = await twinPass(db, from);
+      ({ twins, carried } = await twinPass(db, from));
     } catch (error) {
       if (from === 0 || String((error as { cause?: { code?: unknown } })?.cause?.code ?? (error as { code?: unknown })?.code ?? "") !== "23505") throw error;
       log("an older twin held the unique rule back: every key looked at");
-      twins = await twinPass(db, 0);
+      ({ twins, carried } = await twinPass(db, 0));
     }
   }
   if (twins) {
-    console.error(`[notes] !!! ${twins} twin rows on (client, key) moved to coach_activity_twins (the lowest id of each kept)`);
-    toSentry((S) => S.captureMessage(`Notes twins moved: ${twins}`, { level: "warning", tags: { alert: "notes-twins" } }));
+    console.error(`[notes] !!! ${twins} twin rows on (client, key) moved to coach_activity_twins (the lowest id of each kept; ${carried} kept rows made unread, a twin of each being unread)`);
+    toSentry((S) => S.captureMessage(`Notes twins moved: ${twins} (${carried} kept made unread)`, { level: "warning", tags: { alert: "notes-twins" } }));
   }
 
   let maxId = from;
@@ -159,7 +178,7 @@ export async function notesBootPg(db: AnyDb): Promise<{ maxId: number; strays: n
   await db.execute(
     sql`INSERT INTO coach_activity_ops (token, outcome) VALUES (${NOTES_BOOT_MARK}, ${JSON.stringify(next)}::text) ON CONFLICT (token) DO UPDATE SET outcome = EXCLUDED.outcome, at = now()`
   );
-  log(`pg: from id ${from}, max id ${maxId}, restamped ${restamped}, stray clients ${strays.length}, twins ${twins}, linked ${linked.linked} (ambiguous ${linked.ambiguous}, no match ${linked.none})`);
+  log(`pg: from id ${from}, max id ${maxId}, restamped ${restamped}, stray clients ${strays.length}, twins ${twins} (${carried} made unread), linked ${linked.linked} (ambiguous ${linked.ambiguous}, no match ${linked.none})`);
   return { maxId, strays, twins, linked: linked.linked, restamped };
 }
 
