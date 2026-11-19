@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, useTransition, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -360,7 +360,7 @@ export function BannerSettings({ banner, ratio }: { banner: string | null; ratio
 }
 
 // ---- The brand colour (19 Nov, Alex: option C): any colour, on the main pill of a screen, the tab on screen and the
-// client's own bubbles. Eight quick picks and + for any other; one too light for white words is darkened, and one grey
+// client's own bubbles. Eight quick picks and Custom for any other (a colour square, a hue strip and a hex code); one too light for white words is darkened, and one grey
 // fact says so. Ink is today's look, kept as none. Saved at once, as Logo.
 export function BrandColourSettings({ picked }: { picked: string | null }) {
   const router = useRouter();
@@ -369,7 +369,6 @@ export function BrandColourSettings({ picked }: { picked: string | null }) {
   const custom = !!now && !BRAND_SWATCHES.some((s) => s.hex === now);
   const [open, setOpen] = useState(custom);
   const [typed, setTyped] = useState(custom && now ? now.toUpperCase() : "");
-  const wheel = useRef<HTMLInputElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ink = BRAND_SWATCHES[0].hex;
   const shown = now ?? ink;
@@ -418,7 +417,7 @@ export function BrandColourSettings({ picked }: { picked: string | null }) {
       .then((r) => (r.ok ? router.refresh() : setError(r.error)))
       .catch(() => setError("Not saved. Try again."));
   };
-  // The browser's colour field sends every step of a drag: the last one is kept.
+  // A drag in the picker sends every step: the last one is kept.
   const saveSoon = (hex: string) => {
     setNow(hex);
     if (timer.current) clearTimeout(timer.current);
@@ -448,45 +447,22 @@ export function BrandColourSettings({ picked }: { picked: string | null }) {
               onClick={() => (setOpen(false), save(s.hex))}
             />
           ))}
-          <button type="button" className={`rst-swatch plus${custom ? " on" : ""}`} aria-label="Another colour" aria-expanded={open} title="Another colour" onClick={() => setOpen((o) => !o)}>
-            {custom ? <i style={{ background: shown }} aria-hidden="true" /> : "+"}
+          <button type="button" className={`rst-custom${custom ? " on" : ""}${open ? " open" : ""}`} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+            <i className="rst-custom-dot" style={custom ? { background: shown } : undefined} aria-hidden="true" />
+            Custom
           </button>
         </div>
         {open && (
-          <div className="rst-hexrow">
-            <input
-              className="dlh-line rst-hex"
-              value={typed}
-              onChange={(e) => setTyped(e.target.value)}
-              onBlur={takeTyped}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  takeTyped();
-                }
-              }}
-              placeholder="#"
-              aria-label="Colour as a hex code"
-              spellCheck={false}
-              autoComplete="off"
-              maxLength={7}
-            />
-            <button type="button" className="rst-act" onClick={() => wheel.current?.click()}>
-              Pick
-            </button>
-            <input
-              ref={wheel}
-              type="color"
-              className="rst-wheel"
-              tabIndex={-1}
-              aria-hidden="true"
-              value={shown}
-              onChange={(e) => {
-                setTyped(e.target.value.toUpperCase());
-                saveSoon(e.target.value.toLowerCase());
-              }}
-            />
-          </div>
+          <ColourPicker
+            value={shown}
+            typed={typed}
+            onTyped={setTyped}
+            onTake={takeTyped}
+            onDrag={(hex) => {
+              setTyped(hex.toUpperCase());
+              saveSoon(hex);
+            }}
+          />
         )}
         {used.changed && (
           <span className="rst-brand-fact">
@@ -496,6 +472,121 @@ export function BrandColourSettings({ picked }: { picked: string | null }) {
         {error && <small className="rst-err">{error}</small>}
       </div>
     </Section>
+  );
+}
+
+// The Custom picker (19 Nov, Alex: "the thing where i can choose a color from a whole pallet or even type a hex code.
+// the + sign is a bit vague"): a square of the hue's shades to drag in, the hue strip under it, and the hex code typed.
+// Every step shows on the page at once (the colour is live), the save following the last.
+function hexToHsv(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  let h = 0;
+  if (d) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [((h * 60) + 360) % 360, max ? d / max : 0, max];
+}
+function hsvToHex(h: number, s: number, v: number): string {
+  const f = (k: number) => {
+    const x = (k + h / 60) % 6;
+    return v - v * s * Math.max(0, Math.min(x, 4 - x, 1));
+  };
+  return "#" + [f(5), f(3), f(1)].map((c) => Math.round(c * 255).toString(16).padStart(2, "0")).join("");
+}
+function ColourPicker({ value, typed, onTyped, onTake, onDrag }: { value: string; typed: string; onTyped: (t: string) => void; onTake: () => void; onDrag: (hex: string) => void }) {
+  const [hsv, setHsv] = useState<[number, number, number]>(() => hexToHsv(value));
+  // A colour picked elsewhere (a swatch, the hex typed) moves the marks, keeping the hue where grey has none.
+  const last = useRef(value);
+  useEffect(() => {
+    if (value === last.current) return;
+    last.current = value;
+    const next = hexToHsv(value);
+    setHsv((was) => (next[1] === 0 || next[2] === 0 ? [was[0], next[1], next[2]] : next));
+  }, [value]);
+  const pick = (h: number, s: number, v: number) => {
+    setHsv([h, s, v]);
+    const hex = hsvToHex(h, s, v);
+    last.current = hex;
+    onDrag(hex);
+  };
+  const drag = (el: HTMLElement, e: ReactPointerEvent, move: (x: number, y: number) => void) => {
+    el.setPointerCapture(e.pointerId);
+    const at = (ev: { clientX: number; clientY: number }) => {
+      const r = el.getBoundingClientRect();
+      move(Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height)));
+    };
+    at(e);
+    const onMove = (ev: PointerEvent) => at(ev);
+    const onUp = () => {
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onUp);
+    };
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onUp);
+  };
+  const [h, s, v] = hsv;
+  return (
+    <div className="rst-picker">
+      <div
+        className="rst-picker-sv"
+        style={{ backgroundColor: hsvToHex(h, 1, 1) }}
+        onPointerDown={(e) => drag(e.currentTarget, e, (x, y) => pick(h, x, 1 - y))}
+        role="slider"
+        aria-label="Shade"
+        aria-valuetext={value.toUpperCase()}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          const step = e.shiftKey ? 0.1 : 0.02;
+          const keys: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
+          const k = keys[e.key];
+          if (!k) return;
+          e.preventDefault();
+          pick(h, Math.min(1, Math.max(0, s + k[0])), Math.min(1, Math.max(0, v + k[1])));
+        }}
+      >
+        <span className="rst-picker-mark" style={{ left: `${s * 100}%`, top: `${(1 - v) * 100}%`, background: value }} />
+      </div>
+      <div
+        className="rst-picker-hue"
+        onPointerDown={(e) => drag(e.currentTarget, e, (x) => pick(x * 359.9, s || 1, v || 1))}
+        role="slider"
+        aria-label="Hue"
+        aria-valuemin={0}
+        aria-valuemax={360}
+        aria-valuenow={Math.round(h)}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          const step = e.shiftKey ? 20 : 4;
+          if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+          e.preventDefault();
+          pick((h + (e.key === "ArrowRight" ? step : -step) + 360) % 360, s || 1, v || 1);
+        }}
+      >
+        <span className="rst-picker-mark" style={{ left: `${(h / 360) * 100}%`, background: hsvToHex(h, 1, 1) }} />
+      </div>
+      <div className="rst-hexrow">
+        <i className="rst-picker-now" style={{ background: value }} aria-hidden="true" />
+        <input
+          className="dlh-line rst-hex"
+          value={typed}
+          onChange={(e) => onTyped(e.target.value)}
+          onBlur={onTake}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onTake();
+            }
+          }}
+          placeholder="#"
+          aria-label="Colour as a hex code"
+          spellCheck={false}
+          autoComplete="off"
+          maxLength={7}
+        />
+      </div>
+    </div>
   );
 }
 

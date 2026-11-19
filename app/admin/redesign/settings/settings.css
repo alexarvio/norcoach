@@ -157,14 +157,25 @@ body:has(.rd.rst) .rd-picker-menu [data-slot="dropdown-menu-item"] small { font-
 .rd.rls.rst .rls-card.rst-card.rst-brand, .rd.rls.rst .rls-card.rst-card.rst-bannercard { padding: 16px 18px 18px; }
 .rd.rst .rst-swatches { display: flex; flex-wrap: wrap; gap: 12px; }
 .rd.rst .rst-swatch { position: relative; flex: none; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(20, 26, 36, 0.08); font: inherit; font-size: 18px; font-weight: 500; line-height: 1; color: #5b6474; cursor: pointer; }
-.rd.rst .rst-swatch.plus { background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; }
-.rd.rst .rst-swatch.plus i { width: 24px; height: 24px; border-radius: 50%; }
 .rd.rst .rst-swatch.on::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; box-shadow: 0 0 0 1.5px #141a24; pointer-events: none; }
 .rd.rst .rst-swatch:focus-visible { outline: 2px solid #141a24; outline-offset: 6px; }
 .rd.rst .rst-hexrow { position: relative; display: flex; align-items: center; gap: 8px; }
+/* Custom (19 Nov, Alex: "the + sign is a bit vague"): a white hairline pill with the colour wheel's dot and the word, the
+   colour itself in the dot once one of the coach's own is picked; it opens the picker under the swatches: the hue's
+   shades to drag in, the hue strip, the hex code. The one place a gradient is drawn, as a colour picker must. */
+.rd.rst .rst-custom { position: relative; display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px 0 8px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; cursor: pointer; }
+.rd.rst .rst-custom.open { box-shadow: inset 0 0 0 1px #141a24; }
+.rd.rst .rst-custom-dot { width: 22px; height: 22px; border-radius: 50%; background: conic-gradient(#e53935, #fdd835, #43a047, #00acc1, #1e88e5, #8e24aa, #e53935); }
+.rd.rst .rst-custom.on::after { content: ""; position: absolute; left: 4px; top: 50%; width: 30px; height: 30px; margin-top: -15px; border-radius: 50%; box-shadow: 0 0 0 1.5px #141a24; pointer-events: none; }
+.rd.rst .rst-picker { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 320px; }
+.rd.rst .rst-picker-sv { position: relative; height: 160px; border-radius: 12px; background-image: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent); cursor: crosshair; touch-action: none; }
+.rd.rst .rst-picker-hue { position: relative; height: 14px; border-radius: 999px; background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); cursor: pointer; touch-action: none; }
+.rd.rst .rst-picker-hue .rst-picker-mark { top: 50%; }
+.rd.rst .rst-picker-mark { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; box-shadow: 0 0 0 2px #fff, 0 0 0 3px rgba(20, 26, 36, 0.25); pointer-events: none; }
+.rd.rst .rst-picker-sv:focus-visible, .rd.rst .rst-picker-hue:focus-visible { outline: 2px solid #141a24; outline-offset: 3px; }
+.rd.rst .rst-picker-now { flex: none; width: 22px; height: 22px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(20, 26, 36, 0.08); }
 /* The code on a clean line, as every field on the page (`dlh-line`: the hairline under it, ink while typing). */
 .rd.rst .rst-hex.dlh-line { width: 120px; letter-spacing: 0.04em; text-transform: uppercase; }
-.rd.rst .rst-wheel { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
 .rd.rst .rst-brand-fact { font-size: 13px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; }
 /* Card pictures (19 Nov, Alex: "do up to 5 per track"; CardPicturesSettings.tsx): a row a track, its icon and name in
    its colour in small caps, then its pictures as 3:4 tiles (radius 10) and the dashed Add tile; the round × on a tile's
