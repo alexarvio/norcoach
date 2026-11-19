@@ -7,10 +7,16 @@ import ActivityKit
 /// ends (app/lib/liveActivity.ts); the clock counts on the phone by itself. Called through window.Capacitor as
 /// "NorcoachLive"; the page checks PluginHeaders first, so an older build without it is never asked.
 ///
-///   start({dayId, startedAt, name, gym?, sets?, url?})  shows it; again for the same dayId and startedAt is an update.
-///                                                       startedAt is epoch milliseconds (an ISO string is read too).
+///   start({dayId, startedAt, url?, finishUrl?, coach?, brand?, name, gym?, sets?, total?, exercise?, setNo?, setOf?,
+///          target?})                                    shows it; again for the same dayId and startedAt is an update
+///                                                       (url, finishUrl, coach and brand are the activity's own and
+///                                                       never change after its start). startedAt is epoch
+///                                                       milliseconds (an ISO string is read too).
 ///                                                       Resolves {active, id?, reason?: "unsupported" | "disabled"}.
-///   update({dayId, name?, gym?, sets?})                 the name, gym (null for none) and sets done. {active}
+///   update({dayId, name?, gym?, sets?, total?, exercise?, setNo?, setOf?, target?})
+///                                                       the name, gym (null for none; left out, kept) and sets done,
+///                                                       and the set next (19 Nov, Alex: C): each of total, exercise,
+///                                                       setNo, setOf and target left out or null is none. {active}
 ///   end({dayId?})                                       takes it down at once; with no dayId, every one. {ended}
 ///   sync({keep: {dayId, startedAt} | null})             ends every one but the kept one. {kept, ended}
 ///
@@ -76,12 +82,15 @@ private enum LiveWorkout {
             call.reject("dayId and startedAt are needed")
             return
         }
-        let state = WorkoutAttributes.ContentState(
+        let state = next(call, on: WorkoutAttributes.ContentState(
             name: name(call.getString("name")) ?? "Workout",
             gym: gym(call.getString("gym")),
             sets: max(0, call.getInt("sets") ?? 0)
-        )
+        ))
         let link = url(call.getString("url"), dayId: dayId)
+        let finishLink = url(call.getString("finishUrl"), dayId: dayId, finish: true)
+        let coach = name(call.getString("coach"))
+        let brand = hex(call.getString("brand"))
         DispatchQueue.main.async {
             let all = Workout.activities
             let mine = all.first { isLive($0) && same($0, dayId: dayId, startedAt: startedAt) }
@@ -102,7 +111,7 @@ private enum LiveWorkout {
                 }
                 return
             }
-            let attributes = WorkoutAttributes(dayId: dayId, startedAt: startedAt, url: link)
+            let attributes = WorkoutAttributes(dayId: dayId, startedAt: startedAt, url: link, finishUrl: finishLink, coach: coach, brand: brand)
             do {
                 let made: Workout
                 if #available(iOS 16.2, *) {
@@ -138,6 +147,8 @@ private enum LiveWorkout {
         let gymGiven = call.getValue("gym") != nil
         let newGym = gym(call.getString("gym"))
         let newSets = call.getInt("sets")
+        // The set next is sent whole each time (19 Nov, Alex: C): what is left out is none.
+        let told = next(call, on: WorkoutAttributes.ContentState(name: "", gym: nil, sets: 0))
         DispatchQueue.main.async {
             guard let mine = Workout.activities.first(where: { isLive($0) && $0.attributes.dayId == dayId }) else {
                 call.resolve(["active": false])
@@ -147,6 +158,11 @@ private enum LiveWorkout {
             if let newName = newName { state.name = newName }
             if gymGiven { state.gym = newGym }
             if let newSets = newSets { state.sets = max(0, newSets) }
+            state.total = told.total
+            state.exercise = told.exercise
+            state.setNo = told.setNo
+            state.setOf = told.setOf
+            state.target = told.target
             Task {
                 await push(mine, state)
                 call.resolve(["active": true, "id": mine.id])
@@ -249,11 +265,35 @@ private enum LiveWorkout {
         return name(raw)
     }
 
-    /// Only a link into the app's own site; anything else opens the workout by its day.
-    static func url(_ raw: String?, dayId: Int) -> String {
+    /// Only a link into the app's own site; anything else opens the workout by its day (Finish: its wrap-up).
+    static func url(_ raw: String?, dayId: Int, finish: Bool = false) -> String {
         if let raw = raw, let parsed = URL(string: raw), parsed.scheme == "https", parsed.host == site {
             return raw
         }
-        return "https://\(site)/client?workout=\(dayId)"
+        return "https://\(site)/client?workout=\(dayId)" + (finish ? "&finish=1" : "")
+    }
+
+    /// The set next, as start and update send it (19 Nov, Alex: C). A count left out or below one is none.
+    static func next(_ call: CAPPluginCall, on base: WorkoutAttributes.ContentState) -> WorkoutAttributes.ContentState {
+        var state = base
+        state.total = positive(call.getInt("total"))
+        state.exercise = name(call.getString("exercise"))
+        state.setNo = positive(call.getInt("setNo"))
+        state.setOf = positive(call.getInt("setOf"))
+        state.target = name(call.getString("target"))
+        return state
+    }
+
+    static func positive(_ value: Int?) -> Int? {
+        guard let value = value, value > 0 else { return nil }
+        return value
+    }
+
+    /// The coach's brand as `#rrggbb`, or none for anything that isn't six hex digits (with or without its #).
+    static func hex(_ raw: String?) -> String? {
+        guard var text = name(raw) else { return nil }
+        if text.hasPrefix("#") { text.removeFirst() }
+        guard text.count == 6, text.allSatisfy({ $0.isHexDigit }) else { return nil }
+        return "#" + text.lowercased()
     }
 }

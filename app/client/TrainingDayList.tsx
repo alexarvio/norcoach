@@ -147,6 +147,8 @@ export default function TrainingDayList({
   // The link from the chat whose way back has been used, so opening the same
   // session again from the list comes back to the list.
   const [chatDone, setChatDone] = useState<TrainingFocus | null>(null);
+  // The lock-screen pill's Finish (19 Nov, Alex: C): the wrap-up opens once for that arrival, never again on coming back.
+  const [finishDone, setFinishDone] = useState<TrainingFocus | null>(null);
   useEffect(() => {
     const t = setTimeout(() => {
       const stored = readView();
@@ -606,6 +608,8 @@ export default function TrainingDayList({
           coachPhoto={coachPhoto}
           clientName={clientName}
           focusExercise={openDay.key === focus ? focusExercise : null}
+          openFinish={view.screen === "workout" && openDay.key === focus && !!trainingFocus?.finish && finishDone !== trainingFocus && !openDay.endedAt}
+          onFinishOpened={() => setFinishDone(trainingFocus)}
           onBack={() => (openDay.free ? (openDay.exercises.length === 0 && openDay.cardio.length === 0 ? dropFree(openDay.key) : setView(null)) : setView({ dayId: openDay.key, screen: "overview" }))}
           library={library}
           onAddExercise={openDay.free ? (pick) => addFree(openDay.key, pick) : undefined}

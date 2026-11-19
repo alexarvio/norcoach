@@ -58,6 +58,8 @@ export default function WorkoutSheet({
   coachName,
   coachPhoto = null,
   focusExercise,
+  openFinish = false,
+  onFinishOpened,
   onBack,
   onEnded,
   onDiscarded,
@@ -76,6 +78,9 @@ export default function WorkoutSheet({
   /** The client's first name (the pager's wrap-up); the sheet's finish says the session's name instead. */
   clientName?: string;
   focusExercise: number | null;
+  /** The lock-screen pill's Finish (19 Nov, Alex: C): the wrap-up sheet open, the swipe still to do; told once it is. */
+  openFinish?: boolean;
+  onFinishOpened?: () => void;
   onBack: () => void;
   onEnded: () => void;
   onDiscarded: () => void;
@@ -93,6 +98,16 @@ export default function WorkoutSheet({
   const gymName = gym?.name ?? null;
   const fin = useSessionEnd(day, { onEnded, onDiscarded, onEdited });
   const [finishOpen, setFinishOpen] = useState(false);
+  // The pill's Finish (19 Nov, Alex: C): the wrap-up as the dock's Finish opens it; never ending it, never when editing.
+  useEffect(() => {
+    if (!openFinish || editing || ended) return;
+    const t = setTimeout(() => {
+      setFinishOpen(true);
+      onFinishOpened?.();
+    }, 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- on the ask alone
+  }, [openFinish]);
 
   // ---- The blocks, in order: the exercises, then the cardio. A rogue exercise is done once anything is logged.
   const exDone = (ex: SessionExercise) => (free ? loggedCount(ex) > 0 || ex.logs.length > 0 : isDone(ex));

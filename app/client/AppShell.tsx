@@ -135,7 +135,7 @@ export type Arrival =
   | { notificationId: number; category: NotificationCategory; actionTab: string | null; actionRef: number | null; link: LinkView | null }
   | { meetingId: number }
   /** A "still going" reminder (19 Nov, Alex): into the workout while it runs, as the resume pill; once over, its overview. */
-  | { workoutDayId: number; week: number; live: boolean };
+  | { workoutDayId: number; week: number; live: boolean; /** The lock-screen pill's Finish (19 Nov, Alex: C): its wrap-up open. */ finish?: boolean };
 
 export default function AppShell({
   clientName,
@@ -512,7 +512,7 @@ export default function AppShell({
         return;
       }
       if ("workoutDayId" in arrival) {
-        goToTab("training", arrival.workoutDayId, { week: arrival.week, exercise: null, resume: arrival.live });
+        goToTab("training", arrival.workoutDayId, { week: arrival.week, exercise: null, resume: arrival.live, ...(arrival.live && arrival.finish ? { finish: true } : {}) });
         return;
       }
       void markNotificationReadAction(arrival.notificationId).catch(() => {});
