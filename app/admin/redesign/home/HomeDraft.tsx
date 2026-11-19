@@ -10,7 +10,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import ClientCardEditor from "../../ClientCardEditor";
 import { toast } from "sonner";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
-import { AccountIcon, MoreIcon, TrashIcon, WeightGoalIcon } from "../../../components/icons";
+import { AccountIcon, MoreIcon, TrashIcon, UnlockIcon, WeightGoalIcon } from "../../../components/icons";
+import { openClientAppAction } from "../../../lib/appLockActions";
 import type { OverviewInfoRow, OverviewPanel } from "../../../lib/queries";
 // Types only: homeBoard.ts re-exports the server's reader, which must never reach the browser.
 import type { HomeBoard, MuscleGroup, MuscleWindow, PerGroup } from "../../../lib/homeBoard";
@@ -74,6 +75,8 @@ export type DraftHome = {
   access: ClientAccess;
   /** The board: tracks, calls, invoices, muscle balance, strength, weight, consistency (app/lib/homeBoard.ts). */
   board: HomeBoard;
+  /** The client's app is still locked (19 Nov, Alex: app/lib/appLock.ts): the ⋯ offers Open {First}'s app. */
+  appLocked?: boolean;
 };
 
 // The tabs' ids, as the shell names them.
@@ -191,6 +194,10 @@ export default function HomeDraft({
   const detailsPick = useRef(false);
   const [deleting, setDeleting] = useState(false);
   const [photo, setPhoto] = useState(false);
+  // Open {First}'s app (19 Nov): gone from the ⋯ the moment it is picked, back only if the open fails.
+  const [openedFor, setOpenedFor] = useState<number | null>(null);
+  const [, startOpening] = useTransition();
+  const locked = !!home.appLocked && openedFor !== clientId;
   const panel = useMemo(() => ({ ...home.panel, memberInfo: dated(home.panel.memberInfo), coachingInfo: dated(home.panel.coachingInfo) }), [home.panel]);
   const board = home.board;
 
@@ -265,6 +272,24 @@ export default function HomeDraft({
               >
                 <AccountIcon /> Details
               </DropdownMenuItem>
+              {/* The locked app (19 Nov, Alex: B of docs/boards/locked-app-mockup.html): opens it now, no confirm. */}
+              {locked && (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setOpenedFor(clientId);
+                    startOpening(async () => {
+                      const ok = await openClientAppAction(clientId).catch(() => false);
+                      if (!ok) {
+                        setOpenedFor(null);
+                        toast.error(`${firstName}'s app didn't open. Try again`);
+                      }
+                      router.refresh();
+                    });
+                  }}
+                >
+                  <UnlockIcon /> Open {firstName}&apos;s app
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem variant="destructive" onSelect={() => setDeleting(true)}>
                 <TrashIcon /> Delete {firstName}
               </DropdownMenuItem>

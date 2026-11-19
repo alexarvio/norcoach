@@ -21,6 +21,7 @@ import { listClientGyms } from "./queries";
 import { createCoachAccount, invoiceCheckout, onboardingLink, stripeConfigured } from "./stripe";
 import { canPayOnline } from "./payments";
 import { sendPushInBackground } from "./push";
+import { openAppIfPhaseLive } from "./appLock";
 import { pushCoachMessage, pushCoachNews, pushCoachVideo } from "./coachPush";
 import { coachIdOfClient as coachUserIdOf } from "./tenancy";
 import { appUrl } from "./passwordReset";
@@ -685,6 +686,8 @@ export async function deployProgramAction(formData: FormData) {
   // programme can't go out. The button is disabled too; this is the backstop.
   if (!programHasName(programId)) return;
   deployProgram(programId);
+  // A client still locked opens with their first phase live (19 Nov, Alex: "first phase"; app/lib/appLock.ts).
+  await openAppIfPhaseLive(getClientIdForProgram(programId));
   revalidatePath("/client");
   revalidatePath("/admin");
 }
@@ -704,6 +707,8 @@ export async function scheduleProgramDeployAction(formData: FormData) {
     const when = new Date(`${date}T${time}:00`);
     if (!Number.isNaN(when.getTime())) {
       scheduleProgramDeploy(programId, when.toISOString());
+      // A schedule already due opens a client still locked (19 Nov, review; app/lib/appLock.ts).
+      await openAppIfPhaseLive(getClientIdForProgram(programId));
     }
   }
   revalidatePath("/admin");
@@ -3376,7 +3381,7 @@ export async function addClientPhaseAction(formData: FormData): Promise<{ phaseI
   // Only one of this client's own programmes can be linked.
   const programId = /^\d+$/.test(rawProgram) && getClientIdForProgram(Number(rawProgram)) === clientId ? Number(rawProgram) : null;
   // Taken once (6 Nov, one-time key): sent again after a dropped signal, it answers the phase the first made.
-  return once(`addClientPhaseAction:${clientId}`, onceKeyOf(formData), () => {
+  const made = await once(`addClientPhaseAction:${clientId}`, onceKeyOf(formData), () => {
     // A running phase with no end on this track ends the week before (26 Oct).
     endOpenPhaseBefore(clientId, fields.track, fields.start);
     const added = addClientPhase(clientId, fields.track, fields.name, fields.start, fields.end, programId);
@@ -3386,6 +3391,9 @@ export async function addClientPhaseAction(formData: FormData): Promise<{ phaseI
     revalidatePath("/client");
     return { phaseId: added.id, programId: added.program_id ?? null };
   });
+  // Linked to a programme already out, it can be live at once: a client still locked opens (19 Nov, appLock.ts).
+  await openAppIfPhaseLive(clientId);
+  return made;
 }
 
 /**
@@ -3434,6 +3442,8 @@ export async function schedulePhaseAction(formData: FormData) {
   if (!fields) return;
   schedulePhase(id, fields.name, fields.start, fields.end);
   saveObjectivesFrom(id, formData);
+  // Its first day come, a client still locked opens (19 Nov, Alex: "first phase"; app/lib/appLock.ts).
+  await openAppIfPhaseLive(getClientIdForPhase(id));
   revalidatePath("/admin");
   revalidatePath("/client");
 }
@@ -3448,6 +3458,7 @@ export async function schedulePhaseOnItsDatesAction(id: number) {
   if (!phase) return;
   // Its stored dates, its last week the one its last day falls in.
   schedulePhase(phaseId, phase.name, phase.start_week, phaseLastDay(phase.end_week));
+  await openAppIfPhaseLive(phase.client_id);
   revalidatePath("/admin");
   revalidatePath("/client");
 }
@@ -3460,6 +3471,7 @@ export async function deployPhaseNowAction(id: number): Promise<string | null> {
   const empty = phaseEmptyReason(id);
   if (empty) return empty;
   deployPhaseNow(id);
+  await openAppIfPhaseLive(getClientIdForPhase(id));
   revalidatePath("/admin");
   revalidatePath("/client");
   return null;
@@ -3484,6 +3496,7 @@ export async function saveAndSchedulePhaseOrSayWhyAction(formData: FormData): Pr
   // The edits are kept; an empty draft just doesn't go out, and says why (20 Oct: the toast said "scheduled" anyway).
   const empty = phaseEmptyReason(id);
   if (!empty) schedulePhase(id, fields.name, fields.start, fields.end);
+  if (!empty) await openAppIfPhaseLive(getClientIdForPhase(id));
   revalidatePath("/admin");
   revalidatePath("/client");
   return empty;
@@ -3499,6 +3512,7 @@ export async function saveAndDeployPhaseNowAction(formData: FormData): Promise<s
   // Saved either way; live only with something in it, and if not, why not (5 Oct).
   const empty = phaseEmptyReason(id);
   if (!empty) deployPhaseNow(id);
+  if (!empty) await openAppIfPhaseLive(getClientIdForPhase(id));
   revalidatePath("/admin");
   revalidatePath("/client");
   return empty;
@@ -3518,6 +3532,8 @@ export async function updateClientPhaseAction(formData: FormData) {
   updateClientPhase(id, fields.track, fields.name, fields.start, fields.end, formData.get("adjustProgram") === "1");
   saveObjectivesFrom(id, formData);
   openEndedFrom(id, fields, formData);
+  // A scheduled phase moved to start this week opens a client still locked (19 Nov, appLock.ts).
+  await openAppIfPhaseLive(getClientIdForPhase(id));
   revalidatePath("/admin");
   revalidatePath("/client");
 }
@@ -3597,6 +3613,7 @@ export async function removeClientPhaseAction(formData: FormData) {
 export async function deployNutritionPhaseAction(phaseId: number) {
   if (!Number.isInteger(phaseId) || !(await coachForClient(getClientIdForPhase(phaseId)))) return;
   setNutritionPhaseDraft(phaseId, false);
+  await openAppIfPhaseLive(getClientIdForPhase(phaseId));
   revalidatePath("/admin");
   revalidatePath("/client");
 }

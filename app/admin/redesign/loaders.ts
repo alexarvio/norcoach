@@ -1,5 +1,6 @@
 import { GYM_COLORS, isGymColor } from "../../lib/gymColors";
 import { openJoinRequestsFor } from "../../lib/joinRequests";
+import { appLocked } from "../../lib/appLock";
 import { setsDue } from "../../lib/setsDue";
 import { billingAccess, billingOn, type BillingAccess } from "../../lib/billing";
 import { clientLastActive } from "../../lib/presence";
@@ -1301,6 +1302,8 @@ export function loadHome(clientId: number, chat: { coach: ChatCoachView; thread:
     ...sub("plans", () => planOf(clientId)),
     events,
     board: sub("consistencyLinks", () => withDayLinks(clientId, board)),
+    // The locked app (19 Nov, Alex; app/lib/appLock.ts): the ⋯'s Open {First}'s app while it is.
+    appLocked: sub("appLock", () => appLocked(clientId)),
   };
 }
 

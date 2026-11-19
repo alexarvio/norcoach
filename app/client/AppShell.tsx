@@ -6,6 +6,8 @@ import { ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExterna
 import { QUIET_COOKIE } from "../lib/quietLoad";
 import { pic } from "../lib/pic";
 import "./gyms.css";
+import "./locked.css";
+import { appLockNowAction } from "../lib/appLockActions";
 import { useRouter } from "next/navigation";
 import { markCoachNotesReadAction, markNotificationReadAction } from "../lib/actions";
 import { useWorkoutOutboxRunner } from "../components/workoutOutbox";
@@ -55,6 +57,14 @@ import {
 } from "./CheckInContext";
 import type { LinkView, MessageAbout } from "../lib/messageLinks";
 import { Bars } from "./Bars";
+
+/** The app locked until the coach's first phase goes live, or they open it (19 Nov, Alex: B of
+    docs/boards/locked-app-mockup.html; lib/appLock.ts). */
+export type AppLockView = { coachFirst: string; coachName: string; business: string | null; avatarPath: string | null };
+// The blur lifting as it opens, on the fold's curve (locked.css).
+const LOCK_LIFT_MS = 600;
+// Read again this often while it is locked, besides on coming back to the front.
+const LOCK_POLL_MS = 20_000;
 
 export type AppTab = {
   id: string;
@@ -164,7 +174,11 @@ export default function AppShell({
   events = null,
   brand = {},
   liveNow = null,
+  lock = null,
 }: {
+  /** Locked (19 Nov, Alex: B of docs/boards/locked-app-mockup.html): Home blurred under the coach's face and Message
+      {First}; null when open, and always in the coach's preview. */
+  lock?: AppLockView | null;
   /** The session going, for the lock-screen pill (19 Nov, Alex; useLiveActivitySync); null in the coach's preview. */
   liveNow?: LiveNow | null;
   /** The client's coach's brand (19 Nov, Alex; lib/brandMark.ts coachBrand): their banner or business name where
@@ -218,13 +232,28 @@ export default function AppShell({
   // A colour of the coach's own (not today's ink): the client's own chat bubbles take it, white words on it (19 Nov,
   // Alex: option C). Ink or none, they stay the neutral tint they are.
   const brandOn = !!brand.color && brand.color !== "#141a24";
+  // Locked (19 Nov, Alex: B): what the page said, until a read again says it is open; then the sheet drops and the blur
+  // lifts (`lifting`) before it goes. Once open it stays open (app_opened_at, lib/appLock.ts).
+  const [lockNow, setLockNow] = useState<AppLockView | null>(readOnly ? null : lock);
+  const [lifting, setLifting] = useState(false);
+  const [lockSeen, setLockSeen] = useState(lock);
+  if (!readOnly && lockSeen !== lock) {
+    setLockSeen(lock);
+    if (lock) {
+      setLockNow(lock);
+      setLifting(false);
+    } else if (lockNow) setLifting(true);
+  }
+  // While locked only the chat and Settings open over it (and nothing a link or a resumed screen asks for).
+  const lockedOut = (v: PushView) => !!lockNow && !!v && v !== "messages" && v !== "settings";
   const storedTab = useSyncExternalStore(subscribeTab, readTab, () => initialTab);
   // The keyboard, one source for the app (--kb and kb-open on <html>), and the field being typed in kept in sight.
   useKeyboardReveal(!readOnly);
   // The preview keeps its tab to itself: the coach's own tab memory (storage, cookie) is the coach's.
   const [ownTab, setOwnTab] = useState(initialTab);
   const tabNow = readOnly ? ownTab : storedTab;
-  const activeId = tabNow && tabs.some((t) => t.id === tabNow) ? tabNow : tabs[0]?.id;
+  // Locked, Home is what lies under the blur, whichever tab was last (19 Nov, Alex: B).
+  const activeId = lockNow && tabs.some((t) => t.id === "home") ? "home" : tabNow && tabs.some((t) => t.id === tabNow) ? tabNow : tabs[0]?.id;
   const setActiveId = (id: string) => {
     // A tab comes back at its top (11 Nov, Alex: "defaulted to always be at the top"): the one left goes back up while it
     // is still showing, since a hidden box can't be scrolled.
@@ -254,7 +283,7 @@ export default function AppShell({
     }, 1200);
     return () => clearTimeout(t);
   }, [mealPictures]);
-  const canPush = (v: PushView) => !(v === "invoices" && !invoices) && !(v === "meetings" && !meetings) && !(v === "events" && !events);
+  const canPush = (v: PushView) => !lockedOut(v) && !(v === "invoices" && !invoices) && !(v === "meetings" && !meetings) && !(v === "events" && !events);
   const [chosenPush, setChosenPush] = useState<PushView | undefined>(initialPush && canPush(initialPush) ? initialPush : undefined);
   // The link has done its job: a reload opens the app as usual. (The preview keeps its address: it is read again in place.)
   // Arriving on the chat (a message's lock-screen notification, 21 Oct) reads it, as opening it from the nav does.
@@ -322,7 +351,10 @@ export default function AppShell({
         setPushView("meetings");
       }
     : null;
-  const setPushView = (v: PushView) => setChosenPush(v);
+  const setPushView = (v: PushView) => {
+    if (lockedOut(v)) return;
+    setChosenPush(v);
+  };
   // The coach's profile opened from Settings goes back to Settings.
   // Which check-in section to land on, set by whichever due item opened it.
   const [checkInSection, setCheckInSection] = useState("daily");
@@ -507,6 +539,11 @@ export default function AppShell({
     arrived.current = true;
     const t = setTimeout(() => {
       window.history.replaceState(null, "", "/client");
+      // Locked (19 Nov, Alex: B): only a message from the coach opens, on the chat; the rest waits for the app.
+      if (lockNow) {
+        if ("notificationId" in arrival && (arrival.actionTab === "chat" || arrival.actionTab === "video")) openMessages();
+        return;
+      }
       if ("meetingId" in arrival) {
         openMeetingsAt?.(arrival.meetingId);
         return;
@@ -540,6 +577,53 @@ export default function AppShell({
   // The preview, told by the admin's panel which screen to show (it follows the coach's tab), and to read the page
   // again after a save: in place, so the screen keeps its scroll. Only from this site's own pages.
   const router = useRouter();
+  // Locked (19 Nov, Alex: B): read again on coming back to the front and every 20 s; open, the page is read again so
+  // Home holds the plan, the sheet drops and the blur lifts.
+  const locked = !!lockNow && !lifting && !readOnly;
+  useEffect(() => {
+    if (!locked) return;
+    let gone = false;
+    const check = () => {
+      if (document.visibilityState !== "visible") return;
+      appLockNowAction()
+        .then((r) => {
+          if (gone || !r) return;
+          // Only an explicit open lifts it (19 Nov, Alex): a read with no session says nothing.
+          if (r.open) {
+            setLifting(true);
+            return;
+          }
+          const l = r.lock;
+          // Still locked as it was: no new object, so Home under the blur isn't drawn again every 20 s.
+          setLockNow((p) =>
+            p && p.coachFirst === l.coachFirst && p.coachName === l.coachName && (p.business ?? "") === (l.business ?? "") && p.avatarPath === l.avatarPath ? p : l,
+          );
+        })
+        .catch(() => {});
+    };
+    const timer = window.setInterval(check, LOCK_POLL_MS);
+    const back = () => document.visibilityState === "visible" && check();
+    document.addEventListener("visibilitychange", back);
+    return () => {
+      gone = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", back);
+    };
+  }, [locked]);
+  useEffect(() => {
+    if (!lifting) return;
+    router.refresh();
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const t = window.setTimeout(() => {
+      setLockNow(null);
+      setLifting(false);
+      // Home stays the tab under it as it opens.
+      writeTab("home");
+    }, reduced ? 0 : LOCK_LIFT_MS);
+    return () => window.clearTimeout(t);
+    // router is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lifting]);
   useEffect(() => {
     if (!readOnly) return;
     const onMessage = (e: MessageEvent) => {
@@ -684,7 +768,12 @@ export default function AppShell({
           {/* The tab stays mounted under a pushed view, so closing the view
               comes back to the same scroll and the same open day. inert keeps
               it out of reach of taps and the keyboard while covered. */}
-          <div className="app-layer app-layer-main" inert={pushView ? true : undefined} aria-hidden={pushView ? true : undefined}>
+          {/* Locked (19 Nov, Alex: B), Home is blurred under the sheet, out of reach, the burger and the tabs with it. */}
+          <div
+            className={`app-layer app-layer-main${lockNow ? " lk-under" : ""}${lifting ? " lk-lifting" : ""}`}
+            inert={pushView || lockNow ? true : undefined}
+            aria-hidden={pushView || lockNow ? true : undefined}
+          >
           <header
             className={`app-header dark${active?.bare ? " overlay" : ""}${clearBar ? " clear" : ""}${clearBar && active?.darkBanner ? " on-dark" : ""}`}
           >
@@ -790,6 +879,60 @@ export default function AppShell({
             </button>
           </nav>
           </div>
+          {/* The lock (19 Nov, Alex: B of docs/boards/locked-app-mockup.html): the join's dark as a sheet from the
+              bottom, carrying on from You're in. The chat and Settings open over it. */}
+          {lockNow && (
+            <div className={`app-layer lk${lifting ? " lifting" : ""}`} inert={pushView || lifting ? true : undefined} aria-hidden={pushView ? true : undefined}>
+              <div className="lk-veil" aria-hidden="true" />
+              <section className="lk-sheet" role="dialog" aria-modal="true" aria-labelledby="lk-title">
+                <span className="jn-face-wrap lk-face-wrap">
+                  <span className="jn-face big lk-face" aria-hidden="true">
+                    {lockNow.avatarPath ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- the coach's own picture
+                      <img src={pic(lockNow.avatarPath, 480)} alt="" decoding="async" />
+                    ) : (
+                      lockNow.coachFirst.charAt(0).toUpperCase()
+                    )}
+                  </span>
+                  <i className="jn-ring" aria-hidden="true" />
+                  <i className="lk-badge" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="5" y="11" width="14" height="10" rx="2.5" />
+                      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                    </svg>
+                  </i>
+                </span>
+                <h1 className="jn-sent-title lk-title" id="lk-title">
+                  You’re in
+                  <span>{lockNow.coachFirst} is setting up your plan</span>
+                </h1>
+                <p className="jn-facts lk-facts">
+                  <Bars parts={[<b key="n">{lockNow.coachName}</b>, lockNow.business ? <span key="b">{lockNow.business}</span> : null]} />
+                </p>
+                <button type="button" className="jn-ghost lk-msg" onClick={() => openMessages()}>
+                  <ChatIcon />
+                  Message {lockNow.coachFirst}
+                </button>
+                <span className="jn-out lk-foot">
+                  <Bars
+                    parts={[
+                      settingsContent ? (
+                        <button key="s" type="button" className="jn-word" onClick={() => (setFocusRef(null), setPushView("settings"))}>
+                          Settings
+                        </button>
+                      ) : null,
+                      // As the burger's Log out, the lock-screen pill going with it.
+                      <form key="o" action={logoutAction} onSubmit={() => liveEnd()}>
+                        <button type="submit" className="jn-word">
+                          Log out
+                        </button>
+                      </form>,
+                    ]}
+                  />
+                </span>
+              </section>
+            </div>
+          )}
           {pushedLayer}
 
           {/* The burger's drawer: the screens that are not on the bottom nav.

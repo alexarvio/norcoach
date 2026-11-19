@@ -101,6 +101,24 @@ export async function register() {
     setInterval(remindWorkouts, 5 * 60_000).unref?.();
     setTimeout(remindWorkouts, 120_000).unref?.();
   }
+  // The locked app (19 Nov, Alex: "first phase"; app/lib/appLock.ts): a client let in whose first phase has begun (one
+  // scheduled for today) opens, with `Your app is ready` pushed once, every five minutes on the live server.
+  const { appLockPushOn, checkAppLocks } = await import("./app/lib/appLock");
+  if (appLockPushOn() && process.env.NEXT_PHASE !== "phase-production-build") {
+    let busy = false;
+    const openLocks = () => {
+      if (busy) return;
+      busy = true;
+      void checkAppLocks()
+        .then((n) => n && console.log(`[app-lock] opened ${n}`))
+        .catch((e) => console.error("[app-lock] failed:", e instanceof Error ? e.message : e))
+        .finally(() => {
+          busy = false;
+        });
+    };
+    setInterval(openLocks, 5 * 60_000).unref?.();
+    setTimeout(openLocks, 150_000).unref?.();
+  }
   // Recurring invoices (21 Oct): each series makes its next invoice on its day, checked every ten minutes. Locally
   // too, so a series can be seen working; the client's buzz for a sent one only from the live server (as reminders).
   if (process.env.RECURRING_INVOICES !== "off") {

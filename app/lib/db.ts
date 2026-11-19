@@ -67,6 +67,11 @@ type Client = {
   invoice_repeats?: InvoiceRepeat[];
   // When the coach last had this client on screen (epoch ms) and the visit before it, 30 minutes apart being one visit: the Home board's "Since" line (21 Oct).
   home_looked?: { at: number; prev: number | null };
+  /** When the client's app first opened (19 Nov, Alex: B of docs/boards/locked-app-mockup.html, "first phase"), ISO: until
+      then a client let in sees Home locked under the coach's sheet. Set once, by a phase going live or the coach's Open
+      {First}'s app, and never cleared, so removing phases later never locks it again (app/lib/appLock.ts). */
+  app_opened_at?: string;
+  app_opened_by?: "coach" | "phase" | "before";
 };
 // Each coach has their own library (seeded from presets.ts), so coach_id is
 // the owner. Optional only for rows from before multi-coach.
@@ -1517,6 +1522,9 @@ export type Data = {
   // one-time move never runs again and never deletes an empty session a
   // coach has just added.
   sessions_migrated?: string;
+  // When every client from before the locked app was marked opened (19 Nov, app/lib/appLock.ts), so the one-time sweep
+  // never runs again and never opens a client let in after it.
+  app_lock_swept?: string;
   // Sign-in locks as they started (lib/loginLockout.ts), oldest first, the
   // last 200 kept. Shown to the coach and the owner in the Feed.
   login_lock_events?: { id: number; at: string; email: string; ip: string; scope: "device" | "account"; cleared?: boolean }[];

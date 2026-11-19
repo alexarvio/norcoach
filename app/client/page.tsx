@@ -138,6 +138,7 @@ import { passwordsOnHint } from "../lib/clerkPasswords";
 import ClientWeekSwitcher from "./ClientWeekSwitcher";
 import AppShell, { AppTab, type Arrival, type PhoneScreen } from "./AppShell";
 import { liveNowFor } from "../lib/liveSessionNow";
+import { appLockFor } from "../lib/appLock";
 import { ownTab } from "../lib/tabMemory";
 import NativeCoachRedirect from "../coach/NativeCoachRedirect";
 import OpeningSplash from "./OpeningSplash";
@@ -1607,6 +1608,9 @@ export default async function ClientPage({
       readOnly={phone}
       // The session going, for the lock-screen pill (19 Nov, Alex): the client's own app alone.
       liveNow={phone || !viewerIsClient ? null : liveNowFor(CLIENT_ID)}
+      // Locked until the first phase goes live (19 Nov, Alex: B of docs/boards/locked-app-mockup.html): the client's own
+      // app alone, never the coach's phone preview or a coach looking.
+      lock={phone || !viewerIsClient ? null : await appLockFor(CLIENT_ID)}
       // Their coach's banner or name where NORCOACH is, and colour (19 Nov, Alex); in the phone preview the client's coach's,
       // their faint mark with it, so the pills and the mark never wear two coaches.
       brand={phone ? { ...(await coachBrandInline(client?.coach_id)), mark: await coachMarkInline(client?.coach_id) } : await coachBrandInline(client?.coach_id)}
