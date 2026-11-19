@@ -565,6 +565,8 @@ export function EventDialog({ today, event, cats, firstName, faces, initialStart
   const [confirming, setConfirming] = useState(false);
   // The category's colour on its tag and its range; ink until one is picked.
   const ink = kind ? k.ink : "#141a24";
+  // With no category yet, the picked days take the coach's brand (19 Nov, Alex: "the toggles, the pop-ups, everything should be in that color").
+  const pickInk = kind ? k.ink : "var(--brand, #141a24)";
   // Typed as well as picked (20 Oct, Alex: the dates couldn't be typed). A start past the end takes the end with it, and a repeat's last day goes, so the dates never cross.
   const typeStart = (d: string) => {
     setStart(d);
@@ -610,7 +612,7 @@ export function EventDialog({ today, event, cats, firstName, faces, initialStart
   // The phase pop-up's pattern (20 Oct, Alex): title and tags, the category as tiles, a clean line for the words,
   // the month on the left with the dates typed or picked on the right, Cancel in words and one black pill.
   return (
-    <DialogContent className="npd" style={{ "--npd-c": ink, "--npd-rgb": rgbOf(ink) } as React.CSSProperties}>
+    <DialogContent className="npd" style={{ "--npd-c": pickInk, "--npd-rgb": rgbOf(ink) } as React.CSSProperties}>
       <div className="npd-head">
         <DialogTitle className="npd-title">{event ? event.title : "New event"}</DialogTitle>
         <span className="npd-tools">

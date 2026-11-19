@@ -4,6 +4,10 @@
    --npd-c (the phase's track, the event's kind). Shared by the phase, event and schedule pop-ups, the Dates
    pop-up (pdh), every DatePick (rdp-pop) and the meeting scheduler (rt-dlg-cal). */
 
+/* The picked days' ends in the coach's brand (19 Nov, Alex: "the toggles, the pop-ups, everything should be in that color"); with none, ink. The coach's phone (EntrySheet, cph-) keeps ink. */
+.rdd-cal { --rdd-pick: var(--brand, #141a24); --rdd-pick-hover: #2f3846; }
+body[style*="--brand"] .rdd-cal { --rdd-pick-hover: color-mix(in srgb, var(--brand) 88%, #fff); }
+[class*="cph-"] .rdd-cal.rdd-cal { --rdd-pick: #141a24; --rdd-pick-hover: #2f3846; }
 .rdd-cal { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 0; border-radius: 0; background: none; font-family: var(--font-archivo), system-ui, sans-serif; }
 .rdd-cal .rdd-cal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 0 4px; }
 .rdd-cal .rdd-cal-head b { font-size: 14px; font-weight: 600; color: #141a24; }
@@ -31,10 +35,10 @@
 .rdd-cal .rdd-cell.in { background: #eef0f3; color: #141a24; }
 .rdd-cal .rdd-cell.in.past { color: #98a2b3; }
 .rdd-cal .rdd-cell.in:hover, .rdd-cal .rdd-cell.in:focus-visible { background: #e4e7ec; }
-.rdd-cal .rdd-cell.in.start, .rdd-cal .rdd-cell.in.end { background: #141a24; color: #fff; font-weight: 600; }
-.rdd-cal .rdd-cell.in.start:hover, .rdd-cal .rdd-cell.in.end:hover, .rdd-cal .rdd-cell.in.start:focus-visible, .rdd-cal .rdd-cell.in.end:focus-visible { background: #2f3846; }
+.rdd-cal .rdd-cell.in.start, .rdd-cal .rdd-cell.in.end { background: var(--rdd-pick); color: #fff; font-weight: 600; }
+.rdd-cal .rdd-cell.in.start:hover, .rdd-cal .rdd-cell.in.end:hover, .rdd-cal .rdd-cell.in.start:focus-visible, .rdd-cal .rdd-cell.in.end:focus-visible { background: var(--rdd-pick-hover); }
 .rdd-cal .rdd-cell.in.past.start, .rdd-cal .rdd-cell.in.past.end { opacity: 0.6; }
-.rdd-cal .rdd-cell.today.in.start, .rdd-cal .rdd-cell.today.in.end { box-shadow: inset 0 0 0 2px #141a24, inset 0 0 0 3px #fff; }
+.rdd-cal .rdd-cell.today.in.start, .rdd-cal .rdd-cell.today.in.end { box-shadow: inset 0 0 0 2px var(--rdd-pick), inset 0 0 0 3px #fff; }
 /* Overlap: a light red hatch. */
 .rdd-cal .rdd-cell.overlap { background: repeating-linear-gradient(135deg, rgba(180, 35, 24, 0.14) 0 4px, rgba(180, 35, 24, 0.04) 4px 8px); color: #b42318; font-weight: 600; }
 .rdd-cal .rdd-cell.overlap:hover { background: repeating-linear-gradient(135deg, rgba(180, 35, 24, 0.2) 0 4px, rgba(180, 35, 24, 0.06) 4px 8px); }
@@ -55,6 +59,6 @@
 .rdd-cal .rdd-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 8px 0 0; }
 .rdd-cal .rdd-legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 500; color: #5b6474; }
 .rdd-cal .rdd-legend i { display: inline-block; width: 14px; height: 10px; border-radius: 3px; }
-.rdd-cal .rdd-legend i.new { background: #141a24; }
+.rdd-cal .rdd-legend i.new { background: var(--rdd-pick); }
 .rdd-cal .rdd-legend i.taken { background: repeating-linear-gradient(135deg, rgba(20, 26, 36, 0.22) 0 3px, rgba(20, 26, 36, 0.05) 3px 6px); }
 .rdd-cal .rdd-legend i.overlap { background: repeating-linear-gradient(135deg, rgba(180, 35, 24, 0.32) 0 3px, rgba(180, 35, 24, 0.08) 3px 6px); }

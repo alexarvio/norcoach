@@ -159,7 +159,7 @@
    moved. */
 .rd-btn-group button { height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; white-space: nowrap; cursor: pointer; }
 .rd-btn-group button:hover:not(.on) { color: #141a24; }
-.rd-btn-group button.on { background: #141a24; color: #fff; font-weight: 600; box-shadow: none; }
+.rd-btn-group button.on { background: var(--brand, #141a24); color: #fff; font-weight: 600; box-shadow: none; }
 
 /* Notes from the client: date, which check-in, the words, a reply. */
 .rm-note-text { font-size: 13.5px; font-weight: 500; line-height: 1.5; color: #313851; white-space: pre-wrap; min-width: 0; }

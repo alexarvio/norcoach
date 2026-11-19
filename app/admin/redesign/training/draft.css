@@ -469,7 +469,7 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
 .rd-coltabs { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; height: 36px; margin: 2px 2px 6px; padding: 4px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; box-sizing: border-box; }
 .rd-coltabs button { height: 28px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; cursor: pointer; }
 .rd-coltabs button:hover:not(.on) { color: #141a24; }
-.rd-coltabs button.on { background: #141a24; color: #fff; font-weight: 600; box-shadow: none; }
+.rd-coltabs button.on { background: var(--brand, #141a24); color: #fff; font-weight: 600; box-shadow: none; }
 .rd-cardio { margin-top: 14px; padding-top: 6px; border-top: 1px solid #eef0f3; }
 .rd-cardio .rd-cols { padding-top: 8px; }
 .rd-cardio .rd-row.cardio .rd-ex { font-weight: 600; }
@@ -692,7 +692,7 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
 /* The demo's switch for the client (25 Oct, Alex): ink and the knob right while shown, grey and left while hidden; the
    play mark on the knob. */
 /* One switch on every Training control (16 Nov, Alex: the audit; the demo, Ask every session, a substitute), Settings' .rst-switch: 36×22, a 16px knob 3px in, white with the hairline while off, ink while on, sliding 250ms on the fold curve. */
-.rd-demo-switch { position: relative; flex: none; display: inline-block; width: 36px; height: 22px; padding: 0; border: 0; border-radius: 999px; background: #141a24; cursor: pointer; transition: background-color 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
+.rd-demo-switch { position: relative; flex: none; display: inline-block; width: 36px; height: 22px; padding: 0; border: 0; border-radius: 999px; background: var(--brand, #141a24); cursor: pointer; transition: background-color 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
 .rd-demo-switch.off { background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; }
 .rd-demo-switch.fixed { cursor: default; }
 .rd-demo-switch > i { position: absolute; top: 3px; left: 17px; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 999px; background: #fff; color: #141a24; transition: left 0.25s cubic-bezier(0.22, 1, 0.36, 1), color 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
@@ -832,7 +832,7 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
    Alex: the audit; they were boxed on a third grey at radius 9). */
 .rpg-page { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 32px; padding: 0 8px; box-sizing: border-box; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; text-decoration: none; cursor: pointer; transition: background-color 0.2s ease; }
 .rpg-page:hover { background: #fafbfd; }
-.rpg-page.on, .rpg-page.on:hover { background: #141a24; color: #fff; }
+.rpg-page.on, .rpg-page.on:hover { background: var(--brand, #141a24); color: #fff; }
 .rpg-page.off, .rpg-page.off:hover { opacity: 0.35; background: none; cursor: default; }
 .rpg-gap { padding: 0 4px; color: #8b93a1; }
 .rpg-count { grid-column: 3; justify-self: end; font-size: 12px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; white-space: nowrap; }

@@ -85,8 +85,9 @@
 .rd.rp .rp-cancel { padding: 0; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; cursor: pointer; }
 .rd.rp .rp-cancel:hover { color: #141a24; }
 /* The note lines' small ink pill, 34px as Note to {client}'s Save and the chat's (6 Nov, Alex: admin audit; was 32px). */
-.rd.rp .rp-save { height: 34px; padding: 0 14px; border: 0; border-radius: 999px; background: #141a24; font: inherit; font-size: 13px; font-weight: 600; color: #fff; white-space: nowrap; cursor: pointer; }
+.rd.rp .rp-save { height: 34px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--brand, #141a24); font: inherit; font-size: 13px; font-weight: 600; color: #fff; white-space: nowrap; cursor: pointer; }
 .rd.rp .rp-save:hover { background: #262e3b; }
+body[style*="--brand"] .rd.rp .rp-save:hover:not(:disabled) { background: color-mix(in srgb, var(--brand) 88%, #fff); } /* the brand (19 Nov, Alex: "the toggles, the pop-ups, everything should be in that color") */
 .rd.rp .rp-save:disabled { background: #c9cfd8; cursor: default; }
 /* What was said on the sheet before (23 Oct, Alex), over the line, read only, as the Nutrition photo's: when, then the words. */
 .rd.rp .rp-said { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
@@ -229,7 +230,7 @@
 .rp-strip { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: thin; padding-bottom: 2px; }
 .rp-mini { display: flex; flex: none; flex-direction: column; gap: 3px; width: 64px; padding: 0; border: 0; background: none; font: inherit; cursor: pointer; }
 .rp-mini img { display: block; width: 64px; height: 84px; object-fit: cover; border-radius: 8px; border: 2px solid transparent; box-sizing: border-box; }
-.rp-mini.on img { border-color: #141a24; }
+.rp-mini.on img { border-color: var(--brand, #141a24); }
 .rp-mini small { font-size: 10.5px; font-weight: 600; color: #5b6474; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* + Add on the sheet (21 Oct, Alex): one more tile, a dashed edge and + Add in the middle; it opens the angle search under it. */

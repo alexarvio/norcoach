@@ -15570,7 +15570,10 @@ body:has(.hm), .app-screen:has(.hm), .app-content:has(> .hm) { background: #F5F5
 /* A capsule: 600 picked or not, and it slides (SLIDE_ROWS; 16 Nov, Alex: the audit). */
 .nc-hl .nc-step { display: inline-flex; align-items: center; height: 28px; margin: 0; padding: 0 12px; border: 0; border-radius: 999px; background: none; font-size: 13px; font-weight: 600; color: #5b6474; white-space: nowrap; }
 .nc-hl .nc-step:hover:not(.on):not(:disabled) { color: #141a24; }
-.nc-hl .nc-step.on { background: #141a24; font-weight: 600; color: #fff; }
+.nc-hl .nc-step.on { background: var(--brand, #141a24); font-weight: 600; color: #fff; }
+/* The coach's brand on its picked pills and its one pill, the sliding pill too (19 Nov, Alex: "the toggles, the pop-ups,
+   everything should be in that color"); none set, ink exactly as before. */
+.nc-hl :is(.nc-steps, .nc-pills) { --pill-bg: var(--brand, #141a24); }
 .nc-hl .nc-step:disabled { opacity: 0.4; }
 .nc-hl .nc-body { padding: 6px 20px 2px; scrollbar-width: thin; scrollbar-color: #dce1e8 transparent; }
 .nc-hl .nc-row { border-bottom-color: #e1e5eb; }
@@ -15602,7 +15605,7 @@ body:has(.nc-scrim) [data-radix-popper-content-wrapper] { z-index: 110 !importan
 .nc-hl .nc-pills { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 2px; height: 36px; padding: 4px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; box-sizing: border-box; }
 .nc-hl .nc-pills .pl-chip { height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: none; box-shadow: none; font-size: 13px; font-weight: 600; color: #5b6474; }
 .nc-hl .nc-pills .pl-chip:hover:not(.on) { color: #141a24; }
-.nc-hl .nc-pills .pl-chip.on { background: #141a24; font-weight: 600; color: #fff; }
+.nc-hl .nc-pills .pl-chip.on { background: var(--brand, #141a24); font-weight: 600; color: #fff; }
 .nc-hl .nc-access { gap: 0; padding-top: 4px; }
 .nc-hl .nc-foot { justify-content: flex-end; gap: 2px; margin-top: 14px; padding: 0 20px; border: 0; background: none; }
 .nc-hl .nc-status { font-size: 13px; font-weight: 500; color: #5b6474; }
@@ -15610,8 +15613,10 @@ body:has(.nc-scrim) [data-radix-popper-content-wrapper] { z-index: 110 !importan
 .nc-hl .nc-foot .nc-secondary { height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: none; font-size: 13.5px; font-weight: 600; color: #5b6474; }
 .nc-hl .nc-foot .nc-secondary:hover { color: #141a24; text-decoration: none; }
 .nc-hl .nc-foot .nc-secondary:disabled { opacity: 0.45; cursor: default; }
-.nc-hl .nc-foot .pl-primary { height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: #141a24; font-size: 13.5px; font-weight: 600; color: #fff; }
+.nc-hl .nc-foot .pl-primary { height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--brand, #141a24); font-size: 13.5px; font-weight: 600; color: #fff; }
 .nc-hl .nc-foot .pl-primary:hover:not(:disabled) { background: #262e3b; }
+body[style*="--brand"] .nc-hl .nc-foot .pl-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--brand) 88%, #fff); }
+body[style*="--brand"] .nc-hl .nc-foot .pl-primary:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent); }
 .nc-hl .nc-foot .pl-primary:disabled, .nc-hl .nc-foot .pl-primary:disabled:hover { background: #c9cfd8; opacity: 1; cursor: default; }
 .nc-hl .nc-foot .pl-primary:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(20, 26, 36, 0.18); }
 
@@ -18487,10 +18492,12 @@ button.ci-hint { cursor: pointer; }
 .mrv-acts { display: flex; align-items: center; gap: 8px; }
 .mrv-sp { flex: 1; }
 .mrv-tg { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; color: #141a24; cursor: pointer; transition: background 0.2s, color 0.2s; }
-.mrv-tg.on { background: #141a24; color: #fff; box-shadow: none; }
+.mrv-tg.on { background: var(--brand, #141a24); color: #fff; box-shadow: none; }
 .mrv-pill { flex: none; display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; font: inherit; font-size: 13.5px; font-weight: 600; color: #141a24; cursor: pointer; }
 .mrv-pill svg { translate: 0 -0.5px; }
-.mrv-pill.ink { background: #141a24; color: #fff; box-shadow: none; }
+/* The foot's on toggles and its one pill in the coach's brand (19 Nov, Alex: "the toggles, the pop-ups, everything
+   should be in that color"); the dark stage stays dark. None set, ink. */
+.mrv-pill.ink { background: var(--brand, #141a24); color: #fff; box-shadow: none; }
 .mrv-pill:disabled { opacity: 0.45; cursor: default; }
 .mrv-dot { width: 9px; height: 9px; border-radius: 999px; background: #b8471f; }
 .mrv-clock { display: inline-flex; align-items: center; gap: 8px; margin-right: 4px; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }

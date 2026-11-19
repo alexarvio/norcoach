@@ -562,7 +562,7 @@ function SetupDialog({ clientId, firstName, plan, onSaved }: { clientId: number;
   return (
     <DialogContent
       className="npd rp-setupdlg"
-      style={{ "--npd-c": "#141a24", "--npd-rgb": "20,26,36" } as React.CSSProperties}
+      style={{ "--npd-c": "var(--brand, #141a24)", "--npd-rgb": "20,26,36" } as React.CSSProperties}
       // Esc while an angle is lifted from the keyboard cancels the drag alone, not the pop-up and what was typed in it.
       onEscapeKeyDown={(e) => {
         if ((e.target as Element | null)?.closest?.('[aria-roledescription="sortable"][aria-pressed="true"]')) e.preventDefault();
