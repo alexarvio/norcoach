@@ -2,7 +2,7 @@
 
 import { ownTab } from "../lib/tabMemory";
 import { RESUME_KEY, TAB_COOKIE, TAB_KEY } from "../lib/appMemory";
-import { ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, useTransition, type SyntheticEvent } from "react";
+import { ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, useTransition, type CSSProperties, type SyntheticEvent } from "react";
 import { QUIET_COOKIE } from "../lib/quietLoad";
 import { pic } from "../lib/pic";
 import "./gyms.css";
@@ -12,7 +12,7 @@ import { useWorkoutOutboxRunner } from "../components/workoutOutbox";
 import type { NotificationCategory } from "../lib/notificationTypes";
 import { goalItemId } from "../lib/weightGoal";
 import { logoutAction } from "../lib/auth-actions";
-import { NorCoachLogo } from "../components/NorCoachLogo";
+import { BrandLogo } from "../components/BrandLogo";
 import { BellIcon, CalendarIcon, CameraIcon, ChevronLeftIcon, GearIcon, HeartIcon, MenuIcon, ChatIcon, ReceiptIcon } from "../components/icons";
 import CheckInScreen, { CheckInProps } from "./CheckInScreen";
 import PreviewBar from "./PreviewBar";
@@ -158,7 +158,12 @@ export default function AppShell({
   settingsContent = null,
   chatUnread = false,
   events = null,
+  brand = {},
 }: {
+  /** The client's coach's brand (19 Nov, Alex; lib/brandMark.ts coachBrand): their banner or business name where
+      NORCOACH is, their colour on the main pills. Nothing set, the app as it was. `mark` only in the coach's phone
+      preview: the client's coach's faint mark, as the client sees it. */
+  brand?: { color?: string; banner?: string; bannerRatio?: number; businessName?: string; mark?: string };
   /** The client's events, for the Events screen (8 Oct); null, no screen. */
   events?: HomeEvents | null;
   /** Settings, opened from the burger (7 Oct: the chat took its place on the bottom nav). */
@@ -203,6 +208,9 @@ export default function AppShell({
   initialTab?: string | null;
 }) {
   if (!readOnly) tabOwner = clientId;
+  // A colour of the coach's own (not today's ink): the client's own chat bubbles take it, white words on it (19 Nov,
+  // Alex: option C). Ink or none, they stay the neutral tint they are.
+  const brandOn = !!brand.color && brand.color !== "#141a24";
   const storedTab = useSyncExternalStore(subscribeTab, readTab, () => initialTab);
   // The keyboard, one source for the app (--kb and kb-open on <html>), and the field being typed in kept in sight.
   useKeyboardReveal(!readOnly);
@@ -652,7 +660,10 @@ export default function AppShell({
       {!readOnly && <NativeStatusBar />}
       {!readOnly && <NativePush />}
       <div
-        className={`phone-frame${preview ? " previewing" : ""}${readOnly ? " phone-readonly" : ""}`}
+        className={`phone-frame${preview ? " previewing" : ""}${readOnly ? " phone-readonly" : ""}${brandOn ? " brand-on" : ""}`}
+        // The coach's phone preview wears the client's coach's colour, not the viewer's (the owner looking at another
+        // coach's client), and their faint mark with it; the client's own app has both on the page already (app/layout.tsx).
+        style={readOnly ? ({ "--brand": brand.color ?? "#141a24", "--brand-mark": brand.mark ? `url("${brand.mark}")` : "initial" } as CSSProperties) : undefined}
         {...(readOnly ? { onClickCapture: stopEvent, onPointerDownCapture: stopEvent, onMouseDownCapture: stopEvent, onKeyDownCapture: stopEvent, onSubmitCapture: stopEvent, onDragStartCapture: stopEvent, onContextMenuCapture: stopEvent } : {})}
       >
         {preview && <PreviewBar current={preview.current} clients={preview.clients} />}
@@ -667,7 +678,7 @@ export default function AppShell({
             <button type="button" className="app-header-icon-btn" onClick={() => setMenuOpen(true)} aria-label="Menu" aria-expanded={menuOpen}>
               <MenuIcon />
             </button>
-            <NorCoachLogo className="app-header-brand" word />
+            <BrandLogo className="app-header-brand" word banner={brand.banner} bannerRatio={brand.bannerRatio} name={brand.businessName} />
             <div className="app-header-actions">
               <button type="button" className="app-header-icon-btn" onClick={() => setPushView("notifications")} aria-label="Notifications">
                 <BellIcon />
@@ -775,7 +786,7 @@ export default function AppShell({
               <button type="button" className="app-menu-scrim" onClick={() => setMenuOpen(false)} aria-label="Close menu" />
               <nav className="app-menu" aria-label="Menu">
                 <div className="app-menu-head">
-                  <NorCoachLogo className="app-header-brand app-menu-brand" />
+                  <BrandLogo className="app-header-brand app-menu-brand" banner={brand.banner} bannerRatio={brand.bannerRatio} name={brand.businessName} />
                   {/* The coach under the logo is parked (17 Nov, Alex: "I like the idea, but it's not what I want to focus on
                       right now"): the logo alone. Their profile screen stays in the code for later. */}
                 </div>
@@ -862,7 +873,9 @@ export default function AppShell({
                       Log out
                     </button>
                   </form>
-                  <span className="app-menu-footnote"><Bars parts={["Norcoach", "Full Potential Coaching"]} /></span>
+                  {/* A quiet Norcoach credit, then the client's own coach's business (19 Nov: it read Full Potential
+                      Coaching for every coach's clients); none set, Norcoach alone. */}
+                  <span className="app-menu-footnote"><Bars parts={["Norcoach", brand.businessName]} /></span>
                 </div>
               </nav>
             </>

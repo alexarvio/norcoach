@@ -185,3 +185,17 @@
 .rr-billing b { font-size: 13px; font-weight: 600; color: #b8471f; }
 .rr-billing small { font-size: 12px; font-weight: 500; color: #8b93a1; }
 .rr-billing:hover { background: #fafbfd; }
+
+/* ---- Coach brand (19 Nov, Alex: docs/boards/coach-brand-mockup.html, the branded admin): the coach's colour (`--brand`
+   on the page, app/layout.tsx) on the view you are on and the one ink pill of a pop-up, and the faint page mark drawn
+   in it (`--brand-mark`); nothing else. None set, today's ink and the mark as it was. */
+.rr .rr-navrow.rr-navrow.active { background: var(--brand, #141a24); }
+.dlh-go.dlh-go:not(:disabled), .rd-addpop-go.rd-addpop-go { background: var(--brand, #141a24); }
+.dlh-go.dlh-go:not(:disabled):focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand, #141a24) 18%, transparent); }
+/* The `.npd` pop-ups' one action too (Schedule a meeting, a Calendar entry, a phase, an event, Setup). Its hover and
+   focus lift the colour a touch as ink's do. Only with a colour set (the layout puts `--brand` on the body), so with
+   none the pill, its hover and focus are ink's own exactly. */
+body[style*="--brand"] .npd.npd .npd-save.npd-save:not(:disabled) { background: var(--brand); }
+body[style*="--brand"] .npd.npd .npd-save.npd-save:not(:disabled):hover { background: color-mix(in srgb, var(--brand) 88%, #fff); }
+body[style*="--brand"] .npd.npd .npd-save.npd-save:not(:disabled):focus-visible { background: color-mix(in srgb, var(--brand) 82%, #fff); }
+.rd-frame > .rd-page.rd-page::before { background-image: var(--brand-mark, var(--bg-mark, url("/brand/mark.svg"))); }

@@ -1,0 +1,340 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Coach brand</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600&display=swap" rel="stylesheet"><style>
+  :root { --ink:#141a24; --body:#3a4250; --sec:#5b6474; --faint:#8b93a1; --label:#98A2B3; --line:#E1E5EB; --btn-line:#DCE1E8; --page:#F5F5F5; --indigo:#3a3390; --teal:#1d7a70; --beige:#a08a5c; --rust:#b8471f; --green:#2f7a3f;
+    --brand:#6a2c70; }
+  * { box-sizing:border-box; margin:0; }
+  body { font-family:Archivo,system-ui,sans-serif; font-weight:500; color:var(--ink); background:#fff; padding:28px 20px 80px; -webkit-font-smoothing:antialiased; }
+  h1 { font-size:20px; font-weight:600; margin-bottom:4px; }
+  h2 { font-size:16px; font-weight:600; margin:46px 0 4px; }
+  .sub { color:var(--faint); font-size:13px; margin-bottom:20px; max-width:980px; line-height:1.55; }
+  .opts { display:flex; flex-wrap:wrap; gap:34px; align-items:flex-start; }
+  .opt { width:340px; max-width:100%; }
+  .opt.wide { width:720px; }
+  .opt h3 { font-size:14px; font-weight:600; margin-bottom:4px; }
+  .opt > p { font-size:12.5px; color:var(--faint); line-height:1.5; min-height:38px; margin-bottom:12px; }
+  svg { fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+  .notes { margin-top:22px; max-width:980px; font-size:13px; color:var(--body); line-height:1.65; }
+  .notes b { color:var(--ink); font-weight:600; }
+  .notes li { margin:2px 0 2px 18px; }
+
+  /* Try a colour */
+  .try { position:sticky; top:0; z-index:5; background:rgba(255,255,255,.94); backdrop-filter:blur(8px); padding:12px 0 14px; margin:0 0 6px; display:flex; flex-wrap:wrap; gap:10px 18px; align-items:center; }
+  .try .lab { font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--sec); }
+  .sw { display:flex; gap:8px; flex-wrap:wrap; }
+  .sw button { width:30px; height:30px; border-radius:50%; border:0; cursor:pointer; box-shadow:inset 0 0 0 1px rgba(0,0,0,.08); position:relative; }
+  .sw button.on::after { content:""; position:absolute; inset:-4px; border-radius:50%; box-shadow:0 0 0 1.5px var(--ink); }
+  .custom { display:flex; align-items:center; gap:8px; }
+  .custom input[type=text] { width:96px; height:34px; border-radius:10px; border:0; box-shadow:inset 0 0 0 1px var(--line); padding:0 10px; font:500 14px Archivo; color:var(--ink); }
+  .custom input[type=text]:focus { outline:0; box-shadow:inset 0 0 0 1px var(--ink); }
+  .custom input[type=color] { width:34px; height:34px; border:0; padding:0; background:none; cursor:pointer; }
+  .fact { font-size:12.5px; color:var(--faint); }
+  .fact.bad { color:var(--rust); }
+  .fact i { font-style:normal; display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; margin:0 3px; }
+
+  /* Phone */
+  .phone { position:relative; overflow:hidden; border-radius:34px; background:var(--page); box-shadow:0 0 0 8px #1b1f27, 0 30px 60px -30px rgba(0,0,0,.4); height:640px; }
+  .phone.p2 { background:#F5F6F8; }
+  .bar { display:flex; justify-content:space-between; align-items:center; padding:54px 22px 0; height:84px; position:relative; z-index:2; }
+  .bar > svg { width:22px; height:22px; }
+  .bar .slot { flex:1; display:flex; justify-content:center; align-items:center; height:26px; min-width:0; padding:0 8px; }
+  .w-nc { font-weight:600; letter-spacing:.14em; font-size:19px; font-stretch:condensed; }
+  .w-name { font-size:14px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; white-space:nowrap; }
+  .w-banner { height:24px; display:flex; align-items:center; gap:7px; }
+  .w-banner .bm { width:22px; height:22px; }
+  .w-banner .bt { font-weight:600; font-size:17px; letter-spacing:-.01em; line-height:1; white-space:nowrap; font-style:italic; }
+  .w-banner .bt b { font-weight:300; font-style:normal; letter-spacing:.06em; margin-left:2px; }
+  .mark { position:absolute; right:-150px; top:-110px; width:420px; height:420px; opacity:.045; color:var(--ink); z-index:0; }
+  .mark.br { color:var(--brand); opacity:.07; }
+  .hi { padding:22px 28px 0; position:relative; z-index:1; }
+  .hi .d { font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--sec); }
+  .hi .g { font-size:24px; font-weight:600; letter-spacing:-.02em; color:#333; margin-top:6px; }
+  .td { margin-top:18px; position:relative; z-index:1; }
+  .head { font-size:11.5px; font-weight:600; letter-spacing:.18em; text-transform:uppercase; padding:0 28px 4px; }
+  .row { display:flex; align-items:center; gap:12px; min-height:56px; padding:0 28px; }
+  .ic { flex:none; width:24px; height:20px; display:grid; place-items:center; }
+  .ic svg { width:20px; height:20px; }
+  .tx { flex:1; min-width:0; }
+  .t { font-size:15px; line-height:20px; }
+  .f { font-size:12px; color:var(--faint); line-height:16px; }
+  .act { flex:none; width:84px; height:36px; border-radius:999px; background:#fff; box-shadow:inset 0 0 0 1px var(--line); display:grid; place-items:center; font-size:13px; font-weight:600; }
+  .act.ink { background:var(--ink); color:#fff; box-shadow:none; }
+  .b .act.ink { background:var(--brand); }
+  .card { margin:16px 28px 0; height:150px; border-radius:24px; background:linear-gradient(180deg,#7d8ea3,#3f4f64); position:relative; overflow:hidden; }
+  .card span { position:absolute; left:14px; top:14px; height:28px; padding:0 12px; border-radius:999px; box-shadow:inset 0 0 0 1px rgba(255,255,255,.6); color:#fff; font-size:10.5px; font-weight:600; letter-spacing:.16em; display:flex; align-items:center; }
+  .tabs { position:absolute; left:16px; right:16px; bottom:22px; height:62px; border-radius:24px; background:rgba(255,255,255,.92); box-shadow:inset 0 0 0 1px var(--line); display:flex; z-index:3; }
+  .tabs > div { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; color:var(--faint); font-size:10.5px; font-weight:600; }
+  .tabs svg { width:21px; height:21px; }
+  .tabs .on { color:var(--ink); }
+  .b .tabs .on { color:var(--brand); }
+
+  /* Nutrition banner */
+  .ban { position:absolute; inset:0 0 auto; height:231px; background:linear-gradient(160deg,#8d9a7d,#3e4a39 70%); }
+  .ban::after { content:""; position:absolute; inset:0; background:linear-gradient(180deg,rgba(0,0,0,.25),rgba(0,0,0,.05) 40%,rgba(0,0,0,.45)); }
+  .ban .in { position:absolute; left:28px; bottom:22px; z-index:1; color:#fff; }
+  .ban .e { font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; opacity:.85; }
+  .ban .h { font-size:26px; font-weight:600; margin-top:4px; }
+  .onphoto .bar { color:#fff; }
+  .rings { position:absolute; top:256px; left:0; right:0; display:flex; justify-content:center; }
+  .rings svg { width:150px; height:150px; }
+  .save { position:absolute; left:28px; right:28px; top:440px; display:flex; justify-content:flex-end; gap:16px; align-items:center; }
+  .save .c { font-size:13px; font-weight:600; color:var(--sec); }
+  .pill { height:38px; padding:0 18px; border-radius:999px; background:var(--ink); color:#fff; font-size:13px; font-weight:600; display:flex; align-items:center; }
+  .b .pill { background:var(--brand); }
+  .kcal { position:absolute; left:28px; right:28px; top:384px; height:50px; border-radius:26px; background:#fff; box-shadow:inset 0 0 0 1px var(--ink); display:flex; align-items:center; padding:0 18px; font-size:16px; gap:6px; }
+  .kcal small { color:var(--faint); font-size:13px; }
+
+  /* Chat */
+  .chat { position:absolute; top:84px; left:0; right:0; bottom:0; padding:12px 16px 0; display:flex; flex-direction:column; gap:8px; z-index:1; }
+  .ctitle { position:absolute; top:58px; left:0; right:0; text-align:center; font-size:15px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; }
+  .bub { max-width:76%; padding:9px 13px; border-radius:18px; font-size:14.5px; line-height:1.4; }
+  .bub.them { background:#fff; box-shadow:inset 0 0 0 1px var(--line); align-self:flex-start; }
+  .bub.me { background:var(--ink); color:#fff; align-self:flex-end; }
+  .c2 .bub.me { background:var(--brand); }
+  .day { align-self:center; font-size:11px; color:var(--faint); font-weight:600; letter-spacing:.06em; margin:6px 0; }
+  .comp { position:absolute; left:12px; right:12px; bottom:28px; display:flex; align-items:center; gap:10px; z-index:2; }
+  .comp svg { width:22px; height:22px; color:var(--body); flex:none; }
+  .comp .box { flex:1; height:40px; border-radius:20px; background:#fff; box-shadow:inset 0 0 0 1px var(--line); font-size:15px; color:var(--faint); display:flex; align-items:center; padding:0 14px; }
+  .comp .send { width:40px; height:40px; border-radius:50%; background:var(--ink); color:#fff; display:grid; place-items:center; flex:none; }
+  .c2 .comp .send { background:var(--brand); }
+  .comp .send svg { color:#fff; width:18px; height:18px; }
+
+  /* Admin */
+  .admin { display:flex; height:440px; border-radius:16px; overflow:hidden; box-shadow:0 0 0 1px var(--line), 0 30px 60px -34px rgba(16,24,40,.35); background:#f4f7fc; position:relative; }
+  .rail { width:210px; background:#fff; box-shadow:inset -1px 0 0 var(--line); padding:20px 0; flex:none; }
+  .rail .logo { padding:0 22px; height:30px; display:flex; align-items:center; }
+  .rail .biz { padding:4px 22px 0; font-size:12px; color:var(--faint); }
+  .rail .views { margin-top:22px; display:flex; flex-direction:column; gap:2px; padding:0 10px; }
+  .rail .v { height:36px; border-radius:999px; display:flex; align-items:center; gap:10px; padding:0 12px; font-size:13.5px; font-weight:600; color:var(--body); }
+  .rail .v svg { width:17px; height:17px; stroke-width:1.2; }
+  .rail .v.on { background:var(--ink); color:#fff; }
+  .ba .rail .v.on { background:var(--brand); }
+  .rail .cl { margin-top:22px; padding:0 22px; font-size:10.5px; font-weight:600; letter-spacing:.16em; color:var(--sec); }
+  .rail .cr { display:flex; align-items:center; gap:10px; padding:8px 22px; font-size:13.5px; }
+  .rail .cr .fc { width:24px; height:24px; border-radius:50%; background:#fff; box-shadow:inset 0 0 0 1px var(--line); display:grid; place-items:center; font-size:11px; font-weight:600; }
+  .rail .cr.sel { background:#EEF0F3; font-weight:600; }
+  .main { flex:1; padding:22px 26px; position:relative; overflow:hidden; }
+  .main .mt { font-size:22px; font-weight:600; }
+  .main .mf { font-size:13px; color:var(--faint); margin-top:4px; }
+  .dlh { position:absolute; right:40px; top:70px; width:330px; background:#fff; border-radius:20px; padding:20px 20px 16px; box-shadow:0 30px 60px -24px rgba(16,24,40,.35), 0 0 0 1px var(--line); }
+  .dlh .tt { font-size:18px; font-weight:600; }
+  .dlh .lb { font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--sec); margin-top:16px; }
+  .dlh .ln { border-bottom:1px solid var(--line); height:32px; font-size:15px; display:flex; align-items:center; }
+  .dlh .ft { display:flex; justify-content:flex-end; gap:16px; align-items:center; margin-top:22px; }
+  .dlh .go { height:36px; padding:0 18px; border-radius:999px; background:var(--ink); color:#fff; font-size:13px; font-weight:600; display:flex; align-items:center; }
+  .ba .dlh .go { background:var(--brand); }
+  .main .mk { position:absolute; right:-160px; top:-120px; width:520px; height:520px; opacity:.045; }
+
+  /* Settings */
+  .set { border-radius:18px; background:#fff; box-shadow:0 0 0 1px var(--line); padding:20px 22px; width:620px; max-width:100%; }
+  .set .lb { font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--sec); }
+  .set .part { padding:16px 0; }
+  .set .part + .part { margin-top:4px; }
+  .set .rowx { display:flex; align-items:center; gap:16px; margin-top:12px; }
+  .set .prev { width:96px; height:64px; border-radius:12px; background:#F5F6F8; display:grid; place-items:center; flex:none; overflow:hidden; }
+  .set .prev.wide { width:140px; }
+  .set .prev.dark { background:#3e4a39; color:#fff; }
+  .set .wpill { height:32px; padding:0 14px; border-radius:999px; background:#fff; box-shadow:inset 0 0 0 1px var(--btn-line); font-size:13px; font-weight:600; display:flex; align-items:center; }
+  .set .red { font-size:13px; font-weight:600; color:#b42318; }
+  .set .tiles { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
+  .set .tiles span { width:36px; height:36px; border-radius:50%; position:relative; }
+  .set .tiles span.on::after { content:""; position:absolute; inset:-4px; border-radius:50%; box-shadow:0 0 0 1.5px var(--ink); }
+  .set .tiles .plus { box-shadow:inset 0 0 0 1px var(--btn-line); display:grid; place-items:center; color:var(--sec); font-size:18px; }
+  .set .demo { display:flex; gap:12px; margin-top:14px; align-items:center; }
+
+  /* Icons */
+  .homescr { width:340px; border-radius:34px; height:300px; background:linear-gradient(160deg,#5a6f8c,#2a3446); box-shadow:0 0 0 8px #1b1f27; padding:40px 26px; display:grid; grid-template-columns:repeat(4,1fr); gap:22px 14px; align-content:start; }
+  .app { display:flex; flex-direction:column; align-items:center; gap:6px; color:#fff; font-size:11px; font-weight:500; }
+  .app .i { width:60px; height:60px; border-radius:14px; background:rgba(255,255,255,.18); }
+  .app .i.nc { background:#f8f9fb; display:grid; place-items:center; color:var(--ink); }
+  .app .i.co { background:#fff; display:grid; place-items:center; }
+  .app .i.cob { background:var(--brand); display:grid; place-items:center; color:#fff; }
+  .app .i svg { width:34px; height:34px; }
+  .tag { display:inline-block; font-size:10.5px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; padding:3px 8px; border-radius:999px; background:#EEF0F3; color:var(--sec); margin-bottom:6px; }
+</style></head><body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="db" viewBox="0 0 24 16"><rect x="0.5" y="5" width="3" height="6" rx="1"/><rect x="4.5" y="2.5" width="3" height="11" rx="1.2"/><line x1="7.5" y1="8" x2="16.5" y2="8"/><rect x="16.5" y="2.5" width="3" height="11" rx="1.2"/><rect x="20.5" y="5" width="3" height="6" rx="1"/></symbol>
+  <symbol id="heart" viewBox="0 0 24 24"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z"/></symbol>
+  <symbol id="apple" viewBox="0 0 24 24"><path d="M12 7.5c-1.6-1.4-5.5-1.6-6.6 2-.9 3 .9 8.6 3.3 10 1.2.7 2.1.1 3.3.1s2.1.6 3.3-.1c2.4-1.4 4.2-7 3.3-10-1.1-3.6-5-3.4-6.6-2zM12 7.5c0-2 1-3.6 3-4"/></symbol>
+  <symbol id="home" viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="chat" viewBox="0 0 24 24"><path d="M20 12a7.5 7.5 0 0 1-11 6.6L4.5 20l1.4-4A7.5 7.5 0 1 1 20 12z"/></symbol>
+  <symbol id="menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="bell" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0"/></symbol>
+  <symbol id="back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+  <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="mic" viewBox="0 0 24 24"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/></symbol>
+  <symbol id="arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="feed" viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h9"/></symbol>
+  <symbol id="cal" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14" rx="2"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></symbol>
+  <symbol id="biz" viewBox="0 0 24 24"><path d="M5 19V11M10 19V6M15 19v-6M20 19V9"/></symbol>
+  <!-- the star, simplified -->
+  <symbol id="star" viewBox="0 0 24 24"><path d="M12 2.5l2.6 6.9 7.4.3-5.8 4.6 2 7.2L12 17.4l-6.2 4.1 2-7.2L2 9.7l7.4-.3z" fill="currentColor" stroke="none"/></symbol>
+  <!-- a made-up coach logo: a peak in a ring -->
+  <symbol id="peak" viewBox="0 0 24 24"><path d="M3 18.5 9.5 8l3.6 5.6 2.4-3.4L21 18.5z" fill="currentColor" stroke="none"/><circle cx="16.5" cy="6.2" r="2.2" fill="currentColor" stroke="none"/></symbol>
+</defs></svg>
+
+<h1>The coach's brand in Norcoach</h1>
+<p class="sub">A little of the coach, not a new app: their colour on the one main button of a screen and the tab you are on, their name or banner where NORCOACH is, their logo behind Home and the chat as now. Everything else stays as it is: rust for what needs doing, green for done, the track colours. The brand only ever fills things (a pill, a bubble, the tab you are on), never a word, ring or line as rust and green do, so the coach can pick any colour; one too light is darkened until white reads on it. The coach here is made up, "Peak Form Coaching". Pick a colour or type one, and every screen below changes.</p>
+
+<div class="try">
+  <span class="lab">Brand colour</span>
+  <div class="sw" id="sw"></div>
+  <div class="custom"><input type="text" id="hex" value="#6a2c70" aria-label="Custom colour" spellcheck="false"><input type="color" id="pick" value="#6a2c70" aria-label="Pick a colour"></div>
+  <span class="fact" id="fact"></span>
+</div>
+
+<h2>1 · How far the colour goes</h2>
+<p class="sub">Norcoach as it is today on the left, then the brand at two reaches. Both keep the top bar's words, toggles, the done check and every track colour as they are.</p>
+<div class="opts" id="reach"></div>
+<div class="notes"><b>The difference</b><ul>
+  <li><b>A</b>: today, ink.</li>
+  <li><b>B · Light (my pick)</b>: the screen's one main pill (Start, Save, Join, Finish, Record) and the tab you are on. The faint logo behind Home takes the colour too, still faint. Most screens show it once or twice.</li>
+  <li><b>C · Light + chat</b>: B, and the client's own bubbles and Send in the chat. The chat is where the coach is felt most, but it is a lot of colour on one screen.</li>
+</ul></div>
+
+<h2>2 · Where NORCOACH is</h2>
+<p class="sub">The top bar's word changes colour as you scroll: ink on the page, white over Training's and Nutrition's photos. So the banner is drawn in one colour, as the logo behind Home is, never in its own colours.</p>
+<div class="opts" id="name"></div>
+<div class="notes"><ul>
+  <li><b>Banner</b>: the coach uploads their wordmark (transparent, wide). Norcoach takes out its background and draws it in the bar's colour.</li>
+  <li><b>No banner</b>: the business name in the bar's small caps, shrinking to fit.</li>
+  <li><b>Neither</b>: NORCOACH, as today. Norcoach then stays only as a small line at the burger's foot (<i>Norcoach</i>), so the client can find support.</li>
+</ul></div>
+
+<h2>3 · The coach's admin</h2>
+<p class="sub">The coach sees their brand while they work: the rail's logo, the view they are on, and the one ink pill of a pop-up. State tags, rust and green stay as they are.</p>
+<div class="opts" id="admin"></div>
+
+<h2>4 · Where the coach sets it</h2>
+<p class="sub">Settings, Business details, under Logo. Each part saves at once, as Logo does.</p>
+<div class="opts"><div class="opt wide"><h3>Settings, Business details</h3><p>Banner beside Logo, then Brand colour: eight swatches as quick picks, and + for any colour at all. A colour too light for white words on it is darkened, keeping its hue, and it says so in one grey line (try a yellow or a pale blue above).</p><div id="settings"></div></div></div>
+
+<h2>5 · The app icon: dropped (19 Nov, Alex: "then forget about it"; the icon stays the Norcoach star)</h2>
+<p class="sub" id="iconsub">The iPhone and Android app is one app in the stores for every coach. It can only switch to icons built into it, iPhone shows its own line when it does ("You have changed the icon for Norcoach"), and the name under the icon stays Norcoach. How the others do it (checked 19 Nov): Everfit lets a coach pick from a list of its own icons ($75 once); Trainerize Pro puts the coach's own icon into its shared iPhone app ($169 once, weeks); a coach's own name under the icon comes only with an app of their own in the stores, under their own Apple account.</p>
+<div class="opts" id="icons"></div>
+<div class="notes" id="iconnotes"></div>
+
+<script>
+const SW = [
+  ["Ink (Norcoach)", "#141a24"], ["Slate", "#3d4a5c"], ["Cobalt", "#2346a8"], ["Ocean", "#0d6680"],
+  ["Plum", "#6a2c70"], ["Burgundy", "#8a2442"], ["Magenta", "#a3195b"], ["Olive", "#5d6b1f"],
+];
+// State hues to keep away from: rust, the warm-up amber, the done green (±25°).
+const STATES = [["rust", "#b8471f"], ["amber", "#a8761f"], ["done green", "#2f7a3f"]];
+const hexRgb = h => { h = h.replace("#", ""); if (h.length === 3) h = [...h].map(c => c + c).join(""); const n = parseInt(h, 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+const rgbHex = c => "#" + c.map(v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, "0")).join("");
+const lum = c => { const a = c.map(v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return .2126 * a[0] + .7152 * a[1] + .0722 * a[2]; };
+const contrastWhite = c => 1.05 / (lum(c) + .05);
+const toHsl = ([r, g, b]) => { r /= 255; g /= 255; b /= 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b); let h = 0, s = 0; const l = (mx + mn) / 2; if (mx !== mn) { const d = mx - mn; s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn); h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60; } return [h, s, l]; };
+const fromHsl = ([h, s, l]) => { const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l); const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1)); return [f(0) * 255, f(8) * 255, f(4) * 255]; };
+const hueGap = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
+
+// Free (19 Nov, Alex: "can we not technically allow the coaches more freedom"): the colour only ever fills a pill,
+// a bubble or the tab you are on, never a word, ring or line as rust and green do, so no hue is refused.
+// The one change: darkened until white reads on it. `strict` is the old refusing check, kept for comparison.
+function check(input, free) {
+  if (!/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.test(input.trim())) return { ok: false, msg: "Not a colour" };
+  const c = hexRgb(input.trim()); const hsl = toHsl(c);
+  if (!free && hsl[1] > .18) for (const [name, hx] of STATES) {
+    if (hueGap(hsl[0], toHsl(hexRgb(hx))[0]) < 25) {
+      const near = SW.slice(1).sort((x, y) => hueGap(toHsl(hexRgb(x[1]))[0], hsl[0]) - hueGap(toHsl(hexRgb(y[1]))[0], hsl[0]))[0];
+      return { ok: false, msg: `Too close to the ${name}`, near };
+    }
+  }
+  let [h, s, l] = hsl, out = c, steps = 0;
+  while (contrastWhite(out) < 4.5 && l > 0) { l -= .01; out = fromHsl([h, s, l]); steps++; }
+  const hex = rgbHex(out);
+  return { ok: true, hex, changed: steps > 0 };
+}
+
+let current = "#6a2c70";
+function apply(input, fromSwatch) {
+  const r = check(input, true); const fact = document.getElementById("fact");
+  if (!r.ok) {
+    fact.className = "fact bad";
+    fact.innerHTML = r.near ? `${r.msg} | <a href="#" id="near" style="color:inherit;font-weight:600;text-decoration:none">Use ${r.near[0]}</a>` : r.msg;
+    const n = document.getElementById("near"); if (n) n.onclick = e => { e.preventDefault(); apply(r.near[1], true); };
+    return;
+  }
+  current = r.hex;
+  document.documentElement.style.setProperty("--brand", r.hex);
+  fact.className = "fact";
+  fact.innerHTML = r.changed ? `${input.trim().toUpperCase()} shows as <i style="background:${r.hex}"></i>${r.hex.toUpperCase()}, so white reads on it` : "";
+  document.getElementById("hex").value = fromSwatch ? r.hex : input.trim();
+  document.getElementById("pick").value = r.hex;
+  document.querySelectorAll(".sw button").forEach(b => b.classList.toggle("on", b.dataset.c === r.hex.toLowerCase()));
+  document.querySelectorAll(".set .tiles span[data-c]").forEach(b => b.classList.toggle("on", b.dataset.c === r.hex.toLowerCase()));
+  const nm = document.getElementById("swname"); if (nm) { const s = SW.find(x => x[1] === r.hex.toLowerCase()); nm.textContent = s ? s[0] : r.hex.toUpperCase(); }
+}
+document.getElementById("sw").innerHTML = SW.map(([n, c]) => `<button title="${n}" data-c="${c}" style="background:${c}"></button>`).join("");
+document.getElementById("sw").onclick = e => { const b = e.target.closest("button"); if (b) apply(b.dataset.c, true); };
+document.getElementById("hex").oninput = e => apply(e.target.value, false);
+document.getElementById("pick").oninput = e => apply(e.target.value, false);
+
+const BAR = (word, light) => `<div class="bar"><svg><use href="#menu"/></svg><span class="slot">${word}</span><svg><use href="#bell"/></svg></div>`;
+const NC = `<span class="w-nc">NORCOACH</span>`;
+const BANNER = `<span class="w-banner"><svg class="bm"><use href="#peak"/></svg><span class="bt">PEAK<b>FORM</b></span></span>`;
+const NAME = `<span class="w-name">Peak Form Coaching</span>`;
+const TABS = (on) => `<div class="tabs">${[["home", "Home"], ["db", "Training"], ["apple", "Nutrition"], ["chat", "Chat"]].map(([i, l]) => `<div class="${l === on ? "on" : ""}"><svg viewBox="0 0 ${i === "db" ? "24 16" : "24 24"}"><use href="#${i}"/></svg>${l}</div>`).join("")}</div>`;
+const HOME = (cls, word, markBrand, markIcon) => `<div class="phone ${cls}"><svg class="mark ${markBrand ? "br" : ""}"><use href="#${markIcon}"/></svg>${BAR(word)}
+  <div class="hi"><div class="d">Thursday 19 November</div><div class="g">Good afternoon, Alex.</div></div>
+  <div class="td"><div class="head">Today</div>
+    <div class="row"><span class="ic" style="color:var(--indigo)"><svg viewBox="0 0 24 16"><use href="#db"/></svg></span><span class="tx"><div class="t">Upper</div><div class="f">6 exercises</div></span><span class="act ink">Start</span></div>
+    <div class="row"><span class="ic" style="color:var(--beige)"><svg viewBox="0 0 24 24"><use href="#heart"/></svg></span><span class="tx"><div class="t">Check-in</div><div class="f">3 of 5 to fill</div></span><span class="act">Fill in</span></div>
+  </div>
+  <div class="card"><span>TRAINING</span></div>${TABS("Home")}</div>`;
+const CHAT = (cls) => `<div class="phone p2 ${cls}"><div class="bar"><svg><use href="#back"/></svg><span class="slot"></span><span style="width:22px"></span></div><div class="ctitle">Finlay</div>
+  <div class="chat"><span class="day">Today</span>
+    <div class="bub them">How did the squats feel after the change to 3 sets?</div>
+    <div class="bub me">Much better, knees didn't hurt at all</div>
+    <div class="bub me">Hit 100 kg for 8 on the last set</div>
+    <div class="bub them">Love it. Same next week, then we go up.</div>
+  </div>
+  <div class="comp"><svg><use href="#plus"/></svg><span class="box">Message</span><svg><use href="#mic"/></svg><span class="send"><svg><use href="#arrow"/></svg></span></div></div>`;
+document.getElementById("reach").innerHTML = [
+  ["A · Today", "Ink everywhere, NORCOACH in the bar.", HOME("", NC, false, "star"), CHAT("")],
+  ["B · Light", "The main pill, the tab you are on, the faint logo.", HOME("b", BANNER, true, "peak"), CHAT("b")],
+  ["C · Light + chat (Alex's pick, 19 Nov)", "B, and the client's bubbles and Send.", HOME("b", BANNER, true, "peak"), CHAT("b c2")],
+].map(([h, p, a, b]) => `<div class="opt" style="width:340px"><h3>${h}</h3><p>${p}</p>${a}<div style="height:34px"></div>${b}</div>`).join("");
+
+const NUT = (word) => `<div class="phone b onphoto"><div class="ban"><div class="in"><div class="e">Nutrition</div><div class="h">Lean bulk</div></div></div>${BAR(word)}
+  <div class="rings"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" stroke="#E1E5EB" stroke-width="6"/><circle cx="50" cy="50" r="40" stroke="#1d7a70" stroke-width="6" stroke-dasharray="170 252" transform="rotate(-90 50 50)"/></svg></div>
+  <div class="kcal">1,840<small>kcal</small></div>
+  <div class="save"><span class="c">Cancel</span><span class="pill">Save</span></div>${TABS("Nutrition")}</div>`;
+document.getElementById("name").innerHTML = [
+  ["Banner, on the page", "Their wordmark, in ink.", HOME("b", BANNER, true, "peak")],
+  ["Banner, over a photo", "The same banner, white, as NORCOACH is now.", NUT(BANNER)],
+  ["No banner: the name", "The business name in small caps.", HOME("b", NAME, true, "peak")],
+].map(([h, p, a]) => `<div class="opt"><h3>${h}</h3><p>${p}</p>${a}</div>`).join("");
+
+const ADMIN = (cls, logo, biz, mk) => `<div class="admin ${cls}"><div class="rail"><div class="logo">${logo}</div><div class="biz">${biz}</div>
+  <div class="views">${[["feed", "Feed", 1], ["cal", "Calendar"], ["biz", "Business"]].map(([i, l, on]) => `<div class="v ${on ? "on" : ""}"><svg><use href="#${i}"/></svg>${l}</div>`).join("")}</div>
+  <div class="cl">CLIENTS</div>${["Alex Arvio", "Ben Carter", "Paula Diaz"].map((n, i) => `<div class="cr ${i ? "" : "sel"}"><span class="fc">${n[0]}</span>${n}</div>`).join("")}</div>
+  <div class="main"><svg class="mk" style="color:${mk ? "var(--brand)" : "var(--ink)"};opacity:${mk ? .06 : .045}"><use href="#${mk ? "peak" : "star"}"/></svg><div class="mt">Alex's calls</div><div class="mf">Next call Mon 23/11</div>
+  <div class="dlh"><div class="tt">Schedule a meeting</div><div class="lb">Topic</div><div class="ln">Check-in</div><div class="lb">Date</div><div class="ln">Mon 23/11 | 09:00</div><div class="ft"><span style="font-size:13px;font-weight:600;color:var(--sec)">Cancel</span><span class="go">Schedule</span></div></div></div></div>`;
+const NCLOGO = `<span style="display:flex;align-items:center;gap:6px"><svg style="width:18px;height:18px"><use href="#star"/></svg><span class="w-nc" style="font-size:16px">NORCOACH</span></span>`;
+const BLOGO = `<span class="w-banner" style="color:var(--ink)"><svg class="bm" style="color:var(--brand)"><use href="#peak"/></svg><span class="bt">PEAK<b>FORM</b></span></span>`;
+document.getElementById("admin").innerHTML = [
+  ["Today", "Norcoach's logo, ink.", ADMIN("", NCLOGO, "Peak Form Coaching", false)],
+  ["Branded (Alex's pick, 19 Nov)", "Their banner in the rail, the view and the pop-up's pill in their colour.", ADMIN("ba", BLOGO, "", true)],
+].map(([h, p, a]) => `<div class="opt wide"><h3>${h}</h3><p>${p}</p>${a}</div>`).join("");
+
+document.getElementById("settings").innerHTML = `<div class="set">
+  <div class="part"><div class="lb">Logo</div><div class="rowx"><span class="prev"><svg style="width:34px;height:34px"><use href="#peak"/></svg></span><span class="wpill">Replace</span><span class="red">Remove</span></div></div>
+  <div class="part"><div class="lb">Banner</div><div class="rowx"><span class="prev wide">${BANNER}</span><span class="prev wide dark">${BANNER}</span><span class="wpill">Replace</span><span class="red">Remove</span></div></div>
+  <div class="part"><div class="lb">Brand colour</div>
+    <div class="tiles">${SW.map(([n, c]) => `<span title="${n}" data-c="${c}" style="background:${c}"></span>`).join("")}<span class="plus">+</span></div>
+    <div class="demo"><span class="pill" style="background:var(--brand);height:36px">Start</span><span class="fact" id="swname">Plum</span></div></div>
+</div>`;
+const SCR = (mine, label) => `<div class="homescr">${["", "", "", "", "", mine, "", ""].map((m, i) => m ? `<div class="app">${m}<span>${label}</span></div>` : `<div class="app"><span class="i"></span><span style="opacity:.7">${["Photos", "Maps", "Mail", "Clock", "Notes", "", "Music", "Notes"][i]}</span></div>`).join("")}</div>`;
+document.getElementById("icons").innerHTML = [
+  ["A · Added from the browser", "Free, at once, per coach. Their logo and name, when the client adds the app to the home screen from the phone's browser (or from the coach's join link). Never updates after it is added.", SCR(`<span class="i co"><svg style="color:var(--brand)"><use href="#peak"/></svg></span>`, "Peak Form")],
+  ["B · Pick from our icons (Everfit's way)", "Norcoach ships a set of icons in the app: the star on each of the eight swatches. The coach picks one, the client's app switches on its next open. Free per coach, in the app stores' rules.", SCR(`<span class="i cob"><svg><use href="#star"/></svg></span>`, "Norcoach")],
+  ["C · Their own logo (Trainerize's way)", "The coach uploads a square icon; we add it to the app's next update. Their logo on the home screen, the name still Norcoach. A build and Apple's review for each new icon, so batched into our releases: days to weeks.", SCR(`<span class="i co"><svg style="color:var(--brand)"><use href="#peak"/></svg></span>`, "Norcoach")],
+].map(([h, p, a]) => `<div class="opt"><h3>${h}</h3><p style="min-height:96px">${p}</p>${a}</div>`).join("");
+document.getElementById("iconnotes").innerHTML = `<ul>
+  <li><b>My pick: A now, and B or C after.</b> A is web only, but costs nothing. B is quick to build once and costs nothing per coach. C is what you described (their own logo), with a cost per coach: a step in our release for each new icon. Doing C for every coach also leans on Apple's rule against "template" apps, which is why Everfit moved from C to B.</li>
+  <li><b>Their own name under the icon</b> needs an app of their own in the stores, under their Apple account: a separate product for later, for big coaches.</li>
+</ul>`;
+apply(current, true);
+</script>
+</body></html>

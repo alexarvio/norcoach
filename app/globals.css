@@ -22131,3 +22131,75 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
 .cs-select-menu [role="option"][data-highlighted] { background: #fafbfd; }
 /* The step list's done check: the app's own (DoneCheck), 24 in its green ring. */
 .su-steps li .su-step-done { color: #2f7a3f; animation: cs-pop .45s cubic-bezier(.22, 1, .36, 1); }
+
+/* ---- Coach brand (19 Nov, Alex: docs/boards/coach-brand-mockup.html, option C). One colour of the coach's, `--brand`
+   on the page (app/layout.tsx; lib/brandColour.ts darkens one too light for white words), fills the screen's one main
+   pill, the tab on screen and the client's own chat bubbles and Send; nothing else (toggles, the sliding pill, words,
+   dates, dots, rust and green, the tracks, the sign-in, the coach's phone). None set, today's ink: every rule below
+   falls back to #141a24, so the app is as it was. Each matches the rule it takes over and comes after it, its off,
+   white or disabled look left alone. */
+/* The main pills: Today's Start, Resume and Join, the overview's Start, the pop-ups' Save, Join, Resume, Finish, Record,
+   Mark as done, Send and Save changes; a saved day's Use, Calories eaten's Save, Reopen's confirm, Card pictures' Done. */
+.hm-td-act.hm-td-act.ink,
+.so-screen .so-start:not(:disabled),
+.evs-save:not(:disabled),
+.cki-save:not(:disabled),
+.gpk-primary:not(:disabled),
+.wo-sheet-btn:not(:disabled),
+.wo-sheet .wo-sheet-btn:not(:disabled),
+.sw-card.sw-card .sw-primary:not(.off),
+.fdi-panel.fdi-panel .fdi-primary:not(:disabled),
+.fdi-scan.fdi-scan .fdi-primary:not(:disabled),
+.hm-mt-join.hm-mt-join:not(.early),
+.mtp-join:not(.quiet),
+.tr-resume-chip.tr-resume-chip,
+.wo-askline-pill.wo-askline-pill.ink,
+.wo-cardio-done.wo-cardio-done:not(.is-done),
+.ws-finish-pill.ws-finish-pill,
+.wo-save-edit.wo-save-edit.wo-save-edit,
+.lw .wo-note.wo-note .wo-note-save.wo-note-save,
+.vr-sheet .vr-sheet-send:not(:disabled),
+.vas-pill.vas-pill:not(.white):not(:disabled),
+.st-details-save.st-details-save:not(:disabled),
+.pp-app-save-btn.pp-app-save-btn:not(.secondary):not(:disabled),
+.fdi-day-use.fdi-day-use:not(:disabled),
+.fdi-kcal-save.fdi-kcal-save:not(:disabled),
+.so-ask-go.so-ask-go:not(.ws-ask-rust):not(:disabled) { background-color: var(--brand, #141a24); }
+/* Card pictures' Done, its edge in the colour too. */
+.cv-btn.primary.primary.primary:not(:disabled) { background-color: var(--brand, #141a24); border-color: var(--brand, #141a24); }
+/* The tab on screen, its icon and its word. */
+.app-bottom-nav.dark .app-tab-btn.active.active.active { color: var(--brand, #141a24); }
+/* Send in the client's chat. */
+.cm-compose .chat-send-btn.chat-send-btn.chat-send-btn.chat-send-btn,
+.cm-compose .chat-send-btn.chat-send-btn.chat-send-btn.chat-send-btn:hover { background: var(--brand, #141a24); border-color: var(--brand, #141a24); }
+/* The client's own bubbles, only with a colour of the coach's own (`brand-on` on the phone frame, AppShell): white
+   words on it, its parts in white as on the old navy bubble. Ink or none, the neutral tint above stays. */
+.brand-on .cm-msg.mine.mine.mine { background: var(--brand, #141a24); }
+.brand-on .cm-msg.mine.mine.mine .cm-msg-text { color: #fff; }
+.brand-on .cm-msg.mine.mine.mine .cm-msg-time { color: rgba(255, 255, 255, 0.65); }
+.brand-on .cm-msg.mine.mine.mine .cm-chev { color: rgba(255, 255, 255, 0.7); }
+.brand-on .cm-msg.mine.mine.mine .cm-quote { background: rgba(255, 255, 255, 0.14); border-left-color: rgba(255, 255, 255, 0.7); }
+.brand-on .cm-msg.mine.mine.mine .cm-quote b { color: #fff; }
+.brand-on .cm-msg.mine.mine.mine .cm-quote span { color: rgba(255, 255, 255, 0.82); }
+.brand-on .cm-msg.mine.mine.mine .cm-msg-file { background: rgba(255, 255, 255, 0.14); border-color: rgba(255, 255, 255, 0.3); color: #fff; }
+.brand-on .cm-msg.mine.mine.mine .cm-edit-cancel { border-color: rgba(255, 255, 255, 0.4); color: #fff; }
+.brand-on .cm-msg.mine.mine.mine .cm-edit-save { background: #fff; color: var(--brand, #141a24); }
+.brand-on .cm-msg.mine.mine.mine .vn-play { color: #fff; }
+.brand-on .cm-msg.mine.mine.mine .vn-wave i { background: rgba(255, 255, 255, 0.4); }
+.brand-on .cm-msg.mine.mine.mine .vn-wave i.on, .brand-on .cm-msg.mine.mine.mine .vn-knob { background: #fff; }
+.brand-on .cm-msg.mine.mine.mine .vn-time { color: rgba(255, 255, 255, 0.7); }
+/* The faint mark behind Home and the client's chat in the colour, as faint as before: `--brand-mark` is the mark drawn
+   in it (lib/brandMark.ts brandMarkInline), set only with a colour of the coach's own; else the mark as it was. */
+.app-content.app-content:has(> .hm) { background-image: linear-gradient(rgba(245, 245, 245, 0.955), rgba(245, 245, 245, 0.955)), var(--brand-mark, var(--bg-mark, url("/brand/mark.svg"))); }
+.cm-body.cm-body.cm-body { background-image: linear-gradient(rgba(245, 246, 248, 0.955), rgba(245, 246, 248, 0.955)), var(--brand-mark, var(--bg-mark, url("/brand/mark.svg"))); }
+/* The banner where NORCOACH is (app/components/BrandLogo.tsx): its shape filled with the colour of the words round it,
+   as tall as the word and as wide as its shape, never wider than its room. */
+.brand-banner.brand-banner { display: inline-block; flex: none; width: calc(var(--banner-ratio, 4) * 1em); max-width: 100%; height: auto; aspect-ratio: var(--banner-ratio, 4); vertical-align: middle; background-color: currentColor; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-position: center; mask-position: center; -webkit-mask-size: contain; mask-size: contain; }
+.app-header.dark .app-header-brand.brand-banner { max-width: calc(100% - 128px); }
+.rr-logo.brand-banner { -webkit-mask-position: left center; mask-position: left center; }
+/* No banner: the business name in the bar's small caps, on one line, a size down until it fits (never cut). */
+.brand-name.brand-name { display: inline-block; max-width: 100%; overflow: visible; font-family: var(--font-archivo), "Archivo", sans-serif; font-size: 14px; font-weight: 600; letter-spacing: 0.16em; line-height: 1.2; text-transform: uppercase; white-space: nowrap; }
+/* The bar's own wordmark rule sets 400 and tight tracking; the name takes the small caps back. Centred by its middle
+   (translateX), so the trailing .16em is matched on its left rather than cancelled by a margin. */
+.app-header.dark .app-header-brand.brand-name { max-width: calc(100% - 128px); font-family: var(--font-archivo), "Archivo", sans-serif; font-size: 14px; font-weight: 600; letter-spacing: 0.16em; line-height: 1.2; padding-left: 0.16em; }
+.app-menu-head .app-menu-brand.brand-name { font-family: var(--font-archivo), "Archivo", sans-serif; font-size: 14px; font-weight: 600; letter-spacing: 0.16em; color: #141a24; }

@@ -140,6 +140,31 @@ body:has(.rd.rst) .rd-picker-menu [data-slot="dropdown-menu-item"] small { font-
    box, a little stronger here so it reads; Upload or Replace the white pill, Remove in red words. */
 .rd.rst .rst-logo { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
 .rd.rst .rst-logo-mark { display: block; width: 224px; max-width: 100%; aspect-ratio: 448 / 430; padding: 18px; border-radius: 12px; background: #F5F6F8; object-fit: contain; opacity: 0.32; box-sizing: border-box; }
+/* Banner (19 Nov, Alex: docs/boards/coach-brand-mockup.html): the shape as it will sit, ink on the page's grey and
+   white on a dark green-grey as over a photo, side by side. */
+.rd.rst .rst-bannercard { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.rd.rst .rst-banner-row { display: flex; flex-wrap: wrap; gap: 12px; }
+.rd.rst .rst-banner-prev { display: flex; align-items: center; justify-content: center; width: 220px; max-width: 100%; height: 72px; padding: 0 18px; border-radius: 12px; background: #F5F6F8; box-sizing: border-box; font-size: 26px; color: #141a24; }
+.rd.rst .rst-banner-prev.dark { background: #3e4a39; color: #fff; }
+/* Brand colour (19 Nov): eight round 36px picks and +, the picked one ringed in ink 4px off; + opens the code's box and
+   the browser's own picker behind Pick; under them Start in the colour, and one grey fact when it was darkened. */
+.rd.rst .rst-brand { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
+/* Their own room in the card (the cards on this page are padding 0, and the card clips): the grid's 16px / 18px,
+   so the picked swatch's ring and the banner's previews never touch the hairline. */
+.rd.rls.rst .rls-card.rst-card.rst-brand, .rd.rls.rst .rls-card.rst-card.rst-bannercard { padding: 16px 18px 18px; }
+.rd.rst .rst-swatches { display: flex; flex-wrap: wrap; gap: 12px; }
+.rd.rst .rst-swatch { position: relative; flex: none; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(20, 26, 36, 0.08); font: inherit; font-size: 18px; font-weight: 500; line-height: 1; color: #5b6474; cursor: pointer; }
+.rd.rst .rst-swatch.plus { background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; }
+.rd.rst .rst-swatch.plus i { width: 24px; height: 24px; border-radius: 50%; }
+.rd.rst .rst-swatch.on::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; box-shadow: 0 0 0 1.5px #141a24; pointer-events: none; }
+.rd.rst .rst-swatch:focus-visible { outline: 2px solid #141a24; outline-offset: 6px; }
+.rd.rst .rst-hexrow { position: relative; display: flex; align-items: center; gap: 8px; }
+/* The code on a clean line, as every field on the page (`dlh-line`: the hairline under it, ink while typing). */
+.rd.rst .rst-hex.dlh-line { width: 120px; letter-spacing: 0.04em; text-transform: uppercase; }
+.rd.rst .rst-wheel { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
+.rd.rst .rst-brand-demo { display: flex; align-items: center; gap: 14px; }
+.rd.rst .rst-brand-pill { display: inline-flex; align-items: center; height: 36px; padding: 0 18px; border-radius: 999px; font-size: 13.5px; font-weight: 600; color: #fff; }
+.rd.rst .rst-brand-fact { font-size: 13px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; }
 .rd.rst label.trn-pill { cursor: pointer; }
 .rd.rst label.trn-pill.busy { cursor: progress; opacity: 0.6; }
 

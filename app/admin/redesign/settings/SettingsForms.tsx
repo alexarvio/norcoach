@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition, type ReactNode } from "react";
+import { useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { connectStripeAction, disconnectStripeAction, removeCoachLogoAction, saveCoachBusinessAction, saveCoachInvoicingAction, uploadCoachLogoAction } from "../../../lib/actions";
+import { connectStripeAction, disconnectStripeAction, removeCoachBannerAction, removeCoachLogoAction, saveCoachBusinessAction, saveCoachInvoicingAction, setBrandColourAction, uploadCoachBannerAction, uploadCoachLogoAction } from "../../../lib/actions";
+import { BRAND_SWATCHES, brandColour, normalHex } from "../../../lib/brandColour";
 import type { PaymentsState } from "../../../lib/payments";
 import { changeOwnEmailAction, changeOwnPasswordAction, logoutAction } from "../../../lib/auth-actions";
 import type { CoachBusiness, CoachInvoicing } from "../../../lib/db";
@@ -225,8 +226,8 @@ export function LogoSettings({ mark }: { mark: string | null }) {
       const r = await uploadCoachLogoAction(f).catch(() => ({ ok: false as const, error: "Not saved. Try again." }));
       if (!r.ok) return setError(r.error);
       setError("");
+      // No Saved toast (admin §9): the mark on the card says it; only a failure speaks.
       router.refresh();
-      toast.success("Logo saved");
     });
   };
   return (
@@ -273,12 +274,198 @@ export function LogoSettings({ mark }: { mark: string | null }) {
               start(async () => {
                 await removeCoachLogoAction();
                 router.refresh();
-                toast.success("Logo removed");
               });
             }}
           />
         )}
       </Dialog>
+    </Section>
+  );
+}
+
+// ---- The banner (19 Nov, Alex: docs/boards/coach-brand-mockup.html): a wide wordmark drawn where NORCOACH is, on
+// their screens and their clients'. Made one colour as the logo is, so the card shows it as it will sit: ink on the
+// page and white over a photo. Upload (Replace) the white pill, Remove in red words asking first; saved at once.
+export function BannerSettings({ banner, ratio }: { banner: string | null; ratio: number | null }) {
+  const router = useRouter();
+  const [busy, start] = useTransition();
+  const [error, setError] = useState("");
+  const [asking, setAsking] = useState(false);
+  const pick = (file: File | undefined) => {
+    if (!file) return;
+    const f = new FormData();
+    f.set("file", file);
+    start(async () => {
+      const r = await uploadCoachBannerAction(f).catch(() => ({ ok: false as const, error: "Not saved. Try again." }));
+      if (!r.ok) return setError(r.error);
+      setError("");
+      // No Saved toast (admin §9): the previews say it; only a failure speaks.
+      router.refresh();
+    });
+  };
+  const shape = banner ? ({ "--banner-ratio": ratio && ratio > 0 ? ratio : 4, WebkitMaskImage: `url("${banner}")`, maskImage: `url("${banner}")` } as CSSProperties) : undefined;
+  return (
+    <Section
+      title="Banner"
+      fact={banner ? "In the top bar" : "None yet"}
+      actions={
+        <>
+          <label className={`trn-pill rst-pill${busy ? " busy" : ""}`}>
+            {busy ? "Saving…" : banner ? "Replace" : "Upload"}
+            <input type="file" accept="image/*" hidden disabled={busy} onChange={(e) => (pick(e.target.files?.[0]), (e.target.value = ""))} />
+          </label>
+          {banner && (
+            <button type="button" className="rst-danger" onClick={() => setAsking(true)} disabled={busy}>
+              Remove
+            </button>
+          )}
+        </>
+      }
+    >
+      {(banner || error) && (
+        <div className="rls-card rst-card rst-bannercard">
+          {banner && (
+            <div className="rst-banner-row">
+              {/* On the page, in ink; over a photo, in white. */}
+              <span className="rst-banner-prev">
+                <span className="brand-banner" role="img" aria-label="Your banner on the page" style={shape} />
+              </span>
+              <span className="rst-banner-prev dark">
+                <span className="brand-banner" role="img" aria-label="Your banner over a photo" style={shape} />
+              </span>
+            </div>
+          )}
+          {error && <small className="rst-err">{error}</small>}
+        </div>
+      )}
+      <Dialog open={asking} onOpenChange={setAsking}>
+        {asking && (
+          <ConfirmDialog
+            title="Remove your banner?"
+            description="Norcoach’s name comes back in the top bar, with your business name where you have set one."
+            confirm="Remove"
+            danger
+            onConfirm={() => {
+              setAsking(false);
+              start(async () => {
+                await removeCoachBannerAction();
+                router.refresh();
+              });
+            }}
+          />
+        )}
+      </Dialog>
+    </Section>
+  );
+}
+
+// ---- The brand colour (19 Nov, Alex: option C): any colour, on the main pill of a screen, the tab on screen and the
+// client's own bubbles. Eight quick picks and + for any other; one too light for white words is darkened, and one grey
+// fact says so. Ink is today's look, kept as none. Saved at once, as Logo.
+export function BrandColourSettings({ picked }: { picked: string | null }) {
+  const router = useRouter();
+  const [now, setNow] = useState<string | null>(picked ? normalHex(picked) : null);
+  const [error, setError] = useState("");
+  const custom = !!now && !BRAND_SWATCHES.some((s) => s.hex === now);
+  const [open, setOpen] = useState(custom);
+  const [typed, setTyped] = useState(custom && now ? now.toUpperCase() : "");
+  const wheel = useRef<HTMLInputElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ink = BRAND_SWATCHES[0].hex;
+  const shown = now ?? ink;
+  const used = brandColour(shown) ?? { hex: ink, changed: false };
+  const save = (hex: string | null) => {
+    if (timer.current) clearTimeout(timer.current);
+    // Ink is today's look: none kept.
+    const value = hex && hex !== ink ? hex : null;
+    setNow(value);
+    setError("");
+    void setBrandColourAction(value)
+      .then((r) => (r.ok ? router.refresh() : setError(r.error)))
+      .catch(() => setError("Not saved. Try again."));
+  };
+  // The browser's colour field sends every step of a drag: the last one is kept.
+  const saveSoon = (hex: string) => {
+    setNow(hex);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => save(hex), 450);
+  };
+  const takeTyped = () => {
+    const hex = normalHex(typed);
+    if (!hex) return setError(typed.trim() ? "That isn't a colour." : "");
+    setTyped(hex.toUpperCase());
+    if (hex !== now) save(hex);
+  };
+  const name = BRAND_SWATCHES.find((s) => s.hex === shown)?.name ?? shown.toUpperCase();
+  return (
+    <Section title="Brand colour" fact={name}>
+      <div className="rls-card rst-card rst-brand">
+        <div className="rst-swatches" role="radiogroup" aria-label="Brand colour">
+          {BRAND_SWATCHES.map((s) => (
+            <button
+              key={s.hex}
+              type="button"
+              role="radio"
+              aria-checked={shown === s.hex}
+              aria-label={s.name}
+              title={s.name}
+              className={`rst-swatch${shown === s.hex ? " on" : ""}`}
+              style={{ background: s.hex }}
+              onClick={() => (setOpen(false), save(s.hex))}
+            />
+          ))}
+          <button type="button" className={`rst-swatch plus${custom ? " on" : ""}`} aria-label="Another colour" aria-expanded={open} title="Another colour" onClick={() => setOpen((o) => !o)}>
+            {custom ? <i style={{ background: shown }} aria-hidden="true" /> : "+"}
+          </button>
+        </div>
+        {open && (
+          <div className="rst-hexrow">
+            <input
+              className="dlh-line rst-hex"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              onBlur={takeTyped}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  takeTyped();
+                }
+              }}
+              placeholder="#"
+              aria-label="Colour as a hex code"
+              spellCheck={false}
+              autoComplete="off"
+              maxLength={7}
+            />
+            <button type="button" className="rst-act" onClick={() => wheel.current?.click()}>
+              Pick
+            </button>
+            <input
+              ref={wheel}
+              type="color"
+              className="rst-wheel"
+              tabIndex={-1}
+              aria-hidden="true"
+              value={shown}
+              onChange={(e) => {
+                setTyped(e.target.value.toUpperCase());
+                saveSoon(e.target.value.toLowerCase());
+              }}
+            />
+          </div>
+        )}
+        <div className="rst-brand-demo">
+          <span className="rst-brand-pill" style={{ background: used.hex }}>
+            Start
+          </span>
+          {used.changed && (
+            <span className="rst-brand-fact">
+              {shown.toUpperCase()} shows as {used.hex.toUpperCase()}
+            </span>
+          )}
+        </div>
+        {error && <small className="rst-err">{error}</small>}
+      </div>
     </Section>
   );
 }
