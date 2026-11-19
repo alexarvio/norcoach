@@ -1,0 +1,105 @@
+# The Xcode project file with the workout's Live Activity in it (19 Nov, Alex: "a pill on the lock screen of my iphone
+# whenever there is an ongoing workout"), made and compile-checked on GitHub's Mac, since there is no Mac here: run it
+# from GitHub, Actions > iOS project > Run workflow. It adds the NorcoachLive extension with
+# mobile/ios/scripts/add_live_activity.rb, builds the app for the simulator with no signing (nothing is uploaded and no
+# secret is read), and keeps the project file it made as the run's artifact `project-pbxproj`, to commit:
+#   gh run download <run id> -n project-pbxproj -D mobile/ios/App/App.xcodeproj
+name: iOS project
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ios-project
+  cancel-in-progress: true
+
+jobs:
+  project:
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Pick the newest Xcode
+        run: |
+          XC=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          sudo xcode-select -s "$XC"
+          xcodebuild -version
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+
+      - name: Install and sync the shell
+        run: |
+          npm ci
+          npx cap sync ios
+
+      - name: Add the Live Activity target
+        # Run twice: the second must find everything in place and add nothing.
+        run: |
+          gem install xcodeproj --no-document
+          ruby ios/scripts/add_live_activity.rb
+          ruby ios/scripts/add_live_activity.rb | tee "$RUNNER_TEMP/second-run.txt"
+          grep -q 'Nothing to add' "$RUNNER_TEMP/second-run.txt" || { echo "The script is not idempotent"; exit 1; }
+          git diff --stat -- ios/App/App.xcodeproj/project.pbxproj
+
+      - name: Keep the project file
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-pbxproj
+          path: mobile/ios/App/App.xcodeproj/project.pbxproj
+          if-no-files-found: error
+
+      - name: Build for the simulator
+        # The whole log to a file (the step after prints its errors and tail on a failure, and it is kept below).
+        run: |
+          LOG="$RUNNER_TEMP/build.log"
+          if ! xcodebuild build \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO > "$LOG" 2>&1; then
+            echo "The build failed"
+            exit 1
+          fi
+          echo "::group::warnings in the new files"
+          grep -E 'warning:.*(LiveActivity|WorkoutAttributes|NorcoachLive)' "$LOG" | sort -u | head -60 || true
+          echo "::endgroup::"
+          tail -n 5 "$LOG"
+          APP="$RUNNER_TEMP/DerivedData/Build/Products/Debug-iphonesimulator/App.app"
+          ls -la "$APP/PlugIns"
+          test -d "$APP/PlugIns/NorcoachLive.appex"
+          /usr/libexec/PlistBuddy -c "Print :NSExtension:NSExtensionPointIdentifier" "$APP/PlugIns/NorcoachLive.appex/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :NSSupportsLiveActivities" "$APP/Info.plist"
+
+      - name: The build log's errors and tail
+        if: failure()
+        run: |
+          LOG="$RUNNER_TEMP/build.log"
+          [ -f "$LOG" ] || { echo "No build log: the build did not start"; exit 0; }
+          echo "::group::errors"
+          grep -nE 'error:|fatal' "$LOG" | head -100 || true
+          echo "::endgroup::"
+          tail -n 200 "$LOG"
+
+      - name: Keep the build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: ${{ runner.temp }}/build.log
+          if-no-files-found: ignore

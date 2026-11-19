@@ -10522,6 +10522,34 @@ export function liveSessionFor(clientId: number): { id: number; label: string; s
 // nothing logged, as if never begun. Runs on every request, like the rest
 // of applyDueProgramDeployments.
 const STALE_SESSION_MS = 12 * 3600000;
+
+/** What a session holds, each as epoch ms (the stamps are the server's local time, stampMs): its start, its sets, its
+    cardio ticked and its photos or videos sent. One rule for the 12 h end and the "still going" reminder (19 Nov, Alex). */
+function sessionStamps(day: ProgramDay) {
+  const data = getData();
+  const ids = new Set(data.workout_assignments.filter((wa) => wa.program_day_id === day.id).map((wa) => wa.id));
+  const sets = data.set_logs.filter((sl) => ids.has(sl.workout_assignment_id)).map((sl) => stampMs(sl.logged_at)).filter(Number.isFinite);
+  const cardioIds = new Set(listCardioForDay(day.id).map((c) => c.id));
+  const cardio = (data.cardio_logs ?? []).filter((l) => cardioIds.has(l.cardio_entry_id)).map((l) => stampMs(l.done_at));
+  const media = (data.video_requests ?? []).filter((r) => ids.has(r.assignment_id) && !!r.file_path);
+  const clips = media.map((r) => (r.submitted_at ? stampMs(r.submitted_at) : NaN)).filter(Number.isFinite);
+  return { started: day.session_started_at ? stampMs(day.session_started_at) : NaN, sets, cardio, cardioDone: cardio.length > 0, sentMedia: media.length > 0, clips };
+}
+
+/** The last thing done in a session (19 Nov, Alex: "I forget to complete the workout"): the latest of its start, its last
+    set, its last cardio ticked and its last clip sent, as epoch ms; NaN when it has no start. With the set count. */
+export function sessionLastActivityMs(day: ProgramDay): { lastMs: number; lastSetMs: number; sets: number } {
+  const s = sessionStamps(day);
+  const lastSetMs = s.sets.length ? Math.max(...s.sets) : NaN;
+  if (!Number.isFinite(s.started)) return { lastMs: NaN, lastSetMs, sets: s.sets.length };
+  return { lastMs: Math.max(s.started, ...s.sets, ...s.cardio.filter(Number.isFinite), ...s.clips), lastSetMs, sets: s.sets.length };
+}
+
+/** Every session begun and not ended, any client (19 Nov, Alex: the workout reminder). */
+export function liveSessionDays(): Data["program_days"] {
+  return getData().program_days.filter((pd) => pd.client_id != null && !!pd.session_started_at && !pd.session_ended_at);
+}
+
 export function endStaleSessions() {
   const data = getData();
   const now = Date.now();
@@ -10529,11 +10557,8 @@ export function endStaleSessions() {
     if (!day.session_started_at || day.session_ended_at) continue;
     const started = stampMs(day.session_started_at);
     if (!Number.isFinite(started) || now - started < STALE_SESSION_MS) continue;
-    const ids = new Set(data.workout_assignments.filter((wa) => wa.program_day_id === day.id).map((wa) => wa.id));
-    const logged = data.set_logs.filter((sl) => ids.has(sl.workout_assignment_id)).map((sl) => stampMs(sl.logged_at)).filter(Number.isFinite);
-    const cardioDone = listCardioForDay(day.id).some((c) => isCardioDone(c.id));
     // A photo or video sent from it is something done: the session ends rather than vanishing with it.
-    const sentMedia = (data.video_requests ?? []).some((r) => ids.has(r.assignment_id) && !!r.file_path);
+    const { sets: logged, cardioDone, sentMedia } = sessionStamps(day);
     if (logged.length === 0 && !cardioDone && !sentMedia) {
       discardSession(day.id);
       continue;

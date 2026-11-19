@@ -6,6 +6,7 @@ import { Bars } from "./Bars";
 import { addFreeCardioAction, addFreeExerciseAction, createFreeSessionAction, duplicateSessionAction, removeFreeSessionAction, reopenSessionAction } from "../lib/actions";
 import { newOnceKey } from "../lib/onceKey";
 import { applyWorkoutOutbox, clearNotSaved, enqueueWorkout, notSavedWords, useWorkoutOutbox } from "../components/workoutOutbox";
+import { hintGone, hintGym, hintLive, hintName } from "./liveHints";
 import GymPickerDialog, { type GymOption } from "./GymPickerDialog";
 import SessionOverview, { STATUS_LABEL } from "./SessionOverview";
 import WorkoutScreen from "./WorkoutScreen";
@@ -177,6 +178,7 @@ export default function TrainingDayList({
     const logged = loggedSets(d);
     const current = gymIdFor(d);
     if (logged > 0 && current != null && current !== g.id && !window.confirm(`Move the ${logged} set${logged === 1 ? "" : "s"} logged in this session to ${g.name}?`)) return;
+    hintGym({ id: g.id, name: g.name });
     enqueueWorkout({ kind: "gym", gymId: g.id, dayId: d.key, startedAt: d.startedAt });
   };
   // Straight into the workout (14 Oct, Alex): the screen used to wait for the
@@ -188,6 +190,9 @@ export default function TrainingDayList({
     if (g) enqueueWorkout({ kind: "gym", gymId: g.id, dayId: d.key, startedAt: d.startedAt });
     const at = new Date().toISOString();
     setStartProblem(null);
+    // The lock-screen pill's name and gym (19 Nov, Alex): the outbox's start carries neither.
+    const place = g ?? d.gyms.find((x) => x.id === d.gymId) ?? null;
+    hintName(d.key, d.title, place ? { id: place.id, name: place.name } : null);
     enqueueWorkout({ kind: "start", dayId: d.key, startedAt: at }, at);
     setView({ dayId: d.key, screen: "workout" });
   };
@@ -243,6 +248,8 @@ export default function TrainingDayList({
           return;
         }
         if (freeUnanswered.current === onceKey) freeUnanswered.current = null;
+        // Straight to the server, not through the outbox: the lock-screen pill is told (19 Nov, Alex).
+        hintLive(r.id, at, "Rogue session", gym ? { id: gym.id, name: gym.name } : null);
         const like = serverDays.find((d) => !d.free) ?? serverDays[0];
         setLocalFree({ key: r.id, index: days.length + 1, week: like?.week ?? 1, title: "Rogue session", exercises: [], cardio: [], skipReason: "", startedAt: at, endedAt: null, sessionNote: "", questions: like?.questions ?? [], answers: {}, gyms: like?.gyms ?? (gym ? [gym] : []), gymId: gym?.id ?? null, free: true });
         setView({ dayId: r.id, screen: "workout" });
@@ -327,6 +334,7 @@ export default function TrainingDayList({
   };
   /** A free session left with nothing in it: gone here at once, and on the server behind. */
   const dropFree = (dayId: number) => {
+    hintGone(dayId);
     setGoneFree((g) => [...g, dayId]);
     if (localFree?.key === dayId) setLocalFree(null);
     setView(null);
@@ -572,6 +580,9 @@ export default function TrainingDayList({
               new Promise<{ ok: false; other?: string }>((resolve) => setTimeout(() => resolve({ ok: false }), 10000)),
             ]).catch(() => ({ ok: false as const }));
             if (!r.ok) return "other" in r && r.other ? `Finish ${r.other} first.` : "Couldn't reopen. Try again.";
+            // Its clock from its start again, on the lock screen too (19 Nov, Alex).
+            const place = d.gyms.find((x) => x.id === d.gymId);
+            if (d.startedAt) hintLive(d.key, d.startedAt, d.title, place ? { id: place.id, name: place.name } : null);
             setReopened({ key: d.key, endedAt: d.endedAt! });
             setView({ dayId: d.key, screen: "workout" });
             return null;
@@ -608,6 +619,7 @@ export default function TrainingDayList({
           onDiscarded={() => {
             // A free session discarded is gone, not put back as unstarted.
             if (openDay.free || openDay.copy) {
+              hintGone(openDay.key);
               setGoneFree((g) => [...g, openDay.key]);
               if (localFree?.key === openDay.key) setLocalFree(null);
               setView(null);

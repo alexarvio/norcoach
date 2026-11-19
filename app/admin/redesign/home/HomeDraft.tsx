@@ -5,23 +5,20 @@ import { useMemo, useRef, useState, useTransition, type CSSProperties, type Reac
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createPortal } from "react-dom";
-import { deleteClientConfirmedAction, sendChatMessageAction } from "../../../lib/actions";
-import { useOpenChat } from "../ChatPanel";
+import { deleteClientConfirmedAction } from "../../../lib/actions";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
 import ClientCardEditor from "../../ClientCardEditor";
 import { toast } from "sonner";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
-import { AccountIcon, ChatIcon, MoreIcon, TrashIcon, WeightGoalIcon } from "../../../components/icons";
+import { AccountIcon, MoreIcon, TrashIcon, WeightGoalIcon } from "../../../components/icons";
 import type { OverviewInfoRow, OverviewPanel } from "../../../lib/queries";
 // Types only: homeBoard.ts re-exports the server's reader, which must never reach the browser.
 import type { HomeBoard, MuscleGroup, MuscleWindow, PerGroup } from "../../../lib/homeBoard";
-import { MessageDialog } from "../training/TrainingDraft";
 import { ConfirmText } from "../ConfirmParts";
 import AppAccessButton from "./AppAccessButton";
 import type { ClientAccess } from "../../../lib/access-actions";
 import { dayMonth, logDate, logDateWidth } from "../../../lib/dayMonth";
 import { pic } from "../../../lib/pic";
-import { newOnceKey } from "../../../lib/onceKey";
 import { SepJoin } from "../Sep";
 import { TRACK_ACCENT, TRACK_LABEL } from "../../phaseChrome";
 import { TrackIcon } from "../plan/PlanDraft";
@@ -190,25 +187,8 @@ export default function HomeDraft({
   dueUnlock?: boolean;
 }) {
   const router = useRouter();
-  const [, startTransition] = useTransition();
-  // Every save goes to the server, then the page re-reads; what is on screen follows.
-  // No Saved toast (16 Nov, Alex: the audit); `said` stays on the calls as their note of what each save is.
-  const act = (fn: () => Promise<unknown>, said?: string) =>
-    startTransition(async () => {
-      void said;
-      await fn();
-      router.refresh();
-    });
-  const fd = (o: Record<string, string | number | null | undefined>) => {
-    const f = new FormData();
-    for (const [k, v] of Object.entries(o)) if (v != null) f.set(k, String(v));
-    return f;
-  };
-  const openChat = useOpenChat();
-  const [msg, setMsg] = useState(false);
-  // Message opens the chat panel on their thread, as on every tab; outside the shell, a message pop-up.
-  const message = () => (openChat ? openChat() : setMsg(true));
   const [details, setDetails] = useState(false);
+  const detailsPick = useRef(false);
   const [deleting, setDeleting] = useState(false);
   const [photo, setPhoto] = useState(false);
   const panel = useMemo(() => ({ ...home.panel, memberInfo: dated(home.panel.memberInfo), coachingInfo: dated(home.panel.coachingInfo) }), [home.panel]);
@@ -270,17 +250,21 @@ export default function HomeDraft({
           {/* App access is the old sign-in's (temporary passwords, unlocking). With the sign-in through Clerk a client makes
               their own account or takes the invite, so it isn't drawn (18 Nov, Alex: "take out app access"). */}
           {!home.access?.codes && <AppAccessButton key={clientId} clientId={clientId} firstName={firstName} initial={home.access} due={!!dueUnlock} />}
-          <button type="button" className="trn-pill" onClick={() => setDetails(true)}>
-            <AccountIcon /> Details
-          </button>
-          <button type="button" className="trn-pill" onClick={message}>
-            <ChatIcon /> Message
-          </button>
+          {/* Details in the ⋯ and no Message pill (19 Nov, Alex): the chat's tab on the right is the way to message. */}
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger className="trn-more" aria-label={`More for ${firstName}`}>
               <MoreIcon />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="pb-menu">
+            {/* Details is non-modal: focus going back to the ⋯ as the menu closes would read as a click outside it. */}
+            <DropdownMenuContent align="end" className="pb-menu" onCloseAutoFocus={(e) => detailsPick.current && (e.preventDefault(), (detailsPick.current = false))}>
+              <DropdownMenuItem
+                onSelect={() => {
+                  detailsPick.current = true;
+                  setDetails(true);
+                }}
+              >
+                <AccountIcon /> Details
+              </DropdownMenuItem>
               <DropdownMenuItem variant="destructive" onSelect={() => setDeleting(true)}>
                 <TrashIcon /> Delete {firstName}
               </DropdownMenuItem>
@@ -458,20 +442,6 @@ export default function HomeDraft({
             {/* eslint-disable-next-line @next/next/no-img-element -- client-uploaded file */}
             <img className="rh-photo" src={home.avatarPath} alt={`${home.name}'s photo`} />
           </DialogContent>
-        )}
-      </Dialog>
-
-      <Dialog open={msg} onOpenChange={(o) => !o && setMsg(false)}>
-        {msg && (
-          <MessageDialog
-            firstName={firstName}
-            label="Home"
-            onSend={(text) => {
-              setMsg(false);
-              const f = fd({ clientId, text, nonce: newOnceKey() });
-              act(() => sendChatMessageAction(f), `Message to ${firstName}`);
-            }}
-          />
         )}
       </Dialog>
     </div>

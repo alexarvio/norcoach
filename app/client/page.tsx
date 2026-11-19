@@ -137,6 +137,7 @@ import PasswordSettings from "./PasswordSettings";
 import { passwordsOnHint } from "../lib/clerkPasswords";
 import ClientWeekSwitcher from "./ClientWeekSwitcher";
 import AppShell, { AppTab, type Arrival, type PhoneScreen } from "./AppShell";
+import { liveNowFor } from "../lib/liveSessionNow";
 import { ownTab } from "../lib/tabMemory";
 import NativeCoachRedirect from "../coach/NativeCoachRedirect";
 import OpeningSplash from "./OpeningSplash";
@@ -1296,7 +1297,7 @@ function progressPicturesData(CLIENT_ID: number): ProgressPicturesProps {
 export default async function ClientPage({
   searchParams,
 }: {
-  searchParams: Promise<{ client?: string; open?: string; phone?: string; screen?: string; /** A push's notification (24 Oct). */ n?: string; /** A meeting reminder's call. */ meeting?: string }>;
+  searchParams: Promise<{ client?: string; open?: string; phone?: string; screen?: string; /** A push's notification (24 Oct). */ n?: string; /** A meeting reminder's call. */ meeting?: string; /** A "still going" reminder's session (19 Nov). */ workout?: string }>;
 }) {
   const params = await searchParams;
   const CLIENT_ID = await resolveClientId(params.client);
@@ -1600,10 +1601,12 @@ export default async function ClientPage({
       foodDiary={foodDiary}
       meetings={meetings}
       invoices={invoices}
-      arrival={phone ? null : arrivalFrom(CLIENT_ID, notes, params.n, params.meeting)}
+      arrival={phone ? null : arrivalFrom(CLIENT_ID, notes, params.n, params.meeting, params.workout)}
       initialPush={phone ? (PHONE_TAB_SCREENS.has(phoneScreen) ? null : (phoneScreen as Exclude<PhoneScreen, "home" | "training" | "nutrition">)) : params.open === "invoices" ? "invoices" : params.open === "messages" ? "messages" : null}
       initialTab={initialTab}
       readOnly={phone}
+      // The session going, for the lock-screen pill (19 Nov, Alex): the client's own app alone.
+      liveNow={phone || !viewerIsClient ? null : liveNowFor(CLIENT_ID)}
       // Their coach's banner or name where NORCOACH is, and colour (19 Nov, Alex); in the phone preview the client's coach's,
       // their faint mark with it, so the pills and the mark never wear two coaches.
       brand={phone ? { ...(await coachBrandInline(client?.coach_id)), mark: await coachMarkInline(client?.coach_id) } : await coachBrandInline(client?.coach_id)}
@@ -1614,10 +1617,16 @@ export default async function ClientPage({
 
 /**
  * What a phone push asks the app to open (24 Oct, Alex: a push lands on its thing): its notification (?n=), worked out
- * as the notifications list does, or a meeting reminder's call (?meeting=). Null for anything else or another client's.
+ * as the notifications list does, or a meeting reminder's call (?meeting=), or a "still going" reminder's session
+ * (?workout=, 19 Nov, Alex): into the workout while it runs, else its session overview. Null for anything else or another client's.
  */
-function arrivalFrom(clientId: number, notes: ClientNotes, n: string | undefined, meeting: string | undefined): Arrival | null {
+function arrivalFrom(clientId: number, notes: ClientNotes, n: string | undefined, meeting: string | undefined, workout?: string): Arrival | null {
   if (meeting && Number.isInteger(Number(meeting))) return { meetingId: Number(meeting) };
+  if (workout && Number.isInteger(Number(workout))) {
+    const day = getData().program_days.find((pd) => pd.id === Number(workout) && pd.client_id === clientId);
+    if (!day) return null;
+    return { workoutDayId: day.id, week: day.week_number, live: !!day.session_started_at && !day.session_ended_at };
+  }
   const id = Number(n);
   if (!n || !Number.isInteger(id)) return null;
   const note = getNotifications(notes, clientId, 500).find((x) => x.id === id);

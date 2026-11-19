@@ -171,8 +171,8 @@ export async function sendApns(token: string, message: PushMessage): Promise<"se
     "apns-topic": k.topic,
     "apns-push-type": "alert",
     "apns-priority": "10",
-    // Held a day if the phone is off, like web push.
-    "apns-expiration": String(Math.floor(Date.now() / 1000) + 24 * 60 * 60),
+    // Held a day if the phone is off, like web push, or the message's own ttlSeconds (19 Nov, Alex: a workout reminder, 30 min).
+    "apns-expiration": String(Math.floor(Date.now() / 1000) + (message.ttlSeconds && message.ttlSeconds > 0 ? Math.round(message.ttlSeconds) : 24 * 60 * 60)),
   };
   // Same tag, the newer one replaces the older on the lock screen (Apple takes 64 bytes).
   if (message.tag && Buffer.byteLength(message.tag) <= 64) headers["apns-collapse-id"] = message.tag;

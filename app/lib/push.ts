@@ -29,7 +29,17 @@ export type PushMessage = {
   // Notifications with the same tag replace each other on the lock screen
   // instead of piling up.
   tag?: string;
+  /** How long the push services may hold it for a phone that is off (19 Nov, Alex: a workout's "still going" is
+      stale within half an hour). A day when absent. */
+  ttlSeconds?: number;
 };
+
+const DAY_SECONDS = 24 * 60 * 60;
+/** The seconds a message may wait, from its own ttlSeconds or a day (the web, Firebase and Apple alike). */
+export function pushTtlSeconds(message: PushMessage): number {
+  const t = message.ttlSeconds;
+  return typeof t === "number" && Number.isFinite(t) && t > 0 ? Math.round(t) : DAY_SECONDS;
+}
 
 export type WebSubscription = { endpoint: string; keys: { p256dh: string; auth: string } };
 
@@ -110,7 +120,9 @@ export async function sendPush(userId: number, message: PushMessage): Promise<nu
   const apns = apnsConfigured() ? devices.filter((d) => d.kind === "apns") : [];
   if (web.length === 0 && fcm.length === 0 && apns.length === 0) return 0;
 
-  const payload = JSON.stringify(message);
+  const { ttlSeconds: _ttl, ...shown } = message;
+  const payload = JSON.stringify(shown);
+  const ttl = pushTtlSeconds(message);
   const gone: number[] = [];
   const sent: number[] = [];
   await Promise.all(
@@ -118,8 +130,8 @@ export async function sendPush(userId: number, message: PushMessage): Promise<nu
       try {
         await webpush.sendNotification({ endpoint: d.endpoint, keys: { p256dh: d.p256dh!, auth: d.auth! } }, payload, {
           vapidDetails: keys!,
-          // Hold it for a day if the phone is off; after that it's stale news.
-          TTL: 24 * 60 * 60,
+          // Hold it for a day if the phone is off (less when the message says so); after that it's stale news.
+          TTL: ttl,
           urgency: "normal",
         });
         sent.push(d.id);

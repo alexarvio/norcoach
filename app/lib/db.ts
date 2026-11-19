@@ -116,6 +116,9 @@ type ProgramDay = {
   /** A duplicate of this planned session (9 Nov, Alex: "do a workout twice in a week"): `free` too, so the plan counts it
       in nothing, but it has the session's own exercises and targets (`isRogue` in queries.ts tells the two apart). */
   copy_of?: number;
+  /** The "still going" pushes sent for it (19 Nov, Alex: "I forget to complete the workout"): key is its start and last
+      activity, n how many went for that key (two at most), so new sets or a reopen can be reminded again. workoutReminders.ts. */
+  finish_reminders?: { key: string; n: number };
 };
 // A multi-week training program — the coach picks a name and a length
 // (total_weeks) up front; program_days for weeks [start_week, start_week +
