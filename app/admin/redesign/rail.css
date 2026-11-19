@@ -199,3 +199,8 @@ body[style*="--brand"] .npd.npd .npd-save.npd-save:not(:disabled) { background: 
 body[style*="--brand"] .npd.npd .npd-save.npd-save:not(:disabled):hover { background: color-mix(in srgb, var(--brand) 88%, #fff); }
 body[style*="--brand"] .npd.npd .npd-save.npd-save:not(:disabled):focus-visible { background: color-mix(in srgb, var(--brand) 82%, #fff); }
 .rd-frame > .rd-page.rd-page::before { background-image: var(--brand-mark, var(--bg-mark, url("/brand/mark.svg"))); }
+/* And every capsule's picked option, the rail's All | Needs you among them (19 Nov, Alex: "I click still on the colors
+   and nothing changes… I select the color and then automatically applies to the whole thing"): the brand shows on
+   every admin screen at once, Settings too. Not Home's Muscle balance windows, each outlined in its own colour. */
+body[style*="--brand"] :is(.rd-btn-group:not(.rh-spans), .npd-seg, .dlh-seg, .rd-coltabs, .rd-switch-states) { --pill-bg: var(--brand); }
+body[style*="--brand"] :is(.rd-btn-group:not(.rh-spans), .npd-seg, .dlh-seg, .rd-coltabs, .rd-switch-states) > button.on { background: var(--brand); }
