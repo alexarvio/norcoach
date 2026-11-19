@@ -194,7 +194,8 @@ export async function loadStore(db: AnyDb, moved: string[] = []): Promise<Row> {
     out[c.name] = records.map((r) => fromRecord(c.table, r));
   }
   for (const r of (await db.select().from(kv)) as { key: string; value: unknown }[]) {
-    // A collection's copy for a rollback: the table is what loads (pg/onceKeys.ts took it from this copy at boot).
+    // A collection's copy for a rollback (once_keys, health_workouts): the table is what loads (pg/onceKeys.ts and
+    // pg/healthWorkouts.ts took it from this copy at boot).
     if (ROLLBACK_COPIES.has(r.key)) continue;
     if (COLLECTION_NAMES.has(r.key) && Array.isArray(r.value) && (out[r.key] as unknown[]).length === 0) {
       console.log(`[store] ${r.key} is still in kv (${r.value.length} rows) and its table is empty: loaded from kv, moved into the table by the first save`);
@@ -345,7 +346,8 @@ function chatTripwire(next: Snapshot, last: Snapshot) {
 /**
  * Rows of one collection written into its table as the writer would write them (toRecord, cleanJson, its derived
  * columns), a row already there left as it is: for the boot's JSON import of chat rows with CHAT_STORE=pg (runtime.ts),
- * whose table the writer no longer fills. In one transaction, 500 rows a statement. How many were offered.
+ * whose table the writer no longer fills, and the boot's move of the phone's workouts (pg/healthWorkouts.ts). In one
+ * transaction (a savepoint inside the caller's), 500 rows a statement. How many were offered.
  */
 export async function insertRowsOnce(db: AnyDb, name: string, list: unknown[]): Promise<number> {
   const c = COLLECTIONS.find((x) => x.name === name);
@@ -427,6 +429,12 @@ export class PgStoreWriter {
       const rows = this.last.rows.get(name);
       if (rows) for (const key of keys) if (rows.has(key)) rows.set(key, "");
     }
+  }
+
+  /** The next save writes this kv value again, as if the database held something else (a copy the boot cleaned or found broken). */
+  forgetKv(name: string) {
+    this.committedSaves++;
+    this.last.kv.set(name, "");
   }
 
   /** Writes the changes, one save at a time; a save requested mid-save runs after it. */

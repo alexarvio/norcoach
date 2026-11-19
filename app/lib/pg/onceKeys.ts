@@ -60,6 +60,10 @@ ON CONFLICT ("key") DO NOTHING`;
  */
 export async function onceKeysFromKvCopy(db: AnyDb): Promise<number | null> {
   return db.transaction(async (tx) => {
+    // First, before kv is read (19 Nov review, as pg/healthWorkouts.ts): an instance still saving during a deploy (memory
+    // mode never waits on the lease) can't write a key between the read and the delete, so an older copy never goes
+    // over a newer key.
+    await tx.execute(sql`LOCK TABLE "once_keys" IN EXCLUSIVE MODE`);
     const has = (await tx.execute(sql`SELECT 1 AS one FROM "kv" WHERE "key" = 'once_keys' AND jsonb_typeof("value") = 'array'`)) as { rows?: unknown[] };
     if (!(has.rows ?? []).length) return null;
     // With CHAT_STORE=pg (Step 5's cut-over) a chat insert writes its key straight to the table, in its own statement;

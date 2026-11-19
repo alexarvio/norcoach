@@ -2,9 +2,10 @@ import path from "path";
 import { eq, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import { installIdSource, installStore, prepareStore, readJsonFile, STORE_MODE, type Data } from "../db";
-import { errorReason, health, toSentry } from "./health";
+import { errorReason, health, reportSkipped, toSentry } from "./health";
 import { IdPools } from "./ids";
 import { onceKeysFromKvCopy } from "./onceKeys";
+import { healthWorkoutsFromKvCopy, healthWorkoutsKept } from "./healthWorkouts";
 import { COLLECTIONS, kv } from "./schema";
 import { derivedStale, insertRowsOnce, loadStore, PgStoreWriter } from "./store";
 import { startChatShadow } from "../chat/shadow";
@@ -40,6 +41,9 @@ import { stampMs } from "../targetRule";
 // copy (pg/onceKeys.ts); once loaded, rows whose instant columns don't hold what the writer would write are marked to
 // be written again (store.ts derivedStale); and before any id is handed out the id sequences are raised past every
 // id taken and a block drawn (pg/ids.ts), with allocId drawing from them from then on.
+//
+// Step 6 (19 Nov): the phone's workouts the same way as once_keys: before the store loads, the health_workouts table is
+// made its kv copy, and memory takes the copy itself, in its order (pg/healthWorkouts.ts).
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type AnyDb = PgDatabase<any, any, any>;
@@ -162,22 +166,49 @@ async function start() {
   const moved: string[] = [];
   // Rows whose instant columns are to be written again (step 4C).
   let restamped = 0;
+  // The phone's workouts' kv copy to write again on the boot's save (cleaned, broken, or missing beside rows).
+  let healthDirty = false;
   if (hasData) {
     // The saves taken once, as the last build to save left them (step 4B: a build before it writes only the kv copy).
     const onceKeys = await onceKeysFromKvCopy(db);
     if (onceKeys != null) log(`once_keys: ${onceKeys} taken from kv's copy`);
+    // The phone's workouts, the same way (Step 6: a build before it writes only the kv copy).
+    const hw = await healthWorkoutsFromKvCopy(db);
+    if (hw?.broken) {
+      console.error(`[store] !!! kv's health_workouts is not a list: the table loads as it is, and the next save writes the copy again`);
+      reportSkipped("kv", "health_workouts, not a list: the table loaded as it is");
+    } else if (hw) {
+      log(
+        `health_workouts: ${hw.kept.length} rows (kv ${hw.kvRows}, ${hw.twins} twins, ${hw.unusable} unusable, ${hw.cleaned} keys cleaned), taken from kv's copy, ids ${hw.orderById ? "in order" : "out of order"}`
+      );
+      // Counts alone, never a value (health data).
+      if (hw.twins || hw.unusable || hw.cleaned) reportSkipped("health_workouts", `kv's copy: ${hw.twins} twins and ${hw.unusable} unusable rows left out, ${hw.cleaned} keys cleaned`);
+    }
     raw = (await loadStore(db, moved)) as Partial<Data>;
+    const loaded = raw as Row;
+    if (hw && !hw.broken) loaded.health_workouts = hw.kept;
+    // Never synced (no copy, an empty table): no list at all, as the build before loads it.
+    else if (!hw && Array.isArray(loaded.health_workouts) && loaded.health_workouts.length === 0) delete loaded.health_workouts;
     // What the database holds right now, before the load-time tidies touch it.
-    writer.prime(raw as Row, moved);
+    writer.prime(loaded, moved);
     const stale = await derivedStale(db, raw as Row);
     for (const [name, keys] of stale) {
       log(`${name}: ${keys.size} row${keys.size === 1 ? "" : "s"} with an instant column to write again`);
       restamped += keys.size;
     }
     writer.forget(stale);
+    // kv's copy not what memory holds (rows left out or cleaned, not a list, or gone while the table has rows): the
+    // boot's save writes it again, so a rollback reads every workout.
+    if (hw ? hw.broken || hw.twins || hw.unusable || hw.cleaned : Array.isArray(loaded.health_workouts)) {
+      writer.forgetKv("health_workouts");
+      healthDirty = true;
+    }
     log("loaded from Postgres");
   } else {
     raw = await emptyStart(db);
+    // A whole-store JSON's workouts as the table can hold them, so two keys that clean to one can't fail its first save.
+    const file = raw as Row;
+    if (Array.isArray(file.health_workouts)) file.health_workouts = healthWorkoutsKept(file.health_workouts).kept;
     // A whole-store JSON (local, or ALLOW_JSON_IMPORT=1) carries its chat; with CHAT_STORE=pg it goes into the table,
     // never into memory or kv (a file the shutdown wrote with the chat left out is refused: its chat is in Postgres).
     if (CHAT_PG) await importChat(db, raw);
@@ -200,7 +231,7 @@ async function start() {
   const ids = new IdPools(db, () => (data._seq ??= {}));
   await ids.start();
   (globalThis as unknown as { _pgIds?: IdPools })._pgIds = ids;
-  const changed = prepared.changed || raised > 0 || chatRaised || moved.length > 0 || restamped > 0;
+  const changed = prepared.changed || raised > 0 || chatRaised || moved.length > 0 || restamped > 0 || healthDirty;
   // The import, or a tidy's changes, are written before any request arrives,
   // so a failure stops the boot instead of surfacing later.
   if (!hasData || changed) await writer.save(() => data as unknown as Row);

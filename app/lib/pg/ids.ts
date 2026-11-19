@@ -40,6 +40,7 @@ export const SEQUENCED_TABLES = [
   "set_logs",
   "workout_assignments",
   "program_days",
+  "health_workouts",
 ] as const;
 
 export const sequenceOf = (table: string) => `${table}_id_seq`;

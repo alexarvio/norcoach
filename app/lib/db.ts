@@ -1475,7 +1475,7 @@ export type Data = {
   client_focus?: ClientFocus[];
   // Weight goals (2 Nov, lib/weightGoal.ts): a weight on a date the coach or client set. Not a Postgres table of its own: kept in `kv`.
   weight_goals?: WeightGoal[];
-  // Workouts from the phone's health store (16 Nov, lib/healthSync.ts), for the coach's Activity. Not a Postgres table of its own: kept in `kv`.
+  // Workouts from the phone's health store (16 Nov, lib/healthSync.ts), for the coach's Activity. A Postgres table of its own since 19 Nov (pg/healthWorkouts.ts), still in memory; kept whole in `kv` too, for a rollback.
   health_workouts?: HealthWorkout[];
   event_categories: EventCategory[];
   calorie_logs: CalorieLog[];

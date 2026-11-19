@@ -8,6 +8,7 @@
 import { getData, MAX_DAY_STEPS, persist, allocId, type HealthWorkout } from "./db";
 import { checkInEditable, foodDayType, getMetricEntries, listMetricDefinitions, listMonthlyMetricsAsked, localDateStr, monthStart, setMetricEntry, weekStart, weightInUnit, type MetricCadence, type MetricDefinition } from "./queries";
 import { healthKindOf, type HealthKind } from "./healthKind";
+import { cleanText } from "./pg/store";
 
 export { healthKindOf, type HealthKind };
 
@@ -214,13 +215,17 @@ function syncWorkouts(clientId: number, input: HealthSyncInput): { count: number
     if (seconds < 60 || seconds > 24 * 3600) continue;
     const start = new Date(startMs).toISOString();
     const end = new Date(endMs).toISOString();
-    const id = String(w?.id ?? "").slice(0, 120) || `${type}|${start}`;
+    // The key as Postgres holds it (cleanText: no NUL, no half of an emoji cut by the slice), so two ids that differ
+    // only by those are one workout, never two rows the table can't tell apart (19 Nov, Step 6). A real phone's id
+    // never changes.
+    const id = cleanText(String(w?.id ?? "").slice(0, 120)) || `${type}|${start}`;
     seen.add(id);
     const kcalIn = num(w?.kcal);
     const metersIn = num(w?.meters);
     const kcal = Number.isFinite(kcalIn) && kcalIn > 0 && kcalIn < 20000 ? Math.round(kcalIn) : null;
     const meters = Number.isFinite(metersIn) && metersIn > 0 && metersIn < 1_000_000 ? Math.round(metersIn) : null;
-    const source = typeof w?.source === "string" && w.source.trim() ? w.source.trim().slice(0, 60) : null;
+    // Cleaned as Postgres holds it too, so memory and the saved row agree and a repeat sync is no change.
+    const source = typeof w?.source === "string" && w.source.trim() ? cleanText(w.source.trim().slice(0, 60)) : null;
     const was = rows.find((r) => r.client_id === clientId && r.store === store && r.platform_id === id);
     if (was) {
       if (was.type === type && was.start === start && was.end === end && was.seconds === seconds && was.kcal === kcal && was.meters === meters && was.source === source) continue;

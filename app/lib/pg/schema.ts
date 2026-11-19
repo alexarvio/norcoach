@@ -716,6 +716,36 @@ export const video_requests = pgTable("video_requests", {
 });
 
 /**
+ * The phone's workouts (lib/healthSync.ts; 19 Nov, Step 6 of docs/database-plan.md): until now one list in `kv`, now a
+ * table of its own, still in memory and written row by row by the store. Written only by syncWorkouts, from the
+ * phone's sync. Keyed as the sync matches a workout: the client, the store ("apple", "google") and the store's own id,
+ * which the sync cleans where it makes it (cleanText), so no two rows can differ only by what Postgres takes out.
+ * `id` is not a key (allocId keeps it unique: the Activity row's own id); its columns in the order the sync writes them.
+ *
+ * Kept in `kv` as well while a rollback to the builds before it is wanted (ROLLBACK_KV_COPIES): every boot makes the
+ * table that copy (pg/healthWorkouts.ts).
+ */
+export const health_workouts = pgTable(
+  "health_workouts",
+  {
+    id: integer("id"),
+    client_id: integer("client_id").notNull(),
+    store: text("store").notNull(),
+    platform_id: text("platform_id").notNull(),
+    type: text("type"),
+    start: text("start"),
+    end: text("end"),
+    seconds: num("seconds"),
+    kcal: num("kcal"),
+    meters: num("meters"),
+    source: text("source"),
+    synced_at: text("synced_at"),
+    extra: extra(),
+  },
+  (t) => [primaryKey({ columns: [t.client_id, t.store, t.platform_id] })]
+);
+
+/**
  * Saves taken once (lib/once.ts; 18 Nov, step 4B): until now a list in `kv`, now a table of its own, still in memory
  * and written by the mirror in the same transaction as the rows of the save that took the key, so a later step that
  * writes a row straight to Postgres can write its key with it. `key` is the save's name and the device's key
@@ -792,6 +822,9 @@ export const COLLECTIONS = [
   { name: "client_preferences", table: client_preferences, key: ["client_id"] },
   // Loaded oldest first, as the list in kv kept them: once.ts keeps the newest MAX_KEPT.
   { name: "once_keys", table: once_keys, key: ["key"], order: ["at", "key"] },
+  // Loaded by id (the order they were added in) only once kv holds no copy: while it does, memory takes the copy's own
+  // order (pg/healthWorkouts.ts), which decides the coach's Activity where two workouts tie.
+  { name: "health_workouts", table: health_workouts, key: ["client_id", "store", "platform_id"], order: ["id"] },
 ] as const;
 
 /**
@@ -810,9 +843,10 @@ export const DERIVED = [
 
 /**
  * Collections also kept whole in `kv` under their own name, for a rollback to a build that still reads them there
- * (18 Nov, step 4B): written beside the table in the same save, and never loaded from kv but by pg/onceKeys.ts.
+ * (18 Nov, step 4B; health_workouts 19 Nov, Step 6): written beside the table in the same save, and never loaded from
+ * kv by loadStore: the boot makes the table the copy first (pg/onceKeys.ts, pg/healthWorkouts.ts).
  */
-export const ROLLBACK_KV_COPIES = ["once_keys"] as const;
+export const ROLLBACK_KV_COPIES = ["once_keys", "health_workouts"] as const;
 
 /**
  * Where ids come from for the tables that will leave memory (18 Nov, step 4A; pg/ids.ts): one sequence each, int4 like
@@ -831,6 +865,7 @@ export const metric_entries_id_seq = idSeq("metric_entries");
 export const set_logs_id_seq = idSeq("set_logs");
 export const workout_assignments_id_seq = idSeq("workout_assignments");
 export const program_days_id_seq = idSeq("program_days");
+export const health_workouts_id_seq = idSeq("health_workouts");
 
 /**
  * Names that are tables, never a key in `kv` (17 Nov): a kv row named like a collection would replace that collection

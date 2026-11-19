@@ -134,6 +134,13 @@
       "when": 1794985245849,
       "tag": "0018_chat_shadow",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795051800365,
+      "tag": "0019_health_workouts",
+      "breakpoints": true
     }
   ]
 }
