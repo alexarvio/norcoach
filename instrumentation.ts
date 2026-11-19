@@ -32,6 +32,34 @@ export async function register() {
     };
     setInterval(remindCheckIns, 60_000).unref?.();
     setTimeout(remindCheckIns, 20_000).unref?.();
+    // The read reminders over 30 days old deleted (19 Nov, Alex; app/lib/notes/prune.ts): once a night at 04:30, after
+    // the 03:15 backup, in the background; one at a time (the door's own guard), and a failure waits for the next night.
+    // Only where the nightly backup is (BACKUP_*), and only once tonight's snapshot is in the bucket, so what goes is in
+    // the night's copy: never on a local copy with none. NOTES_PRUNE=off stops it; =on runs it with no backup too.
+    const { backupConfigured, backupTakenToday } = await import("./app/lib/backup");
+    const pruneAsked = process.env.NOTES_PRUNE;
+    if (pruneAsked === "on" || (pruneAsked !== "off" && backupConfigured())) {
+      const { runReminderPrune } = await import("./app/lib/queries");
+      const { msUntilPrune } = await import("./app/lib/notes/prune");
+      const { pruneBooked } = await import("./app/lib/notes/rows");
+      const pruneTonight = async () => {
+        if (backupConfigured() && !(await backupTakenToday())) return console.log("[reminders] clean-up skipped tonight (no backup in the bucket for today)");
+        const n = await runReminderPrune();
+        console.log(n == null ? "[reminders] clean-up skipped tonight (a check-in tick or a clean-up still running)" : `[reminders] clean-up: ${n} read reminder${n === 1 ? "" : "s"} over 30 days old deleted`);
+      };
+      const pruneNightly = () => {
+        // Worked out from a minute on, so a timer fired a hair early never runs it twice the same night.
+        const wait = 60_000 + msUntilPrune(new Date(Date.now() + 60_000));
+        pruneBooked(Date.now() + wait);
+        setTimeout(() => {
+          pruneBooked(null);
+          void pruneTonight()
+            .catch((e) => console.error("[reminders] clean-up failed:", e instanceof Error ? e.message : e))
+            .finally(pruneNightly);
+        }, wait).unref?.();
+      };
+      pruneNightly();
+    }
   }
   // Storage bucket on (UPLOADS_STORE=bucket): copy any files the bucket does
   // not have yet, in the background so the server starts straight away.

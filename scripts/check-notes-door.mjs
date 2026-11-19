@@ -37,6 +37,8 @@ const ASYNC = new Set([
   "deleteClientNotes",
   "wipeAllNotes",
   "runClientReminders",
+  "runReminderPrune",
+  "pruneReadReminders",
   "drainOutbox",
 ]);
 

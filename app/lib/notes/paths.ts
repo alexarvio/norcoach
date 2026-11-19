@@ -33,6 +33,8 @@ export const NOTES_WRITE_PATHS = [
   "w.read.coachNotes",
   "w.read.all",
   "w.reminders.tickOff",
+  // The nightly clean-up of old read reminders (19 Nov, notes/prune.ts).
+  "w.reminders.prune",
   "w.chatNote.reword",
   "w.chatNote.delete",
   "w.client.delete",

@@ -7,7 +7,7 @@ import { chatNeedOf, dockLineOf, HOME_EVENTS, HOME_NEW_DAYS } from "./chat/pick"
 import type { ChatWritePath } from "./chat/paths";
 import { CHAT_PG } from "./chat/mode";
 import { NOTES_PG, NOTES_TABLE } from "./notes/mode";
-import { deleteClientNotes, fetchChatNote, fetchReminderState, fetchUnreadReminderClients, writeNote, writeReminderTick, type ClientNotes } from "./notes/rows";
+import { deleteClientNotes, fetchChatNote, fetchReminderState, fetchUnreadReminderClients, pruneReadReminders, writeNote, writeReminderTick, type ClientNotes, type ReminderPair } from "./notes/rows";
 import type { NoteOp } from "./notes/apply";
 import type { ClientNotification } from "./notes/pick";
 import { noteTakenKey } from "./onceKeep";
@@ -1431,17 +1431,7 @@ async function applyDueClientReminders() {
 
   // Each client's due items and their keys, worked out as before (nothing here reads the notes).
   const due = [...clientIds].map((clientId) => {
-    const items = getDueItems(clientId).map((item) => {
-      const periodKey =
-        item.id === "weekly"
-          ? weekKey
-          : item.id === "monthly"
-          ? monthStart(today)
-          : item.id === "photos"
-          ? photoSheetFor(clientId, today) ?? today
-          : today;
-      return { item, dedupeKey: `reminder:${item.id}:${clientId}:${periodKey}` };
-    });
+    const items = getDueItems(clientId).map((item) => ({ item, dedupeKey: reminderKey(item.id, clientId, today, weekKey) }));
     return { clientId, items };
   });
   const state = await fetchReminderState(
@@ -1468,6 +1458,83 @@ async function applyDueClientReminders() {
   });
   const cleared = await writeReminderTick(plans, (clientId, message, dedupeKey) => logCoachActivity(clientId, message, { kind: "reminder", dedupeKey }));
   if (cleared) persist();
+}
+
+/** A due item's reminder key: scoped to its day, week, month or photo period (the job's rule, one place since 19 Nov). */
+function reminderKey(itemId: string, clientId: number, today: string, weekKey = weekStart(today)): string {
+  const periodKey =
+    itemId === "weekly"
+      ? weekKey
+      : itemId === "monthly"
+      ? monthStart(today)
+      : itemId === "photos"
+      ? photoSheetFor(clientId, today) ?? today
+      : today;
+  return `reminder:${itemId}:${clientId}:${periodKey}`;
+}
+
+/** The reminder items, by the ids getDueItems gives them. */
+const REMINDER_ITEMS = ["daily", "weekly", "monthly", "measurements", "photos"] as const;
+
+/**
+ * Every key the minute job still counts as its own (19 Nov, the nightly clean-up): for each client who could have
+ * something due (the tables getDueItems gates on, and every client), the key of the period each item is in now, and
+ * every due item's key, as the job works them out. The job sends a key again once no row holds it, read or not, so
+ * none of these is ever pruned: a photo sheet open past 30 days, a monthly one near its month's end, a check-in done
+ * and then taken back. A key of a period that is over is never asked again.
+ */
+function reminderKeysInPlay(): ReminderPair[] {
+  const data = getData();
+  const today = localDateStr();
+  const weekKey = weekStart(today);
+  const clientIds = new Set<number>([
+    ...data.metric_definitions.map((d) => d.client_id),
+    ...data.measurement_fields.map((f) => f.client_id),
+    ...data.photo_slots.map((s) => s.client_id),
+    ...data.clients.map((c) => c.id),
+  ]);
+  const pairs: ReminderPair[] = [];
+  for (const clientId of clientIds) {
+    const keys = new Set<string>(REMINDER_ITEMS.map((id) => reminderKey(id, clientId, today, weekKey)));
+    for (const item of getDueItems(clientId)) keys.add(reminderKey(item.id, clientId, today, weekKey));
+    for (const key of keys) pairs.push({ clientId, key });
+  }
+  return pairs;
+}
+
+/**
+ * The day from which a photo reminder's key stays (19 Nov, the review): a new start date or rhythm hands the open sheet
+ * back to the calendar (resetPhotoOpenSheet), which on any day from now opens one at most a sheet's length back (six
+ * weeks, a month), so a key of that day or later could be the job's again.
+ */
+function photoKeysFrom(today: string): string {
+  const days = Math.max(31, 7 * Math.max(...Object.values(PHOTO_WEEKS_PER_SHEET)));
+  const [y, m, d] = today.split("-").map(Number);
+  return localDateStr(new Date(y, m - 1, d - days));
+}
+
+/**
+ * The nightly clean-up of old read reminders (19 Nov, Alex: "lets go with your suggestion"; notes/prune.ts): read and
+ * over 30 days old, but never a key in play, nor a photo key the calendar could open again. Never beside a minute tick
+ * (it waits up to a minute for one to end, and the ticks skip while it runs), so the keys it keeps are the ones the
+ * next tick works from. The keys are worked out at once on the main thread (every client's due items: a few ms a
+ * hundred clients, at 04:30). How many went, or null when it didn't run (a tick that wouldn't end, a clean-up already
+ * running).
+ */
+// Once a local day (19 Nov proof): a second clean-up the same day, or one asked while another runs, does nothing.
+let prunedOn: string | null = null;
+export async function runReminderPrune(): Promise<number | null> {
+  const day = localDateStr();
+  if (prunedOn === day) return null;
+  prunedOn = day;
+  for (let i = 0; remindersRunning && i < 120; i++) await new Promise((r) => setTimeout(r, 500));
+  if (remindersRunning) return null;
+  remindersRunning = true;
+  try {
+    return await pruneReadReminders(reminderKeysInPlay(), { photosFrom: photoKeysFrom(localDateStr()) });
+  } finally {
+    remindersRunning = false;
+  }
 }
 
 // Deletes an entire week (days + assignments + their logs). Weeks are

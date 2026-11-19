@@ -73,6 +73,14 @@ async function exists(s3: S3Client, bucket: string, key: string): Promise<boolea
   }
 }
 
+/** Today's snapshot is in the bucket (19 Nov): the nightly clean-up of read reminders deletes only once it is, so what
+ *  goes is in the night's copy. False when it can't tell (no bucket, an error). */
+export async function backupTakenToday(): Promise<boolean> {
+  const c = client();
+  if (!c) return false;
+  return exists(c.s3, c.bucket, `snapshots/${localDate()}/ironline.json`);
+}
+
 function walk(dir: string): string[] {
   if (!fs.existsSync(dir)) return [];
   const out: string[] = [];

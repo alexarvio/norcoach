@@ -38,7 +38,8 @@ import {
   type ClientNotification,
 } from "./pick";
 import { enqueue, outboxReport, pauseDrainer, pendingEntries, purgeOps, restoreOps, sendPush, type PendingOp, type PushPayload } from "./outbox";
-import { noteErrored, noteMissed, noteSeen, onFetch, onWrite } from "./shadow";
+import { noteErrored, noteMissed, noteSeen, onFetch, onPrune, onWrite } from "./shadow";
+import { PRUNE_DAYS, PRUNE_MAX, prunable, prunableIds, pruneOn, prunePair, type PruneSpec } from "./prune";
 import { noteParams, readSql, REMINDER_PART, writeSql } from "./statements";
 
 export { NOTES_TABLE };
@@ -609,6 +610,116 @@ export async function writeReminderTick(plans: readonly ReminderPlan[], log: (cl
   }
 }
 
+/** The last night's clean-up, for /api/timing (this process's: a restart since leaves it null until the next night; the
+ *  server's log keeps every night's line, instrumentation.ts). */
+export type PruneRun = { at: string; where: "memory" | "pg"; pruned: number | null; keep: number; ms: number; capped: boolean; error?: string };
+const gp = globalThis as unknown as { __norcoachNotesPrune?: { running: boolean; last: PruneRun | null; nextAt: string | null } };
+const pruneState = () => (gp.__norcoachNotesPrune ??= { running: false, last: null, nextAt: null });
+
+/** The night the timer is set for (instrumentation.ts), for /api/timing; null while none is (off here, or one running). */
+export function pruneBooked(atMs: number | null) {
+  pruneState().nextAt = atMs == null ? null : new Date(atMs).toISOString();
+}
+
+/**
+ * The nightly clean-up (19 Nov, Alex; notes/prune.ts has the rule): the read reminders over 30 days old deleted for
+ * good, but never one whose key `keep` names (the job's keys in play, queries.ts runReminderPrune), nor a photo key of
+ * `photosFrom` or later, since the job sends a key again once no row holds it. One at a time in this process (a second
+ * call while one runs answers null). Memory mode: the list looked at a slice at a time, then those still to go taken
+ * off it at once and persisted. NOTES_STORE=pg: a page at a time on its index (prune.ts PRUNE_INDEX), each page's
+ * DELETE by id in its own transaction, never through the outbox; behind every erase already asked; a row a queued write
+ * points at left; a reset under way stops it (and waits for the page in flight); a connection lost as a page committed
+ * stops the night (what went is counted). Mirrored by the write shadow (w.reminders.prune). How many went, or null when
+ * it didn't run.
+ */
+export async function pruneReadReminders(keep: readonly ReminderPair[], opts: { photosFrom: string; now?: number; max?: number }): Promise<number | null> {
+  const s = pruneState();
+  if (s.running) return null;
+  s.running = true;
+  const t0 = performance.now();
+  const max = opts.max ?? PRUNE_MAX;
+  let keepSize = 0;
+  const record = (pruned: number | null, error?: unknown) => {
+    s.last = {
+      at: new Date().toISOString(),
+      where: NOTES_PG ? "pg" : "memory",
+      pruned,
+      keep: keepSize,
+      ms: Math.round(performance.now() - t0),
+      capped: pruned != null && pruned >= max,
+      ...(error ? { error: error instanceof Error ? error.message.slice(0, 200) : "failed" } : {}),
+    };
+  };
+  // What went before a failure part way (pg: the pages that committed), so the night's count is never short.
+  const gone: number[] = [];
+  try {
+    const cutoffMs = (opts.now ?? Date.now()) - PRUNE_DAYS * 86_400_000;
+    const cutoff = new Date(cutoffMs).toISOString();
+    const keepSet = new Set(keep.map((p) => prunePair(p.clientId, asStored(p.key))));
+    keepSize = keepSet.size;
+    if (!NOTES_PG) {
+      const spec: PruneSpec = { cutoff, keep: keepSet, photosFrom: opts.photosFrom, skipIds: new Set(), skipKeys: new Set(), max };
+      const ids = new Set(await prunableIds(storeRows(), spec));
+      // Off the list as it is now: a row changed while the list was looked at (read back to unread, say) stays.
+      if (ids.size) {
+        const rows = storeRows().filter((r) => {
+          if (!r || !ids.has(r.id) || !prunable(r, spec, cutoffMs)) return true;
+          gone.push(r.id);
+          return false;
+        });
+        if (gone.length) {
+          storeHolder.set(rows);
+          persist();
+        }
+      }
+      gone.sort((a, b) => a - b);
+      onPrune(spec, gone);
+      record(gone.length);
+      return gone.length;
+    }
+    const gen = wipes;
+    const work = (async () => {
+      await notesChainsSettled();
+      if (wiping || wipes !== gen) return null;
+      const r = reach(pendingEntries(null));
+      const spec: PruneSpec = { cutoff, keep: keepSet, photosFrom: opts.photosFrom, skipIds: new Set(r.ids), skipKeys: new Set(r.keys), max };
+      onPrune(spec, null);
+      await pruneOn(
+        T,
+        spec,
+        // No verify: a connection lost as a page committed throws, so the night stops there rather than sending the
+        // page again (which would read the next one and leave the first uncounted).
+        (fn) =>
+          notesWrite(null, {
+            op: "pruneReminders",
+            run: (_q, inTx) =>
+              inTx(async (q) => {
+                await q(writeSql.longStatement());
+                return fn(q);
+              }),
+          }),
+        () => !wiping && wipes === gen,
+        gone
+      );
+      return gone.length;
+    })();
+    direct.add(work);
+    let n: number | null;
+    try {
+      n = await work;
+    } finally {
+      direct.delete(work);
+    }
+    record(n);
+    return n;
+  } catch (error) {
+    record(gone.length || null, error);
+    throw error;
+  } finally {
+    s.running = false;
+  }
+}
+
 // ---- Whole-store copies -----------------------------------------------------------------------------------------------
 
 /** The export: these clients' rows, as the store holds them (pg: the table's, the queued ops laid over), by id. */
@@ -671,9 +782,11 @@ export function notesBackupCopy(store: Record<string, unknown>): Record<string, 
 
 /** Where the notifications live, for /api/timing: counts only. */
 export function notesStoreReport() {
+  // The nightly clean-up of old read reminders (19 Nov): the last run in this process, and the night the timer is set for.
+  const prune = { ...pruneState() };
   if (!NOTES_PG) {
     const rows = storeRows();
-    return { where: "memory" as const, rows: rows.length, maxId: rows.reduce((m, r) => Math.max(m, r.id), 0) };
+    return { where: "memory" as const, rows: rows.length, maxId: rows.reduce((m, r) => Math.max(m, r.id), 0), prune };
   }
-  return { where: "pg" as const, pool: notesPgReport(), outbox: outboxReport() };
+  return { where: "pg" as const, pool: notesPgReport(), outbox: outboxReport(), prune };
 }

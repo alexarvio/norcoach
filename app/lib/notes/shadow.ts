@@ -32,6 +32,7 @@ import { NOTES_READ_PATHS, NOTES_WRITE_PATHS, type NotesPath, type NotesReadPath
 import { chatNoteOf, inFamily, isStrayStamp, keyedRow, newestFirst, newestOf, stableJson, unreadReminderClients, type ChatNoteAsk } from "./pick";
 import { readSql, REMINDER_PART, writeSql, type NotesTable } from "./statements";
 import { runOp, type Drained } from "./outbox";
+import { pruneOn, type PruneSpec } from "./prune";
 import type { notesWrite } from "./pg";
 import { sql, type SQL } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
@@ -471,11 +472,77 @@ async function writeJob(path: NotesWritePath, op: NoteOp | null, outcome: Outcom
   }
 }
 
+/** A clean-up compared and not yet in a save (19 Nov): the table round waits for it (compareTables), so the save
+ *  coming after it is never counted as the shadow differing. */
+const pruneHold = { jobs: 0, ids: new Set<number>() };
+
+/**
+ * The nightly clean-up (19 Nov, notes/prune.ts), counted as `w.reminders.prune`. Memory mode with the write shadow: the
+ * statements NOTES_STORE=pg would run (pruneOn) on the shadow table with the same rule, keep list and cap, the ids they
+ * delete compared with those memory took off. An id memory took and the shadow table never held (a twin seedShadow
+ * left out, the lowest id kept) is no difference. `ids` null: pg mode, counted only.
+ */
+export function onPrune(spec: PruneSpec, ids: readonly number[] | null) {
+  quietly(() => {
+    const path: NotesWritePath = "w.reminders.prune";
+    const c = wc(path);
+    c.seen++;
+    const s = state();
+    s.families.prune = (s.families.prune ?? 0) + 1;
+    if (MODE !== "write" || !s.db || ids == null) return;
+    const want = [...ids].sort((a, b) => a - b);
+    pruneHold.jobs++;
+    for (const id of want) pruneHold.ids.add(id);
+    push({
+      first: false,
+      run: async () => {
+        try {
+          const got = await pruneOn(SH, spec, async (fn) => {
+            const d = state().db;
+            if (!d) throw new Error("no shadow connection");
+            return d.transaction(async (tx) => {
+              const tq = async (query: SQL) => rowsOf(await (tx as unknown as AnyDb).execute(query));
+              await tq(writeSql.longStatement());
+              return fn(tq);
+            });
+          });
+          const gs = new Set(got);
+          let missing = want.filter((x) => !gs.has(x));
+          if (missing.length) {
+            const held = new Set((await q(sql`SELECT id FROM coach_activity_shadow WHERE id IN (SELECT (v)::int FROM jsonb_array_elements_text(${JSON.stringify(missing)}::jsonb) v)`)).map((r) => Number(r.id)));
+            missing = missing.filter((x) => held.has(x));
+          }
+          const ws = new Set(want);
+          const extra = got.filter((x) => !ws.has(x));
+          c.sampled++;
+          if (!missing.length && !extra.length) c.matched++;
+          else {
+            c.differed++;
+            say(`wdiff:${path}`, `${path} on the shadow table took ${got.length} rows, memory ${want.length} (missing ids ${missing.slice(0, 10).join(",") || "none"}, extra ids ${extra.slice(0, 10).join(",") || "none"})`);
+          }
+        } catch (error) {
+          c.errored++;
+          errored();
+          say(`werr:${path}`, `${path} on the shadow table failed: ${safe(error)}`);
+        } finally {
+          pruneHold.jobs--;
+        }
+      },
+    });
+  });
+}
+
 /** The shadow table against what the last save committed, by id; differences said (ids only), then resynced. */
 export async function compareTables(): Promise<void> {
   const s = state();
   if (MODE !== "write" || !s.db || !s.writer) return;
   if (s.writer.saving) return;
+  // A clean-up compared and not yet in a save: the round waits (not counted), so the shadow ahead of it never differs.
+  if (pruneHold.jobs > 0) return;
+  if (pruneHold.ids.size) {
+    if (committedRows().some((r) => pruneHold.ids.has(r.id))) return;
+    pruneHold.ids.clear();
+  }
   const gen = s.writer.generation;
   const want = new Map(committedRows().map((r) => [r.id, stableJson(r)]));
   const got = new Map((await q(sql`SELECT * FROM coach_activity_shadow ORDER BY id`)).map((r) => [Number(r.id), stableJson(decode(r))]));

@@ -23,6 +23,7 @@ import { stampInstantMs } from "../pg/stamps";
 import { NOTES_OUTBOX } from "./mode";
 import { boxEntries, boxTokens, replayInto, type OutboxEntry } from "./outbox";
 import { NOTES_UNIQUE } from "./preflight";
+import { pruneSql } from "./prune";
 import { readSql, writeSql } from "./statements";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -102,6 +103,10 @@ export async function notesBootPg(db: AnyDb): Promise<{ maxId: number; strays: n
   await db.execute(sql`CREATE TABLE IF NOT EXISTS coach_activity_ops (token text PRIMARY KEY NOT NULL, at timestamp with time zone DEFAULT now() NOT NULL, outcome text)`);
   await db.execute(sql`ALTER TABLE coach_activity_ops ADD COLUMN IF NOT EXISTS outcome text`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS coach_activity_ops_at_idx ON coach_activity_ops (at)`);
+  // The read reminders, oldest first (19 Nov, the nightly clean-up, notes/prune.ts): so a night reads only the ones it
+  // may delete, not the table. Here and not in a migration, as the unique rule: memory mode never reads by it. Only the
+  // first pg boot builds it (IF NOT EXISTS); it is left by a memory boot (it blocks no save).
+  await db.execute(pruneSql.index());
   const mark = await readMark(db);
   const from = mark?.checkedTo ?? 0;
   // The unique rule there and valid (a pg boot after a pg boot): no twin can be, nothing to move. Else (a memory boot
