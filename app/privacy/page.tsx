@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { NorCoachLogo } from "../components/NorCoachLogo";
 import { LEGAL } from "../lib/legal";
+import "../../website/site-bg.css";
 import "./legal.css";
 
 // The privacy policy: public (no login), linked from the App Store listing
@@ -14,12 +15,18 @@ export default function PrivacyPage() {
   const contact = LEGAL.contactEmail ? <a href={`mailto:${LEGAL.contactEmail}`}>{LEGAL.contactEmail}</a> : <em>[contact email to be added]</em>;
   return (
     <main className="lg">
+      {/* The website's dark head over the paper, as the sign-in on a phone (20 Nov, Alex: "redone with the new style"). */}
+      <header className="lg-band site-bg site-bg-mark">
+        <div className="lg-band-in">
+          <Link href="/login" className="lg-brand" aria-label={`${LEGAL.app} sign in`}>
+            <NorCoachLogo />
+          </Link>
+          <h1>Privacy policy</h1>
+          <p className="lg-updated">Last updated {LEGAL.updated}</p>
+        </div>
+      </header>
+      <div className="lg-paper">
       <div className="lg-wrap">
-        <Link href="/login" className="lg-brand">
-          <NorCoachLogo />
-        </Link>
-        <h1>Privacy policy</h1>
-        <p className="lg-updated">Last updated {LEGAL.updated}</p>
 
         <p>
           {LEGAL.app} is an app for coaching: your coach plans your training, nutrition and check-ins in it, and you log what you do. {LEGAL.app} is run by {LEGAL.company}, a company registered in {LEGAL.country} (&ldquo;we&rdquo;). This policy explains what we store, why, who
@@ -125,6 +132,7 @@ export default function PrivacyPage() {
           <Link href="/support">Support</Link>
           <Link href="/login">Sign in</Link>
         </div>
+      </div>
       </div>
     </main>
   );
