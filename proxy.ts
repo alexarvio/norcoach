@@ -65,21 +65,36 @@ function toCanonical(request: NextRequest): NextResponse | null {
 // once SITE_USER and SITE_PASSWORD are set on the server, norcoachapp.com (and www) shows website/ through
 // app/site/[[...path]]/route.ts, which asks for them; /api stays the app's. Until then the bare domain goes to the app.
 const SITE_ON = !!process.env.SITE_USER?.trim() && !!process.env.SITE_PASSWORD?.trim();
-function toSite(request: NextRequest): NextResponse | null {
+// The privacy policy and support page live on the website's address (20 Nov, Alex: "should be norcoachapp.com"): there
+// they are the app's own pages, open to everyone, never behind the website's password; asked for at the app's
+// address (an old link, the App Store, a link inside the app), they go there.
+const LEGAL_PAGES = ["/privacy", "/support"];
+const siteParent = () => (CANONICAL && CANONICAL.split(".").length > 2 ? CANONICAL.slice(CANONICAL.indexOf(".") + 1) : null);
+function legalToSite(request: NextRequest): NextResponse | null {
+  const parent = siteParent();
+  if (!SITE_ON || !parent || !LEGAL_PAGES.includes(request.nextUrl.pathname)) return null;
+  const host = (request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "").split(":")[0].toLowerCase();
+  if (host !== CANONICAL) return null;
+  return NextResponse.redirect(`https://${parent}${request.nextUrl.pathname}${request.nextUrl.search}`, 308);
+}
+function toSite(request: NextRequest, event: NextFetchEvent): NextResponse | Promise<Response | void> | null {
   if (!CANONICAL || !SITE_ON) return null;
-  const parent = CANONICAL.split(".").length > 2 ? CANONICAL.slice(CANONICAL.indexOf(".") + 1) : null;
+  const parent = siteParent();
   const host = (request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "").split(":")[0].toLowerCase();
   if (!parent || (host !== parent && host !== `www.${parent}`)) return null;
   const { pathname } = request.nextUrl;
   if (pathname.startsWith("/api/")) return null;
+  if (LEGAL_PAGES.includes(pathname)) return withClerk ? (withClerk(request, event) as Promise<Response | void>) : NextResponse.next();
   const url = request.nextUrl.clone();
   url.pathname = `/site${pathname === "/" ? "" : pathname}`;
   return NextResponse.rewrite(url);
 }
 
 export function proxy(request: NextRequest, event: NextFetchEvent) {
-  const site = toSite(request);
+  const site = toSite(request, event);
   if (site) return site;
+  const legal = legalToSite(request);
+  if (legal) return legal;
   const moved = toCanonical(request);
   if (moved) return moved;
   if (withClerk) return withClerk(request, event);

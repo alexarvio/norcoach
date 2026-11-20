@@ -9,6 +9,9 @@ import "./legal.css";
 // and the login page. Written for what the app actually does; when a new
 // kind of data or a new service comes in, it goes in here too.
 
+// These pages live on the website’s address (norcoachapp.com, 20 Nov), where /login is the website’s: Sign in goes to the app’s.
+const SIGN_IN = process.env.CANONICAL_HOST ? `https://${process.env.CANONICAL_HOST.trim()}/login` : "/login";
+
 export const metadata: Metadata = { title: `Privacy policy · ${LEGAL.app.toUpperCase()}` };
 
 export default function PrivacyPage() {
@@ -18,9 +21,9 @@ export default function PrivacyPage() {
       {/* The website's dark head over the paper, as the sign-in on a phone (20 Nov, Alex: "redone with the new style"). */}
       <header className="lg-band site-bg site-bg-mark">
         <div className="lg-band-in">
-          <Link href="/login" className="lg-brand" aria-label={`${LEGAL.app} sign in`}>
+          <a href="/" className="lg-brand" aria-label={LEGAL.app}>
             <NorCoachLogo />
-          </Link>
+          </a>
           <h1>Privacy policy</h1>
           <p className="lg-updated">Last updated {LEGAL.updated}</p>
         </div>
@@ -130,7 +133,7 @@ export default function PrivacyPage() {
 
         <div className="lg-foot">
           <Link href="/support">Support</Link>
-          <Link href="/login">Sign in</Link>
+          <a href={SIGN_IN}>Sign in</a>
         </div>
       </div>
       </div>
