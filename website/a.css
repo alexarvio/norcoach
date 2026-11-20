@@ -434,36 +434,6 @@ html:not(.js) .tt { position: static; opacity: 1; visibility: visible; grid-area
 }
 @media (max-width: 560px) { .people { grid-template-columns: minmax(0, 1fr); } }
 
-/* ---- The story first (20 Nov, Alex: B of docs/boards/story-landing-mockup.html) ------------------------------------ */
-.story .sec-head .h2 { max-width: 18em; }
-.story-b { margin-top: clamp(28px, 3.5vw, 44px); grid-template-columns: minmax(0, 1.35fr) minmax(0, .65fr); }
-.story-b .duo { margin-bottom: 20px; }
-.story-b .letter p + p { margin-top: 14px; }
-.story-b .letter { padding-left: 0; box-shadow: none; }
-.story-b .people { position: sticky; top: 96px; }
-.taught { margin-top: clamp(32px, 3.5vw, 48px); font-size: clamp(20px, 1.8vw, 26px); font-weight: 500; letter-spacing: -.01em; color: #fff; }
-.stay-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .8fr); gap: 48px clamp(40px, 7vw, 112px); align-items: center; }
-.stay-quote { margin-top: 36px; max-width: 30em; }
-.stay-phone { justify-self: center; }
-.stay-phone .phone { --ph-w: clamp(220px, 24vw, 300px); margin: 0; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1), 0 0 0 1px rgba(0, 0, 0, .35), 0 30px 60px -24px rgba(0, 0, 0, .5); }
-.tracks.compact .tt { grid-template-columns: minmax(0, 1fr); }
-.tracks.compact .tt-line { max-width: 34em; }
-.also { margin-top: clamp(40px, 5vw, 56px); padding-top: 24px; border-top: 1px solid var(--dark-line); font-size: 15px; line-height: 1.9; color: var(--dark-text); }
-.also span { margin-right: 10px; font-size: 10.5px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--dark-muted); }
-.trio { display: flex; }
-.trio .face { width: 56px; height: 56px; font-size: 22px; box-shadow: 0 0 0 4px var(--dark); }
-.trio .face + .face { margin-left: -14px; }
-.trio .face.unknown { background: var(--dark); box-shadow: 0 0 0 4px var(--dark), inset 0 0 0 1px rgba(255, 255, 255, .3); }
-.closing-note { margin-top: 16px; font-size: 14px; color: var(--dark-muted); }
-@media (max-width: 900px) {
-  .story-b { grid-template-columns: minmax(0, 1fr); }
-  .story-b .people { position: static; grid-template-columns: minmax(0, 1fr); max-width: 30em; }
-}
-@media (max-width: 760px) {
-  .stay-grid { grid-template-columns: minmax(0, 1fr); }
-  .stay-phone { justify-self: center; }
-}
-
 /* ---- Features -------------------------------------------------------------------------------------------------- */
 .feat-grid { margin-top: clamp(44px, 5vw, 64px); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(40px, 4.5vw, 56px) clamp(32px, 4vw, 56px); }
 .feat svg { width: 24px; height: 24px; color: #fff; }
@@ -628,31 +598,16 @@ html:not(.js) .tt { position: static; opacity: 1; visibility: visible; grid-area
   .pq-now::before { animation: none; }
 }
 
-/* One idea a screen (20 Nov, Alex: "that first section… occupying my whole screen. And then I go down and then I have phases"):
-   on a laptop the landing page's hero fills the window under the top bar, and each chapter after it takes a window of its own,
-   its content in the middle. A chapter taller than the window just runs on. On a phone the sections stack as before. */
+/* The hero fills the first screen (20 Nov, Alex: "that first section… occupying my whole screen", then "it feels insanely
+   empty"): on a laptop it is the window's height under the top bar, and its words and screens grow with the window so it
+   reads full, never a small block floating in the dark. Every section after it keeps its own height, so two can share
+   the screen on the way down. */
 @media (min-width: 961px) and (min-height: 620px) {
-  .screenful { min-height: 100svh; display: flex; flex-direction: column; justify-content: center; }
-  .screenful > * { width: 100%; }
-  .hero.screenful { padding-top: var(--top-h); padding-bottom: calc(var(--top-h) * .5); }
-  .sec.screenful { padding-block: calc(var(--top-h) + 24px) 48px; }
-}
-@media (min-width: 961px) and (min-height: 620px) {
-  /* What's inside on one screen: the toggle and the track's words on the left, its laptop and phone on the right. */
-  .screenful .tracks.compact {
-    display: grid; grid-template-columns: minmax(0, .72fr) minmax(0, 1.5fr); grid-template-rows: auto auto 1fr; column-gap: clamp(40px, 4vw, 64px);
-    width: 100%; max-width: calc(1180px + 2 * var(--gutter)); margin-inline: auto; padding-inline: var(--gutter); margin-top: clamp(32px, 3.5vw, 48px);
-  }
-  .screenful .tracks.compact > * { grid-column: 1; max-width: none; padding-inline: 0; margin-inline: 0; }
-  .screenful .tracks.compact > .stage { grid-column: 2; grid-row: 1 / span 3; align-self: center; }
-  .screenful .tracks.compact .controls { justify-content: start; margin: 0 0 32px; grid-template-columns: 40px minmax(0, 1fr) 40px; }
-  .screenful .tracks.compact .track-texts { margin-top: 0; }
-  .screenful .tracks.compact .also { margin-top: 32px; }
-  .screenful .tracks.compact .also span { display: block; margin-bottom: 4px; }
-  .screenful .tracks.compact .also .sep { display: block; height: 0; margin: 0; }
-  .screenful .tracks.compact .also { line-height: 1.75; }
-  #how.screenful .how-head { grid-template-columns: minmax(0, 1fr); }
-  /* One list: the scattered week a touch smaller, so the chapter fits the window. */
-  .screenful .week { zoom: .86; }
-  .sec.screenful#quality .how-head + .reveal { margin-top: -8px; }
+  .home-hero { min-height: 100svh; display: flex; flex-direction: column; justify-content: center; padding-top: var(--top-h); padding-bottom: clamp(24px, 4svh, 56px); }
+  .home-hero > .wrap-wide, .home-top .top-in { width: 100%; max-width: calc(1600px + 2 * var(--gutter)); }
+  .home-hero .hero-grid { grid-template-columns: minmax(0, 31em) minmax(0, 1fr); }
+  .home-hero .hero-devices { width: 100%; justify-self: end; max-width: calc((100svh - var(--top-h) - 140px) * 1.62); }
+  .home-hero h1 { font-size: clamp(36px, min(3.4vw, 6.2svh), 72px); }
+  .home-hero .sub { font-size: clamp(16px, min(1.15vw, 2svh), 21px); }
+  .home-hero .cta-row { margin-top: clamp(32px, 4.5svh, 52px); }
 }
