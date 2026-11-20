@@ -611,3 +611,9 @@ html:not(.js) .tt { position: static; opacity: 1; visibility: visible; grid-area
   .home-hero .sub { font-size: clamp(16px, min(1.15vw, 2svh), 21px); }
   .home-hero .cta-row { margin-top: clamp(32px, 4.5svh, 52px); }
 }
+
+/* How it works: the heading alone over the phases snapshot, why phases under it (20 Nov, Alex). */
+.how-head.solo { grid-template-columns: minmax(0, 1fr); }
+.plan-why { margin-top: clamp(28px, 3vw, 40px); display: flex; align-items: center; justify-content: space-between; gap: 20px 56px; flex-wrap: wrap; }
+.plan-why .lede { margin-top: 0; max-width: 44em; }
+.plan-why .text-link { flex: none; }
