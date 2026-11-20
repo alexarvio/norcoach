@@ -238,7 +238,7 @@ type Dlg =
   | { kind: "demo"; rowId: number }
   | { kind: "alternatives"; rowId: number }
   | { kind: "newVariation"; rowId: number }
-  | { kind: "message"; label: string; link: MessageLink }
+  | { kind: "message"; label: string; link?: MessageLink }
   | { kind: "copySession"; sessionId: number }
   | { kind: "applyLater"; sessionId: number }
   | { kind: "copyWeek"; from: number }
@@ -1889,6 +1889,11 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
               <MoreIcon />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="pb-menu">
+              {/* Message first, as Lifestyle's and Nutrition's ⋯ (20 Nov, Alex: Training's was missing it). A programme has no
+                  link of its own, so the chat opens on an empty bar, about nothing in particular. */}
+              <DropdownMenuItem onSelect={() => (openChat ? openChat(null) : setDlg({ kind: "message", label: "Training" }))}>
+                <ChatIcon /> Message {firstName}
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => setDlg({ kind: "gyms" })}>
                 <DumbbellIcon /> Client gyms
               </DropdownMenuItem>
@@ -2376,8 +2381,8 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
               const link = dlg.link;
               close();
               const f = fd({ clientId, text, nonce: newOnceKey() });
-              f.set("link", JSON.stringify(link));
-              act(() => sendChatMessageAction(f), `Message sent. It's on ${firstName}'s Home, linked to this.`);
+              if (link) f.set("link", JSON.stringify(link));
+              act(() => sendChatMessageAction(f), link ? `Message sent. It's on ${firstName}'s Home, linked to this.` : `Message sent to ${firstName}.`);
             }}
           />
         )}
@@ -3568,7 +3573,8 @@ function CopySessionDialog({ source, others, canAdd, nextNumber, laterLabel, onC
           <span className={`dlh-box ink${also ? " on" : ""}`} aria-hidden="true">
             {also ? "✓" : ""}
           </span>
-          Also in {laterLabel}
+          {/* 20 Nov, Alex: "just say Apply to the rest of the programme" (was "Also in W8–W13"). */}
+          Apply to the rest of the programme
         </button>
       )}
       <div className="dlh-foot">
