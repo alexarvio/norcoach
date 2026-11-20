@@ -651,3 +651,7 @@ html:not(.js) .tt { position: static; opacity: 1; visibility: visible; grid-area
 .cz-wfacts { display: flex; align-items: center; flex-wrap: wrap; margin-top: 14px; font-size: 13px; font-weight: 500; color: var(--body); }
 .cz-wfacts .cz-face.sm { width: 22px; height: 22px; margin-right: 8px; }
 .cz-wfacts em { font-style: normal; font-weight: 600; color: #2f7a3f; }
+
+/* Today → Norcoach: the six rows one height (20 Nov, Alex: "the items on the right are not evenly spaced out"), so the
+   right column runs on one even rhythm and each scrap sits in the middle of its row. Phones stack as before. */
+@media (min-width: 761px) { .swap { grid-template-rows: auto repeat(6, minmax(0, 1fr)); } }
