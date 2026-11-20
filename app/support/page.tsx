@@ -8,6 +8,9 @@ import "../privacy/legal.css";
 // The support page: public, the App Store listing's support link. The
 // questions people actually have, and where to write.
 
+// These pages live on the website’s address (norcoachapp.com, 20 Nov), where /login is the website’s: Sign in goes to the app’s.
+const SIGN_IN = process.env.CANONICAL_HOST ? `https://${process.env.CANONICAL_HOST.trim()}/login` : "/login";
+
 export const metadata: Metadata = { title: `Support · ${LEGAL.app.toUpperCase()}` };
 
 export default function SupportPage() {
@@ -17,9 +20,9 @@ export default function SupportPage() {
       {/* The website's dark head over the paper, as the privacy policy (20 Nov, Alex). */}
       <header className="lg-band site-bg site-bg-mark">
         <div className="lg-band-in">
-          <Link href="/login" className="lg-brand" aria-label={`${LEGAL.app} sign in`}>
+          <a href="/" className="lg-brand" aria-label={LEGAL.app}>
             <NorCoachLogo />
-          </Link>
+          </a>
           <h1>Support</h1>
           <p className="lg-updated">Help with the {LEGAL.app} app</p>
         </div>
@@ -68,7 +71,7 @@ export default function SupportPage() {
 
         <div className="lg-foot">
           <Link href="/privacy">Privacy policy</Link>
-          <Link href="/login">Sign in</Link>
+          <a href={SIGN_IN}>Sign in</a>
           <span>
             {LEGAL.app} is run by {LEGAL.company}.
           </span>
