@@ -16,7 +16,7 @@ import { oldAdminAddress } from "./app/admin/redesign/paths";
 // protected route before redirecting. Never move an authorization decision
 // up here.
 
-// The privacy policy and support page are public: the App Store links to them.
+// The privacy policy, support and terms pages are public: the App Store links to them.
 // /signup, /invite, /sso-callback and /auth/* are Clerk's way in (26 Sep).
 // /api/dev: local-only tools that refuse to run on a server (and are never deployed).
 // /api/apply: the website's Apply form, posted by visitors with no account (28 Oct).
@@ -26,7 +26,7 @@ import { oldAdminAddress } from "./app/admin/redesign/paths";
 // and videos failed to load for a Clerk sign-in while it was left out).
 // /invoice/<id>/pay and /paid (23 Nov): an invoice email's Pay and Stripe's return, for a client who may not be signed
 // in; each route checks the email's signed link for that one invoice, or the signed-in client, itself.
-const PUBLIC_PATHS = ["/login", "/privacy", "/support", "/signup", "/join", "/invite", "/sso-callback", "/auth", "/api/dev", "/api/apply", "/api/version", "/uploads", "/invoice"];
+const PUBLIC_PATHS = ["/login", "/privacy", "/support", "/terms", "/signup", "/join", "/invite", "/sso-callback", "/auth", "/api/dev", "/api/apply", "/api/version", "/uploads", "/invoice"];
 
 // With sign-in through Clerk (lib/clerk.ts: AUTH_PROVIDER=clerk), Clerk's
 // middleware runs instead: it reads the session so auth() works on the
@@ -73,7 +73,7 @@ const SITE_ON = process.env.SITE_PUBLIC?.trim() === "1" || (!!process.env.SITE_U
 // The privacy policy and support page live on the website's address (20 Nov, Alex: "should be norcoachapp.com"): there
 // they are the app's own pages, open to everyone, never behind the website's password; asked for at the app's
 // address (an old link, the App Store, a link inside the app), they go there.
-const LEGAL_PAGES = ["/privacy", "/support"];
+const LEGAL_PAGES = ["/privacy", "/support", "/terms"];
 const siteParent = () => (CANONICAL && CANONICAL.split(".").length > 2 ? CANONICAL.slice(CANONICAL.indexOf(".") + 1) : null);
 function legalToSite(request: NextRequest): NextResponse | null {
   const parent = siteParent();
