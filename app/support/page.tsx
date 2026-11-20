@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { NorCoachLogo } from "../components/NorCoachLogo";
 import { LEGAL } from "../lib/legal";
+import "../../website/site-bg.css";
 import "../privacy/legal.css";
 
 // The support page: public, the App Store listing's support link. The
@@ -13,12 +14,18 @@ export default function SupportPage() {
   const contact = LEGAL.contactEmail ? <a href={`mailto:${LEGAL.contactEmail}`}>{LEGAL.contactEmail}</a> : <em>[contact email to be added]</em>;
   return (
     <main className="lg">
+      {/* The website's dark head over the paper, as the privacy policy (20 Nov, Alex). */}
+      <header className="lg-band site-bg site-bg-mark">
+        <div className="lg-band-in">
+          <Link href="/login" className="lg-brand" aria-label={`${LEGAL.app} sign in`}>
+            <NorCoachLogo />
+          </Link>
+          <h1>Support</h1>
+          <p className="lg-updated">Help with the {LEGAL.app} app</p>
+        </div>
+      </header>
+      <div className="lg-paper">
       <div className="lg-wrap">
-        <Link href="/login" className="lg-brand">
-          <NorCoachLogo />
-        </Link>
-        <h1>Support</h1>
-        <p className="lg-updated">Help with the {LEGAL.app} app</p>
 
         <div className="lg-box">
           <strong>Questions about your training, food or plan?</strong> Ask your coach: open the menu in the app and choose Messages. Your coach answers there.
@@ -55,6 +62,7 @@ export default function SupportPage() {
             {LEGAL.app} is run by {LEGAL.company}.
           </span>
         </div>
+      </div>
       </div>
     </main>
   );
