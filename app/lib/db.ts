@@ -5,6 +5,7 @@ import path from "path";
 import { CHAT_PG } from "./chat/mode";
 import { NOTES_PG } from "./notes/mode";
 import { FOOD_PG } from "./food/mode";
+import { CHECKINS_PG } from "./checkins/mode";
 
 // Pure-JS JSON file store — no native module, no compiler, works identically
 // on any machine. Swap this file for a real database later without touching
@@ -1262,6 +1263,11 @@ export type NotesStoreRows = { readonly [NOTES_DOOR]: "app/lib/notes/rows.ts" };
 declare const FOOD_DOOR: unique symbol;
 /** The store's food diary lists, sealed (19 Nov, quest 8 part 1): only app/lib/food/ opens them, so tsc refuses any other reach. */
 export type FoodStoreRows = { readonly [FOOD_DOOR]: "app/lib/food/rows.ts" };
+declare const CHECKINS_DOOR: unique symbol;
+/** The store's check-in figures and notes, sealed (20 Nov, quest 9): only app/lib/checkins/ opens them, so tsc refuses any other reach. */
+export type CheckInStoreRows = { readonly [CHECKINS_DOOR]: "app/lib/checkins/rows.ts" };
+/** A check-in figure as the door (app/lib/checkins/rows.ts) handles it. */
+export type CheckInEntry = MetricEntry;
 
 // Coach-level, reusable report templates (mirrors the metric_template_*
 // pattern) — a template is just an ordered set of sections; applying it to
@@ -1470,7 +1476,9 @@ export type Data = {
   measurement_values: MeasurementValue[];
   skinfold_entries: SkinfoldEntry[];
   metric_definitions: MetricDefinition[];
-  metric_entries: MetricEntry[];
+  // The check-in figures and notes (quest 9): sealed, opened by the door alone (app/lib/checkins/rows.ts); absent with
+  // CHECKINS_STORE=pg, where they live in Postgres alone.
+  metric_entries?: CheckInStoreRows;
   metric_template_categories: MetricTemplateCategory[];
   metric_template_items: MetricTemplateItem[];
   photo_slots: PhotoSlot[];
@@ -1514,7 +1522,7 @@ export type Data = {
   saved_meals?: FoodStoreRows;
   off_foods: OffFood[];
   saved_days?: FoodStoreRows;
-  check_in_notes: CheckInNote[];
+  check_in_notes?: CheckInStoreRows;
   client_exercise_notes: ClientExerciseNote[];
   client_program_notes: ClientProgramNote[];
   client_gyms: ClientGym[];
@@ -1586,7 +1594,9 @@ function emptyData(): Data {
     ...(FOOD_PG ? {} : { food_meals: [] as unknown as FoodStoreRows, food_days: [] as unknown as FoodStoreRows, saved_meals: [] as unknown as FoodStoreRows }),
     off_foods: [],
     ...(FOOD_PG ? {} : { saved_days: [] as unknown as FoodStoreRows }),
-    check_in_notes: [],
+    // Not with CHECKINS_STORE=pg (quest 9): the figures and notes live in Postgres alone, and neither prepareStore nor
+    // getData's self-heal may put an empty list back into the store.
+    ...(CHECKINS_PG ? {} : { check_in_notes: [] as unknown as CheckInStoreRows }),
     client_exercise_notes: [],
     client_program_notes: [],
     client_gyms: [],
@@ -1603,7 +1613,7 @@ function emptyData(): Data {
     measurement_values: [],
     skinfold_entries: [],
     metric_definitions: [],
-    metric_entries: [],
+    ...(CHECKINS_PG ? {} : { metric_entries: [] as unknown as CheckInStoreRows }),
     metric_template_categories: [],
     metric_template_items: [],
     photo_slots: [],
@@ -1727,7 +1737,9 @@ export function prepareStore(parsed: Partial<Data>): { data: Data; changed: bool
       changed = true;
     }
     if (claimUnownedRows(data) > 0) changed = true;
-    if (mergeDuplicateMetricDefinitions(data) > 0) changed = true;
+    // With CHECKINS_STORE=pg the figures are in Postgres: the merge runs there, at the pg boot (checkins/boot.ts), on this
+    // prepared store.
+    if (!CHECKINS_PG && mergeDuplicateMetricDefinitions(data, storeEntries(data)) > 0) changed = true;
     return { data, changed };
   }
 }
@@ -1740,7 +1752,7 @@ export function prepareStore(parsed: Partial<Data>): { data: Data; changed: bool
  * a tie), moves the other's readings onto it where it has none for that
  * day, and drops the twin. Returns how many were dropped.
  */
-export function mergeDuplicateMetricDefinitions(data: Data): number {
+export function mergeDuplicateMetricDefinitions(data: { metric_definitions: MetricDefinition[] }, box: { entries: MetricEntry[] }): number {
   const groups = new Map<string, MetricDefinition[]>();
   for (const m of data.metric_definitions) {
     // A retired metric never merges with a live one of its name (25 Oct): its history waits for it to come back.
@@ -1749,7 +1761,7 @@ export function mergeDuplicateMetricDefinitions(data: Data): number {
     list.push(m);
     groups.set(key, list);
   }
-  const entriesOf = (id: number) => data.metric_entries.filter((e) => e.metric_definition_id === id);
+  const entriesOf = (id: number) => box.entries.filter((e) => e.metric_definition_id === id);
   const gone = new Set<number>();
   for (const list of groups.values()) {
     if (list.length < 2) continue;
@@ -1762,12 +1774,25 @@ export function mergeDuplicateMetricDefinitions(data: Data): number {
         e.metric_definition_id = keeper.id;
         have.add(e.period);
       }
-      data.metric_entries = data.metric_entries.filter((e) => e.metric_definition_id !== dup.id);
+      box.entries = box.entries.filter((e) => e.metric_definition_id !== dup.id);
       gone.add(dup.id);
     }
   }
   if (gone.size) data.metric_definitions = data.metric_definitions.filter((m) => !gone.has(m.id));
   return gone.size;
+}
+
+/** A store's own figures as a box (memory mode: the store's list, read and replaced in place; this file only). */
+function storeEntries(data: Data): { entries: MetricEntry[] } {
+  const d = data as unknown as { metric_entries?: MetricEntry[] };
+  return {
+    get entries() {
+      return (d.metric_entries ??= []);
+    },
+    set entries(rows: MetricEntry[]) {
+      d.metric_entries = rows;
+    },
+  };
 }
 
 function save(data: Data) {
@@ -1831,9 +1856,10 @@ export const isStepsMetric = (name: string) => /\bsteps?\b/i.test(name);
 function dropImpossibleSteps(data: Data): number {
   const steps = new Set(data.metric_definitions.filter((d) => isStepsMetric(d.name)).map((d) => d.id));
   if (!steps.size) return 0;
-  const before = data.metric_entries.length;
-  data.metric_entries = data.metric_entries.filter((e) => !(steps.has(e.metric_definition_id) && e.value != null && e.value > MAX_DAY_STEPS));
-  return before - data.metric_entries.length;
+  const box = storeEntries(data);
+  const before = box.entries.length;
+  box.entries = box.entries.filter((e) => !(steps.has(e.metric_definition_id) && e.value != null && e.value > MAX_DAY_STEPS));
+  return before - box.entries.length;
 }
 // JSON: the file loads right here. Postgres: pg/runtime.ts loads the data
 // (asynchronously) from instrumentation.ts before the first request and
@@ -1895,7 +1921,8 @@ export function getData(): Data {
   // Once a server: impossible step counts go (24 Oct).
   if (!globalForDb._stepsChecked) {
     globalForDb._stepsChecked = true;
-    if (dropImpossibleSteps(data) > 0) persist();
+    // With CHECKINS_STORE=pg the pg boot keeps them aside instead (checkins/boot.ts).
+    if (!CHECKINS_PG && dropImpossibleSteps(data) > 0) persist();
   }
   return data;
 }

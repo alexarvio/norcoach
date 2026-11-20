@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import { FOOD_PG } from "../food/mode";
+import { CHECKINS_PG } from "../checkins/mode";
 
 // Ids from Postgres for the tables that will leave memory (18 Nov, step 4 of docs/database-plan.md, part A).
 //
@@ -45,6 +46,10 @@ export const SEQUENCED_TABLES = [
   // Saved days with the food diary in Postgres alone (FOOD_STORE=pg, quest 8 part 1; its sequence from migration 0021).
   // In memory mode left out, so their ids count from `_seq` exactly as before.
   ...(FOOD_PG ? (["saved_days"] as const) : []),
+  // The check-in notes, and the metric definitions their figures point at, with the figures in Postgres alone
+  // (CHECKINS_STORE=pg, quest 9; their sequences from migration 0023): a figure committed before its metric's save never
+  // finds that metric's id handed out again after a crash. In memory mode left out, so their ids count from `_seq`.
+  ...(CHECKINS_PG ? (["check_in_notes", "metric_definitions"] as const) : []),
 ] as const;
 
 export const sequenceOf = (table: string) => `${table}_id_seq`;

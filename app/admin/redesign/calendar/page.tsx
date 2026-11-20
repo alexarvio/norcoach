@@ -6,6 +6,7 @@ import { startTiming } from "../../../lib/timing";
 import { loadChatDock, loadRail } from "../loaders";
 import { fetchCoachPageChat } from "../../../lib/chat/rows";
 import { fetchCoachFood } from "../../../lib/food/rows";
+import { fetchCoachCheckIns } from "../../../lib/checkins/rows";
 import RedesignRail from "../RedesignRail";
 import ChatDock from "../ChatDock";
 import "../messages/messages.css";
@@ -51,6 +52,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const chat = await t.time("chat", () => fetchCoachPageChat(coach.id, "page.calendar"));
   // The food diary the rail's feed reads (quest 8 part 1), fetched first as the chat is.
   const food = await t.time("food", () => fetchCoachFood([coach.id], "page.calendar"));
+  // The check-in figures the rail's feed reads (quest 9, app/lib/checkins/rows.ts), fetched first as the food is.
+  const ck = await t.time("checkins", () => fetchCoachCheckIns([coach.id], "page.calendar"));
   const params = await searchParams;
   const calendar = t.time("calendarMonth", () => getCalendarMonth(coach.id, params.month));
   const today = localDateStr();
@@ -107,7 +110,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
 
   return t.end(
     <div className="rd-frame">
-      <RedesignRail rail={t.time("rail", () => loadRail(coach, chat.coach, food))} clientId={0} />
+      <RedesignRail rail={t.time("rail", () => loadRail(coach, chat.coach, food, ck))} clientId={0} />
       <ChatDock chats={t.time("chatDock", () => loadChatDock(coach, chat.dock))} />
       <div className="rd-page rcl-page">
         <div className="rd trn rcl">

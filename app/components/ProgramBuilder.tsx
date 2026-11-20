@@ -4,6 +4,7 @@ import { addSessionAction } from "../lib/actions";
 import OnceKeySubmit from "./OnceKeySubmit";
 import type { ChatCoachView } from "../lib/chat/rows";
 import type { FoodRows } from "../lib/food/rows";
+import type { CheckInRows } from "../lib/checkins/rows";
 import {
   getAssignmentsForDay,
   listClientPhases,
@@ -110,7 +111,10 @@ export default function ProgramBuilder({
   weekLinkBase = "/admin",
   chat,
   food,
+  ck,
 }: {
+  /** The check-in figures the same (app/lib/checkins/rows.ts). */
+  ck: CheckInRows;
   clientId: number;
   /** The coach's chat view (fetchCoachChat, app/admin/page.tsx), for the sessions' news. */
   chat: ChatCoachView;
@@ -174,7 +178,7 @@ export default function ProgramBuilder({
   const currentWeek = weekStart(localDateStr());
   // Sessions with news the coach has not opened yet (a finished workout, a
   // reason for missing one): the week and the session carry the dot.
-  const newDayIds = new Set(getClientHome(clientId, chat, food).unseenDayIds);
+  const newDayIds = new Set(getClientHome(clientId, chat, food, ck).unseenDayIds);
   const liveWeekNumber = deployedProgram ? deployedProgram.start_week + getProgramCurrentWeekIndex(deployedProgram) - 1 : null;
 
   function renderDays(days: ProgramDay[]) {

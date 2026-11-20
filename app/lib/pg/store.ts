@@ -7,6 +7,7 @@ import { WRITER_COLLECTIONS } from "./writerTables";
 import { CHAT_PG } from "../chat/mode";
 import { NOTES_PG } from "../notes/mode";
 import { FOOD_PG, FOOD_TABLES } from "../food/mode";
+import { CHECKINS_PG, CHECKINS_TABLES } from "../checkins/mode";
 
 // Loads the whole store from Postgres and saves changes back (phase 1).
 //
@@ -353,6 +354,12 @@ function chatTripwire(next: Snapshot, last: Snapshot) {
   if (NOTES_PG && (next.rows.has("coach_activity") || last.rows.has("coach_activity"))) {
     throw new Error("[store] !!! coach_activity reached the store's writer with NOTES_STORE=pg: the save is refused");
   }
+  // The check-in figures and notes the same with CHECKINS_STORE=pg (quest 9).
+  if (CHECKINS_PG) {
+    for (const t of CHECKINS_TABLES) {
+      if (next.rows.has(t) || last.rows.has(t)) throw new Error(`[store] !!! ${t} reached the store's writer with CHECKINS_STORE=pg: the save is refused`);
+    }
+  }
 }
 
 /**
@@ -433,6 +440,13 @@ export class PgStoreWriter {
   /** What the database holds for a collection, as the last save committed it: row key → the record's JSON. Read only. */
   committed(name: string): ReadonlyMap<string, string> | undefined {
     return this.last.rows.get(name);
+  }
+  /**
+   * Whether the last save committed (or the boot's prime held) this row of a collection, by its id (quest 9: a check-in
+   * figure is written only for a metric definition, and a client, the database already holds). Read only.
+   */
+  committedHas(name: string, id: number | string): boolean {
+    return this.last.rows.get(name)?.has(String(id)) ?? false;
   }
   /** A kv value as the last save committed it (its JSON), for the notes' outbox drainer (quest 7). Read only. */
   committedKv(key: string): string | undefined {

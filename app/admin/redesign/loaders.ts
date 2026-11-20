@@ -24,6 +24,7 @@ import { hasBankDetails, invoicingFor } from "../../lib/countries";
 import { clientActions, coachNeeds } from "../../lib/coachNeeds";
 import type { ChatCoachView, ChatDockView, ChatThread } from "../../lib/chat/rows";
 import { noFoodRows, type FoodRows } from "../../lib/food/rows";
+import type { CheckInRows } from "../../lib/checkins/rows";
 import { fetchNoteKeys, type NoteKeys } from "../../lib/notes/rows";
 import type { NoteTab } from "../../lib/notes/paths";
 import { HOME_KIND_ROWS as HOME_KIND_ROWS_CHAT } from "../../lib/chat/pick";
@@ -158,7 +159,7 @@ export function pickClient(coachId: number, asked: string | undefined) {
 
 // ---- Training -----------------------------------------------------------------
 
-export function loadTraining(coachId: number, clientId: number, params: { week?: string; program?: string }, thread: ChatThread): { draft: DraftProgram | null; library: Library; cardioMoves: CardioMove[]; videos: { id: number; path: string; name: string; at: string; bytes: number | null }[] } {
+export function loadTraining(coachId: number, clientId: number, params: { week?: string; program?: string }, thread: ChatThread, ck: CheckInRows): { draft: DraftProgram | null; library: Library; cardioMoves: CardioMove[]; videos: { id: number; path: string; name: string; at: string; bytes: number | null }[] } {
   // Every programme the client has had, is on, or has waiting: the switch in
   // the header. The one shown is the one asked for, else the live one.
   const deployed = sub("programme", () => getDeployedProgram(clientId));
@@ -235,7 +236,7 @@ export function loadTraining(coachId: number, clientId: number, params: { week?:
   // An assisted lift (23 Oct, Alex): its kg is help, so its trend follows the body weight less the help (liftedKg),
   // known by the exercise's name or its variation's.
   // A session's own day's body weight (23 Oct, Alex) rides with each session from exerciseTrends.
-  const bodyKg = bodyWeightKg(clientId);
+  const bodyKg = bodyWeightKg(ck, clientId);
   const exById = new Map(getData().exercises.map((e) => [e.id, e] as const));
   const assistedRow = (a: { exercise_id: number; exercise_name?: string | null; variation_id?: number | null }) =>
     isAssisted(a.exercise_name) || (a.variation_id != null && isAssisted(exById.get(a.exercise_id)?.variations?.find((v) => v.id === a.variation_id)?.name));
@@ -379,9 +380,9 @@ export function loadTraining(coachId: number, clientId: number, params: { week?:
   // Each exercise's 7 and 30 day change, as Home counts it (23 Oct), with every session of it the two count: the progress
   // pop-up's (23 Oct, Alex: it held only this programme's same session slot, so a week the exercise sat in another session
   // never showed). W is the week of this programme; another programme's session has none.
-  const trends = sub("trends", () => exerciseTrends(clientId));
+  const trends = sub("trends", () => exerciseTrends(ck, clientId));
   // A set beating every earlier one of the exercise with its reps inside the target (24 Oct, Alex).
-  const bests = sub("bests", () => personalBests(clientId));
+  const bests = sub("bests", () => personalBests(ck, clientId));
   const progressOf = new Map<string, { date: string | null; planWeek: number; gym: string | null; assisted: boolean; bodyKg: number | null; sets: { weight: number; reps: number; rpe: number | null }[] }[]>();
   const progressFor = (key: string) => {
     let list = progressOf.get(key);
@@ -670,9 +671,9 @@ function railSpots(clientId: number, actions: HomeAction[], byId: Map<string, Fe
 /** The Phases screen's Needs you (2 Nov, Alex: "if anyone is missing a phase have the notification appear there just like
  *  in feed"): a new client with no phase yet, a track with no live phase (or its draft over today), a live phase with
  *  nothing in it; the Feed's rows, the Plan their way in. */
-export function loadPhaseNeeds(coachId: number, chat: ChatCoachView, food: FoodRows): NeedRow[] {
+export function loadPhaseNeeds(coachId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows): NeedRow[] {
   // The rail's read of the coach's Needs you, not a second one (4 Nov, Alex: "just a tiny bit slow"; coachNeeds.ts).
-  const { byId } = coachNeeds(coachId, chat, food);
+  const { byId } = coachNeeds(coachId, chat, food, ck);
   const data = getData();
   const rows: NeedRow[] = [];
   for (const c of listClients(coachId)) {
@@ -681,7 +682,7 @@ export function loadPhaseNeeds(coachId: number, chat: ChatCoachView, food: FoodR
       rows.push({ ...base, key: `${c.id}:setup`, cat: "plan", kind: "phase", what: "No phase yet", action: "New phase", href: `/admin/redesign/plan?client=${c.id}`, dismissId: null });
       continue;
     }
-    for (const a of clientActions(coachId, c.id, chat, food)) {
+    for (const a of clientActions(coachId, c.id, chat, food, ck)) {
       if (!PHASE_OWED.test(a.id)) continue;
       // Its track's group: `track-training` names it, `empty-…` by the tab it opens (Lifestyle's is measurements).
       const track = /^track-(lifestyle|training|nutrition)$/.exec(a.id)?.[1] ?? (a.tab === "measurements" ? "lifestyle" : a.tab);
@@ -694,7 +695,7 @@ export function loadPhaseNeeds(coachId: number, chat: ChatCoachView, food: FoodR
 export type RailData = { clients: RailClient[]; coach: { name: string; photoPath: string | null; /** Weights shown in by default (Settings, Preferences, 27 Oct). */ units: "kg" | "lbs"; /** Settings, Business details: the one line under the logo, empty when none is set (16 Nov, the audit). */ business: string; /** Their banner in NORCOACH's place (19 Nov, Alex; lib/brandMark.ts), its width over its height. */ banner?: string; bannerRatio?: number }; isOwner: boolean; inviteReady: boolean; /** Sign-in through Clerk: New client sends an invite link, no password. */ clerk: boolean; /** Support lines not read: the company's to a coach (the Support row), every coach's to the owner (Coaches). */ supportUnread: number; /** What the coach pays Norcoach (28 Oct; lib/billing.ts): a failed payment or read-only says so in the rail. */ billing: BillingAccess; /** Subscriptions set up on the server: the Billing row shows. */ billingOn: boolean; /** Asking to join with the coach's code (18 Nov): counted on the Feed row with the rest of Needs you. */ joinRequests: number };
 
 /** The dot trail on one client's screens (dots.ts): what the rail counts for them, each placed where it is. */
-export function loadDots(clientId: number, chat: ChatCoachView, food: FoodRows): DotTrail {
+export function loadDots(clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows): DotTrail {
   const data = getData();
   const client = data.clients.find((c) => c.id === clientId);
   const dots: DotTrail = { tabs: [], training: { weeks: {}, days: [], exercises: [] }, food: {}, meetings: false, unlock: false, todo: [] };
@@ -722,8 +723,8 @@ export function loadDots(clientId: number, chat: ChatCoachView, food: FoodRows):
     todo("plan", { key: "setup", kind: "setup", what: "No phase yet", words: null, since: null, action: "New phase", href: route("plan"), ref: null });
   }
   // The rail's read of the coach's Needs you, not the whole feed again for one client (4 Nov, Alex; coachNeeds.ts).
-  const { byId } = coachNeeds(client.coach_id ?? 0, chat, food);
-  for (const a of clientActions(client.coach_id ?? 0, clientId, chat, food)) {
+  const { byId } = coachNeeds(client.coach_id ?? 0, chat, food, ck);
+  for (const a of clientActions(client.coach_id ?? 0, clientId, chat, food, ck)) {
     const open = needView(clientId, a, byId).open;
     const since = a.at != null && Number.isFinite(a.at) ? a.at : null;
     if (a.id === "week") {
@@ -796,20 +797,20 @@ export function loadDots(clientId: number, chat: ChatCoachView, food: FoodRows):
 }
 
 /** The left rail's data: every client with whether they need the coach, and the coach at the foot. */
-export function loadRail(coach: { id: number; email: string; role: "coach" | "client" }, chat: ChatCoachView, food: FoodRows): RailData {
+export function loadRail(coach: { id: number; email: string; role: "coach" | "client" }, chat: ChatCoachView, food: FoodRows, ck: CheckInRows): RailData {
   // A new coach sees the welcome steps first; every redesign page reads the rail, so this is the one gate.
   if (getData().users.find((u) => u.id === coach.id)?.onboarding) redirect("/auth/coach-setup");
   // The coach's feed and every client's Needs you, read once a request and shared with the Feed, the Phases screen and
   // the dot trail (4 Nov, Alex: "just a tiny bit slow"; coachNeeds.ts). Timed as rail.feed and rail.needsYou when the
   // rail reads it first.
-  const { byId } = coachNeeds(coach.id, chat, food);
+  const { byId } = coachNeeds(coach.id, chat, food, ck);
   const data = getData();
   const clients = sub("needsYou", () => {
     const list = listClients(coach.id);
     return list.map((c) => {
       const user = getUserForClient(c.id);
       const isNew = listClientPhases(c.id).length === 0 && !data.training_programs.some((p) => p.client_id === c.id);
-      return { id: c.id, name: c.name, avatarPath: c.avatar_path ?? null, ...railSpots(c.id, clientActions(coach.id, c.id, chat, food), byId, isNew), notSignedIn: !user || (!user.clerk_user_id && (user.must_change_password || !user.password_hash)) };
+      return { id: c.id, name: c.name, avatarPath: c.avatar_path ?? null, ...railSpots(c.id, clientActions(coach.id, c.id, chat, food, ck), byId, isNew), notSignedIn: !user || (!user.clerk_user_id && (user.must_change_password || !user.password_hash)) };
     });
   });
   return sub("coach", () => {
@@ -833,10 +834,10 @@ function nameFromEmail(email: string): string {
 
 // ---- Measurements ---------------------------------------------------------------
 
-export function loadMeasurements(clientId: number, params: { phase?: string }): DraftMeasurements {
+export function loadMeasurements(clientId: number, params: { phase?: string }, ck: CheckInRows): DraftMeasurements {
   // The Weight line once added by itself, never used: gone here too, not only when the client opens their app
   // (22 Oct, Alex: a new client's Lifestyle showed it). Only that exact untouched line; anything set up stays.
-  dropUnusedAutoWeight(clientId);
+  dropUnusedAutoWeight(ck, clientId);
   const today = localDateStr();
   // The lifestyle phase being set up: the one asked for, else whatever is running.
   const real = listLifestylePhases(clientId);
@@ -878,7 +879,7 @@ export function loadMeasurements(clientId: number, params: { phase?: string }): 
   // to today while it runs. A past phase shows its own rows under itself.
   // Without a phase, back to the client's first entry.
   const logSpan = (cadence: "daily" | "weekly" | "monthly") => {
-    if (!selected) return periodsSinceFirstEntry(metrics, cadence);
+    if (!selected) return periodsSinceFirstEntry(ck, metrics, cadence);
     const from = new Date(`${selected.start_week}T00:00:00`);
     const to = new Date(`${until ?? localDateStr()}T00:00:00`);
     const days = Math.max(0, Math.round((to.getTime() - from.getTime()) / 86400000)) + 1;
@@ -915,20 +916,20 @@ export function loadMeasurements(clientId: number, params: { phase?: string }): 
     groups: METRIC_GROUPS.map((g) => ({ key: g.key, label: g.label, tint: g.tint })),
     metrics: metrics.map((m) => {
       const g = metricGroup(m.category);
-      const entries = getMetricEntries([m.id]).filter((e): e is typeof e & { value: number } => e.value != null).sort((a, b) => a.period.localeCompare(b.period));
+      const entries = getMetricEntries(ck, [m.id]).filter((e): e is typeof e & { value: number } => e.value != null).sort((a, b) => a.period.localeCompare(b.period));
       const last = entries[entries.length - 1];
       return { id: m.id, name: m.name, unit: m.unit, frequency: m.frequency, groupKey: g.key, groupLabel: g.label, tint: g.tint, summary: metricSummary(m), last: last ? { value: last.value, when: fmtWhen(last.period) } : null };
     }),
     library,
-    daily: getLoggedValues(clientId, "daily", started ? Math.min(8, logSpan("daily")) : 0, scope),
-    weekly: getLoggedValues(clientId, "weekly", started ? Math.min(5, logSpan("weekly")) : 0, scope),
+    daily: getLoggedValues(ck, clientId, "daily", started ? Math.min(8, logSpan("daily")) : 0, scope),
+    weekly: getLoggedValues(ck, clientId, "weekly", started ? Math.min(5, logSpan("weekly")) : 0, scope),
     // The long sets are the whole phase.
-    dailyLong: getLoggedValues(clientId, "daily", started ? logSpan("daily") : 0, scope),
-    weeklyLong: getLoggedValues(clientId, "weekly", started ? logSpan("weekly") : 0, scope),
-    monthly: getLoggedValues(clientId, "monthly", started ? Math.min(6, logSpan("monthly")) : 0, scope),
-    monthlyLong: getLoggedValues(clientId, "monthly", started ? logSpan("monthly") : 0, scope),
+    dailyLong: getLoggedValues(ck, clientId, "daily", started ? logSpan("daily") : 0, scope),
+    weeklyLong: getLoggedValues(ck, clientId, "weekly", started ? logSpan("weekly") : 0, scope),
+    monthly: getLoggedValues(ck, clientId, "monthly", started ? Math.min(6, logSpan("monthly")) : 0, scope),
+    monthlyLong: getLoggedValues(ck, clientId, "monthly", started ? logSpan("monthly") : 0, scope),
     notStarted: !started ? (selected?.status === "draft" ? "Nothing logged yet: this phase is a draft." : `Nothing logged yet: this phase starts ${startsOn}.`) : null,
-    notes: (started ? listCheckInNotes(clientId, 500).filter((n) => !until || n.period <= until) : []).map((n) => ({ id: n.id, period: n.period, kind: n.kind, text: n.text })),
+    notes: (started ? listCheckInNotes(ck, clientId, 500).filter((n) => !until || n.period <= until) : []).map((n) => ({ id: n.id, period: n.period, kind: n.kind, text: n.text })),
   };
 }
 
@@ -940,7 +941,7 @@ const stampDayTime = dayMonthTime;
 /** The notes the Shape update tab reads (quest 7): the client's Remind notes (photos-remind:<sheet>:<day>), fetched first. */
 export const fetchPictureNotes = (clientId: number, path: `page.tab.${NoteTab}`) => fetchNoteKeys(clientId, { family: { prefix: "photos-remind:", suffix: "" } }, path);
 
-export function loadPictures(clientId: number, thread: ChatThread, notes: NoteKeys): DraftPictures {
+export function loadPictures(clientId: number, thread: ChatThread, notes: NoteKeys, ck: CheckInRows): DraftPictures {
   // Their photos' small copies made behind the page where missing (27 Oct, Alex: Compare loading slowly).
   warmClientPhotos(clientId);
   const cadence = getPhotoCadence(clientId);
@@ -960,7 +961,7 @@ export function loadPictures(clientId: number, thread: ChatThread, notes: NoteKe
 
   // The weigh-in that fell inside a sheet: the last one from the day it
   // opened up to the day the next sheet opened (or today, for the newest).
-  const weights = getWeightSeriesAll(clientId);
+  const weights = getWeightSeriesAll(ck, clientId);
   const weightFor = (period: string, newer: string | undefined) => {
     const inside = weights.filter((w) => w.date >= period && (newer ? w.date < newer : w.date <= today));
     const last = inside[inside.length - 1];
@@ -1043,8 +1044,8 @@ export function loadPictures(clientId: number, thread: ChatThread, notes: NoteKe
  * logged entry on these metrics (6 Oct: the coach sees the whole history,
  * not a window). Capped so a years-old client still loads in one go.
  */
-function periodsSinceFirstEntry(metrics: { id: number }[], cadence: "daily" | "weekly" | "monthly"): number {
-  const first = getMetricEntries(metrics.map((m) => m.id))
+function periodsSinceFirstEntry(ck: CheckInRows, metrics: { id: number }[], cadence: "daily" | "weekly" | "monthly"): number {
+  const first = getMetricEntries(ck, metrics.map((m) => m.id))
     .map((e) => (/^\d{4}-\d{2}-\d{2}/.test(e.period) ? e.period.slice(0, 10) : /^\d{4}-\d{2}$/.test(e.period) ? `${e.period}-01` : null))
     .filter((p): p is string => !!p)
     .sort()[0];
@@ -1055,11 +1056,11 @@ function periodsSinceFirstEntry(metrics: { id: number }[], cadence: "daily" | "w
 
 // ---- Meetings ---------------------------------------------------------------------
 
-export function loadMeetings(clientId: number, food: FoodRows): DraftMeetings {
+export function loadMeetings(clientId: number, food: FoodRows, ck: CheckInRows): DraftMeetings {
   const today = localDateStr();
   const data = getMeetingsWorkspaceData(clientId);
   // Every goal, with its live standing in a few words.
-  const goals: DraftGoal[] = getGoalSummaries(food, clientId).map(({ goal, view, tracking }) => {
+  const goals: DraftGoal[] = getGoalSummaries(food, clientId, ck).map(({ goal, view, tracking }) => {
     let status = "";
     if (view.kind === "metric") {
       const figure = (view.barLabel ?? "").split(" · ")[0];
@@ -1109,8 +1110,8 @@ function planCtxOf(clientId: number): Pick<DraftPlan, "today" | "thisWeek" | "ph
   return { today: d.today, thisWeek: d.thisWeek, phases: d.phases, programs: d.programs };
 }
 
-export function loadPlan(clientId: number, food: FoodRows): DraftPlan {
-  const d = getPlanData(food, clientId);
+export function loadPlan(clientId: number, food: FoodRows, ck: CheckInRows): DraftPlan {
+  const d = getPlanData(food, clientId, ck);
   return {
     today: d.today,
     thisWeek: d.thisWeek,
@@ -1125,7 +1126,7 @@ export function loadPlan(clientId: number, food: FoodRows): DraftPlan {
     events: listClientEvents(clientId).map((e) => ({ id: e.id, kind: e.kind, title: e.title, start: e.start_date, end: e.end_date, note: e.note, byClient: e.added_by === "client", repeat: e.repeat ?? null })),
     eventCategories: listEventCategories(getData().clients.find((c) => c.id === clientId)?.coach_id ?? 0),
     // The weight goals, a lane of their own on the Events card (2 Nov, Alex: "as soon as we add a goal… on the plan tab as well").
-    weightGoals: getWeightGoalViews(clientId, d.today),
+    weightGoals: getWeightGoalViews(ck, clientId, d.today),
     faces: (() => {
       const coach = getCoachProfile(getData().clients.find((c) => c.id === clientId)?.coach_id ?? 0);
       return { client: getClient(clientId)?.avatar_path ?? null, coach: coach?.avatar_path ?? null, coachName: coach?.display_name?.trim() || "" };
@@ -1215,17 +1216,17 @@ const HOME_KINDS: ((e: { category: string; tab: string }) => boolean)[] = [
   (e) => (e.category === "messages" || e.category === "notes") && e.tab !== "meetings",
 ];
 
-export function loadHome(clientId: number, chat: { coach: ChatCoachView; thread: ChatThread }, food: FoodRows): DraftHome {
+export function loadHome(clientId: number, chat: { coach: ChatCoachView; thread: ChatThread }, food: FoodRows, ck: CheckInRows): DraftHome {
   // The look is noted first: a new visit moves the last look into prev, so "Since" counts from the coach's previous visit
   // on this first render too, and stays put on every re-read within the visit.
   sub("look", () => noteHomeLooked(clientId));
-  const board = sub("board", () => getHomeBoard(clientId, chat.thread, food));
+  const board = sub("board", () => getHomeBoard(clientId, chat.thread, food, ck));
   // The coach's feed, built once for the panel and Activity (23 Oct, speed: it was built twice), when the panel asks
   // for it, as it did.
   const coachId = getData().clients.find((c) => c.id === clientId)?.coach_id ?? 0;
   let coachFeed: FeedEvent[] | null = null;
-  const feedOnce = () => (coachFeed ??= sub("feed", () => getActivityFeed(coachId, chat.coach, food)));
-  const panel = sub("panel", () => getOverviewPanel(clientId, feedOnce));
+  const feedOnce = () => (coachFeed ??= sub("feed", () => getActivityFeed(coachId, chat.coach, food, ck)));
+  const panel = sub("panel", () => getOverviewPanel(clientId, feedOnce, ck));
   // Activity is the client's whole feed (not the newest 60 rows), so Invoices or Meetings still has its history for a
   // client who chats every day.
   // The chat's part of each kind's newest HOME_KIND_ROWS is in the tab's coach view (chat/paths.ts).
@@ -1306,7 +1307,7 @@ export function loadHome(clientId: number, chat: { coach: ChatCoachView; thread:
     events,
     board: sub("consistencyLinks", () => withDayLinks(clientId, board)),
     // The locked app (19 Nov, Alex; app/lib/appLock.ts): the ⋯'s Open {First}'s app while it is.
-    appLocked: sub("appLock", () => appLocked(clientId, food)),
+    appLocked: sub("appLock", () => appLocked(clientId, food, ck)),
   };
 }
 

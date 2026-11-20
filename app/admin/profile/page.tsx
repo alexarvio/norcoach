@@ -5,6 +5,7 @@ import { isOwner, requireCoach } from "../../lib/auth";
 import { getCoachProfileView, listCoachEmails } from "../../lib/queries";
 import { fetchCoachChat } from "../../lib/chat/rows";
 import { fetchCoachFood } from "../../lib/food/rows";
+import { fetchCoachCheckIns } from "../../lib/checkins/rows";
 
 // "Your profile": the coach writes what their clients read from the Account
 // tab, with a live phone preview beside the form. The owner can open any
@@ -23,9 +24,10 @@ export default async function CoachProfilePage({ searchParams }: { searchParams:
   const chat = await fetchCoachChat([coach.id], "page.oldAdmin.profile");
   // The food diary the same (quest 8 part 1), for the sidebar's feed.
   const food = await fetchCoachFood([coach.id], "page.oldAdmin.profile");
+  const ck = await fetchCoachCheckIns([coach.id], "page.oldAdmin.profile");
 
   return (
-    <AdminShell sidebar={<AdminSidebar coachId={coach.id} coachEmail={coach.email} selectedId={null} view="profile" isOwner={owner} chat={chat} food={food} />}>
+    <AdminShell sidebar={<AdminSidebar coachId={coach.id} coachEmail={coach.email} selectedId={null} view="profile" isOwner={owner} chat={chat} food={food} ck={ck} />}>
       <div className="ad-pad">
         {profile ? (
           <CoachProfileEditor key={coachId} profile={profile} coaches={coaches} currentCoachId={coach.id} />

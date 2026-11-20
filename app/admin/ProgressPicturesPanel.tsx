@@ -1,3 +1,4 @@
+import type { CheckInRows } from "../lib/checkins/rows";
 import { addPhotoSlotAction } from "../lib/actions";
 import OnceKeyField from "./OnceKeyField";
 import {
@@ -38,7 +39,7 @@ const stampDayTime = (iso: string) =>
 // Progress pictures for one client: when sheets arrive and which angles they
 // ask for, then every sheet in one gallery. The client's name is already on
 // the rail and the client card, so it is not repeated here.
-export default function ProgressPicturesPanel({ clientId }: { clientId: number }) {
+export default function ProgressPicturesPanel({ clientId, ck }: { clientId: number; /** The client's check-ins (app/lib/checkins/rows.ts). */ ck: CheckInRows }) {
   const firstName = (getClient(clientId)?.name ?? "").trim().split(/\s+/)[0] || "the client";
   const cadence = getPhotoCadence(clientId);
   const startDate = getPhotoStartDate(clientId);
@@ -64,7 +65,7 @@ export default function ProgressPicturesPanel({ clientId }: { clientId: number }
 
   // The weigh-in that fell inside a sheet: the last one from the day it
   // opened up to the day the next sheet opened (or today, for the newest).
-  const weights = getWeightSeriesAll(clientId);
+  const weights = getWeightSeriesAll(ck, clientId);
   const weightFor = (period: string, newer: string | undefined) => {
     const inside = weights.filter((w) => w.date >= period && (newer ? w.date < newer : w.date <= today));
     const last = inside[inside.length - 1];

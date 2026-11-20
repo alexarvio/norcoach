@@ -10,6 +10,7 @@
 //
 // Runs once at boot behind the .seeded-sam-demo-v1 marker in start-server.
 //   npx tsx scripts/seed-sam-demo.ts   (dev server STOPPED)
+import { storeCheckInBox } from "../app/lib/checkins/rows";
 import { allocId, getData, persist } from "../app/lib/db";
 import { createUser, getUserForClient } from "../app/lib/auth";
 import {
@@ -34,6 +35,9 @@ import {
   setMetricEntry,
   weekStart,
 } from "../app/lib/queries";
+
+// The check-in figures through their door (quest 9): the store's own lists, as these scripts always wrote them.
+const SEED = storeCheckInBox("w.entry.seed");
 
 const NAME = "Sam Rivera";
 
@@ -241,16 +245,16 @@ const happiness = metric("Wellbeing", "Happiness", "/10", "weekly");
 for (let back = 1; back <= 21; back++) {
   if (back % 6 === 0) continue; // a missed day here and there
   const date = shift(todayStr, -back);
-  setMetricEntry(steps, date, 6800 + ((back * 397) % 3200));
-  setMetricEntry(sleep, date, Math.round((6.4 + ((back * 7) % 5) * 0.35) * 10) / 10);
-  setMetricEntry(energy, date, 3 + ((back * 3) % 3));
-  setMetricEntry(fluid, date, Math.round((2.0 + ((back * 5) % 4) * 0.25) * 10) / 10);
+  setMetricEntry(SEED, steps, date, 6800 + ((back * 397) % 3200));
+  setMetricEntry(SEED, sleep, date, Math.round((6.4 + ((back * 7) % 5) * 0.35) * 10) / 10);
+  setMetricEntry(SEED, energy, date, 3 + ((back * 3) % 3));
+  setMetricEntry(SEED, fluid, date, Math.round((2.0 + ((back * 5) % 4) * 0.25) * 10) / 10);
 }
 for (let wk = 1; wk <= 5; wk++) {
   const period = weekMonday(wk);
-  setMetricEntry(soreness, period, 2 + (wk % 2));
-  setMetricEntry(stress, period, 2 + ((wk + 1) % 3));
-  setMetricEntry(happiness, period, 7 + (wk % 3));
+  setMetricEntry(SEED, soreness, period, 2 + (wk % 2));
+  setMetricEntry(SEED, stress, period, 2 + ((wk + 1) % 3));
+  setMetricEntry(SEED, happiness, period, 7 + (wk % 3));
 }
 
 // ---- Graphs on the client's Home: weight, waist, steps, sleep ----

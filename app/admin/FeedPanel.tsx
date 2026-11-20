@@ -4,6 +4,7 @@ import { feedClock, getActivityFeed, listLoginLocks, localDateStr, type FeedCate
 import { pageWindow } from "../lib/pager";
 import type { ChatCoachView } from "../lib/chat/rows";
 import type { FoodRows } from "../lib/food/rows";
+import type { CheckInRows } from "../lib/checkins/rows";
 
 // Four kinds of thing happen to a client, and the feed is read one kind at a
 // time. There is no "All": a single stream of everything was a list nobody
@@ -57,7 +58,10 @@ export default function FeedPanel({
   page: pageParam,
   chat,
   food,
+  ck,
 }: {
+  /** The check-in figures the same (app/lib/checkins/rows.ts). */
+  ck: CheckInRows;
   /** The page's chat view of the coach's clients (fetchCoachChat, app/admin/page.tsx). */
   chat: ChatCoachView;
   /** Its food diary the same (app/lib/food/rows.ts). */
@@ -71,7 +75,7 @@ export default function FeedPanel({
 }) {
   // Every event ever, paged here and counted by category (the old admin): the whole chat (Step 5: its view holds it all).
   chat.need("full");
-  const all = getActivityFeed(coachId, chat, food);
+  const all = getActivityFeed(coachId, chat, food, ck);
   const locks = listLoginLocks({ id: coachId, email: coachEmail }, owner);
   const filter: FilterId = FILTERS.some((f) => f.id === category) ? (category as FilterId) : FILTERS[0].id;
   const events = all.filter((e) => matches(e, filter));

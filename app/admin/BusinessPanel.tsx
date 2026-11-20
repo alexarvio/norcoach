@@ -1,4 +1,5 @@
 import { getClientProfile, getLatestWeight, listClients, listInvoices, localDateStr } from "../lib/queries";
+import type { CheckInRows } from "../lib/checkins/rows";
 
 // The coach's business at a glance: who their clients are (age, gender,
 // height, weight), how long they stay, and what they pay. Every figure is
@@ -33,7 +34,7 @@ const AGE_BANDS: { label: string; min: number; max: number }[] = [
   { label: "55+", min: 55, max: 200 },
 ];
 
-export default function BusinessPanel({ coachId }: { coachId: number }) {
+export default function BusinessPanel({ coachId, ck }: { coachId: number; /** The coach's clients' check-ins (app/lib/checkins/rows.ts). */ ck: CheckInRows }) {
   const today = localDateStr();
   const clients = listClients(coachId).map((c) => {
     const p = getClientProfile(c.id);
@@ -45,7 +46,7 @@ export default function BusinessPanel({ coachId }: { coachId: number }) {
       age: age != null && age > 0 && age < 120 ? age : null,
       gender: gender.startsWith("m") ? "Male" : gender.startsWith("f") || gender.startsWith("w") ? "Female" : gender ? "Other" : null,
       height: p.height_cm ?? null,
-      weight: getLatestWeight(c.id) ?? p.starting_weight_kg ?? null,
+      weight: getLatestWeight(ck, c.id) ?? p.starting_weight_kg ?? null,
       tenureDays: p.coaching_start_date ? Math.max(0, daysSince(p.coaching_start_date, today)) : null,
       paid: invoices.filter((i) => i.status === "paid").reduce((s, i) => s + (i.amount || 0), 0),
       open: invoices.filter((i) => i.status !== "paid").reduce((s, i) => s + (i.amount || 0), 0),

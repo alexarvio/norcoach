@@ -6,6 +6,7 @@ import type { ConsistencyDay, HomeBoard, MuscleGroup, MuscleWindow, PerGroup, St
 import { getData, persist, type Data, type PhaseTrack } from "./db";
 import type { ChatThread } from "./chat/rows";
 import type { FoodRows } from "./food/rows";
+import type { CheckInRows } from "./checkins/rows";
 import {
   coachGroups,
   getActivityCalendar,
@@ -168,10 +169,12 @@ type Ctx = {
   prescribedAssisted: (a: AssignmentRow) => boolean;
   /** The client's body weight on a day (bodyWeightOn). */
   bodyOn: (day: string | null | undefined) => number | null;
+  /** The check-in figures through their door (quest 9): the view the page fetched. */
+  ck: CheckInRows;
 };
 
 /** No food view (null): the activity calendar left empty, for a read that never looks at it (exerciseTrends; 23 Oct, speed). */
-function context(clientId: number, today: string, food: FoodRows | null): Ctx {
+function context(clientId: number, today: string, food: FoodRows | null, ck: CheckInRows): Ctx {
   const withCalendar = food != null;
   const data = getData();
   const client = data.clients.find((c) => c.id === clientId);
@@ -249,7 +252,7 @@ function context(clientId: number, today: string, food: FoodRows | null): Ctx {
   const sets: LoggedSet[] = [];
   const perDay = new Map<string, { sets: PerGroup; volume: PerGroup }>();
   // An assisted set weighs the body weight of its own day less the help (23 Oct, Alex).
-  const bodyOn = sub("bodyWeight", () => bodyWeightOn(clientId));
+  const bodyOn = sub("bodyWeight", () => bodyWeightOn(ck, clientId));
   for (const l of data.set_logs) {
     const a = assignments.get(l.workout_assignment_id);
     if (!a) continue;
@@ -274,7 +277,7 @@ function context(clientId: number, today: string, food: FoodRows | null): Ctx {
   }
 
   const byDate = new Map<string, number>();
-  for (const p of sub("weights", () => getWeightSeriesAll(clientId))) {
+  for (const p of sub("weights", () => getWeightSeriesAll(ck, clientId))) {
     const date = readingDay(String(p.date ?? ""));
     const value = Number(p.value);
     if (date && Number.isFinite(value)) byDate.set(date, value);
@@ -288,25 +291,26 @@ function context(clientId: number, today: string, food: FoodRows | null): Ctx {
     today,
     client,
     phases,
-    calendar: withCalendar && food ? new Map(sub("calendar", () => getActivityCalendar(food, clientId)).map((d) => [d.date, d] as const)) : new Map(),
+    calendar: withCalendar && food ? new Map(sub("calendar", () => getActivityCalendar(food, clientId, ck)).map((d) => [d.date, d] as const)) : new Map(),
     days,
     byDay,
     logsByAssignment,
     sets,
     perDay,
     weights,
-    weightStamps: sub("weights", () => weightStampsOf(clientId)),
+    weightStamps: sub("weights", () => weightStampsOf(ck, clientId)),
     fedIds: new Set(fed.map((m) => m.id)),
     fedNames: new Set(fed.map((m) => m.name)),
     prescribedKey,
     prescribedAssisted,
     bodyOn,
+    ck,
   };
 }
 
 /** When each weight reading was saved, by its day: the same readings getWeightSeriesAll reads (bodyWeightReadings, 23 Oct). */
-function weightStampsOf(clientId: number): Map<string, number> {
-  return new Map(bodyWeightReadings(clientId).map((r) => [r.date, stampMs(r.at)] as const));
+function weightStampsOf(ck: CheckInRows, clientId: number): Map<string, number> {
+  return new Map(bodyWeightReadings(ck, clientId).map((r) => [r.date, stampMs(r.at)] as const));
 }
 
 /** A part that fails reads as empty, never the whole board. */
@@ -321,12 +325,12 @@ function safe<T>(part: string, fn: () => T, fallback: T): T {
 
 // ---- The board ------------------------------------------------------------------------
 
-export function getHomeBoard(clientId: number, thread: ChatThread, food: FoodRows): HomeBoard {
+export function getHomeBoard(clientId: number, thread: ChatThread, food: FoodRows, ck: CheckInRows): HomeBoard {
   const today = localDateStr();
   const empty = emptyBoard(today);
   let ctx: Ctx;
   try {
-    ctx = sub("read", () => context(clientId, today, food));
+    ctx = sub("read", () => context(clientId, today, food, ck));
   } catch (e) {
     console.error("[homeBoard] read:", e);
     return empty;
@@ -344,7 +348,7 @@ export function getHomeBoard(clientId: number, thread: ChatThread, food: FoodRow
     muscles: part("muscles", () => musclesOf(ctx), empty.muscles),
     strength: part("strength", () => strengthOf(ctx), empty.strength),
     weight: part("weight", () => weightOf(ctx), null),
-    weightGoals: part("weightGoals", () => getWeightGoalViews(clientId, today), []),
+    weightGoals: part("weightGoals", () => getWeightGoalViews(ck, clientId, today), []),
     days: part("days", () => thirtyDaysOf(ctx), empty.days),
     // The phase span is gone from Consistency (25 Oct, Alex): the last 30 days alone.
     phaseDays: null,
@@ -413,7 +417,8 @@ function lifestyleFigure(ctx: Ctx): { value: string; suffix: string } | null {
   const monday = start && start <= ctx.today ? start : weekStart(ctx.today);
   const soFar = daysBetween(monday, ctx.today) + 1;
   const seen = new Set<string>();
-  for (const e of data.metric_entries) {
+  ctx.ck.need("lifestyleFigure", ctx.clientId, "all", ["entries"]);
+  for (const e of ctx.ck.entries) {
     // The phone's figure is not a check-in (16 Nov; as Activity and the Feed's Since line).
     if (!ids.has(e.metric_definition_id) || e.value == null || e.source === "health") continue;
     const day = (e.period ?? "").slice(0, 10);
@@ -559,7 +564,8 @@ function sinceOf(ctx: Ctx, thread: ChatThread, foodRows: FoodRows): HomeBoard["s
   // Consistency counts them), a measurement on its date. What the workout answers is not a check-in.
   const checkInDays = new Set<string>();
   const defs = new Map(data.metric_definitions.filter((m) => m.client_id === ctx.clientId && !m.retired_at && !ctx.fedIds.has(m.id)).map((m) => [m.id, m] as const));
-  for (const e of data.metric_entries) {
+  ctx.ck.need("sinceOf", ctx.clientId, "all", ["entries"]);
+  for (const e of ctx.ck.entries) {
     const def = defs.get(e.metric_definition_id);
     if (!def || e.value == null || e.source === "health") continue;
     if (def.frequency === "daily") {
@@ -812,7 +818,7 @@ function weightOf(ctx: Ctx): HomeBoard["weight"] {
     (ended there, done in full, or kept from before a coach's edit). Checked in: anything but what the workout answers. */
 function daysOf(ctx: Ctx, dates: string[] = lastDays(ctx.today)): HomeBoard["days"] {
   const setDays = new Set(ctx.sets.filter((s) => s.counts).map((s) => s.day));
-  const asked = dailyAskedOn(ctx.clientId);
+  const asked = dailyAskedOn(ctx.ck, ctx.clientId);
   // What a square opens (7 Nov, Alex): the day's session (one the calendar has on it, else the one a set was logged in),
   // and the check-in sent that day (a daily reading first, then a weekly, then a monthly).
   const weekOf = new Map(ctx.days.map((d) => [d.id, d.week_number] as const));
@@ -833,7 +839,8 @@ function daysOf(ctx: Ctx, dates: string[] = lastDays(ctx.today)): HomeBoard["day
   {
     const data = getData();
     const defs = new Map(data.metric_definitions.filter((m) => m.client_id === ctx.clientId && !ctx.fedIds.has(m.id)).map((m) => [m.id, m] as const));
-    for (const e of data.metric_entries) {
+    ctx.ck.need("daysOf", ctx.clientId, "all", ["entries"]);
+    for (const e of ctx.ck.entries) {
       const def = defs.get(e.metric_definition_id);
       if (!def || e.value == null || e.source === "health") continue;
       const section = def.frequency === "weekly" || def.frequency === "monthly" ? def.frequency : "daily";
@@ -931,9 +938,9 @@ export type ExerciseSession = {
   bodyKg: number | null;
   sets: { weight: number; reps: number; rpe: number | null }[];
 };
-export function exerciseTrends(clientId: number, today: string = localDateStr()): Map<string, { d7: number | null; d30: number | null; d7Since: string | null; d30Since: string | null; sessions: ExerciseSession[] }> {
+export function exerciseTrends(ck: CheckInRows, clientId: number, today: string = localDateStr()): Map<string, { d7: number | null; d30: number | null; d7Since: string | null; d30Since: string | null; sessions: ExerciseSession[] }> {
   // The sets alone: the calendar is the board's, and the costliest part of the read.
-  const ctx = context(clientId, today, null);
+  const ctx = context(clientId, today, null, ck);
   const byKey = new Map<string, Map<string, number>>();
   const weekOfDay = new Map(ctx.days.map((d) => [d.id, d.week_number] as const));
   const dayOf = new Map<number, number>();
@@ -950,7 +957,7 @@ export function exerciseTrends(clientId: number, today: string = localDateStr())
       const at = `${s.assignmentId}|${s.day}`;
       let one = list.get(at);
       if (!one) {
-        if (s.assisted && !bodyOn) bodyOn = bodyWeightOn(clientId);
+        if (s.assisted && !bodyOn) bodyOn = bodyWeightOn(ck, clientId);
         const dayId = dayOf.get(s.assignmentId);
         one = { date: s.day || null, weekNumber: dayId != null ? weekOfDay.get(dayId) ?? null : null, gymId: null, assisted: s.assisted, bodyKg: s.assisted && bodyOn ? bodyOn(s.day) : null, numbered: [] };
         list.set(at, one);
@@ -1021,8 +1028,8 @@ export { repTarget };
  * assisted lift's the help, so no "before" is given for it).
  */
 export type PersonalBest = { sets: number[]; kg: number; prevKg: number | null; assisted: boolean };
-export function personalBests(clientId: number, today: string = localDateStr()): Map<number, PersonalBest> {
-  return trainingBests(clientId, today).bests;
+export function personalBests(ck: CheckInRows, clientId: number, today: string = localDateStr()): Map<number, PersonalBest> {
+  return trainingBests(ck, clientId, today).bests;
 }
 
 /** Every row of the client's by id, and every weighed set (reps and a lifted weight) of each exercise, oldest first. */
@@ -1047,8 +1054,8 @@ function bestIndex(ctx: Ctx): { rowOf: Map<number, AssignmentRow>; byKey: Map<st
  * (every one when it hasn't begun), as lifted kg. Null when no best is possible: a rogue row, no rep target, a first
  * time (nothing to beat), an assisted lift with no body weight known. Worked out per row only when asked.
  */
-export function trainingBests(clientId: number, today: string = localDateStr()): { bests: Map<number, PersonalBest>; barOf: (assignmentId: number) => PbBar | null } {
-  const ctx = context(clientId, today, null);
+export function trainingBests(ck: CheckInRows, clientId: number, today: string = localDateStr()): { bests: Map<number, PersonalBest>; barOf: (assignmentId: number) => PbBar | null } {
+  const ctx = context(clientId, today, null, ck);
   const { rowOf, byKey } = bestIndex(ctx);
   const out = new Map<number, PersonalBest>();
   for (const list of byKey.values()) {

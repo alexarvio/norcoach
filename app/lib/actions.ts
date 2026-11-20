@@ -4,6 +4,8 @@ import { chatChanged, chatCurrent, chatTyping, timedChatRead } from "./chatBus";
 import { once, onceKeyOf, takenKeyOf } from "./once";
 import { fetchClientFood, fetchCoachFoodOfClient, foodLinkSpan, noFoodRows, writeFood } from "./food/rows";
 import { FOOD_PG } from "./food/mode";
+import { CHECKINS_PG } from "./checkins/mode";
+import { checkInKey, fetchClientCheckIns, fetchCoachCheckInsOfClient, writeCheckIns } from "./checkins/rows";
 import { sendChatAs } from "./chatSend";
 import { CHAT_PG } from "./chat/mode";
 import { createHash } from "crypto";
@@ -987,7 +989,14 @@ export async function saveMeasurementCheckInAction(formData: FormData) {
     const value = Number(String(raw).replace(",", "."));
     setMeasurementValue(field.id, date, Number.isFinite(value) ? value : null, loggedAt);
   });
-  if (formData.has("note")) setCheckInNote(clientId, "measurements", date, String(formData.get("note") ?? "").slice(0, 500));
+  // The note through the check-ins' door (quest 9). With CHECKINS_STORE=pg the values above are saved first (the store's
+  // save waited for), then the note commits, so a crash between loses the note alone, never the values.
+  if (formData.has("note")) {
+    const p = checkInKey(date);
+    const text = checkInKey(String(formData.get("note") ?? "").slice(0, 500));
+    if (CHECKINS_PG) await persistNow();
+    await writeCheckIns("w.note.measure", clientId, () => ({ defIds: [], span: { periods: [] }, notes: [{ kind: "measurements", period: p }] }), (box) => setCheckInNote(box, clientId, "measurements", p, text));
+  }
 
   revalidatePath("/admin");
   revalidatePath("/client");
@@ -1115,7 +1124,7 @@ export async function applyMetricChangesAction(input: {
   const said: string[] = [];
   const retires = (Array.isArray(input.retires) ? input.retires : []).filter(mine);
   const removedNames = [...(Array.isArray(input.removes) ? input.removes : []).filter(mine), ...retires].map(metricName);
-  for (const id of Array.isArray(input.removes) ? input.removes : []) if (mine(id)) removeMetricDefinition(id);
+  for (const id of Array.isArray(input.removes) ? input.removes : []) if (mine(id)) await removeMetricDefinition(id);
   for (const id of retires) retireMetricDefinition(id);
   for (const c of Array.isArray(input.cadence) ? input.cadence : []) {
     if (mine(c.id) && (c.value === "daily" || c.value === "weekly" || c.value === "monthly")) {
@@ -1185,7 +1194,7 @@ export async function addMetricDefinitionAction(formData: FormData) {
 /** Start a phase from what another one asks for, rather than from nothing. */
 export async function copyPhaseMetricsAction(clientId: number, fromPhaseId: number | null, toPhaseId: number, fromIsLive: boolean) {
   if (!(await coachForClient(Number(clientId)))) return;
-  copyPhaseMetrics(fromPhaseId == null ? null : Number(fromPhaseId), Number(toPhaseId), Number(clientId), !!fromIsLive);
+  await copyPhaseMetrics(fromPhaseId == null ? null : Number(fromPhaseId), Number(toPhaseId), Number(clientId), !!fromIsLive);
   revalidatePath("/admin");
   revalidatePath("/client");
 }
@@ -1209,7 +1218,7 @@ export async function removeMetricDefinitionAction(formData: FormData) {
   if (!(await coachForClient(clientIdForMetricDefinition(id)))) return;
   const owner = clientIdForMetricDefinition(id);
   const was = getData().metric_definitions.find((m) => m.id === id)?.name ?? "a metric";
-  removeMetricDefinition(id);
+  await removeMetricDefinition(id);
   checkInChange(owner, `Removed ${was}`);
   revalidatePath("/admin");
   revalidatePath("/client");
@@ -1302,14 +1311,24 @@ export async function logMetricPeriodAction(formData: FormData) {
   const dateRaw = String(formData.get("date") || "");
   if (!dateRaw) return;
   if (await checkInLocked(dateRaw, frequency)) return;
-  const period = frequency === "weekly" ? weekStart(dateRaw) : frequency === "monthly" ? monthStart(dateRaw) : dateRaw;
+  // As Postgres holds it with CHECKINS_STORE=pg (quest 9: a coach may post any period; memory mode keeps it as typed).
+  const period = checkInKey(frequency === "weekly" ? weekStart(dateRaw) : frequency === "monthly" ? monthStart(dateRaw) : dateRaw);
+  const span = { periods: [period] };
+  const note = formData.has("note") && (frequency === "daily" || frequency === "weekly" || frequency === "monthly") ? checkInKey(String(formData.get("note") ?? "").slice(0, 500)) : null;
 
+  // Every figure of the period and its note in one write (one transaction with CHECKINS_STORE=pg), the metrics found
+  // again under the client's lock.
+  await writeCheckIns(
+    "w.entry.typed",
+    clientId,
+    () => ({ defIds: listMetricDefinitions(clientId, frequency).map((d) => d.id), span, notes: [{ kind: frequency, period }] }),
+    (box) => {
   const definitions = listMetricDefinitions(clientId, frequency);
   const loggedAt = new Date().toISOString();
   // A weekly (or monthly) reading changed from a past day in the feed keeps
   // its stamp: the feed files it under the day it was sent.
   const pastWeekly = frequency !== "daily" && dateRaw < localDateStr();
-  const entries = pastWeekly ? getMetricEntries(definitions.map((d) => d.id)) : [];
+  const entries = pastWeekly ? getMetricEntries(box, definitions.map((d) => d.id), span) : [];
   definitions.forEach((def) => {
     const raw = formData.get(`metric_${def.id}`);
     // A field not on the form is untouched. One sent empty is a reading the
@@ -1317,7 +1336,7 @@ export async function logMetricPeriodAction(formData: FormData) {
     // used to come back done when the screen was opened again).
     if (raw === null) return;
     if (raw === "") {
-      if (getMetricEntries([def.id]).some((e) => e.period === period && e.value != null)) setMetricEntry(def.id, period, null);
+      if (getMetricEntries(box, [def.id], span).some((e) => e.period === period && e.value != null)) setMetricEntry(box, def.id, period, null);
       return;
     }
     // Phones on European locales type the decimal comma.
@@ -1326,14 +1345,14 @@ export async function logMetricPeriodAction(formData: FormData) {
     if (isStepsMetric(def.name) && value > MAX_DAY_STEPS) return;
     // The phone's figure sent back as it was (the check-in posts every row of the day) stays the phone's (16 Nov): only a
     // different figure is the client typing over it, so the phone can still bring the rest of the night or a later reading.
-    const was = getMetricEntries([def.id]).find((e) => e.period === period);
+    const was = getMetricEntries(box, [def.id], span).find((e) => e.period === period);
     if (was?.source === "health" && was.value === value) return;
     const stamp = entries.find((e) => e.metric_definition_id === def.id && e.period === period)?.logged_at ?? loggedAt;
-    setMetricEntry(def.id, period, Number.isFinite(value) ? value : null, stamp);
+    setMetricEntry(box, def.id, period, Number.isFinite(value) ? value : null, stamp);
   });
-  if (formData.has("note") && (frequency === "daily" || frequency === "weekly" || frequency === "monthly")) {
-    setCheckInNote(clientId, frequency, period, String(formData.get("note") ?? "").slice(0, 500));
-  }
+  if (note != null) setCheckInNote(box, clientId, frequency, period, note);
+    }
+  );
 
   revalidatePath("/admin");
   revalidatePath("/client");
@@ -1754,7 +1773,7 @@ export async function markVideoReplySeenAction(id: number) {
 /** The coach opened the client's note on a programme (the Training tab). */
 export async function markProgramNoteSeenAction(programId: number) {
   if (!Number.isInteger(programId) || !(await coachForClient(getClientIdForProgram(programId)))) return;
-  markProgramNoteSeen(programId, await fetchCoachChatOfClient(getClientIdForProgram(programId) ?? 0, "action.markProgramNote"), await fetchCoachFoodOfClient(getClientIdForProgram(programId) ?? 0, "action.markProgramNote"));
+  markProgramNoteSeen(programId, await fetchCoachChatOfClient(getClientIdForProgram(programId) ?? 0, "action.markProgramNote"), await fetchCoachFoodOfClient(getClientIdForProgram(programId) ?? 0, "action.markProgramNote"), await fetchCoachCheckInsOfClient(getClientIdForProgram(programId) ?? 0, "action.markProgramNote"));
   revalidatePath("/admin");
 }
 
@@ -2675,10 +2694,12 @@ const goalWords = (clientId: number, kg: number, byDate: string) => `${goalWeigh
 export async function saveWeightGoalAction(clientId: number, v: WeightGoalFields, goalId?: number, onceKey?: string): Promise<WeightGoalSaved | null> {
   const coach = await coachForClient(Number(clientId));
   if (!coach) return null;
+  // The client's weigh-ins first (quest 9): a new goal starts at the latest.
+  const ck = await fetchClientCheckIns(Number(clientId), "action.weightGoal");
   // Taken once (6 Nov, one-time key): a new goal sent again after a dropped signal answers the goal the first made,
   // never "one is running already". A change needs none, it lands in the same place.
   return once(`saveWeightGoalAction:${Number(clientId)}`, goalId == null ? onceKeyOf(onceKey) : null, (): WeightGoalSaved => {
-    const row = saveWeightGoal(Number(clientId), v, { who: "coach", userId: coach.id }, goalId == null ? undefined : Number(goalId));
+    const row = saveWeightGoal(ck, Number(clientId), v, { who: "coach", userId: coach.id }, goalId == null ? undefined : Number(goalId));
     if (typeof row === "string") return { error: row };
     // The client hears of it, landing on the goal (a new one rings; a change rewrites today's note).
     noteChange(Number(clientId), `${goalId == null ? "Set a weight goal" : "Changed your weight goal"}: ${goalWords(Number(clientId), row.target_kg, row.by_date)}`, { tab: "home", label: "See it", key: `weight-goal:${row.id}`, ref: row.id, push: goalId == null, replace: true });
@@ -3106,7 +3127,7 @@ export async function deleteClientAction(formData: FormData) {
 export async function dismissHomeActionAction(clientId: number, actionId: string | string[]) {
   if (!(await coachForClient(Number(clientId)))) return;
   const chat = await fetchCoachChatOfClient(Number(clientId), "action.dismissHome");
-  dismissHomeAction(Number(clientId), Array.isArray(actionId) ? actionId.map(String) : String(actionId), chat, await fetchCoachFoodOfClient(Number(clientId), "action.dismissHome"));
+  dismissHomeAction(Number(clientId), Array.isArray(actionId) ? actionId.map(String) : String(actionId), chat, await fetchCoachFoodOfClient(Number(clientId), "action.dismissHome"), await fetchCoachCheckInsOfClient(Number(clientId), "action.dismissHome"));
   revalidatePath("/admin");
 }
 
@@ -3412,7 +3433,7 @@ export async function duplicateClientPhaseAction(phaseId: number, onceKey?: stri
   const src = getPhaseById(Number(phaseId));
   if (!src || !(await coachForClient(src.client_id))) return null;
   // Taken once (6 Nov, one-time key): sent again after a dropped signal, it answers the copy the first made.
-  return once(`duplicateClientPhaseAction:${src.client_id}`, onceKeyOf(onceKey), () => {
+  return once(`duplicateClientPhaseAction:${src.client_id}`, onceKeyOf(onceKey), async () => {
     const days = phaseDays(src.start_week, src.end_week);
     const nextMonday = new Date(`${weekStart(localDateStr())}T00:00:00`);
     nextMonday.setDate(nextMonday.getDate() + 7);
@@ -3432,7 +3453,7 @@ export async function duplicateClientPhaseAction(phaseId: number, onceKey?: stri
       if (src.monthly_check_in_day !== undefined) row.monthly_check_in_day = src.monthly_check_in_day;
       persist();
     }
-    if (src.track === "lifestyle") copyPhaseMetrics(src.id, made.id, src.client_id, false);
+    if (src.track === "lifestyle") await copyPhaseMetrics(src.id, made.id, src.client_id, false);
     revalidatePath("/admin");
     revalidatePath("/client");
     return made.id;
@@ -3986,7 +4007,7 @@ export async function saveCoachNoteAction(clientId: number, text: string) {
 export async function markSeenAction(clientId: number, which: { all: true } | { dayId: number } | { ids: string[] } | { tab: string }) {
   // Read marks are no change to the plan: open while read-only (28 Oct, Alex).
   if (!(await coachForClientOpen(Number(clientId)))) return;
-  markClientEventsSeen(Number(clientId), which, await fetchCoachChatOfClient(Number(clientId), "action.markSeen"), await fetchCoachFoodOfClient(Number(clientId), "action.markSeen"));
+  markClientEventsSeen(Number(clientId), which, await fetchCoachChatOfClient(Number(clientId), "action.markSeen"), await fetchCoachFoodOfClient(Number(clientId), "action.markSeen"), await fetchCoachCheckInsOfClient(Number(clientId), "action.markSeen"));
   // The chat read: its unread mark goes on every open screen of it (27 Oct).
   if ("tab" in which && which.tab === "messages") chatChanged(Number(clientId));
   revalidatePath("/admin");

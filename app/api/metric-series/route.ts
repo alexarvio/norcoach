@@ -1,4 +1,5 @@
 import { getMetricSeries } from "../../lib/queries";
+import { fetchClientCheckIns } from "../../lib/checkins/rows";
 import { requireCoach } from "../../lib/auth";
 import { clientIdForMetricDefinition, coachOwnsClient } from "../../lib/tenancy";
 
@@ -14,5 +15,7 @@ export async function GET(request: Request) {
   if (!Number.isInteger(id) || id <= 0 || !coachOwnsClient(coach.id, clientIdForMetricDefinition(id))) {
     return Response.json({ points: [] });
   }
-  return Response.json({ points: getMetricSeries(id) });
+  // The metric's client's figures through their door (quest 9), fetched first.
+  const ck = await fetchClientCheckIns(clientIdForMetricDefinition(id) ?? 0, "api.metricSeries");
+  return Response.json({ points: getMetricSeries(ck, id) });
 }

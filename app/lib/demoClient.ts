@@ -10,6 +10,7 @@
 
 import { getData, persist, allocId } from "./db";
 import { writeFood } from "./food/rows";
+import { writeCheckIns } from "./checkins/rows";
 import {
   addExerciseToDay,
   addClientGym,
@@ -198,9 +199,11 @@ export async function buildDemoClient(coachId: number, name: string): Promise<nu
   for (let i = 14; i >= 0; i--) {
     const date = day(-i);
     kg = Math.round((kg - 0.05 + (rand() - 0.5) * 0.6) * 10) / 10;
-    if (rand() < 0.9 && weight) setMetricEntry(weight.id, date, kg);
-    if (rand() < 0.85 && sleep) setMetricEntry(sleep.id, date, Math.round((6 + rand() * 2.5) * 2) / 2);
-    if (rand() < 0.85 && steps) setMetricEntry(steps.id, date, 5000 + Math.floor(rand() * 7000));
+    // Through the check-ins' door (quest 9), each figure drawn in the order it always was before it is written.
+    const figure = (defId: number, value: number) => writeCheckIns("w.entry.demo", id, () => ({ defIds: [defId], span: { periods: [date] } }), (b) => setMetricEntry(b, defId, date, value));
+    if (rand() < 0.9 && weight) await figure(weight.id, kg);
+    if (rand() < 0.85 && sleep) await figure(sleep.id, Math.round((6 + rand() * 2.5) * 2) / 2);
+    if (rand() < 0.85 && steps) await figure(steps.id, 5000 + Math.floor(rand() * 7000));
     if (rand() < 0.8) {
       // Through the food diary's door (quest 8 part 1), its figures drawn in the order they always were.
       const kcal = 2400 + Math.floor((rand() - 0.5) * 700);

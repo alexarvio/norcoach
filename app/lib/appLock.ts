@@ -3,6 +3,8 @@ import { getCoachAvatarPath, getCoachDisplayName, getCoachSettings, localDateStr
 import { isReviewEmail } from "./reviewAccount";
 import { fetchFoodLogged, type FoodRows } from "./food/rows";
 import type { FoodReadPath } from "./food/paths";
+import { fetchCheckInsLogged, type CheckInRows } from "./checkins/rows";
+import type { CheckInReadPath } from "./checkins/paths";
 
 // The locked app (19 Nov, Alex: B of docs/boards/locked-app-mockup.html, "first phase"): a client the coach has just let
 // in (their Norcode, their link, or the coach's own invite) sees Home locked under the coach's sheet until their app
@@ -42,7 +44,7 @@ function hadPhaseLive(clientId: number, today = localDateStr()): boolean {
 
 /** Anything the client logged themselves: a set, a session begun, a cardio, a check-in, food, a photo. The phone's own
  *  figures (Apple Health, Health Connect) don't count: Settings works while locked, and connecting must not open it. */
-function loggedAnything(clientId: number, logged: FoodRows): boolean {
+function loggedAnything(clientId: number, logged: FoodRows, ck: CheckInRows): boolean {
   const data = getData();
   // The food diary through its door (quest 8 part 1): the view a page or the timer fetched (fetchFoodLogged).
   logged.need("appLock.loggedAnything", clientId, "all", ["entries", "calories"]);
@@ -55,7 +57,9 @@ function loggedAnything(clientId: number, logged: FoodRows): boolean {
   const days = data.program_days.filter((d) => d.client_id === clientId);
   if (days.some((d) => !!d.session_started_at)) return true;
   const metricIds = new Set(data.metric_definitions.filter((m) => m.client_id === clientId).map((m) => m.id));
-  if (metricIds.size && data.metric_entries.some((e) => metricIds.has(e.metric_definition_id) && e.source !== "health" && e.value != null)) return true;
+  // The check-in figures through their door (quest 9): whether a metric holds one the client typed (fetchCheckInsLogged).
+  if (metricIds.size) ck.need("appLock.loggedAnything", clientId, "logged", ["entries"]);
+  if (metricIds.size && ck.entries.some((e) => metricIds.has(e.metric_definition_id) && e.source !== "health" && e.value != null)) return true;
   if (!days.length) return false;
   const dayIds = new Set(days.map((d) => d.id));
   const rowIds = new Set(data.workout_assignments.filter((a) => dayIds.has(a.program_day_id)).map((a) => a.id));
@@ -69,7 +73,7 @@ function isReviewClient(clientId: number): boolean {
 /** Once, the first time any of this runs: every client from before is opened, silently, so no existing client is ever
  *  locked: one with a sign-in already (they have seen the app open), been in it, a phase out, or anything logged. Only
  *  people let in after it ever see the lock. Marked on the store (app_lock_swept), never run again. */
-function sweepOnce(logged: FoodRows) {
+function sweepOnce(logged: FoodRows, ck: CheckInRows) {
   const data = getData();
   if (data.app_lock_swept) return;
   const now = new Date().toISOString();
@@ -77,7 +81,7 @@ function sweepOnce(logged: FoodRows) {
   const signedUp = new Set(data.users.filter((u) => u.role === "client" && u.client_id != null).map((u) => u.client_id));
   for (const c of data.clients) {
     if (c.app_opened_at) continue;
-    if (signedUp.has(c.id) || !!c.last_active_at || hadPhaseLive(c.id, today) || loggedAnything(c.id, logged) || isReviewClient(c.id)) {
+    if (signedUp.has(c.id) || !!c.last_active_at || hadPhaseLive(c.id, today) || loggedAnything(c.id, logged, ck) || isReviewClient(c.id)) {
       c.app_opened_at = now;
       c.app_opened_by = "before";
     }
@@ -89,7 +93,15 @@ function sweepOnce(logged: FoodRows) {
 /** The sweep for code that hasn't fetched every client's food (the timer, an opening): the clients still unopened fetched first. */
 async function sweepOnceFetched(path: "job.appLocks" | "action.appLock"): Promise<void> {
   if (getData().app_lock_swept) return;
-  sweepOnce(await fetchFoodLogged(getData().clients.filter((c) => !c.app_opened_at).map((c) => c.id), path));
+  const unopened = getData().clients.filter((c) => !c.app_opened_at).map((c) => c.id);
+  const food = await fetchFoodLogged(unopened, path);
+  sweepOnce(food, await fetchCheckInsLogged(unopened, path));
+}
+
+/** What appLocked reads of the check-in figures (the coach's actions; every client still unopened while the sweep hasn't run). */
+export function fetchAppLockCheckIns(clientIds: readonly number[], path: CheckInReadPath): Promise<CheckInRows> {
+  const unopened = getData().app_lock_swept ? [] : getData().clients.filter((c) => !c.app_opened_at).map((c) => c.id);
+  return fetchCheckInsLogged([...clientIds, ...unopened], path);
 }
 
 /** What appLocked and appLockFor read of the food diary: the clients' entries and calorie logs (the page fetches it first;
@@ -110,22 +122,22 @@ function lockOf(client: ClientRow): AppLock {
 }
 
 /** Still locked, nothing marked: the coach's Home reads this for its ⋯ (a live phase reads as open, the timer pushing). */
-export function appLocked(clientId: number, logged: FoodRows): boolean {
-  sweepOnce(logged);
+export function appLocked(clientId: number, logged: FoodRows, ck: CheckInRows): boolean {
+  sweepOnce(logged, ck);
   const client = getData().clients.find((c) => c.id === clientId);
   if (!client || client.app_opened_at || client.coach_id == null) return false;
-  return !hadPhaseLive(clientId) && !isReviewClient(clientId) && !loggedAnything(clientId, logged);
+  return !hadPhaseLive(clientId) && !isReviewClient(clientId) && !loggedAnything(clientId, logged, ck);
 }
 
 /** The client's own app: the lock to draw, or null when open. Found open by a live phase (or, from before, by something
  *  logged), it is marked open here for good, with no push: the client is looking at it. */
-export function appLockFor(clientId: number, logged: FoodRows): AppLock | null {
-  sweepOnce(logged);
+export function appLockFor(clientId: number, logged: FoodRows, ck: CheckInRows): AppLock | null {
+  sweepOnce(logged, ck);
   const client = getData().clients.find((c) => c.id === clientId);
   if (!client || client.app_opened_at || client.coach_id == null) return null;
   if (isReviewClient(clientId)) return null;
   const phase = hadPhaseLive(clientId);
-  if (phase || loggedAnything(clientId, logged)) {
+  if (phase || loggedAnything(clientId, logged, ck)) {
     client.app_opened_at = new Date().toISOString();
     client.app_opened_by = phase ? "phase" : "before";
     persist();

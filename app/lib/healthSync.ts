@@ -10,6 +10,7 @@ import { checkInEditable, foodDayType, getMetricEntries, listMetricDefinitions, 
 import { healthKindOf, type HealthKind } from "./healthKind";
 import { cleanText } from "./pg/store";
 import { writeFood, type FoodBox } from "./food/rows";
+import { writeCheckIns, type CheckInBox } from "./checkins/rows";
 
 export { healthKindOf, type HealthKind };
 
@@ -55,22 +56,52 @@ function editablePeriods(frequency: MetricCadence, today: string): Set<string> {
 }
 const periodOf = (frequency: MetricCadence, day: string) => (frequency === "weekly" ? weekStart(day) : frequency === "monthly" ? monthStart(day) : day);
 
-export async function syncHealthForClient(clientId: number, input: HealthSyncInput): Promise<HealthSyncResult> {
-  const today = localDateStr();
-  const now = new Date().toISOString();
-  // The metrics the client is asked: monthly ones only while monthly check-ins are on for them (listMonthlyMetricsAsked).
+/** The metrics the client is asked that the phone can fill: monthly ones only while monthly check-ins are on for them. */
+function healthMatched(clientId: number) {
   const defs = [...listMetricDefinitions(clientId, "daily"), ...listMetricDefinitions(clientId, "weekly"), ...listMonthlyMetricsAsked(clientId)];
-  const matched = defs.flatMap((def) => {
+  return defs.flatMap((def) => {
     const k = healthKindOf(def);
     return k ? [{ def, ...k }] : [];
   });
-  const tracked = [...new Set(matched.map((m) => m.kind))];
+}
+
+export async function syncHealthForClient(clientId: number, input: HealthSyncInput): Promise<HealthSyncResult> {
+  const today = localDateStr();
+  const now = new Date().toISOString();
+  const tracked = [...new Set(healthMatched(clientId).map((m) => m.kind))];
+  // Every period a check-in can still change (checkInEditable's seven days, and the weeks and months they fall in): what
+  // one sync reads and writes, one transaction with CHECKINS_STORE=pg (quest 9).
+  const span = (() => {
+    const d = new Date(`${today}T00:00:00`);
+    d.setDate(d.getDate() - 7);
+    const d7 = localDateStr(d);
+    const w = weekStart(d7);
+    const mo = monthStart(d7);
+    return { from: w < mo ? w : mo, to: today };
+  })();
+  // The figures in one write: "keep typed", the phone's figure sent back unchanged and the weigh-in's moment all decided
+  // on the rows read under the client's lock. The metrics found again in it (one taken off meanwhile is left out).
+  const saved = await writeCheckIns(
+    "w.entry.health",
+    clientId,
+    () => ({ defIds: healthMatched(clientId).map((m) => m.def.id), span }),
+    (box) => syncHealthFigures(box, clientId, input, today, now, span)
+  );
+
+  const w = syncWorkouts(clientId, input);
+  const c = await syncCalories(clientId, input, today);
+  return { tracked, saved: saved + c.saved, workouts: w.count, workoutsChanged: w.changed, calories: c.count };
+}
+
+/** One sync's figures, on the write's box (the store's own lists in memory mode): how many it saved. */
+function syncHealthFigures(box: CheckInBox, clientId: number, input: HealthSyncInput, today: string, now: string, span: { from: string; to: string }): number {
+  const matched = healthMatched(clientId);
   let saved = 0;
 
   // A day's figure for each daily kind. Steps replace a typed count, as they did; the rest never touch a day the client
   // typed in themselves (16 Nov: their own figure stays), only one the phone filled before.
   const daily = (def: MetricDefinition, days: { date: string; value: number }[], keepTyped: boolean) => {
-    const current = new Map(getMetricEntries([def.id]).map((e) => [e.period, e] as const));
+    const current = new Map(getMetricEntries(box, [def.id], span).map((e) => [e.period, e] as const));
     for (const day of days) {
       if (!checkInEditable(day.date, today)) continue;
       const was = current.get(day.date);
@@ -78,7 +109,7 @@ export async function syncHealthForClient(clientId: number, input: HealthSyncInp
       if (keepTyped && was && was.source !== "health") continue;
       if (was?.value === day.value && was.source === "health") continue;
       // Flagged as the phone's, and an older day keeps its time (13 Nov, Alex: Activity showed 8 daily check-ins at 14:55).
-      if (setMetricEntry(def.id, day.date, day.value, now, "health")) saved++;
+      if (setMetricEntry(box, def.id, day.date, day.value, now, "health")) saved++;
     }
   };
   const inRange = (kind: Exclude<HealthKind, "steps">, v: number) => Number.isFinite(v) && v >= RANGE[kind][0] && v <= RANGE[kind][1];
@@ -123,20 +154,17 @@ export async function syncHealthForClient(clientId: number, input: HealthSyncInp
         const was = latest.get(period);
         if (!was || ms > was.ms) latest.set(period, { kg, at: new Date(ms).toISOString(), ms });
       }
-      const current = new Map(getMetricEntries([m.def.id]).map((e) => [e.period, e] as const));
+      const current = new Map(getMetricEntries(box, [m.def.id], span).map((e) => [e.period, e] as const));
       for (const [period, r] of latest) {
         const was = current.get(period);
         if (was && was.source !== "health") continue;
         const value = Math.round(weightInUnit(r.kg, "kg", m.def.unit || "kg") * 10) / 10;
         if (was?.value === value && was.source === "health" && was.logged_at === r.at) continue;
-        if (setMetricEntry(m.def.id, period, value, r.at, "health", true)) saved++;
+        if (setMetricEntry(box, m.def.id, period, value, r.at, "health", true)) saved++;
       }
     }
   }
-
-  const w = syncWorkouts(clientId, input);
-  const c = await syncCalories(clientId, input, today);
-  return { tracked, saved: saved + c.saved, workouts: w.count, workoutsChanged: w.changed, calories: c.count };
+  return saved;
 }
 
 /** A day's calories past this is a slip, never a day's eating. */

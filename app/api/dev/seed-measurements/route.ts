@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireCoach } from "../../../lib/auth";
 import { getData } from "../../../lib/db";
 import { addMetricDefinition, listClients, localDateStr, setCheckInNote, setMetricEntry, weekStart } from "../../../lib/queries";
+import { writeCheckIns } from "../../../lib/checkins/rows";
 
 // Local development only: fills a client's check-ins so the Measurements
 // screens have something on them. Adds the usual daily and weekly metrics
@@ -52,6 +53,9 @@ export async function GET(req: Request) {
   for (const m of WEEKLY) if (!have(m.name)) addMetricDefinition(id, m.category, m.name, m.unit, "weekly");
   const metric = (name: string) => have(name)!;
 
+  // Through the check-ins' door (quest 9), each figure and note its own write, drawn in the order they always were.
+  const fig = (name: string, period: string, value: number) => writeCheckIns("w.entry.dev", id, () => ({ defIds: [metric(name).id], span: { periods: [period] } }), (b) => setMetricEntry(b, metric(name).id, period, value));
+  const note = (kind: "daily" | "weekly", period: string, text: string) => writeCheckIns("w.entry.dev", id, () => ({ defIds: [], span: { periods: [] }, notes: [{ kind, period }] }), (b) => setCheckInNote(b, id, kind, period, text));
   // Thirty days: weight drifting down, sleep and energy moving together, a
   // day skipped now and then, and two whole days missed.
   let kg = 84.6;
@@ -61,14 +65,14 @@ export async function GET(req: Request) {
     kg = Math.round((kg - 0.04 + (rand() - 0.5) * 0.7) * 10) / 10;
     if (missed.has(date)) continue;
     const sleep = Math.round((6 + rand() * 2.5) * 2) / 2;
-    if (rand() < 0.95) setMetricEntry(metric("Weight").id, date, kg);
-    if (rand() < 0.9) setMetricEntry(metric("Hours of sleep").id, date, sleep);
-    if (rand() < 0.85) setMetricEntry(metric("Morning energy").id, date, Math.max(3, Math.min(10, Math.round(sleep + (rand() - 0.5) * 3))));
-    if (rand() < 0.8) setMetricEntry(metric("Resting HR").id, date, 54 + Math.floor(rand() * 9));
-    if (rand() < 0.85) setMetricEntry(metric("Steps").id, date, 6000 + Math.floor(rand() * 7000));
+    if (rand() < 0.95) await fig("Weight", date, kg);
+    if (rand() < 0.9) await fig("Hours of sleep", date, sleep);
+    if (rand() < 0.85) await fig("Morning energy", date, Math.max(3, Math.min(10, Math.round(sleep + (rand() - 0.5) * 3))));
+    if (rand() < 0.8) await fig("Resting HR", date, 54 + Math.floor(rand() * 9));
+    if (rand() < 0.85) await fig("Steps", date, 6000 + Math.floor(rand() * 7000));
   }
-  setCheckInNote(id, "daily", day(-3), "Rough night, the baby was up twice. Skipped the morning walk.");
-  setCheckInNote(id, "daily", day(-12), "Weighed in after breakfast by mistake, so a bit high today.");
+  await note("daily", day(-3), "Rough night, the baby was up twice. Skipped the morning walk.");
+  await note("daily", day(-12), "Weighed in after breakfast by mistake, so a bit high today.");
 
   // Twelve weeks, this one included: waist easing, stress and mood the other way round.
   const thisWeek = weekStart(localDateStr());
@@ -80,11 +84,11 @@ export async function GET(req: Request) {
     waist = Math.round((waist - 0.2 + (rand() - 0.5) * 0.6) * 10) / 10;
     if (w === 6) continue; // one week missed outright
     const stress = 3 + Math.floor(rand() * 5);
-    setMetricEntry(metric("Waist").id, key, waist);
-    setMetricEntry(metric("Stress").id, key, stress);
-    if (rand() < 0.9) setMetricEntry(metric("Mood").id, key, Math.max(3, Math.min(10, 11 - stress + Math.floor((rand() - 0.5) * 3))));
-    if (rand() < 0.9) setMetricEntry(metric("Sessions done").id, key, 2 + Math.floor(rand() * 3));
-    if (w === 2) setCheckInNote(id, "weekly", key, "Work deadline this week, stress up and only two sessions. Back to normal from Monday.");
+    await fig("Waist", key, waist);
+    await fig("Stress", key, stress);
+    if (rand() < 0.9) await fig("Mood", key, Math.max(3, Math.min(10, 11 - stress + Math.floor((rand() - 0.5) * 3))));
+    if (rand() < 0.9) await fig("Sessions done", key, 2 + Math.floor(rand() * 3));
+    if (w === 2) await note("weekly", key, "Work deadline this week, stress up and only two sessions. Back to normal from Monday.");
   }
 
   return NextResponse.redirect(new URL(`/admin/redesign/measurements?client=${id}`, req.url));

@@ -6,6 +6,7 @@
 
    Run with: npx tsx scripts/seed-rich.ts
 */
+import { storeCheckInBox } from "../app/lib/checkins/rows";
 import fs from "fs";
 import path from "path";
 import { getData, persist, allocId, DATA_DIR } from "../app/lib/db";
@@ -37,6 +38,9 @@ import {
   slugify,
 } from "../app/lib/queries";
 import { createUser, findUserByEmail } from "../app/lib/auth";
+
+// The check-in figures through their door (quest 9): the store's own lists, as these scripts always wrote them.
+const SEED = storeCheckInBox("w.entry.seed");
 
 const today = new Date();
 function daysAgo(n: number) {
@@ -255,9 +259,9 @@ function seedAlex() {
   const stepsDef = dailyDefs.find((d) => d.name === "Steps")!;
   for (let i = 1; i <= 9; i++) {
     const date = daysAgo(i);
-    setMetricEntry(sleepDef.id, date, 6.5 + (i % 3) * 0.5);
-    setMetricEntry(energyDef.id, date, 3 + (i % 3));
-    setMetricEntry(stepsDef.id, date, 7500 + (i % 4) * 900);
+    setMetricEntry(SEED, sleepDef.id, date, 6.5 + (i % 3) * 0.5);
+    setMetricEntry(SEED, energyDef.id, date, 3 + (i % 3));
+    setMetricEntry(SEED, stepsDef.id, date, 7500 + (i % 4) * 900);
   }
   // Deliberately leave "today" un-logged so Home's Today list has a real due item.
 
@@ -268,8 +272,8 @@ function seedAlex() {
   const sorenessDef = weeklyDefs.find((d) => d.name === "Soreness")!;
   [1, 2, 3].forEach((weeksBack) => {
     const date = weekStart(daysAgo(weeksBack * 7));
-    setMetricEntry(stressDef.id, date, 2 + (weeksBack % 2));
-    setMetricEntry(sorenessDef.id, date, 2);
+    setMetricEntry(SEED, stressDef.id, date, 2 + (weeksBack % 2));
+    setMetricEntry(SEED, sorenessDef.id, date, 2);
   });
   // Leave this week un-logged (also feeds the Today due-list).
 

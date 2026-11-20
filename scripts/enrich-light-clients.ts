@@ -11,6 +11,7 @@
 
    Run with: npx tsx scripts/enrich-light-clients.ts
 */
+import { storeCheckInBox } from "../app/lib/checkins/rows";
 import fs from "fs";
 import path from "path";
 import { getData, persist, allocId, DATA_DIR } from "../app/lib/db";
@@ -36,6 +37,9 @@ import {
   localDateStr,
   slugify,
 } from "../app/lib/queries";
+
+// The check-in figures through their door (quest 9): the store's own lists, as these scripts always wrote them.
+const SEED = storeCheckInBox("w.entry.seed");
 
 const today = new Date();
 function daysAgo(n: number) {
@@ -284,14 +288,14 @@ function enrichClient(cfg: LightClientConfig) {
   const stepsDef = dailyDefs.find((d) => d.name === "Steps")!;
   for (let i = 1; i <= 6; i++) {
     const date = daysAgo(i);
-    setMetricEntry(sleepDef.id, date, 6.5 + (i % 3) * 0.4);
-    setMetricEntry(stepsDef.id, date, 6800 + (i % 4) * 800);
+    setMetricEntry(SEED, sleepDef.id, date, 6.5 + (i % 3) * 0.4);
+    setMetricEntry(SEED, stepsDef.id, date, 6800 + (i % 4) * 800);
   }
   addMetricDefinition(clientId, "Wellbeing", "Soreness", "/5", "weekly");
   const weeklyDefs = getData().metric_definitions.filter((m) => m.client_id === clientId && m.frequency === "weekly");
   const sorenessDef = weeklyDefs.find((d) => d.name === "Soreness")!;
   [1, 2].forEach((weeksBack) => {
-    setMetricEntry(sorenessDef.id, weekStart(daysAgo(weeksBack * 7)), 2 + (weeksBack % 2));
+    setMetricEntry(SEED, sorenessDef.id, weekStart(daysAgo(weeksBack * 7)), 2 + (weeksBack % 2));
   });
 
   // ---- Photos: 2 slots, weekly cadence, 2 periods of history ----

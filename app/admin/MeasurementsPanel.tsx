@@ -12,6 +12,7 @@ import {
   phaseEmptyReason,
 } from "../lib/queries";
 import CheckInDaySelect from "./CheckInDaySelect";
+import type { CheckInRows } from "../lib/checkins/rows";
 import SavedStamp from "./SavedStamp";
 import { MetricsPendingProvider, WhenNothingQueued } from "./MetricsPending";
 import MetricLibrary, { LibraryPackView } from "./MetricLibrary";
@@ -31,7 +32,7 @@ const KIND_LABEL = { daily: "Daily check-in", weekly: "Weekly check-in", monthly
 // everything and the tables below read it back. Daily and weekly are the only
 // rhythms — a monthly figure cannot sit honestly in a grid beside yesterday's
 // sleep — and nothing here charts: the client app has no chart to feed.
-export default function MeasurementsPanel({ clientId, phaseParam }: { clientId: number; phaseParam?: string }) {
+export default function MeasurementsPanel({ clientId, phaseParam, ck }: { clientId: number; phaseParam?: string; /** The client's check-ins (app/lib/checkins/rows.ts). */ ck: CheckInRows }) {
   // The phase being set up: the one asked for, else whatever is running.
   const phases = listLifestylePhases(clientId);
   const askedPhase = phaseParam && /^\d+$/.test(phaseParam) ? Number(phaseParam) : null;
@@ -73,11 +74,11 @@ export default function MeasurementsPanel({ clientId, phaseParam }: { clientId: 
     until = localDateStr(end);
   }
   const scope = phases.length ? { metrics, until } : undefined;
-  const daily = getLoggedValues(clientId, "daily", started ? 8 : 0, scope);
-  const weekly = getLoggedValues(clientId, "weekly", started ? 5 : 0, scope);
+  const daily = getLoggedValues(ck, clientId, "daily", started ? 8 : 0, scope);
+  const weekly = getLoggedValues(ck, clientId, "weekly", started ? 5 : 0, scope);
   // The graph can look further back than the table does.
-  const dailyLong = getLoggedValues(clientId, "daily", started ? 30 : 0, scope);
-  const weeklyLong = getLoggedValues(clientId, "weekly", started ? 12 : 0, scope);
+  const dailyLong = getLoggedValues(ck, clientId, "daily", started ? 30 : 0, scope);
+  const weeklyLong = getLoggedValues(ck, clientId, "weekly", started ? 12 : 0, scope);
   const dailyCount = metrics.filter((m) => m.frequency === "daily").length;
 
   // The last thing logged against each metric, so a row says whether it is
@@ -92,7 +93,7 @@ export default function MeasurementsPanel({ clientId, phaseParam }: { clientId: 
   };
   const rows: MetricRow[] = metrics.map((m) => {
     const g = metricGroup(m.category);
-    const entries = [...getMetricEntries([m.id])].sort((a, b) => a.period.localeCompare(b.period));
+    const entries = [...getMetricEntries(ck, [m.id])].sort((a, b) => a.period.localeCompare(b.period));
     const last = entries[entries.length - 1];
     return {
       id: m.id,
@@ -121,7 +122,7 @@ export default function MeasurementsPanel({ clientId, phaseParam }: { clientId: 
     : totalAsked === 0
       ? "Nothing asked for yet"
       : `${totalDone} of ${totalAsked} check-ins done`;
-  const notes = started ? listCheckInNotes(clientId, 12).filter((n) => !until || n.period <= until) : [];
+  const notes = started ? listCheckInNotes(ck, clientId, 12).filter((n) => !until || n.period <= until) : [];
 
   return (
     // One card: the phase band on top, and under it everything that belongs

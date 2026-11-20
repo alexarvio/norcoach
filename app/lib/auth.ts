@@ -10,6 +10,8 @@ import { wipeAllNotes } from "./notes/rows";
 import { NOTES_PG } from "./notes/mode";
 import { wipeFoodPhotos } from "./food/rows";
 import { FOOD_PG } from "./food/mode";
+import { CHECKINS_PG } from "./checkins/mode";
+import { wipeAllCheckIns } from "./checkins/rows";
 import { clearLockoutsFor } from "./loginLockout";
 import { coachOwnsClient, seedCoachLibrary } from "./tenancy";
 import { clerkOn, clerkUserIdFromRequest, clerkUserRow, deleteClerkUser } from "./clerk";
@@ -460,6 +462,8 @@ async function resetWorkspaceOnce(): Promise<void> {
   if (NOTES_PG) await wipeAllNotes("w.wipe");
   // The day photos the same with FOOD_STORE=pg (quest 8 part 1).
   if (FOOD_PG) await wipeFoodPhotos();
+  // Every check-in figure the same with CHECKINS_STORE=pg (quest 9; the notes stay, as the reset always left them).
+  if (CHECKINS_PG) await wipeAllCheckIns();
 
   const before = data.clients.length;
   data.users = data.users.filter((u) => u.role === "coach");
@@ -473,7 +477,8 @@ async function resetWorkspaceOnce(): Promise<void> {
   data.measurement_values = [];
   data.skinfold_entries = [];
   data.metric_definitions = [];
-  data.metric_entries = [];
+  // Through the check-ins' door (quest 9): memory at once, synchronously, as before.
+  if (!CHECKINS_PG) void wipeAllCheckIns();
   data.photo_slots = [];
   data.photo_uploads = [];
   data.photo_settings = [];

@@ -32,7 +32,7 @@ import { countryOf, invoicingFor } from "./countries";
 import { addressLine } from "./address";
 import { LOCK_MS, type LockScope } from "./loginLockout";
 import { endWeekFor, phaseCovers, phaseDays, phaseLastDay, phaseWeekIndex, phaseWeeks } from "./phases";
-import { metricAskAt, metricFromWorkout } from "./metricAskAt";
+import { metricAskAt } from "./metricAskAt";
 import { metricSummary, type MetricSummary } from "./metricSummary";
 import { DEFAULT_WORKOUT_QUESTIONS, EARLIER_DEFAULT_QUESTIONS, MAX_QUESTION_LENGTH, MAX_WORKOUT_QUESTIONS } from "./workoutQuestions";
 import { colourOfGroup, groupColour } from "./categoryColors";
@@ -41,6 +41,8 @@ import { cleanRepeat, openEnd, type EventRepeat } from "./eventRepeat";
 import { deleteUpload, trashFile } from "./storage";
 import { FOOD_PG } from "./food/mode";
 import { deleteClientFood, noFoodRows, setFoodLook, type FoodBox, type FoodRows } from "./food/rows";
+import { CHECKINS_PG } from "./checkins/mode";
+import { deleteClientCheckIns, fetchDueCheckIns, removeMetricWithReadings, sweepClientCheckIns, whileNoFigures, writeCheckIns, type CheckInBox, type CheckInRows, type CheckInSpan } from "./checkins/rows";
 import { setsDue } from "./setsDue";
 import { assistedRow, beforeStop, copiedWeights, isReset, laneKg, laneOfGym, laneTypedAt, laterSlot, liftOf, raisedTo, repWindow, setsSinceReset, stopAfter, writeLane, type Lane } from "./targetRule";
 import { FEATURES } from "./features";
@@ -316,6 +318,10 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
   if (NOTES_PG) await deleteClientNotes(clientId, "w.client.delete");
   // With FOOD_STORE=pg their food diary the same (quest 8 part 1): one transaction under their lock, before anything changes.
   if (FOOD_PG) await deleteClientFood(clientId, "w.client.delete");
+  // With CHECKINS_STORE=pg their check-in figures and notes the same (quest 9): one transaction under their lock, the
+  // figures by their metrics (a figure has no client of its own), before anything in memory changes.
+  const checkInDefs = data.metric_definitions.filter((m) => m.client_id === clientId).map((m) => m.id);
+  if (CHECKINS_PG) await deleteClientCheckIns(clientId, checkInDefs, "w.client.delete");
   // A Personal block that still has them saved is the coach's own: it stays.
   detachStrayEntryClients();
 
@@ -335,7 +341,8 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
   data.training_programs = data.training_programs.filter((p) => p.client_id !== clientId);
   data.training_columns = data.training_columns.filter((c) => c.client_id !== clientId);
 
-  data.metric_entries = data.metric_entries.filter((e) => !metricIds.has(e.metric_definition_id));
+  // Memory mode: their figures out of the store's list, here and at once (the body runs before the call returns).
+  if (!CHECKINS_PG) void writeCheckIns("w.client.delete", clientId, () => ({ defIds: [...metricIds], span: "all" }), (box) => void (box.entries = box.entries.filter((e) => !metricIds.has(e.metric_definition_id))));
   data.metric_definitions = data.metric_definitions.filter((m) => m.client_id !== clientId);
   data.measurement_values = data.measurement_values.filter((v) => !fieldIds.has(v.field_id) && v.client_id !== clientId);
   data.measurement_fields = data.measurement_fields.filter((f) => f.client_id !== clientId);
@@ -372,7 +379,7 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
   // chat-door: chat rows go through deleteClientChat. food-door: the food lists by the same filter (pg: deleteClientFood above)
   // notes-door: the notifications go through deleteClientNotes, in their turn among the collections (memory: at once, the
   // same filter; with NOTES_STORE=pg they went first, above)
-  for (const [name, value] of Object.entries(store)) {
+  for (const [name, value] of Object.entries(store)) { // checkins-door: the check-in notes by this filter in memory (pg: deleteClientCheckIns above)
     if (name === NOTES_TABLE) {
       if (!NOTES_PG) void deleteClientNotes(clientId, "w.client.delete");
       continue;
@@ -410,6 +417,15 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
       await deleteClientFood(clientId, "w.client.delete");
     } catch (error) {
       console.error(`[food] the second sweep of client ${clientId}'s food diary failed; the preflight's orphan count will name what is left:`, error instanceof Error ? error.message : error);
+    }
+  }
+  // The check-in figures the same (CHECKINS_STORE=pg): a check-in or a phone sync queued behind the first DELETE is refused
+  // once the client is gone from memory (writeCheckIns), and this sweep takes what any committed between.
+  if (CHECKINS_PG) {
+    try {
+      await sweepClientCheckIns(clientId, checkInDefs);
+    } catch (error) {
+      console.error(`[checkins] the second sweep of client ${clientId}'s check-ins failed; the boot's orphan count will name what is left:`, error instanceof Error ? error.message : error);
     }
   }
 }
@@ -1446,9 +1462,10 @@ async function applyDueClientReminders() {
   // unread reminder are looked at too, whatever they have set up now.
   for (const id of await fetchUnreadReminderClients("job.reminders.unread")) clientIds.add(id);
 
-  // Each client's due items and their keys, worked out as before (nothing here reads the notes).
+  // Each client's newest check-in periods fetched first (quest 9), then their due items and keys, worked out as before.
+  const ck = await fetchDueCheckIns([...clientIds], "job.reminders", dueCheckInDefIds);
   const due = [...clientIds].map((clientId) => {
-    const items = getDueItems(clientId).map((item) => ({ item, dedupeKey: reminderKey(item.id, clientId, today, weekKey) }));
+    const items = getDueItems(ck, clientId).map((item) => ({ item, dedupeKey: reminderKey(item.id, clientId, today, weekKey) }));
     return { clientId, items };
   });
   const state = await fetchReminderState(
@@ -1500,20 +1517,22 @@ const REMINDER_ITEMS = ["daily", "weekly", "monthly", "measurements", "photos"] 
  * none of these is ever pruned: a photo sheet open past 30 days, a monthly one near its month's end, a check-in done
  * and then taken back. A key of a period that is over is never asked again.
  */
-function reminderKeysInPlay(): ReminderPair[] {
+function keysInPlayClients(): Set<number> {
   const data = getData();
-  const today = localDateStr();
-  const weekKey = weekStart(today);
-  const clientIds = new Set<number>([
+  return new Set<number>([
     ...data.metric_definitions.map((d) => d.client_id),
     ...data.measurement_fields.map((f) => f.client_id),
     ...data.photo_slots.map((s) => s.client_id),
     ...data.clients.map((c) => c.id),
   ]);
+}
+function reminderKeysInPlay(ck: CheckInRows, clientIds: Set<number>): ReminderPair[] {
+  const today = localDateStr();
+  const weekKey = weekStart(today);
   const pairs: ReminderPair[] = [];
   for (const clientId of clientIds) {
     const keys = new Set<string>(REMINDER_ITEMS.map((id) => reminderKey(id, clientId, today, weekKey)));
-    for (const item of getDueItems(clientId)) keys.add(reminderKey(item.id, clientId, today, weekKey));
+    for (const item of getDueItems(ck, clientId)) keys.add(reminderKey(item.id, clientId, today, weekKey));
     for (const key of keys) pairs.push({ clientId, key });
   }
   return pairs;
@@ -1548,7 +1567,10 @@ export async function runReminderPrune(): Promise<number | null> {
   if (remindersRunning) return null;
   remindersRunning = true;
   try {
-    return await pruneReadReminders(reminderKeysInPlay(), { photosFrom: photoKeysFrom(localDateStr()) });
+    // The newest check-in periods fetched first (quest 9), then the keys worked out at once, as before.
+    const clientIds = keysInPlayClients();
+    const ck = await fetchDueCheckIns([...clientIds], "job.reminders.prune", dueCheckInDefIds);
+    return await pruneReadReminders(reminderKeysInPlay(ck, clientIds), { photosFrom: photoKeysFrom(localDateStr()) });
   } finally {
     remindersRunning = false;
   }
@@ -3116,11 +3138,11 @@ export type OverviewPanel = {
 };
 
 /** feedOf: the coach's feed, when the caller reads it too (loadHome): asked for here at the same moment, built once. */
-export function getOverviewPanel(clientId: number, feedOf: () => FeedEvent[]): OverviewPanel {
+export function getOverviewPanel(clientId: number, feedOf: () => FeedEvent[], ck: CheckInRows): OverviewPanel {
   const client = getClient(clientId);
   const profile = getClientProfile(clientId);
   const nutrition = getNutritionGoalsSummary(clientId);
-  const weight = getLatestWeight(clientId);
+  const weight = getLatestWeight(ck, clientId);
   const invoices = listInvoices(clientId);
   const today = localDateStr();
 
@@ -3149,7 +3171,7 @@ export function getOverviewPanel(clientId: number, feedOf: () => FeedEvent[]): O
     getCurrentPhase(clientId, "nutrition") ?? getCurrentPhase(clientId, "training") ?? getCurrentPhase(clientId, "lifestyle");
   const weightMove = (() => {
     if (weight == null) return "";
-    const series = getWeightSeriesAll(clientId);
+    const series = getWeightSeriesAll(ck, clientId);
     let base: number | null = null;
     let when = "since the start";
     if (weightPhase && series.length > 0) {
@@ -3309,32 +3331,6 @@ export function getOverviewPanel(clientId: number, feedOf: () => FeedEvent[]): O
   };
 }
 
-export function getClientSummary(clientId: number) {
-  const data = getData();
-  const dayIds = new Set(
-    data.program_days.filter((pd) => pd.client_id === clientId).map((pd) => pd.id)
-  );
-  const assignmentIds = new Set(
-    data.workout_assignments.filter((wa) => dayIds.has(wa.program_day_id)).map((wa) => wa.id)
-  );
-  const publishedDays = data.program_days.filter(
-    (pd) => pd.client_id === clientId && pd.status === "published"
-  );
-  const planned = new Set(data.program_days.filter((pd) => pd.client_id === clientId && !pd.free).map((pd) => pd.id));
-  // The sessions with a row in them, read once (23 Oct, speed: it scanned every row per session).
-  const built = new Set<number>();
-  for (const wa of data.workout_assignments) if (dayIds.has(wa.program_day_id)) built.add(wa.program_day_id);
-  const trainingDaysBuilt = [...dayIds].filter((id) => planned.has(id) && built.has(id)).length;
-  const totalSets = data.set_logs.filter((sl) => assignmentIds.has(sl.workout_assignment_id)).length;
-
-  return {
-    trainingDaysBuilt,
-    programPublished: publishedDays.length > 0,
-    totalSetsLogged: totalSets,
-    lastActive: getLastActive(clientId),
-  };
-}
-
 // ---- Cross-client activity feed ----
 // Every event here is sourced from real, timestamped writes elsewhere in the
 // store — nothing here is synthesized. When a new kind of client logging is
@@ -3445,8 +3441,8 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const feedValue = (v: number) => String(Math.round(v * 10) / 10);
 
 /** Everything one coach's clients logged, newest first. The Feed page filters and pages it. */
-export function getActivityFeed(coachId: number, chat: ChatCoachView, food: FoodRows): FeedEvent[] {
-  return activityFeeds([coachId], chat, food).get(coachId) ?? [];
+export function getActivityFeed(coachId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows): FeedEvent[] {
+  return activityFeeds([coachId], chat, food, ck).get(coachId) ?? [];
 }
 
 /**
@@ -3455,7 +3451,7 @@ export function getActivityFeed(coachId: number, chat: ChatCoachView, food: Food
  * in the order the walk finds them, sorted the same way. The store's rows are filtered to the coaches' clients before
  * they are grouped, so a coach's feed no longer maps every other coach's sets, food, check-ins and chat.
  */
-function activityFeeds(coachIds: readonly number[], chat: ChatCoachView, food: FoodRows): Map<number, FeedEvent[]> {
+function activityFeeds(coachIds: readonly number[], chat: ChatCoachView, food: FoodRows, ck: CheckInRows): Map<number, FeedEvent[]> {
   const data = getData();
   chat.covers("activityFeeds", coachIds);
   const feeds = new Map<number, FeedEvent[]>(coachIds.map((id) => [id, []]));
@@ -3697,7 +3693,9 @@ function activityFeeds(coachIds: readonly number[], chat: ChatCoachView, food: F
   };
 
   const metricDefs = new Map(data.metric_definitions.map((d) => [d.id, d] as const));
-  for (const e of data.metric_entries) {
+  // The check-ins through their door (quest 9): every figure and note of these coaches' clients.
+  ck.need("activityFeeds", [...clientsById.keys()], "all");
+  for (const e of ck.entries) {
     const def = metricDefs.get(e.metric_definition_id);
     // Steps the phone filled in are no check-in the client did (13 Nov, Alex).
     if (!def || e.value == null || e.source === "health" || !clientsById.has(def.client_id)) continue;
@@ -3714,7 +3712,7 @@ function activityFeeds(coachIds: readonly number[], chat: ChatCoachView, food: F
     c.values.push({ order: field.order_index, text: `${field.name} ${feedValue(v.value)}${field.unit ? ` ${field.unit}` : ""}` });
     c.latest = latestOf(c.latest, v.logged_at);
   }
-  for (const n of data.check_in_notes) {
+  for (const n of ck.notes) {
     if (!clientsById.has(n.client_id)) continue;
     const c = checkIn(n.client_id, n.kind, n.period);
     c.note = n.text;
@@ -4065,13 +4063,13 @@ export function feedTimeLabel(at: number, timeKnown = true): string {
  * clients the coach has and when one of them last logged something. Nothing
  * about the clients themselves.
  */
-export function listCoachAccounts(chat: ChatCoachView, food: FoodRows) {
+export function listCoachAccounts(chat: ChatCoachView, food: FoodRows, ck: CheckInRows) {
   const data = getData();
   const coaches = data.users.filter((u) => u.role === "coach").sort((a, b) => a.id - b.id);
   // Every coach's feed in one walk (17 Nov, mission 2: it was built once per coach), each the list getActivityFeed gives.
   // Only its newest event is read: each client's newest message is in the view (Step 5).
   chat.need("clientTop", 1);
-  const feeds = activityFeeds(coaches.map((u) => u.id), chat, food);
+  const feeds = activityFeeds(coaches.map((u) => u.id), chat, food, ck);
   return coaches
     .map((u) => {
       const latest = feeds.get(u.id)?.[0];
@@ -4288,8 +4286,9 @@ export const weightIn = (r: BodyWeightReading, unit: string): number => weightIn
 // their latest log): each Weight metric's readings, any phase and any rhythm, and the legacy Weight measurement field's.
 // A daily reading is for its day; a weekly or monthly one for the day it was sent (its period with no stamp). Two on
 // one day: the one saved last. lbs are kg here once. Nothing is stored: every reader follows the next log.
-export function bodyWeightReadings(clientId: number): BodyWeightReading[] {
+export function bodyWeightReadings(ck: CheckInRows, clientId: number): BodyWeightReading[] {
   const data = getData();
+  ck.need("bodyWeightReadings", clientId, "all", ["entries"]);
   const byDay = new Map<string, BodyWeightReading>();
   const savedMs = (at: string | null) => {
     const t = at ? Date.parse(at) : NaN;
@@ -4306,7 +4305,7 @@ export function bodyWeightReadings(clientId: number): BodyWeightReading[] {
     for (const v of data.measurement_values) if (v.field_id === f.id) add(String(v.date).slice(0, 10), v.value, f.unit, v.logged_at);
   }
   const defs = new Map(data.metric_definitions.filter((m) => m.client_id === clientId && WEIGHT_NAME.test(m.name.trim())).map((m) => [m.id, m] as const));
-  for (const e of data.metric_entries) {
+  for (const e of ck.entries) {
     const def = defs.get(e.metric_definition_id);
     if (!def) continue;
     const period = String(e.period ?? "");
@@ -4318,14 +4317,14 @@ export function bodyWeightReadings(clientId: number): BodyWeightReading[] {
 
 // The client's weight, in kg, a day each, oldest first: their readings from every place they log it
 // (bodyWeightReadings). Everything that shows "the client's weight" reads through here.
-export function getWeightSeriesAll(clientId: number): { date: string; value: number }[] {
-  return bodyWeightReadings(clientId).map((r) => ({ date: r.date, value: r.kg }));
+export function getWeightSeriesAll(ck: CheckInRows, clientId: number): { date: string; value: number }[] {
+  return bodyWeightReadings(ck, clientId).map((r) => ({ date: r.date, value: r.kg }));
 }
 
 /** The client's body weight on a day (23 Oct): the reading nearest on or before it, else the first after, else the
     starting weight on their card; a set with no day weighs the latest. For an assisted lift's sets, each by its day. */
-export function bodyWeightOn(clientId: number): (day: string | null | undefined) => number | null {
-  const readings = bodyWeightReadings(clientId).filter((r) => r.kg > 0);
+export function bodyWeightOn(ck: CheckInRows, clientId: number): (day: string | null | undefined) => number | null {
+  const readings = bodyWeightReadings(ck, clientId).filter((r) => r.kg > 0);
   const start = getData().client_profiles.find((p) => p.client_id === clientId)?.starting_weight_kg;
   const fallback = typeof start === "number" && start > 0 ? start : null;
   return (day) => {
@@ -4343,9 +4342,9 @@ export function bodyWeightOn(clientId: number): (day: string | null | undefined)
 
 /** The client's body weight now (23 Oct): their latest weight reading, else the starting weight on their card; null
     with neither. What an assisted lift really lifts is this less the help (progressRules.liftedKg). */
-export function bodyWeightKg(clientId: number): number | null {
+export function bodyWeightKg(ck: CheckInRows, clientId: number): number | null {
   let latest: { date: string; value: number } | null = null;
-  for (const p of getWeightSeriesAll(clientId)) {
+  for (const p of getWeightSeriesAll(ck, clientId)) {
     const value = Number(p.value);
     if (!(Number.isFinite(value) && value > 0)) continue;
     if (!latest || String(p.date) > latest.date) latest = { date: String(p.date), value };
@@ -4888,7 +4887,7 @@ export function listMetricsForPhase(clientId: number, phaseId: number | null, _i
  * and all: the phase takes them over when it goes live anyway, and copying
  * them first left every one in there twice.
  */
-export function copyPhaseMetrics(fromPhaseId: number | null, toPhaseId: number, clientId: number, fromIsLive: boolean) {
+export async function copyPhaseMetrics(fromPhaseId: number | null, toPhaseId: number, clientId: number, fromIsLive: boolean): Promise<void> {
   const data = getData();
   const source = listMetricsForPhase(clientId, fromPhaseId, fromIsLive);
   const already = new Set(
@@ -4906,8 +4905,48 @@ export function copyPhaseMetrics(fromPhaseId: number | null, toPhaseId: number, 
       phase_id: toPhaseId,
     });
   }
-  mergeDuplicateMetricDefinitions(data);
+  // The twins merged with their figures (quest 9): in memory as before; with CHECKINS_STORE=pg in one transaction on the
+  // client's figures, the definitions it merged away taken out of memory after its commit.
+  if (CHECKINS_PG) {
+    persist();
+    // The copy is made and saved: a merge that fails (the database away a moment) is left to the next pg boot, which
+    // merges twin metrics on their figures, never thrown, so the coach's action never reads as failed and is never sent
+    // again (a duplicated phase sent again after an error would be made twice).
+    await mergeClientMetricTwins(clientId, "w.def.merge").catch((error) => console.error("[checkins] the twin metrics' merge after a copy failed (the next pg boot merges them):", error instanceof Error ? error.message.split("\n")[0] : error));
+    return;
+  }
+  await writeCheckIns("w.def.merge", clientId, () => ({ defIds: [], span: "all" }), (box) => mergeDuplicateMetricDefinitions(data, box));
   persist();
+}
+
+/**
+ * A client's twin metrics merged with their figures in Postgres (CHECKINS_STORE=pg): db.ts's merge, its body unchanged, on
+ * a copy of the client's definitions and their figures read under the client's lock; after the commit the definitions it
+ * merged away go from memory, and the store is saved. The keeper is never a metric just added (more figures, else the
+ * lower id). A crash between leaves zero-figure twins, which the next boot merges.
+ */
+async function mergeClientMetricTwins(clientId: number, path: "w.def.merge"): Promise<void> {
+  await writeCheckIns(
+    path,
+    clientId,
+    () => ({ defIds: getData().metric_definitions.filter((m) => m.client_id === clientId).map((m) => m.id), span: "all" }),
+    (box) => {
+      const defs = { metric_definitions: getData().metric_definitions.filter((m) => m.client_id === clientId) };
+      const was = new Set(defs.metric_definitions.map((m) => m.id));
+      mergeDuplicateMetricDefinitions(defs, box);
+      const kept = new Set(defs.metric_definitions.map((m) => m.id));
+      return [...was].filter((id) => !kept.has(id));
+    },
+    {
+      afterCommit: (gone) => {
+        const ids = new Set(gone as number[]);
+        if (!ids.size) return;
+        const data = getData();
+        data.metric_definitions = data.metric_definitions.filter((m) => !ids.has(m.id));
+        persist();
+      },
+    }
+  );
 }
 
 export function updateMetricDefinition(id: number, category: string, name: string, unit: string) {
@@ -4962,11 +5001,21 @@ export function unretireMetricDefinition(clientId: number, name: string, phaseId
   return def.id;
 }
 
-export function removeMetricDefinition(id: number) {
+/**
+ * A metric gone with everything logged for it (the days it was checked in kept on the client). Through the door (quest 9):
+ * in memory as before; with CHECKINS_STORE=pg memory first with a tombstone, then the figures' DELETE (checkins/rows.ts
+ * removeMetricWithReadings).
+ */
+export async function removeMetricDefinition(id: number): Promise<void> {
+  await removeMetricWithReadings(id, (box) => removeMetricInMemory(box, id));
+}
+
+/** Today's removal, on a box (the store's own lists in memory mode; the figures read from Postgres otherwise). */
+function removeMetricInMemory(box: CheckInBox, id: number) {
   const data = getData();
-  keepMetricReadings(id);
+  keepMetricReadings(box, id);
   data.metric_definitions = data.metric_definitions.filter((m) => m.id !== id);
-  data.metric_entries = data.metric_entries.filter((e) => e.metric_definition_id !== id);
+  box.entries = box.entries.filter((e) => e.metric_definition_id !== id);
   persist();
 }
 
@@ -5019,29 +5068,6 @@ export type PinnedMetricSummary = {
   entryCount: number;
 };
 
-// Latest value + running average for every metric the coach has pinned for
-// this client, across both daily and weekly trackers — used by the Start
-// Page's pinned-metrics panel.
-export function getPinnedMetricsSummary(clientId: number): PinnedMetricSummary[] {
-  const data = getData();
-  const defs = data.metric_definitions.filter((m) => m.client_id === clientId && m.pinned && !m.retired_at);
-  return defs.map((def) => {
-    const logged = data.metric_entries
-      .filter((e) => e.metric_definition_id === def.id && e.value != null)
-      .sort((a, b) => (a.period < b.period ? -1 : 1));
-    const latestEntry = logged.length > 0 ? logged[logged.length - 1] : null;
-    const average =
-      logged.length >= 3 ? logged.reduce((sum, e) => sum + (e.value as number), 0) / logged.length : null;
-    return {
-      def,
-      latest: latestEntry?.value ?? null,
-      latestPeriod: latestEntry?.period ?? null,
-      average,
-      entryCount: logged.length,
-    };
-  });
-}
-
 // ---- Client graphs: which of this client's figures are charted on their
 // Home screen. The coach picks up to PINNED_METRIC_LIMIT (4) across BOTH
 // tracker metrics and measurement fields (Weight lives in the latter), and
@@ -5069,7 +5095,7 @@ export function getMeasurementSeries(fieldId: number): { date: string; value: nu
 
 // Every figure the coach could graph for this client, measurements first
 // (Weight leads) then tracker metrics in their usual display order.
-export function listGraphChoices(clientId: number): GraphChoice[] {
+export function listGraphChoices(ck: CheckInRows, clientId: number): GraphChoice[] {
   const fields: GraphChoice[] = listMeasurementFields(clientId).map((f) => ({
     key: `field-${f.id}`,
     kind: "field",
@@ -5089,29 +5115,9 @@ export function listGraphChoices(clientId: number): GraphChoice[] {
     unit: m.unit,
     cadenceLabel: cadence[m.frequency] ?? m.frequency,
     pinned: !!m.pinned,
-    pointCount: getMetricSeries(m.id).length,
+    pointCount: getMetricSeries(ck, m.id).length,
   }));
   return [...fields, ...metrics];
-}
-
-// The graphed set with its data, in carousel order. A client whose coach has
-// never picked anything still gets a Weight chart if they track weight at
-// all, which is what the Home screen always showed before the picker existed.
-export function getGraphedSeries(
-  clientId: number
-): { key: string; name: string; unit: string; series: { date: string; value: number }[] }[] {
-  const choices = listGraphChoices(clientId);
-  let picked = choices.filter((c) => c.pinned);
-  if (picked.length === 0) {
-    const weight = choices.find((c) => c.name.toLowerCase().includes("weight"));
-    if (weight) picked = [weight];
-  }
-  return picked.map((c) => ({
-    key: c.key,
-    name: c.name,
-    unit: c.unit,
-    series: c.kind === "field" ? getMeasurementSeries(c.id) : getMetricSeries(c.id),
-  }));
 }
 
 // Full logged history for one metric, oldest first, ready to hand straight
@@ -5137,71 +5143,10 @@ export type MetricHistory = {
   change: HistoryChange;
 };
 
-export function getMetricHistory(clientId: number, cadence: MetricCadence): MetricHistory {
-  const data = getData();
-  const defs = listAllMetrics(clientId).filter((m) => m.frequency === cadence);
-
-  const columns: HistoryColumn[] = defs.map((d) => ({
-    id: d.id,
-    name: d.name,
-    unit: d.unit,
-    group: d.category,
-  }));
-
-  // Collapse runs of the same group into one spanning header.
-  const bands: HistoryBand[] = [];
-  columns.forEach((c) => {
-    const g = metricGroup(c.group);
-    const last = bands[bands.length - 1];
-    if (last && last.group === g.key) {
-      last.span++;
-      return;
-    }
-    bands.push({ group: g.key, label: g.label, tint: g.tint, span: 1 });
-  });
-
-  const ids = new Set(defs.map((d) => d.id));
-  const periods = Array.from(
-    new Set(data.metric_entries.filter((e) => ids.has(e.metric_definition_id)).map((e) => e.period))
-  ).sort((a, b) => b.localeCompare(a));
-
-  const noteKind: CheckInNote["kind"] = cadence;
-  const rows: HistoryRow[] = periods.map((period) => ({
-    period,
-    note: noteKind ? getCheckInNote(clientId, noteKind, period) : null,
-    label: new Date(`${period}T00:00:00`).toLocaleDateString("en-GB", {
-      month: "short",
-      day: "numeric",
-      year: cadence === "monthly" ? "numeric" : undefined,
-    }).replace("Sept", "Sep"),
-    values: defs.map(
-      (d) =>
-        data.metric_entries.find((e) => e.metric_definition_id === d.id && e.period === period)?.value ?? null
-    ),
-  }));
-
-  // First to latest, per column — the row pinned to the bottom of the table.
-  const change: HistoryChange = defs.map((_, i) => {
-    const withValues = [...rows].reverse().filter((r) => r.values[i] != null);
-    if (withValues.length < 2) return { delta: null, pct: null, label: "-" };
-    const first = withValues[0].values[i]!;
-    const latest = withValues[withValues.length - 1].values[i]!;
-    const delta = latest - first;
-    const pct = first !== 0 ? (delta / first) * 100 : null;
-    const sign = delta > 0 ? "+" : "";
-    return {
-      delta,
-      pct,
-      label: `${sign}${Number(delta.toFixed(1))}${pct != null ? ` (${sign}${pct.toFixed(0)}%)` : ""}`,
-    };
-  });
-
-  return { columns, bands, rows, change };
-}
-
-export function getMetricSeries(metricDefinitionId: number): { date: string; value: number }[] {
-  return getData()
-    .metric_entries.filter((e) => e.metric_definition_id === metricDefinitionId && e.value != null)
+export function getMetricSeries(ck: CheckInRows, metricDefinitionId: number): { date: string; value: number }[] {
+  ck.need("getMetricSeries", metricClients([metricDefinitionId]), "all", ["entries"]);
+  return ck.entries
+    .filter((e) => e.metric_definition_id === metricDefinitionId && e.value != null)
     .map((e) => ({ date: e.period, value: e.value as number }))
     .sort((a, b) => (a.date < b.date ? -1 : 1));
 }
@@ -5352,6 +5297,7 @@ export function applyMetricTemplateToClient(clientId: number, templateCategoryId
 // Upsert: logging the same metric for the same period again overwrites the
 // value rather than creating a duplicate row.
 export function setMetricEntry(
+  box: CheckInBox,
   metricDefinitionId: number,
   period: string,
   value: number | null,
@@ -5360,8 +5306,9 @@ export function setMetricEntry(
   /** The phone's reading carries its own moment (a weigh-in): it takes it even over an older one's (16 Nov). */
   restamp?: boolean
 ): boolean {
-  const data = getData();
-  const existing = data.metric_entries.find(
+  // Inside what the write loaded (quest 9): a figure outside it could otherwise be added a second time.
+  box.inReach(metricDefinitionId, period);
+  const existing = box.entries.find(
     (e) => e.metric_definition_id === metricDefinitionId && e.period === period
   );
   if (existing) {
@@ -5375,8 +5322,8 @@ export function setMetricEntry(
     if (source) existing.source = source;
     else delete existing.source;
   } else {
-    data.metric_entries.push({
-      id: allocId("metric_entries"),
+    box.entries.push({
+      id: box.alloc("entries"),
       metric_definition_id: metricDefinitionId,
       period,
       value,
@@ -5384,13 +5331,21 @@ export function setMetricEntry(
       ...(source ? { source } : {}),
     });
   }
-  persist();
+  box.persist();
   return true;
 }
 
-export function getMetricEntries(metricDefinitionIds: number[]): MetricEntry[] {
+/** The clients these metrics belong to (a figure is its client's through its metric): what a reader of them needs. */
+function metricClients(metricDefinitionIds: readonly number[]): number[] {
+  const ids = new Set(metricDefinitionIds);
+  return [...new Set(getData().metric_definitions.filter((m) => ids.has(m.id)).map((m) => m.client_id))];
+}
+
+/** Every figure of these metrics in the view; `span` is what the reader reads of them (its need). */
+export function getMetricEntries(ck: CheckInRows, metricDefinitionIds: number[], span: CheckInSpan = "all"): MetricEntry[] {
   const idSet = new Set(metricDefinitionIds);
-  return getData().metric_entries.filter((e) => idSet.has(e.metric_definition_id));
+  if (idSet.size) ck.need("getMetricEntries", metricClients(metricDefinitionIds), span, ["entries"], metricDefinitionIds);
+  return ck.entries.filter((e) => idSet.has(e.metric_definition_id));
 }
 
 // All distinct periods logged across a set of metrics, most recent first.
@@ -5399,8 +5354,9 @@ export function getMetricEntries(metricDefinitionIds: number[]): MetricEntry[] {
 // names frozen on the left as more weeks/days accumulate — the whole point
 // of that frozen column is to not have to cap history at a handful of
 // periods, so this returns everything by default.
-export function listMetricPeriods(metricDefinitionIds: number[], limit = 500): string[] {
-  const entries = getMetricEntries(metricDefinitionIds);
+export function listMetricPeriods(ck: CheckInRows, metricDefinitionIds: number[], limit = 500): string[] {
+  // The newest period alone (limit 1) is what the minute job asks: the `latest` view holds it (checkins/rows.ts).
+  const entries = getMetricEntries(ck, metricDefinitionIds, limit === 1 ? "latest" : "all");
   const periods = [...new Set(entries.map((e) => e.period))];
   return periods.sort((a, b) => (a < b ? -1 : 1)).slice(-limit);
 }
@@ -6131,15 +6087,6 @@ export function listLoggedExercisesForClient(clientId: number): { id: number; na
 // (the original spreadsheet had a broken cross-tab formula there — this
 // avoids that class of bug entirely by computing from the same source).
 
-// Client's logged Weight column from Measurements, as a date/value series —
-// same "find the weight column by name" approach as getLatestWeight, since
-// coaches can rename/remove columns and there's no fixed schema to rely on.
-export function getWeightSeries(clientId: number, days: number) {
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - days);
-  return getWeightSeriesAll(clientId).filter((p) => new Date(p.date) >= cutoff);
-}
-
 export type ClientProfile = {
   client_id: number;
   birthdate: string | null;
@@ -6271,9 +6218,9 @@ export function getTimeToGoal(profile: ClientProfile): string | null {
 
 // The client's most recent logged weight from Measurements, so "current
 // weight" on the Start Page always matches what they've actually checked in.
-export function getLatestWeight(clientId: number): number | null {
+export function getLatestWeight(ck: CheckInRows, clientId: number): number | null {
   // A 0 is no weigh-in (23 Oct), as bodyWeightKg reads it.
-  const latest = getWeightSeriesAll(clientId).filter((p) => p.value > 0).at(-1)?.value ?? null;
+  const latest = getWeightSeriesAll(ck, clientId).filter((p) => p.value > 0).at(-1)?.value ?? null;
   // Round away float noise (e.g. 71.2 - 0.4 === 70.79999999999999) so the UI
   // never shows a raw binary-floating-point artifact.
   return latest != null ? Math.round(latest * 10) / 10 : null;
@@ -7453,21 +7400,21 @@ export function monthlyCheckInOpen(clientId: number, dateStr = localDateStr()): 
 // filled they stop riding along every day after, which also stops the ring
 // starting each day with that chunk already full. Filled today, they stay
 // for the rest of today so what was just saved can be seen and edited.
-function periodAskedToday(section: CheckInSection | undefined, period: string, isTheDay: boolean, dateStr: string): boolean {
+function periodAskedToday(ck: CheckInRows, section: CheckInSection | undefined, period: string, isTheDay: boolean, dateStr: string): boolean {
   if (isTheDay || !section?.metrics.length) return true;
   if (section.metrics.some((m) => m.value === "")) return true;
-  return getMetricEntries(section.metrics.map((m) => Number(m.id))).some((e) => e.period === period && e.logged_at?.slice(0, 10) === dateStr);
+  return getMetricEntries(ck, section.metrics.map((m) => Number(m.id))).some((e) => e.period === period && e.logged_at?.slice(0, 10) === dateStr);
 }
 
-export function weeklyCheckInAskedToday(clientId: number, sections: CheckInSection[], dateStr = localDateStr()): boolean {
+export function weeklyCheckInAskedToday(ck: CheckInRows, clientId: number, sections: CheckInSection[], dateStr = localDateStr()): boolean {
   if (!weeklyCheckInOpen(clientId, dateStr)) return false;
   const monBased = (new Date(`${dateStr}T00:00:00`).getDay() + 6) % 7;
-  return periodAskedToday(sections.find((s) => s.id === "weekly"), weekStart(dateStr), monBased === (weeklyCheckInWeekday(clientId) ?? 0), dateStr);
+  return periodAskedToday(ck, sections.find((s) => s.id === "weekly"), weekStart(dateStr), monBased === (weeklyCheckInWeekday(clientId) ?? 0), dateStr);
 }
 
-export function monthlyCheckInAskedToday(clientId: number, sections: CheckInSection[], dateStr = localDateStr()): boolean {
+export function monthlyCheckInAskedToday(ck: CheckInRows, clientId: number, sections: CheckInSection[], dateStr = localDateStr()): boolean {
   if (!monthlyCheckInOpen(clientId, dateStr)) return false;
-  return periodAskedToday(sections.find((s) => s.id === "monthly"), monthStart(dateStr), Number(dateStr.slice(8, 10)) === monthlyCheckInDay(clientId), dateStr);
+  return periodAskedToday(ck, sections.find((s) => s.id === "monthly"), monthStart(dateStr), Number(dateStr.slice(8, 10)) === monthlyCheckInDay(clientId), dateStr);
 }
 
 /** The monthly metrics the client is asked for: none until the coach has picked the day. */
@@ -7519,15 +7466,15 @@ export function askedWeightUnit(clientId: number): "kg" | "lbs" {
 }
 
 /** Every goal of the client, read against every weigh-in they logged. */
-export function getWeightGoalViews(clientId: number, today: string = localDateStr()): WeightGoalView[] {
-  return weightGoalViews(listWeightGoals(clientId), bodyWeightReadings(clientId).filter((r) => r.kg > 0).map((r) => ({ date: r.date, kg: r.kg })), today);
+export function getWeightGoalViews(ck: CheckInRows, clientId: number, today: string = localDateStr()): WeightGoalView[] {
+  return weightGoalViews(listWeightGoals(clientId), bodyWeightReadings(ck, clientId).filter((r) => r.kg > 0).map((r) => ({ date: r.date, kg: r.kg })), today);
 }
 
 /** Where a new goal starts (3 Nov, Alex: "from now and the current weight… this line is straight… always stay where it
     is"): the client's latest weigh-in, else the starting weight on their card; null with none. Stored on the goal, so
     the line never moves while it runs. */
-export function goalStartKg(clientId: number): number | null {
-  const last = bodyWeightReadings(clientId).filter((r) => r.kg > 0).at(-1);
+export function goalStartKg(ck: CheckInRows, clientId: number): number | null {
+  const last = bodyWeightReadings(ck, clientId).filter((r) => r.kg > 0).at(-1);
   if (last) return Math.round(last.kg * 100) / 100;
   const s = getData().client_profiles.find((p) => p.client_id === clientId)?.starting_weight_kg;
   return typeof s === "number" && s > 0 ? s : null;
@@ -7540,7 +7487,7 @@ export type WeightGoalRefusal = "no-weight" | "too-soon" | "taken" | "invalid" |
 /** Adds a goal, or changes one. One at a time (2 Nov, Alex: "once there is a goal take out the option of adding another
     one, but give the option of editing"): a new one only once the last is reached or missed. It starts where the client
     is now (their latest weigh-in, today); its start never moves after, an edit changing only the goal and its date. */
-export function saveWeightGoal(clientId: number, v: WeightGoalFields, by: { who: "coach" | "client"; userId: number | null }, goalId?: number): WeightGoal | WeightGoalRefusal {
+export function saveWeightGoal(ck: CheckInRows, clientId: number, v: WeightGoalFields, by: { who: "coach" | "client"; userId: number | null }, goalId?: number): WeightGoal | WeightGoalRefusal {
   const target = Number(v.targetKg);
   const byDate = String(v.byDate ?? "").slice(0, 10);
   const unit = v.unit === "lbs" ? "lbs" : "kg";
@@ -7558,8 +7505,8 @@ export function saveWeightGoal(clientId: number, v: WeightGoalFields, by: { who:
     persist();
     return row;
   }
-  if (getWeightGoalViews(clientId, today).some((g) => !g.settled)) return "running";
-  const startKg = goalStartKg(clientId);
+  if (getWeightGoalViews(ck, clientId, today).some((g) => !g.settled)) return "running";
+  const startKg = goalStartKg(ck, clientId);
   const startDate = today;
   if (startKg == null) return "no-weight";
   if (daysBetween(startDate, byDate) < 7) return "too-soon";
@@ -7583,16 +7530,28 @@ function measuredOn(fields: MeasurementFieldDef[], date: string): boolean {
   return getMeasurementValues(fields.map((f) => f.id)).some((v) => v.date === date);
 }
 
-export function getDueItems(clientId: number): DueItem[] {
+/** The metrics getDueItems reads the newest period of, each rhythm's (the minute job fetches these alone, quest 9). */
+function dueCheckInDefs(clientId: number) {
+  return {
+    dailyDefs: listMetricDefinitions(clientId, "daily").filter(deployedToClient),
+    weeklyDefs: listMetricDefinitions(clientId, "weekly").filter(deployedToClient),
+    monthlyDefs: listMonthlyMetricsAsked(clientId),
+  };
+}
+/** Their ids, for fetchDueCheckIns. */
+export function dueCheckInDefIds(clientId: number): number[] {
+  const { dailyDefs, weeklyDefs, monthlyDefs } = dueCheckInDefs(clientId);
+  return [...dailyDefs, ...weeklyDefs, ...monthlyDefs].map((d) => d.id);
+}
+
+export function getDueItems(ck: CheckInRows, clientId: number): DueItem[] {
   const today = localDateStr();
   const currentWeekStart = weekStart(today);
 
-  const dailyDefs = listMetricDefinitions(clientId, "daily").filter(deployedToClient);
-  const weeklyDefs = listMetricDefinitions(clientId, "weekly").filter(deployedToClient);
-  const monthlyDefs = listMonthlyMetricsAsked(clientId);
-  const dailyLoggedToday = listMetricPeriods(dailyDefs.map((d) => d.id), 1)[0] === today;
-  const weeklyLoggedThisWeek = listMetricPeriods(weeklyDefs.map((d) => d.id), 1)[0] === currentWeekStart;
-  const monthlyLoggedThisMonth = listMetricPeriods(monthlyDefs.map((d) => d.id), 1)[0] === monthStart(today);
+  const { dailyDefs, weeklyDefs, monthlyDefs } = dueCheckInDefs(clientId);
+  const dailyLoggedToday = listMetricPeriods(ck, dailyDefs.map((d) => d.id), 1)[0] === today;
+  const weeklyLoggedThisWeek = listMetricPeriods(ck, weeklyDefs.map((d) => d.id), 1)[0] === currentWeekStart;
+  const monthlyLoggedThisMonth = listMetricPeriods(ck, monthlyDefs.map((d) => d.id), 1)[0] === monthStart(today);
 
   const measurementFields = measureFieldsAskedOf(clientId);
   const measurementLoggedToday = measuredOn(measurementFields, today);
@@ -7782,13 +7741,13 @@ const STANDING_ACTIONS = new Set(["no-phase", "week", "program-ending", "quiet",
 const DISMISS_STANDING_MS = 14 * 86400000;
 
 /** The coach marked a Needs-you item as read (12 Oct): it leaves Home, the Feed and the rail's dot. */
-export function dismissHomeAction(clientId: number, actionId: string | string[], chat: ChatCoachView, food: FoodRows) {
+export function dismissHomeAction(clientId: number, actionId: string | string[], chat: ChatCoachView, food: FoodRows, ck: CheckInRows) {
   const client = getData().clients.find((c) => c.id === clientId);
   const ids = (Array.isArray(actionId) ? actionId : [actionId]).filter(Boolean);
   if (!client || !ids.length) return;
   // Kept small: only the items that still stand stay recorded. Every item, let go or not (2 Nov: the list after the
   // filter left out what was let go before, so each Done brought the one before it back).
-  const standing = new Set(getClientHome(clientId, chat, food).allActionIds);
+  const standing = new Set(getClientHome(clientId, chat, food, ck).allActionIds);
   const next: Record<string, number> = {};
   for (const [id, at] of Object.entries(client.coach_dismissed ?? {})) if (standing.has(id)) next[id] = at;
   const now = Date.now();
@@ -7844,7 +7803,7 @@ export function clientHomeRows(clientIds: readonly number[]): ClientHomeRows {
  * video and call asks and invoices (clientHomeRows). `chat`: the coach's chat
  * view this client is in (fetchCoachChat).
  */
-export function getClientHome(clientId: number, chat: ChatCoachView, food: FoodRows, feed?: FeedEvent[], ix?: TrainingIndex, own?: ClientHomeRows): ClientHome {
+export function getClientHome(clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, feed?: FeedEvent[], ix?: TrainingIndex, own?: ClientHomeRows): ClientHome {
   const data = getData();
   // Their training rows, read once when a check below needs them (23 Oct, speed: it scanned the store per row).
   let tix = ix;
@@ -7853,7 +7812,7 @@ export function getClientHome(clientId: number, chat: ChatCoachView, food: FoodR
   // A phone workout is the coach's logs alone (16 Nov): never news, a dot or a note to read here.
   // Its newest HOME_EVENTS: the chat's part of them in the view (Step 5: a coach view holds each client's newest).
   chat.need("clientTop", HOME_EVENTS, clientId);
-  const all = (feed ?? getActivityFeed(client?.coach_id ?? 0, chat, food)).filter((e) => e.clientId === clientId && !e.health);
+  const all = (feed ?? getActivityFeed(client?.coach_id ?? 0, chat, food, ck)).filter((e) => e.clientId === clientId && !e.health);
   const since = Date.now() - HOME_NEW_DAYS * 86400000;
   const events = all.slice(0, HOME_EVENTS).map((e) => ({ ...e, when: feedTimeLabel(e.at, e.timeKnown), unseen: isUnseen(client?.coach_seen, e, since) }));
   const unseen = events.filter((e) => e.unseen);
@@ -7993,7 +7952,7 @@ export function getClientHome(clientId: number, chat: ChatCoachView, food: FoodR
       });
     }
   }
-  const due = getCheckInStatus(clientId);
+  const due = getCheckInStatus(ck, clientId);
   const DUE = { weekly: "This week's weekly check-in", monthly: "This month's monthly check-in", measurements: "Today's measurements" };
   for (const t of due.dueTypes) {
     // Today's daily check-in not in yet is not a signal at nine in the
@@ -8003,7 +7962,7 @@ export function getClientHome(clientId: number, chat: ChatCoachView, food: FoodR
   }
   const dailyDefs = listMetricDefinitions(clientId, "daily").filter(deployedToClient);
   if (dailyDefs.length) {
-    const lastDaily = listMetricPeriods(dailyDefs.map((d) => d.id), 1)[0] ?? null;
+    const lastDaily = listMetricPeriods(ck, dailyDefs.map((d) => d.id), 1)[0] ?? null;
     const gap = lastDaily ? Math.floor((middayMs(today) - middayMs(lastDaily)) / 86400000) : null;
     // Three days (12 Oct; two lit up half the clients on any Monday).
     if (gap != null && gap >= 3) {
@@ -8153,9 +8112,10 @@ const plusDays = (iso: string, n: number) => {
  * which says a client doing half of what they are asked. Days before they
  * started are not days they missed.
  */
-export function clientStartDate(food: FoodRows, clientId: number): string | null {
+export function clientStartDate(food: FoodRows, clientId: number, ck: CheckInRows): string | null {
   const data = getData();
   food.need("clientStartDate", clientId, "all", ["entries", "calories"]);
+  ck.need("clientStartDate", clientId, "all", ["entries"]);
   let first: string | null = null;
   const see = (day: string | null | undefined) => {
     if (day && (first == null || day < first)) first = day;
@@ -8163,7 +8123,7 @@ export function clientStartDate(food: FoodRows, clientId: number): string | null
   // Daily check-ins only: a weekly one is filed under its Monday, which can
   // be days before the client actually began.
   const daily = new Set(data.metric_definitions.filter((m) => m.client_id === clientId && m.frequency === "daily").map((m) => m.id));
-  for (const e of data.metric_entries) if (daily.has(e.metric_definition_id)) see(e.period);
+  for (const e of ck.entries) if (daily.has(e.metric_definition_id)) see(e.period);
   for (const e of food.entries) if (e.client_id === clientId) see(e.date);
   for (const c of food.calories) if (c.client_id === clientId && c.source !== "health") see(c.date);
   const dayIds = new Set(data.program_days.filter((pd) => pd.client_id === clientId).map((pd) => pd.id));
@@ -8183,7 +8143,7 @@ export function clientStartDate(food: FoodRows, clientId: number): string | null
 // altogether and lose eight points. Normalise first and the difference in
 // rhythm stops mattering — which is the whole reason a daily thing and a
 // weekly thing can sit in one score at all.
-function engagementWindow(food: FoodRows, clientId: number, days: number, back: number, since: string | null): { parts: EngagementPart[]; all: EngagementPart[]; overall: number | null } {
+function engagementWindow(food: FoodRows, ck: CheckInRows, clientId: number, days: number, back: number, since: string | null): { parts: EngagementPart[]; all: EngagementPart[]; overall: number | null } {
   const data = getData();
   const today = localDateStr();
   const to = plusDays(today, -days * back);
@@ -8268,14 +8228,14 @@ function engagementWindow(food: FoodRows, clientId: number, days: number, back: 
 
   const dailyDefs = listMetricDefinitions(clientId, "daily").filter(deployedToClient);
   if (dailyDefs.length > 0) {
-    const logged = new Set(listMetricPeriods(dailyDefs.map((d) => d.id)));
+    const logged = new Set(listMetricPeriods(ck, dailyDefs.map((d) => d.id)));
     checkInsAsked += pastDays.length;
     checkInsDone += pastDays.filter((d) => logged.has(d)).length;
     dailyStreak = streakTo((d) => logged.has(d));
   }
   const weeklyDefs = listMetricDefinitions(clientId, "weekly").filter(deployedToClient);
   if (weeklyDefs.length > 0) {
-    const logged = new Set(listMetricPeriods(weeklyDefs.map((d) => d.id)));
+    const logged = new Set(listMetricPeriods(ck, weeklyDefs.map((d) => d.id)));
     // The weeks that have closed, plus this one once its check-in day has come.
     // Only the weeks since the client began.
     const mondays: string[] = [];
@@ -8334,13 +8294,13 @@ function engagementWindow(food: FoodRows, clientId: number, days: number, back: 
   return { parts: counted, all: parts, overall: counted.length ? Math.round(counted.reduce((s, p) => s + p.pct, 0) / counted.length) : null };
 }
 
-export function getClientEngagement(food: FoodRows, clientId: number, days: number = ENGAGEMENT_DAYS): ClientEngagement {
-  const start = clientStartDate(food, clientId);
-  const now = engagementWindow(food, clientId, days, 0, start);
+export function getClientEngagement(food: FoodRows, ck: CheckInRows, clientId: number, days: number = ENGAGEMENT_DAYS): ClientEngagement {
+  const start = clientStartDate(food, clientId, ck);
+  const now = engagementWindow(food, ck, clientId, days, 0, start);
   // The same thirty days before those thirty. Null until there is anything
   // in them, so a new client is not told they are down on a month that never
   // happened.
-  const before = engagementWindow(food, clientId, days, 1, start);
+  const before = engagementWindow(food, ck, clientId, days, 1, start);
   const windowFrom = plusDays(localDateStr(), -(days - 1));
   const can = new Set(now.all.map((p) => p.id));
   const hasNutrition = !!getNutritionGoalsSummary(clientId).trainingKcal;
@@ -8417,7 +8377,7 @@ export function chatUnreadCount(thread: ChatThread): number {
   return thread.rows(clientId).filter((m) => m.client_id === clientId && m.sender === "client" && (m.text.trim() || m.media_path) && stampMs(m.created_at) >= since && !(`chat-${m.id}` in seen)).length;
 }
 
-export function markClientEventsSeen(clientId: number, which: { all: true } | { dayId: number } | { ids: string[] } | { tab: string }, chat: ChatCoachView, food: FoodRows) {
+export function markClientEventsSeen(clientId: number, which: { all: true } | { dayId: number } | { ids: string[] } | { tab: string }, chat: ChatCoachView, food: FoodRows, ck: CheckInRows) {
   const data = getData();
   const client = data.clients.find((c) => c.id === clientId);
   if (!client) return;
@@ -8431,7 +8391,7 @@ export function markClientEventsSeen(clientId: number, which: { all: true } | { 
   const since = Date.now() - HOME_NEW_DAYS * 86400000;
   // The client's last 14 days of chat, whole: the marks are kept to them (Step 5).
   chat.need("recent", 0, clientId);
-  const recent = getActivityFeed(client.coach_id ?? 0, chat, food).filter((e) => e.clientId === clientId && e.at >= since);
+  const recent = getActivityFeed(client.coach_id ?? 0, chat, food, ck).filter((e) => e.clientId === clientId && e.at >= since);
   // A tab clears what is on the tab itself; news about one session waits
   // for that session to be opened.
   const hit = recent.filter((e) =>
@@ -8455,9 +8415,9 @@ export function markClientEventsSeen(clientId: number, which: { all: true } | { 
  * "who needs me", not "how many things".
  */
 /** The same, as the rail's reasons (14 Oct): one line a kind, in its colour, the most pressing first. */
-export function clientReasons(clientId: number, chat: ChatCoachView, food: FoodRows, feed?: FeedEvent[]): AttentionReason[] {
+export function clientReasons(clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, feed?: FeedEvent[]): AttentionReason[] {
   const out: AttentionReason[] = [];
-  for (const a of getClientHome(clientId, chat, food, feed).actions) {
+  for (const a of getClientHome(clientId, chat, food, ck, feed).actions) {
     const since = a.at ?? 0;
     if (a.id.startsWith("reply-video-")) {
       const m = /^(Photo|Video) of (.+?) waiting/.exec(a.title);
@@ -8479,10 +8439,10 @@ export function clientReasons(clientId: number, chat: ChatCoachView, food: FoodR
   return sortReasons(out);
 }
 
-export function clientAttention(clientId: number, chat: ChatCoachView, food: FoodRows, feed?: FeedEvent[]): string | null {
+export function clientAttention(clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, feed?: FeedEvent[]): string | null {
   // The same list the client's Home spells out; the dot's title is the first
   // of them, and how many more there are.
-  const actions = getClientHome(clientId, chat, food, feed).actions;
+  const actions = getClientHome(clientId, chat, food, ck, feed).actions;
   if (actions.length === 0) return null;
   return actions.length === 1 ? actions[0].title : `${actions[0].title} · and ${actions.length - 1} more`;
 }
@@ -8502,19 +8462,45 @@ export function ensureDefaultMetrics(clientId: number) {
 // is still exactly that: the client's only line, Body · Weight · kg · daily,
 // no phase, nothing logged, no measurement fields, no lifestyle phase. Anything a
 // coach set up, or that has a reading, stays.
-export function dropUnusedAutoWeight(clientId: number) {
-  const data = getData();
-  const mine = data.metric_definitions.filter((m) => m.client_id === clientId);
-  if (mine.length !== 1) return;
-  const m = mine[0];
-  if (m.name !== "Weight" || m.category !== "Body" || m.unit !== "kg" || m.frequency !== "daily" || m.phase_id != null) return;
-  if (data.measurement_fields.some((f) => f.client_id === clientId)) return;
-  if (data.metric_entries.some((e) => e.metric_definition_id === m.id)) return;
+export function dropUnusedAutoWeight(ck: CheckInRows, clientId: number) {
+  // With CHECKINS_STORE=pg the page awaited dropUnusedAutoWeightPg at its top instead (no transaction in a render).
+  if (CHECKINS_PG) return;
+  const m = unusedAutoWeightCandidate(clientId);
+  if (!m) return;
+  ck.need("dropUnusedAutoWeight", clientId, "all", ["entries"]);
+  if (ck.entries.some((e) => e.metric_definition_id === m.id)) return;
   if (listClientPhases(clientId).some((p) => p.track === "lifestyle")) return;
-  removeMetricDefinition(m.id);
+  // At once (memory mode: the body runs before the call returns), as the render always did it.
+  void writeCheckIns("w.def.dropUnused", clientId, () => ({ defIds: [m.id], span: "all" }), (box) => removeMetricInMemory(box, m.id));
 }
 
-export function getCheckInStatus(clientId: number): CheckInStatus {
+/** The auto Weight line, while it is still exactly that (no figure looked at yet). */
+function unusedAutoWeightCandidate(clientId: number): MetricDefinition | null {
+  const data = getData();
+  const mine = data.metric_definitions.filter((m) => m.client_id === clientId);
+  if (mine.length !== 1) return null;
+  const m = mine[0];
+  if (m.name !== "Weight" || m.category !== "Body" || m.unit !== "kg" || m.frequency !== "daily" || m.phase_id != null) return null;
+  if (data.measurement_fields.some((f) => f.client_id === clientId)) return null;
+  return m;
+}
+
+/**
+ * dropUnusedAutoWeight with CHECKINS_STORE=pg, awaited at the top of the client's page and the admin's client tabs (a
+ * render can't wait for a transaction): under the client's lock, the line goes only when it holds no figure at all
+ * (null and the phone's too), nothing to delete. Memory mode: nothing (the render does it, as before).
+ */
+export async function dropUnusedAutoWeightPg(clientId: number): Promise<void> {
+  if (!CHECKINS_PG) return;
+  const m = unusedAutoWeightCandidate(clientId);
+  if (!m || listClientPhases(clientId).some((p) => p.track === "lifestyle")) return;
+  await whileNoFigures(clientId, m.id, () => {
+    const data = getData();
+    data.metric_definitions = data.metric_definitions.filter((x) => x.id !== m.id);
+  });
+}
+
+export function getCheckInStatus(ck: CheckInRows, clientId: number): CheckInStatus {
   const today = localDateStr();
   const thisWeek = weekStart(today);
 
@@ -8523,13 +8509,13 @@ export function getCheckInStatus(clientId: number): CheckInStatus {
   const fields = measureFieldsAskedOf(clientId);
 
   const dailyDue =
-    dailyDefs.length > 0 && listMetricPeriods(dailyDefs.map((d) => d.id), 1)[0] !== today;
+    dailyDefs.length > 0 && listMetricPeriods(ck, dailyDefs.map((d) => d.id), 1)[0] !== today;
   const weeklyDue =
     weeklyDefs.length > 0 &&
-    listMetricPeriods(weeklyDefs.map((d) => d.id), 1)[0] !== thisWeek &&
+    listMetricPeriods(ck, weeklyDefs.map((d) => d.id), 1)[0] !== thisWeek &&
     weeklyCheckInOpen(clientId);
   const monthlyDefs = listMonthlyMetricsAsked(clientId);
-  const monthlyDue = monthlyDefs.length > 0 && listMetricPeriods(monthlyDefs.map((d) => d.id), 1)[0] !== monthStart(today) && monthlyCheckInOpen(clientId);
+  const monthlyDue = monthlyDefs.length > 0 && listMetricPeriods(ck, monthlyDefs.map((d) => d.id), 1)[0] !== monthStart(today) && monthlyCheckInOpen(clientId);
   const measurementsDue = fields.length > 0 && !measuredOn(fields, today);
 
   const dueTypes: ("daily" | "weekly" | "monthly" | "measurements")[] = [];
@@ -8718,18 +8704,18 @@ export function checkInEditable(date: string, today: string = localDateStr()): b
   return date >= localDateStr(first) && date <= today;
 }
 
-export function getCheckInHistory(clientId: number): CheckInHistory {
+export function getCheckInHistory(ck: CheckInRows, clientId: number): CheckInHistory {
   const today = localDateStr();
   const series: CheckInSeries[] = [];
   // One Weight chart, of every weigh-in wherever it was logged (23 Oct, Alex: bodyWeightReadings), each on its day, in
   // the unit the client is asked in; kept with no phase running. The legacy field's own Weight chart goes.
-  const weighIns = bodyWeightReadings(clientId).filter((r) => r.date <= today);
+  const weighIns = bodyWeightReadings(ck, clientId).filter((r) => r.date <= today);
   let weightKey: string | null = null;
   let weightOwnDays = new Set<string>();
   const weightPoints = (unit: string) => weighIns.map((r) => ({ date: r.date, value: weightIn(r, unit), at: r.at }));
   for (const cadence of ["daily", "weekly", "monthly"] as const) {
     const defs = metricsAsked(clientId, cadence);
-    const entries = getMetricEntries(defs.map((d) => d.id));
+    const entries = getMetricEntries(ck, defs.map((d) => d.id));
     for (const def of defs) {
       const isWeight = WEIGHT_NAME.test(def.name.trim());
       if (isWeight && weightKey) continue;
@@ -8815,7 +8801,7 @@ export function getCheckInHistory(clientId: number): CheckInHistory {
   // draw the flat Goal line beside the plan.
   const weightSeries = weightKey ? series.find((s) => s.key === weightKey) : undefined;
   if (weightSeries) {
-    const goals = getWeightGoalViews(clientId, today);
+    const goals = getWeightGoalViews(ck, clientId, today);
     weightSeries.goals = [];
     if (goals.length) {
       const u = weightSeries.unit || "kg";
@@ -8862,13 +8848,13 @@ export function getCheckInHistory(clientId: number): CheckInHistory {
       const p = s.key !== weightKey && (s.cadence === "weekly" || s.cadence === "monthly") ? s.points.find((x) => x.at && localDateStr(new Date(x.at)) === date) : s.points.find((x) => x.date === date);
       if (p) items.push({ name: s.name, value: shown(s, p.value) });
     }
-    const note = [getCheckInNote(clientId, "daily", date), getCheckInNote(clientId, "measurements", date)].filter((n): n is string => !!n?.trim()).join("\n") || null;
+    const note = [getCheckInNote(ck, clientId, "daily", date), getCheckInNote(ck, clientId, "measurements", date)].filter((n): n is string => !!n?.trim()).join("\n") || null;
     const daily = series.filter((s) => s.cadence === "daily" && !workoutFed(clientId, s.name));
     const edit = [
-      checkInTrackerSection(clientId, "daily", date, "Daily", ""),
-      checkInTrackerSection(clientId, "weekly", weekStart(date), "Weekly", "", (e) => e?.value != null && !!e.logged_at && localDateStr(new Date(e.logged_at)) === date),
-      checkInTrackerSection(clientId, "monthly", monthStart(date), "Monthly", "", (e) => e?.value != null && !!e.logged_at && localDateStr(new Date(e.logged_at)) === date),
-      checkInMeasureSection(clientId, date, true),
+      checkInTrackerSection(ck, clientId, "daily", date, "Daily", ""),
+      checkInTrackerSection(ck, clientId, "weekly", weekStart(date), "Weekly", "", (e) => e?.value != null && !!e.logged_at && localDateStr(new Date(e.logged_at)) === date),
+      checkInTrackerSection(ck, clientId, "monthly", monthStart(date), "Monthly", "", (e) => e?.value != null && !!e.logged_at && localDateStr(new Date(e.logged_at)) === date),
+      checkInMeasureSection(ck, clientId, date, true),
     ].filter((s): s is CheckInSection => s !== null);
     // A daily line is done by its own reading: a weigh-in sent elsewhere that day still leaves the daily Weight to fill in.
     days.push({ date, items, note, dailyTotal: daily.length, dailyDone: daily.filter((s) => (s.key === weightKey ? weightOwnDays.has(date) : s.points.some((x) => x.date === date))).length, edit });
@@ -8882,6 +8868,7 @@ const checkInFmtDate = (iso: string) => dayWords(iso);
 // entry from any earlier period as the hint. `only` narrows it to some of the
 // metrics (a past day's weekly readings: the ones sent on that day).
 function checkInTrackerSection(
+  ck: CheckInRows,
   clientId: number,
   frequency: "daily" | "weekly" | "monthly",
   period: string,
@@ -8891,18 +8878,18 @@ function checkInTrackerSection(
 ): CheckInSection | null {
   // What a workout's wrap-up answers is not asked here (metricFromWorkout).
   const all = metricsAsked(clientId, frequency).filter((d) => !workoutFed(clientId, d.name));
-  const entries = getMetricEntries(all.map((d) => d.id));
+  const entries = getMetricEntries(ck, all.map((d) => d.id));
   const currentOf = (id: number) => entries.find((e) => e.metric_definition_id === id && e.period === period);
   const defs = only ? all.filter((d) => only(currentOf(d.id))) : all;
   if (defs.length === 0) return null;
   // A Weight row's last reading is the client's last weigh-in from anywhere (23 Oct, Alex): a new phase's Weight said
   // "First time" over a reading logged the day before under the old one.
-  const weights = defs.some((d) => WEIGHT_NAME.test(d.name.trim())) ? bodyWeightReadings(clientId) : [];
+  const weights = defs.some((d) => WEIGHT_NAME.test(d.name.trim())) ? bodyWeightReadings(ck, clientId) : [];
   return {
     id: frequency,
     label,
     intro,
-    note: getCheckInNote(clientId, frequency, period),
+    note: getCheckInNote(ck, clientId, frequency, period),
     metrics: defs.map((def) => {
       const current = currentOf(def.id);
       const isWeight = WEIGHT_NAME.test(def.name.trim());
@@ -8944,7 +8931,7 @@ function checkInTrackerSection(
 // hint. Null without fields, or (onlyIfLogged, a past day's) with nothing
 // measured that date. The old Weight box only while no Weight metric is asked
 // (measureFieldsAskedOf); a past day's weigh-in in it still shows in the feed.
-function checkInMeasureSection(clientId: number, date: string, onlyIfLogged = false): CheckInSection | null {
+function checkInMeasureSection(ck: CheckInRows, clientId: number, date: string, onlyIfLogged = false): CheckInSection | null {
   const fields = measureFieldsAskedOf(clientId);
   if (fields.length === 0) return null;
   const values = getMeasurementValues(fields.map((f) => f.id));
@@ -8955,7 +8942,7 @@ function checkInMeasureSection(clientId: number, date: string, onlyIfLogged = fa
     values.filter((v) => v.field_id === fieldId && v.value != null && v.date < date).sort((a, b) => (a.date < b.date ? 1 : -1))[0] ?? null;
   return {
     id: "measurements",
-    note: getCheckInNote(clientId, "measurements", date),
+    note: getCheckInNote(ck, clientId, "measurements", date),
     label: "Measure",
     intro: "Same spots, same time of day: first thing, before food.",
     metrics: fields.map((f) => {
@@ -8979,13 +8966,14 @@ function checkInMeasureSection(clientId: number, date: string, onlyIfLogged = fa
   };
 }
 
-export function getCheckInSections(clientId: number): CheckInData {
+export function getCheckInSections(ck: CheckInRows, clientId: number): CheckInData {
   const today = localDateStr();
   const thisWeek = weekStart(today);
   const fmtDate = checkInFmtDate;
 
   const sections: CheckInSection[] = [];
   const daily = checkInTrackerSection(
+    ck,
     clientId,
     "daily",
     today,
@@ -8994,14 +8982,14 @@ export function getCheckInSections(clientId: number): CheckInData {
   );
   if (daily) sections.push(daily);
 
-  const weekly = checkInTrackerSection(clientId, "weekly", thisWeek, "Weekly", "One entry covers the whole week.");
+  const weekly = checkInTrackerSection(ck, clientId, "weekly", thisWeek, "Weekly", "One entry covers the whole week.");
   if (weekly) sections.push(weekly);
 
-  const monthly = checkInTrackerSection(clientId, "monthly", monthStart(today), "Monthly", "One entry covers the whole month.");
+  const monthly = checkInTrackerSection(ck, clientId, "monthly", monthStart(today), "Monthly", "One entry covers the whole month.");
   if (monthly) sections.push(monthly);
 
   // ---- Measurements ----
-  const measure = checkInMeasureSection(clientId, today);
+  const measure = checkInMeasureSection(ck, clientId, today);
   if (measure) sections.push(measure);
 
   // For the deltas below.
@@ -9290,70 +9278,6 @@ export function saveChatMedia(clientId: number, buffer: Buffer, mimeType: string
   const filename = `${Date.now()}-${allocId("chat_media")}.${ext}`;
   fs.writeFileSync(path.join(dir, filename), buffer);
   return { path: `/uploads/chat/${clientId}/${filename}`, type, name: type === "file" ? originalName?.trim() || null : null };
-}
-
-export function getClientSnapshot(clientId: number): ClientSnapshot {
-  const summary = getClientSummary(clientId);
-  const nutrition = getNutritionGoalsSummary(clientId);
-  const plan = getNutritionPlan(clientId);
-
-  const measurementFields = listMeasurementFields(clientId);
-  const weightField = measurementFields.find((f) => f.name.toLowerCase().includes("weight"));
-  const change = getMeasurementChangeSummary(clientId);
-
-  const photoSlots = listActivePhotoSlots(clientId);
-  const photoUploads = listPhotoUploads(photoSlots.map((s) => s.id));
-  const currentWeek = weekStart(localDateStr());
-  const uploadedThisWeek = photoUploads.filter((u) => u.period === currentWeek).length;
-
-  const dailyDefs = listMetricDefinitions(clientId, "daily");
-  const weeklyDefs = listMetricDefinitions(clientId, "weekly");
-  const dailyPeriods = listMetricPeriods(dailyDefs.map((d) => d.id), 1);
-  const weeklyPeriods = listMetricPeriods(weeklyDefs.map((d) => d.id), 1);
-
-  const upcomingMeetings = listMeetings(clientId)
-    .filter((m) => m.status === "scheduled")
-    .sort((a, b) => (a.date === b.date ? (a.time < b.time ? -1 : 1) : a.date < b.date ? -1 : 1));
-  const today = localDateStr();
-  const next = upcomingMeetings.find((m) => m.date >= today) ?? null;
-
-  const invoices = listInvoices(clientId);
-  const openInvoices = invoices.filter((i) => i.status !== "paid");
-
-  return {
-    training: {
-      daysBuilt: summary.trainingDaysBuilt,
-      published: summary.programPublished,
-      totalSetsLogged: summary.totalSetsLogged,
-      lastActive: summary.lastActive,
-    },
-    nutrition: {
-      trainingKcal: nutrition.trainingKcal,
-      restKcal: nutrition.restKcal,
-      maintenanceKcal: plan.maintenance_kcal,
-    },
-    measurements: {
-      currentWeight: getLatestWeight(clientId),
-      weightChange: weightField ? change[weightField.id] ?? null : null,
-    },
-    photos: {
-      uploadedThisWeek,
-      totalSlots: photoSlots.length,
-    },
-    dailyTracker: {
-      metricCount: dailyDefs.length,
-      lastLogged: dailyPeriods[0] ?? null,
-    },
-    weeklyTracker: {
-      metricCount: weeklyDefs.length,
-      lastLogged: weeklyPeriods[0] ?? null,
-    },
-    meetings: { next },
-    invoices: {
-      outstanding: openInvoices.reduce((s, i) => s + i.amount, 0),
-      openCount: openInvoices.length,
-    },
-  };
 }
 
 // Progress reports are gone (18 Nov, Alex: "take away the whole report thing"): nothing writes, sends or shows one,
@@ -9892,19 +9816,20 @@ export function setCalorieLog(
 
 // ---- Check-in notes: the client's own words beside the numbers ----
 
-export function setCheckInNote(clientId: number, kind: CheckInNote["kind"], period: string, text: string) {
-  const data = getData();
+export function setCheckInNote(box: CheckInBox, clientId: number, kind: CheckInNote["kind"], period: string, text: string) {
   const clean = text.trim();
-  const existing = data.check_in_notes.find((n) => n.client_id === clientId && n.kind === kind && n.period === period);
+  // Inside what the write loaded (quest 9), so the note is never added a second time.
+  box.noteInReach(kind, period);
+  const existing = box.notes.find((n) => n.client_id === clientId && n.kind === kind && n.period === period);
   if (!clean) {
-    if (existing) data.check_in_notes = data.check_in_notes.filter((n) => n !== existing);
+    if (existing) box.notes = box.notes.filter((n) => n !== existing);
   } else if (existing) {
     existing.text = clean;
     existing.created_at = new Date().toISOString();
   } else {
-    data.check_in_notes.push({ id: allocId("check_in_notes"), client_id: clientId, kind, period, text: clean, created_at: new Date().toISOString() });
+    box.notes.push({ id: box.alloc("notes"), client_id: clientId, kind, period, text: clean, created_at: new Date().toISOString() });
   }
-  persist();
+  box.persist();
 }
 
 // ---- The client's own exercise notes ----------------------------------
@@ -10946,34 +10871,7 @@ export function endSession(programDayId: number, at: string, note: string, answe
   else delete day.session_enjoyment;
   if (adherence != null) day.session_adherence = adherence;
   else delete day.session_adherence;
-  syncWorkoutMetrics(day.client_id, at);
   persist();
-}
-
-// The lifestyle metrics a workout answers (metricFromWorkout) take the
-// wrap-up's value: a daily one the day's sessions, a weekly one the week's,
-// averaged when there were two. Run when a session ends or is thrown away.
-function syncWorkoutMetrics(clientId: number, at: string) {
-  const date = localDateStr(new Date(at));
-  const data = getData();
-  for (const frequency of ["daily", "weekly"] as const) {
-    const period = frequency === "daily" ? date : weekStart(date);
-    for (const def of listMetricDefinitions(clientId, frequency)) {
-      const kind = metricFromWorkout(def.name);
-      if (!kind || !workoutFed(clientId, def.name)) continue;
-      const scores = data.program_days
-        .filter((pd) => pd.client_id === clientId && pd.session_ended_at)
-        .filter((pd) => {
-          const d = localDateStr(new Date(pd.session_ended_at!));
-          return frequency === "daily" ? d === date : weekStart(d) === period;
-        })
-        .map((pd) => sessionAnswers(pd).find((a) => a.id === kind)?.value)
-        .filter((v): v is number => v != null);
-      const value = scores.length ? Math.round((scores.reduce((s, v) => s + v, 0) / scores.length) * 10) / 10 : null;
-      if (value != null) setMetricEntry(def.id, period, value, new Date().toISOString());
-      else if (getMetricEntries([def.id]).some((e) => e.period === period && e.value != null)) setMetricEntry(def.id, period, null);
-    }
-  }
 }
 
 /** A finished session back in progress (13 Nov, Alex: ended by mistake): its end goes, everything logged, its note and
@@ -11011,14 +10909,12 @@ export function discardSession(programDayId: number) {
   }
   const cardioIds = new Set(listCardioForDay(day.id).map((c) => c.id));
   data.cardio_logs = (data.cardio_logs ?? []).filter((c) => !cardioIds.has(c.cardio_entry_id));
-  const endedAt = day.session_ended_at;
   delete day.session_started_at;
   delete day.session_ended_at;
   delete day.session_note;
   delete day.session_enjoyment;
   delete day.session_adherence;
   delete day.session_answers;
-  if (endedAt) syncWorkoutMetrics(day.client_id, endedAt);
   persist();
 }
 
@@ -11446,12 +11342,12 @@ export function getClientProgramNoteMeta(clientId: number, programId: number): {
 }
 
 /** The coach opened the client's note on a programme: it is not new again until the client writes. */
-export function markProgramNoteSeen(programId: number, chat: ChatCoachView, food: FoodRows) {
+export function markProgramNoteSeen(programId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows) {
   const n = (getData().client_program_notes ?? []).find((x) => x.program_id === programId);
   if (!n || n.coach_seen_at === n.updated_at) return;
   n.coach_seen_at = n.updated_at;
   persist();
-  markClientEventsSeen(n.client_id, { ids: [`program-note-${n.id}`] }, chat, food);
+  markClientEventsSeen(n.client_id, { ids: [`program-note-${n.id}`] }, chat, food, ck);
 }
 
 export function getClientIdForProgram(programId: number): number | null {
@@ -11474,14 +11370,16 @@ export function setClientProgramNote(clientId: number, programId: number, text: 
   persist();
 }
 
-export function getCheckInNote(clientId: number, kind: CheckInNote["kind"], period: string): string | null {
-  return getData().check_in_notes.find((n) => n.client_id === clientId && n.kind === kind && n.period === period)?.text ?? null;
+export function getCheckInNote(ck: CheckInRows, clientId: number, kind: CheckInNote["kind"], period: string): string | null {
+  ck.need("getCheckInNote", clientId, { periods: [period] }, ["notes"]);
+  return ck.notes.find((n) => n.client_id === clientId && n.kind === kind && n.period === period)?.text ?? null;
 }
 
 /** Newest first, for the coach. */
-export function listCheckInNotes(clientId: number, limit = 20): CheckInNote[] {
-  return getData()
-    .check_in_notes.filter((n) => n.client_id === clientId)
+export function listCheckInNotes(ck: CheckInRows, clientId: number, limit = 20): CheckInNote[] {
+  ck.need("listCheckInNotes", clientId, "all", ["notes"]);
+  return ck.notes
+    .filter((n) => n.client_id === clientId)
     .sort((a, b) => (a.period < b.period ? 1 : a.period > b.period ? -1 : a.created_at < b.created_at ? 1 : -1))
     .slice(0, limit);
 }
@@ -12113,15 +12011,15 @@ function macroSeries(food: FoodRows, clientId: number, which: keyof typeof MACRO
 const macroKey = (key: string): keyof typeof MACRO_GOAL_KEYS | null => (key === "protein" || key === "carbs" || key === "fat" ? key : null);
 
 /** Series for a graph-choice key ("field-3" / "metric-7"), the calorie log, or a macro. */
-function seriesForKey(food: FoodRows, clientId: number, key: string): { name: string; unit: string; series: SeriesPoint[] } | null {
+function seriesForKey(food: FoodRows, clientId: number, key: string, ck: CheckInRows): { name: string; unit: string; series: SeriesPoint[] } | null {
   if (key === KCAL_GOAL_KEY) return calorieSeries(food, clientId);
   const macro = macroKey(key);
   if (macro) return macroSeries(food, clientId, macro);
-  const choice = listGraphChoices(clientId).find((c) => c.key === key);
+  const choice = listGraphChoices(ck, clientId).find((c) => c.key === key);
   if (!choice) return null;
   // A Weight goal watches every weigh-in (23 Oct, Alex: bodyWeightReadings), in the unit its target was set in.
-  if (WEIGHT_NAME.test(choice.name.trim())) return { name: choice.name, unit: choice.unit, series: bodyWeightReadings(clientId).map((r) => ({ date: r.date, value: weightIn(r, choice.unit) })) };
-  return { name: choice.name, unit: choice.unit, series: choice.kind === "field" ? getMeasurementSeries(choice.id) : getMetricSeries(choice.id) };
+  if (WEIGHT_NAME.test(choice.name.trim())) return { name: choice.name, unit: choice.unit, series: bodyWeightReadings(ck, clientId).map((r) => ({ date: r.date, value: weightIn(r, choice.unit) })) };
+  return { name: choice.name, unit: choice.unit, series: choice.kind === "field" ? getMeasurementSeries(choice.id) : getMetricSeries(ck, choice.id) };
 }
 
 /** Every exercise on any of the client's days, once each, by name. */
@@ -12162,48 +12060,40 @@ function goalGymName(clientId: number, t: GoalTracking | null): string | null {
 }
 
 /** This Monday-to-Sunday week's values of a daily metric. */
-function habitWeekValues(metricId: number, today: string): SeriesPoint[] {
+function habitWeekValues(ck: CheckInRows, metricId: number, today: string): SeriesPoint[] {
   const monday = weekStart(today);
   const sunday = (() => {
     const d = new Date(`${monday}T00:00:00`);
     d.setDate(d.getDate() + 6);
     return localDateStr(d);
   })();
-  return getMetricSeries(metricId).filter((p) => p.date >= monday && p.date <= sunday);
+  return getMetricSeries(ck, metricId).filter((p) => p.date >= monday && p.date <= sunday);
 }
 
-export function goalContext(food: FoodRows, clientId: number, goal: ClientGoal): GoalContext {
+export function goalContext(food: FoodRows, clientId: number, goal: ClientGoal, ck: CheckInRows): GoalContext {
   const today = localDateStr();
   const ctx: GoalContext = { today, createdAt: goal.created_at ?? today };
   const t = goal.tracked_by ?? null;
   if (t?.kind === "metric") {
-    const s = seriesForKey(food, clientId, t.metricKey);
+    const s = seriesForKey(food, clientId, t.metricKey, ck);
     if (s) ctx.metric = s;
   } else if (t?.kind === "exercise") {
     const name = getData().exercises.find((e) => e.id === t.exerciseId)?.name ?? "Exercise";
     ctx.exercise = { name, sets: loggedSetsForExercise(clientId, t.exerciseId, t.gymId ?? null), gymName: goalGymName(clientId, t) };
   } else if (t?.kind === "habit") {
     const name = getData().metric_definitions.find((m) => m.id === t.metricId)?.name ?? "Check-in";
-    ctx.habit = { name, weekValues: habitWeekValues(t.metricId, today) };
+    ctx.habit = { name, weekValues: habitWeekValues(ck, t.metricId, today) };
   }
   return ctx;
 }
 
-/** Goal rows as the client sees them, open goals first, done text goals last. */
-/** The client's current goals: open only, in the coach's own order. */
-export function getGoalViews(food: FoodRows, clientId: number): GoalView[] {
-  return listClientGoals(clientId)
-    .filter((g) => !g.done)
-    .map((g) => computeGoalView({ id: g.id, text: g.text, done: g.done, tracking: g.tracked_by ?? null }, goalContext(food, clientId, g)));
-}
-
 /** The coach's list: every goal the client sees, with its tracking in words. */
-export function getGoalSummaries(food: FoodRows, clientId: number): { goal: ClientGoal; view: GoalView; tracking: string }[] {
+export function getGoalSummaries(food: FoodRows, clientId: number, ck: CheckInRows): { goal: ClientGoal; view: GoalView; tracking: string }[] {
   return listClientGoals(clientId).map((g) => {
     const t = g.tracked_by ?? null;
     const names: { metric?: string; unit?: string; exercise?: string; habit?: string; gym?: string | null } = {};
     if (t?.kind === "metric") {
-      const s = seriesForKey(food, clientId, t.metricKey);
+      const s = seriesForKey(food, clientId, t.metricKey, ck);
       names.metric = s?.name;
       names.unit = s?.unit;
     } else if (t?.kind === "exercise") {
@@ -12213,7 +12103,7 @@ export function getGoalSummaries(food: FoodRows, clientId: number): { goal: Clie
     else if (t?.kind === "habit") names.habit = getData().metric_definitions.find((m) => m.id === t.metricId)?.name;
     return {
       goal: g,
-      view: computeGoalView({ id: g.id, text: g.text, done: g.done, tracking: t }, goalContext(food, clientId, g)),
+      view: computeGoalView({ id: g.id, text: g.text, done: g.done, tracking: t }, goalContext(food, clientId, g, ck)),
       tracking: describeTracking(t, names),
     };
   });
@@ -12232,7 +12122,7 @@ export type GoalEditorOptions = {
   gyms: { id: number; name: string; removed: boolean }[];
 };
 
-export function getGoalEditorOptions(food: FoodRows, clientId: number): GoalEditorOptions {
+export function getGoalEditorOptions(food: FoodRows, clientId: number, ck: CheckInRows): GoalEditorOptions {
   const today = localDateStr();
   const phase = getCurrentPhase(clientId, "nutrition") ?? getCurrentPhase(clientId, "training");
   const phaseEnd = phase
@@ -12251,16 +12141,16 @@ export function getGoalEditorOptions(food: FoodRows, clientId: number): GoalEdit
       { key: MACRO_GOAL_KEYS.protein, group: "nutrition", ...macroSeries(food, clientId, "protein") },
       { key: MACRO_GOAL_KEYS.carbs, group: "nutrition", ...macroSeries(food, clientId, "carbs") },
       { key: MACRO_GOAL_KEYS.fat, group: "nutrition", ...macroSeries(food, clientId, "fat") },
-      ...listGraphChoices(clientId).map((c) => ({
+      ...listGraphChoices(ck, clientId).map((c) => ({
         key: c.key,
         name: c.name,
         unit: c.unit,
         group: c.kind === "field" ? "measurements" : metricGroup(getData().metric_definitions.find((m) => m.id === c.id)?.category ?? "other").key,
-        series: c.kind === "field" ? getMeasurementSeries(c.id) : getMetricSeries(c.id),
+        series: c.kind === "field" ? getMeasurementSeries(c.id) : getMetricSeries(ck, c.id),
       })),
     ],
     exercises: listClientExercises(clientId).map((e) => ({ ...e, sets: loggedSetsForExercise(clientId, e.id) })),
-    habits: listMetricDefinitions(clientId, "daily").map((m) => ({ id: m.id, name: m.name, weekValues: habitWeekValues(m.id, today) })),
+    habits: listMetricDefinitions(clientId, "daily").map((m) => ({ id: m.id, name: m.name, weekValues: habitWeekValues(ck, m.id, today) })),
     gyms: (() => {
       const home = homeGymId(clientId);
       return listClientGyms(clientId, true)
@@ -12285,57 +12175,6 @@ export type DataTile = {
   firstLabel: string;
   lastLabel: string;
 };
-
-export function getHomeDataTiles(clientId: number, weightGoalIsDown: boolean | null): DataTile[] {
-  const today = localDateStr();
-  const goals = listClientGoals(clientId).filter((g) => !g.done && g.tracked_by?.kind === "metric");
-  const choices = listGraphChoices(clientId).filter((c) => c.pointCount > 0);
-  const picked = (choices.some((c) => c.pinned) ? choices.filter((c) => c.pinned) : choices).slice(0, PINNED_METRIC_LIMIT);
-  const fmt = (n: number) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10));
-  return picked.map((c) => {
-    const series = c.kind === "field" ? getMeasurementSeries(c.id) : getMetricSeries(c.id);
-    const latest = series[series.length - 1];
-    const weekAgo = (() => {
-      const cutoff = (() => {
-        const d = new Date(`${today}T00:00:00`);
-        d.setDate(d.getDate() - 7);
-        return localDateStr(d);
-      })();
-      const before = series.filter((p) => p.date <= cutoff);
-      return before[before.length - 1] ?? null;
-    })();
-    const delta = weekAgo ? latest.value - weekAgo.value : null;
-    const linked = goals.find((g) => g.tracked_by?.kind === "metric" && g.tracked_by.metricKey === c.key)?.tracked_by;
-    const goodDown =
-      linked?.kind === "metric" ? linked.op === "<=" : c.name.toLowerCase().includes("weight") ? weightGoalIsDown : null;
-    const trendTone: DataTile["trendTone"] =
-      delta == null || delta === 0 || goodDown == null ? "neutral" : (delta < 0) === goodDown ? "green" : "orange";
-    const bars: (number | null)[] = [];
-    for (let i = 7; i >= 0; i--) {
-      const d = new Date(`${weekStart(today)}T00:00:00`);
-      d.setDate(d.getDate() - i * 7);
-      const monday = localDateStr(d);
-      const e = new Date(d);
-      e.setDate(e.getDate() + 6);
-      const sunday = localDateStr(e);
-      const inWeek = series.filter((p) => p.date >= monday && p.date <= sunday);
-      bars.push(inWeek.length ? inWeek[inWeek.length - 1].value : null);
-    }
-    const present = bars.filter((b): b is number => b != null);
-    return {
-      key: c.key,
-      name: c.name,
-      unit: c.unit,
-      valueLabel: fmt(latest.value),
-      trendLabel: delta == null ? "–" : delta === 0 ? "= 7 days" : `${delta > 0 ? "▲" : "▼"} ${fmt(Math.abs(delta))}${c.unit ? ` ${c.unit}` : ""}`,
-      trendTone,
-      bars,
-      goal: linked?.kind === "metric" ? linked.target : null,
-      firstLabel: present.length ? fmt(present[0]) : "–",
-      lastLabel: present.length ? fmt(present[present.length - 1]) : "–",
-    };
-  });
-}
 
 
 // ---------------------------------------------------------------------------
@@ -12630,13 +12469,13 @@ export function getPlanPhases(clientId: number) {
   return { today, thisWeek, phases, programs: programOptions };
 }
 
-export function getPlanData(food: FoodRows, clientId: number) {
+export function getPlanData(food: FoodRows, clientId: number, ck: CheckInRows) {
   const { today, thisWeek, phases, programs: programOptions } = getPlanPhases(clientId);
 
   // The goals table.
   const fmtShort = dayMonth;
   const meetingsById = new Map(listMeetings(clientId).map((m) => [m.id, m] as const));
-  const goals: PlanGoalRow[] = getGoalSummaries(food, clientId).map(({ goal, view }) => {
+  const goals: PlanGoalRow[] = getGoalSummaries(food, clientId, ck).map(({ goal, view }) => {
     const t = goal.tracked_by ?? null;
     let live = "";
     let pct = goal.done ? 100 : 0;
@@ -12649,7 +12488,7 @@ export function getPlanData(food: FoodRows, clientId: number) {
       // The figure alone: the coach reads it against the rule underneath.
       live = figure;
       pct = view.reached ? 100 : Math.round((view.bar ?? 0) * 100);
-      const s = seriesForKey(food, clientId, t.metricKey);
+      const s = seriesForKey(food, clientId, t.metricKey, ck);
       tracks = s?.name ?? "Metric";
       rule = `Metric · ${tracks} ${t.op} ${fmtNumber(t.target)}${s?.unit ? ` ${s.unit}` : ""} · by ${fmtShort(t.byDate)}`;
       by = fmtShort(t.byDate);
@@ -12708,7 +12547,7 @@ export function getPlanData(food: FoodRows, clientId: number) {
     programs: programOptions,
     goals,
     nextReview: next ? { id: next.id, date: next.date, topic: next.topic || "Check-in call" } : null,
-    goalOptions: getGoalEditorOptions(food, clientId),
+    goalOptions: getGoalEditorOptions(food, clientId, ck),
     mainGoal: getClientProfile(clientId).main_goal ?? "",
     mainGoalSavedAt: getClientProfile(clientId).main_goal_saved_at ?? null,
   };
@@ -14583,12 +14422,14 @@ export type LoggedValues = {
  * phase that has ended) rather than today.
  */
 export function getLoggedValues(
+  ck: CheckInRows,
   clientId: number,
   cadence: MetricCadence,
   count: number,
   scope?: { metrics: MetricDefinition[]; until?: string }
 ): LoggedValues {
   const data = getData();
+  ck.need("getLoggedValues", clientId, "all");
   const defs = (scope ? scope.metrics : listAllMetrics(clientId)).filter((m) => m.frequency === cadence);
   const metrics: LoggedMetric[] = defs.map((m) => {
     const g = metricGroup(m.category);
@@ -14641,7 +14482,7 @@ export function getLoggedValues(
     const to = byName.get(m.name.trim().toLowerCase());
     if (to != null) target.set(m.id, to);
   }
-  for (const e of data.metric_entries) {
+  for (const e of ck.entries) {
     const to = target.get(e.metric_definition_id);
     if (to == null || e.value == null || !keys.has(e.period)) continue;
     const key = `${to}:${e.period}`;
@@ -14668,7 +14509,7 @@ export function getLoggedValues(
   }
 
   const notes: Record<string, string> = {};
-  for (const n of data.check_in_notes ?? []) {
+  for (const n of ck.notes) {
     if (n.client_id !== clientId || n.kind !== cadence || !keys.has(n.period)) continue;
     if (n.text.trim()) notes[n.period] = n.text.trim();
   }
@@ -14706,20 +14547,6 @@ export function setMetricSummary(id: number, summary: "change" | "average") {
   if (!m) return;
   m.summary = summary;
   persist();
-}
-
-/**
- * Yesterday's evening and all-day questions still unanswered (an energy
- * level or a step count is only known at night, when it gets forgotten):
- * asked once more on Home's card the next day, once today's are all in.
- */
-export function yesterdaysOpenMetrics(clientId: number): { date: string; metrics: CheckInMetric[] } | null {
-  const d = new Date(`${localDateStr()}T00:00:00`);
-  d.setDate(d.getDate() - 1);
-  const date = localDateStr(d);
-  const section = checkInTrackerSection(clientId, "daily", date, "Daily", "");
-  const metrics = (section?.metrics ?? []).filter((m) => m.value === "" && (m.askAt === "evening" || m.askAt === "anytime"));
-  return metrics.length ? { date, metrics } : null;
 }
 
 export function getFoodDiary(food: FoodRows, clientId: number, date: string, chat: ChatThread): FoodDiaryView {
@@ -15277,10 +15104,11 @@ export function applySignUpDetails(coachId: number, name: string, business: stri
  * back from today, or from yesterday while today is still open, so a streak
  * doesn't read 0 every morning before the first answer.
  */
-export function getCheckInStreak(clientId: number): number {
+export function getCheckInStreak(ck: CheckInRows, clientId: number): number {
   const data = getData();
+  ck.need("getCheckInStreak", clientId, "all", ["entries"]);
   const defs = new Set(data.metric_definitions.filter((d) => d.client_id === clientId && d.frequency === "daily").map((d) => d.id));
-  const days = new Set(data.metric_entries.filter((e) => defs.has(e.metric_definition_id) && e.value != null).map((e) => e.period));
+  const days = new Set(ck.entries.filter((e) => defs.has(e.metric_definition_id) && e.value != null).map((e) => e.period));
   let day = localDateStr();
   if (!days.has(day)) day = localDateStr(new Date(new Date(`${day}T12:00:00`).getTime() - 86400000));
   let n = 0;
@@ -15343,9 +15171,10 @@ export type ActivityDay = {
  * training, the food and the check-ins, each a third of the day's ring. A
  * record of what was done, not a score.
  */
-export function getActivityCalendar(food: FoodRows, clientId: number): ActivityDay[] {
+export function getActivityCalendar(food: FoodRows, clientId: number, ck: CheckInRows): ActivityDay[] {
   const data = getData();
   food.need("getActivityCalendar", clientId, "all", ["entries", "calories"]);
+  ck.need("getActivityCalendar", clientId, "all", ["entries"]);
   const days = new Map<string, ActivityDay>();
   const day = (date: string) => {
     let d = days.get(date);
@@ -15381,7 +15210,7 @@ export function getActivityCalendar(food: FoodRows, clientId: number): ActivityD
   // Check-ins: a daily reading on its day, a weekly one on the day it was sent, a measurement on its date.
   const defs = new Map(data.metric_definitions.filter((m) => m.client_id === clientId).map((m) => [m.id, m] as const));
   const auto = new Map<string, string[]>();
-  for (const e of data.metric_entries) {
+  for (const e of ck.entries) {
     const def = defs.get(e.metric_definition_id);
     if (!def || e.value == null) continue;
     const date = def.frequency === "daily" ? e.period : e.logged_at ? localDateStr(new Date(e.logged_at)) : null;
@@ -15416,13 +15245,14 @@ export function getActivityCalendar(food: FoodRows, clientId: number): ActivityD
  * (a metric has no date of its own, so one never filled is not counted, and a new one never makes older days look
  * short). Names, as the calendar's check-ins are.
  */
-export function dailyAskedOn(clientId: number): (date: string) => string[] {
+export function dailyAskedOn(ck: CheckInRows, clientId: number): (date: string) => string[] {
   const data = getData();
+  ck.need("dailyAskedOn", clientId, "all", ["entries"]);
   const phases = listClientPhases(clientId).filter((p) => p.track === "lifestyle" && !p.draft);
   const defs = data.metric_definitions.filter((m) => m.client_id === clientId && m.frequency === "daily");
   const first = new Map<number, string>();
   const ids = new Set(defs.map((m) => m.id));
-  for (const e of data.metric_entries) {
+  for (const e of ck.entries) {
     if (!ids.has(e.metric_definition_id) || e.value == null) continue;
     const had = first.get(e.metric_definition_id);
     if (!had || e.period < had) first.set(e.metric_definition_id, e.period);
@@ -15481,13 +15311,13 @@ export function keepSessions(dayIds: Iterable<number>) {
   for (const [clientId, days] of byClient) keep(clientId, sessionRecords(clientId, new Set(days)));
 }
 
-/** Before a metric goes: the days it was checked in. */
-function keepMetricReadings(metricId: number) {
+/** Before a metric goes: the days it was checked in (its figures as the removal read them: checkins/rows.ts). */
+function keepMetricReadings(box: CheckInRows, metricId: number) {
   const data = getData();
   const def = data.metric_definitions.find((m) => m.id === metricId);
   if (!def) return;
   const rows: KeptActivity[] = [];
-  for (const e of data.metric_entries) {
+  for (const e of box.entries) {
     if (e.metric_definition_id !== metricId || e.value == null) continue;
     const date = def.frequency === "daily" ? e.period : e.logged_at ? localDateStr(new Date(e.logged_at)) : null;
     if (date) rows.push({ kind: "checkin", date, name: def.name });

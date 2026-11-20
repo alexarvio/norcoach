@@ -20,6 +20,7 @@ import StyleGuidePanel from "./StyleGuidePanel";
 import { getActivityFeed, getClient, getClientEngagement, getClientHome, getOverviewPanel, listClients, listCoachEmails, type OverviewPanel } from "../lib/queries";
 import { fetchCoachChat, fetchThread, type ChatCoachView, type ChatThread } from "../lib/chat/rows";
 import { fetchCoachClientsFood, type FoodRows } from "../lib/food/rows";
+import { fetchCoachClientsCheckIns, type CheckInRows } from "../lib/checkins/rows";
 import { coachIdOfClient } from "../lib/tenancy";
 import { coachOwnsClient } from "../lib/tenancy";
 import CoachesPanel from "./CoachesPanel";
@@ -112,12 +113,14 @@ export default async function AdminPage({
   const thread = client ? await fetchThread(client.id, "page.oldAdmin.thread") : null;
   // The food diary the same (quest 8 part 1): the coaches' clients' and the client's own, whole.
   const food = await fetchCoachClientsFood(view === "coaches" ? listCoachEmails().map((c) => c.id) : [coach.id], "page.oldAdmin", client?.id ?? null);
+  // The check-in figures the same (quest 9, app/lib/checkins/rows.ts).
+  const ck = await fetchCoachClientsCheckIns(view === "coaches" ? listCoachEmails().map((c) => c.id) : [coach.id], "page.oldAdmin", client?.id ?? null);
   // Read once: the right-hand panel and the client's Home show the same facts.
-  const overview = client ? getOverviewPanel(client.id, () => getActivityFeed(coachIdOfClient(client.id) ?? 0, chat, food)) : null;
+  const overview = client ? getOverviewPanel(client.id, () => getActivityFeed(coachIdOfClient(client.id) ?? 0, chat, food, ck), ck) : null;
 
   return (
     <AdminShell
-      sidebar={<AdminSidebar coachId={coach.id} coachEmail={coach.email} selectedId={selectedId} view={view} isOwner={owner} chat={chat} food={food} />}
+      sidebar={<AdminSidebar coachId={coach.id} coachEmail={coach.email} selectedId={selectedId} view={view} isOwner={owner} chat={chat} food={food} ck={ck} />}
       panel={
         view === "calendar" ? (
           <CalendarDayPanel coachId={coach.id} day={params.day} month={params.month} />
@@ -134,7 +137,7 @@ export default async function AdminPage({
     >
       {view === "feed" ? (
         <div className="ad-pad">
-          <FeedPanel coachId={coach.id} coachEmail={coach.email} owner={owner} category={params.cat} page={params.page} chat={chat} food={food} />
+          <FeedPanel coachId={coach.id} coachEmail={coach.email} owner={owner} category={params.cat} page={params.page} chat={chat} food={food} ck={ck} />
         </div>
       ) : view === "phases" ? (
         <div className="ad-pad ad-stack">
@@ -142,7 +145,7 @@ export default async function AdminPage({
         </div>
       ) : view === "business" ? (
         <div className="ad-pad ad-stack">
-          <BusinessPanel coachId={coach.id} />
+          <BusinessPanel coachId={coach.id} ck={ck} />
         </div>
       ) : view === "style" ? (
         <div className="ad-pad ad-stack">
@@ -150,7 +153,7 @@ export default async function AdminPage({
         </div>
       ) : view === "coaches" ? (
         <div className="ad-pad">
-          <CoachesPanel ownerId={coach.id} ok={params.coachOk} error={params.coachError} chat={chat} food={food} />
+          <CoachesPanel ownerId={coach.id} ok={params.coachOk} error={params.coachError} chat={chat} food={food} ck={ck} />
         </div>
       ) : view === "calendar" ? (
         <div className="ad-pad">
@@ -176,6 +179,7 @@ export default async function AdminPage({
           chat={chat}
           thread={thread}
           food={food}
+          ck={ck}
         />
       )}
     </AdminShell>
@@ -193,6 +197,7 @@ function ClientDashboard({
   chat,
   thread,
   food,
+  ck,
 }: {
   clientId: number;
   name: string;
@@ -204,6 +209,7 @@ function ClientDashboard({
   chat: ChatCoachView;
   thread: ChatThread;
   food: FoodRows;
+  ck: CheckInRows;
 }) {
   // The core loop, nothing else: say who this client is, build their
   // training, set their nutrition, and define what they log daily and
@@ -211,7 +217,7 @@ function ClientDashboard({
   // Three tabs, per the workstation design. Start Page became the right-hand
   // panel, and Daily/Weekly Tracker collapsed into Measurements — a metric's
   // rhythm is a property of the metric, not a reason for its own screen.
-  const home = getClientHome(clientId, chat, food);
+  const home = getClientHome(clientId, chat, food, ck);
   const dot = (tab: string) => home.unseenTabs.includes(tab);
   const sections: TabSection[] = [
     {
@@ -226,7 +232,7 @@ function ClientDashboard({
           clientId={clientId}
           panel={overview}
           home={home}
-          engagement={getClientEngagement(food, clientId)}
+          engagement={getClientEngagement(food, ck, clientId)}
         />
       ),
     },
@@ -235,7 +241,7 @@ function ClientDashboard({
       // neither tab: it is the first thing the coach sees for a client.
       id: "plan",
       label: "Plan",
-      content: <PhaseTimeline clientId={clientId} food={food} />,
+      content: <PhaseTimeline clientId={clientId} food={food} ck={ck} />,
     },
     {
       id: "training",
@@ -249,16 +255,17 @@ function ClientDashboard({
           weekLinkBase={`/admin?client=${clientId}&tab=training`}
           chat={chat}
           food={food}
+          ck={ck}
         />
       ),
     },
     // `?phase=` is only ever the tab-in-the-address's phase: each tab keeps its
     // own ids (Training: programmes; the others: phases), so another tab's id
     // would open the wrong one. Without it a tab opens on its live phase.
-    { id: "nutrition", label: "Nutrition", dot: dot("nutrition"), content: <NutritionPanel clientId={clientId} phaseParam={initialTab === "nutrition" ? phaseParam : undefined} chat={thread} food={food} /> },
-    { id: "measurements", label: "Lifestyle", dot: dot("measurements"), content: <MeasurementsPanel clientId={clientId} phaseParam={initialTab === "measurements" ? phaseParam : undefined} /> },
-    { id: "meetings", label: "Meetings", content: <MeetingsPanel clientId={clientId} food={food} /> },
-    { id: "photos", label: "Shape update", dot: dot("photos"), content: <ProgressPicturesPanel clientId={clientId} /> },
+    { id: "nutrition", label: "Nutrition", dot: dot("nutrition"), content: <NutritionPanel clientId={clientId} phaseParam={initialTab === "nutrition" ? phaseParam : undefined} chat={thread} food={food} ck={ck} /> },
+    { id: "measurements", label: "Lifestyle", dot: dot("measurements"), content: <MeasurementsPanel clientId={clientId} phaseParam={initialTab === "measurements" ? phaseParam : undefined} ck={ck} /> },
+    { id: "meetings", label: "Meetings", content: <MeetingsPanel clientId={clientId} food={food} ck={ck} /> },
+    { id: "photos", label: "Shape update", dot: dot("photos"), content: <ProgressPicturesPanel clientId={clientId} ck={ck} /> },
     // Messages is always the last tab. New sections go before it.
     { id: "messages", label: "Messages", content: <MessagesPanel clientId={clientId} chat={thread} food={food} /> },
   ];
