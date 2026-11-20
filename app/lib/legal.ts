@@ -8,4 +8,8 @@ export const LEGAL = {
   // one is chosen: the pages then say so rather than guess.
   contactEmail: "",
   updated: "18 November 2026",
+  // The terms of service (20 Nov, Alex: "Yes, draft it"): their own date, and the law they follow. Empty until a
+  // lawyer confirms which state's law: the page then says so rather than guess.
+  termsUpdated: "20 November 2026",
+  jurisdiction: "",
 };

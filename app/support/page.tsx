@@ -71,6 +71,7 @@ export default function SupportPage() {
 
         <div className="lg-foot">
           <Link href="/privacy">Privacy policy</Link>
+          <Link href="/terms">Terms of service</Link>
           <a href={SIGN_IN}>Sign in</a>
           <span>
             {LEGAL.app} is run by {LEGAL.company}.

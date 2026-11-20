@@ -133,6 +133,7 @@ export default function PrivacyPage() {
 
         <div className="lg-foot">
           <Link href="/support">Support</Link>
+          <Link href="/terms">Terms of service</Link>
           <a href={SIGN_IN}>Sign in</a>
         </div>
       </div>
