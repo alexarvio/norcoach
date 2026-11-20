@@ -808,6 +808,19 @@ export const food_twins = pgTable(
   (t) => [primaryKey({ columns: [t.tbl, t.id] })]
 );
 
+/**
+ * A client's meal-card order with FOOD_STORE=pg (19 Nov, quest 8 part 1, the food item's question 3; app/lib/food/):
+ * written in the same transaction as the food it orders, so a crash after the commit never loses a card's place. The
+ * client row's meal_order in memory stays its mirror (put there after the commit), so a rollback still reads an order;
+ * which of the two a boot believes: app/lib/food/orders.ts. Not a collection: never loaded into memory, never written
+ * by the store's writer; empty in memory mode.
+ */
+export const food_meal_orders = pgTable("food_meal_orders", {
+  client_id: integer("client_id").primaryKey(),
+  meal_order: jsonb("meal_order").notNull(),
+  updated_at: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+});
+
 export const video_requests = pgTable("video_requests", {
   id: id(),
   client_id: fk("client_id"),
@@ -987,4 +1000,4 @@ export const saved_days_id_seq = idSeq("saved_days");
 // chat_messages is here too (Step 5's cut-over): with CHAT_STORE=pg it leaves the writer's collections, and a stray
 // `chat_messages` in the store must never be written to kv. A no-op while it is a collection (store.ts adds those anyway).
 // coach_activity, its shadow, its twins and its ops' tokens the same (quest 7, NOTES_STORE=pg; app/lib/notes/).
-export const TABLE_NAMES_NOT_IN_KV = ["kv", "push_subscriptions", "password_resets", "chat_messages_shadow", "once_keys_shadow", "chat_messages", "coach_activity", "coach_activity_shadow", "coach_activity_twins", "coach_activity_ops", "food_ops", "food_twins"] as const;
+export const TABLE_NAMES_NOT_IN_KV = ["kv", "push_subscriptions", "password_resets", "chat_messages_shadow", "once_keys_shadow", "chat_messages", "coach_activity", "coach_activity_shadow", "coach_activity_twins", "coach_activity_ops", "food_ops", "food_twins", "food_meal_orders"] as const;

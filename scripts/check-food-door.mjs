@@ -3,7 +3,7 @@
 // but app/lib/food/. A sibling of check-chat-door.mjs and check-notes-door.mjs (both left as they are): tsc already
 // refuses `data.food_entries` and the rest (sealed types in db.ts, and every reader takes a FoodRows); this catches what
 // a type can't:
-//   (a) the seven names in code anywhere but app/lib/food, app/lib/pg and db.ts (comments are not code);
+//   (a) the seven names (and food_meal_orders) in code anywhere but app/lib/food, app/lib/pg and db.ts (comments are not code);
 //   (b) a loop over every collection of the store (Object.entries/keys/values of getData(), of a `Data`, or of what is
 //       cast from either) without a `// food-door:` note saying how the food diary is handled;
 //   (c) a fetch or a write of the door called without await, return, void, or a held promise awaited later;
@@ -24,7 +24,8 @@ const extraFiles = [path.join(ROOT, "instrumentation.ts")].filter((f) => fs.exis
 const rel = (f) => path.relative(ROOT, f).split(path.sep).join("/");
 const INSIDE = (r) => r.startsWith("app/lib/food/") || r.startsWith("app/lib/pg/") || r === "app/lib/db.ts";
 const MARK = "food-door:";
-const NAMES = /\b(food_entries|calorie_logs|food_days|food_meals|saved_meals|saved_days|meal_photos)\b/;
+// food_meal_orders too (19 Nov: a client's meal order with FOOD_STORE=pg, app/lib/food/orders.ts).
+const NAMES = /\b(food_entries|calorie_logs|food_days|food_meals|saved_meals|saved_days|meal_photos|food_meal_orders)\b/;
 /** What answers a promise and must be awaited (or handed on). */
 const ASYNC = new Set([
   "fetchClientFood",

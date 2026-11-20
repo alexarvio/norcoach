@@ -24,12 +24,13 @@
 import { getTableColumns, sql, type Column, type SQL } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 import { allocId, getData, persist, DATA_DIR, type CalorieLog, type FoodDay, type FoodEntry, type FoodMealSlot, type MealPhoto, type SavedDay, type SavedMeal } from "../db";
-import { calorie_logs, food_days, food_entries, food_meals, meal_photos, once_keys, saved_days, saved_meals } from "../pg/schema";
+import { calorie_logs, clients as clientsTable, food_days, food_entries, food_meals, meal_photos, once_keys, saved_days, saved_meals } from "../pg/schema";
 import { fromRecord, recordForWrite } from "../pg/store";
 import { FOOD_PG, FOOD_TABLES, type FoodTable } from "./mode";
 import type { FoodReadPath, FoodWritePath } from "./paths";
-import { foodChainsSettled, foodRead, foodWriteRaw, type Q, type Row } from "./pg";
-import { noteFoodMissed, noteFoodSeen, noteFoodWrite, onFoodFetch } from "./shadow";
+import { foodChainBusy, foodChainsSettled, foodRead, foodWriteRaw, lostConnection, throwIfFaultBeforeCommit, type Q, type Row } from "./pg";
+import { noteFoodMissed, noteFoodOrders, noteFoodSeen, noteFoodWrite, onFoodFetch } from "./shadow";
+import { FOOD_ORDER_STAMPS, orderKey, putOnClient, readOrders, stampClient, stampsOf, type OrderRow } from "./orders";
 import { OnceAnswered } from "./onceAnswered";
 import nodePath from "path";
 import { trashFile } from "../storage";
@@ -155,7 +156,11 @@ export class FoodRows {
   readonly path: FoodReadPath | FoodWritePath;
   protected readonly holder: Holder;
   protected readonly scope: Scope | null;
-  /** The clients' meal order (clients.meal_order lives in memory with the client): a box keeps its own copy until its commit. */
+  /**
+   * The clients' meal order. Memory mode (null): the client row's own, in the store. FOOD_STORE=pg: read from
+   * food_meal_orders with the rows (a view: in the fetch's snapshot; a box: in its transaction, under the client's lock),
+   * one holder for each client the fetch took with its meal list; a box's holder is its own copy until its commit.
+   */
   protected readonly orders: Map<number, MealOrderHolder> | null;
   constructor(token: symbol, path: FoodReadPath | FoodWritePath, holder: Holder, scope: Scope | null, orders: Map<number, MealOrderHolder> | null = null) {
     if (token !== MINT) throw new Error("Food rows are made by the door (app/lib/food/rows.ts) alone.");
@@ -185,19 +190,29 @@ export class FoodRows {
   get photos(): MealPhoto[] {
     return this.holder.get("photos") as MealPhoto[];
   }
-  /** The client row's meal order (a reader: the store's; a pg box: its own copy, put on the client after its commit). */
+  /**
+   * The client's meal order: memory mode, the client row itself (as before); FOOD_STORE=pg, what food_meal_orders held
+   * (a box: its own copy, written in its transaction and put on the client in memory after its commit). A client no
+   * longer in memory has none; one the fetch didn't take with its meal list is a miss, thrown.
+   */
   client(clientId: number): MealOrderHolder | undefined {
     if (this.orders) {
-      let o = this.orders.get(clientId);
-      if (!o) {
-        const c = getData().clients.find((x) => x.id === clientId);
-        if (!c) return undefined;
-        o = c.meal_order ? { meal_order: [...c.meal_order] } : {};
-        this.orders.set(clientId, o);
-      }
-      return o;
+      if (!getData().clients.some((x) => x.id === clientId)) return undefined;
+      const o = this.orders.get(clientId);
+      if (o) return o;
+      const message = `[food] the meal order of client ${clientId} on ${this.path} was not fetched`;
+      noteFoodMissed(this.path, message);
+      throw new FoodViewMiss(message);
     }
     return getData().clients.find((c) => c.id === clientId);
+  }
+  /**
+   * FOOD_STORE=pg: the order food_meal_orders held for this client when it was read with these rows (null: no row),
+   * undefined when it wasn't read (memory mode, a scope without meals). Never throws (the JSONs' copy, withFoodKeys).
+   */
+  tableOrder(clientId: number): string[] | null | undefined {
+    const o = this.orders?.get(clientId);
+    return o ? (o.meal_order ?? null) : undefined;
   }
   /**
    * What a reader is about to read: these clients (every client of the view: "fetched"), these days, these lists.
@@ -380,8 +395,19 @@ async function loadScopeWithPictures(q: Q, scope: Scope, withPictures: boolean):
 async function fetchScope(path: FoodReadPath, scope: Scope, withPictures: boolean): Promise<FoodRows> {
   noteFoodSeen(path);
   if (FOOD_PG) {
-    const lists = await foodRead((q) => loadScopeWithPictures(q, scope, withPictures));
-    return new FoodRows(MINT, path, listHolder(lists), scope);
+    // The meal order with the meal lists, in the same snapshot (a card and its place always agree), never the mirror.
+    const ids = [...scope.clients.keys()];
+    const gen = orderGeneration();
+    const got = await foodRead(async (q) => ({ lists: await loadScopeWithPictures(q, scope, withPictures), orders: scope.tables.has("meals") && ids.length ? await readOrders(q, ids) : null }));
+    const orders = new Map<number, MealOrderHolder>();
+    if (got.orders) {
+      for (const id of ids) {
+        const r = got.orders.get(id);
+        orders.set(id, r?.meal_order ? { meal_order: r.meal_order } : {});
+      }
+      checkMirror(path, got.orders, ids, gen);
+    }
+    return new FoodRows(MINT, path, listHolder(got.lists), scope, orders);
   }
   if (MODE === "narrow" && withPictures && scope.tables.has("photos")) for (const p of picturePathsOf(sliceStore(scope))) scope.paths.add(p);
   // The shadow (FOOD_SHADOW=read): the same scope's SQL, the pictures' second statement too, compared with what the
@@ -397,11 +423,68 @@ async function fetchScope(path: FoodReadPath, scope: Scope, withPictures: boolea
     decode: (t, record) => decodeOf(t)(record),
     clients: [...scope.clients.keys()],
     anyClient: (t) => t === "meal_photos" && shadowScope.paths.size > 0,
+    // The meal order: in memory mode it is the client row's (food_meal_orders is empty until a pg boot seeds it from
+    // exactly that), so the SQL side is the clients table's, compared with what the last save committed of it.
+    orders: scope.tables.has("meals") && scope.clients.size ? shadowOrders([...scope.clients.keys()]) : undefined,
   });
   if (MODE === "narrow") return new FoodRows(MINT, path, listHolder(sliceStore(scope)), scope);
   return new FoodRows(MINT, path, storeHolder, scope);
 }
 const SHORT_OF = Object.fromEntries(SHORTS.map((s) => [FOOD_SHORT[s], s])) as Record<FoodTable, FoodShort>;
+
+// ---- The meal order's mirror (FOOD_STORE=pg) -------------------------------------------------------------------------
+
+const og = globalThis as unknown as { __norcoachFoodOrderGen?: number };
+/** Moves on each time a write puts a meal order onto a client in memory (so a fetch over it is a race, not a drift). */
+const orderGeneration = () => og.__norcoachFoodOrderGen ?? 0;
+const orderMoved = () => void (og.__norcoachFoodOrderGen = orderGeneration() + 1);
+
+/**
+ * The mirror checked against the table on every pg fetch that read the order (in memory, no SQL): equal, else a drift,
+ * counted by the shadow (counts and paths alone); a write of one of these clients in flight, or a mirror put meanwhile,
+ * is a race, not a drift. A drift means a rollback would read a card's place the table no longer holds.
+ */
+function checkMirror(path: FoodReadPath, rows: ReadonlyMap<number, OrderRow>, ids: readonly number[], gen: number) {
+  try {
+    let compared = 0;
+    let drifted = 0;
+    let raced = 0;
+    // The clients in one pass (a coach-wide fetch's scope is many clients: never a find per client).
+    const want = new Set(ids);
+    const byId = new Map<number, { meal_order?: string[] | null }>();
+    for (const c of getData().clients) if (want.has(c.id)) byId.set(c.id, c);
+    for (const id of ids) {
+      const c = byId.get(id);
+      if (!c) continue;
+      compared++;
+      if (orderKey(c.meal_order) === orderKey(rows.get(id)?.meal_order)) continue;
+      if (orderGeneration() !== gen || foodChainBusy(`food:${id}`)) raced++;
+      else drifted++;
+    }
+    noteFoodOrders(path, { compared, drifted, raced });
+  } catch {
+    /* never into a request */
+  }
+}
+
+/**
+ * The shadow's meal order (memory mode): the clients table's, and what the last save committed of it. What it proves is
+ * the store's save of the orders a first pg boot builds food_meal_orders from, never pg mode's own read of the table
+ * (empty in memory mode): that is checkMirror's, in pg mode (the review's note, 20 Nov). The order alone is read
+ * (`extra->'meal_order'`), never the whole client row; none and null are the same order (orders.ts orderKey).
+ */
+function shadowOrders(ids: readonly number[]) {
+  const pick = (id: unknown, order: unknown) => (Array.isArray(order) ? [{ client_id: Number(id), meal_order: order }] : []);
+  return {
+    sqlRows: async (q: Q) => (await q(sql`SELECT id, extra->'meal_order' AS meal_order FROM clients WHERE id = ANY(${ints(ids)}::int[]) ORDER BY id`)).flatMap((r) => pick(r.id, r.meal_order)),
+    committedRows: (committed: ReadonlyMap<string, string>) => ids.flatMap((id) => {
+      const json = committed.get(String(id));
+      if (!json) return [];
+      const c = fromRecord(clientsTable, JSON.parse(json) as Row) as { id: number; meal_order?: unknown };
+      return pick(c.id, c.meal_order);
+    }),
+  };
+}
 
 /** One client's food over these days (every day by default): the diary, its links, the client's own screens. */
 export function fetchClientFood(clientId: number, path: FoodReadPath, spans: FoodSpan | readonly FoodSpan[] = "all"): Promise<FoodRows> {
@@ -478,12 +561,19 @@ export async function fetchFoodExport(clientIds: readonly number[] | "all", path
   if (!FOOD_PG) return fetchScope(path, makeScope(clientIds === "all" ? allClientIdsWithFood() : [...new Set(clientIds)], ["all"]), false);
   noteFoodSeen(path);
   const ids = clientIds === "all" ? null : [...new Set(clientIds)];
-  const lists = await foodRead(async (q) => {
+  // The meal orders in the same snapshot as the lists (the review's fix, 20 Nov), so the JSON's cards and their places
+  // agree: the table's, never the mirror, which lags a commit by a tick.
+  const got = await foodRead(async (q) => {
     await q(sql`SET LOCAL statement_timeout = '60s'`);
     await q(sql`SET LOCAL idle_in_transaction_session_timeout = '60s'`);
-    return loadPaged(q, ids);
+    return { lists: await loadPaged(q, ids), orders: await readOrders(q, ids) };
   });
-  return new FoodRows(MINT, path, listHolder(lists), ids ? makeScope(ids, ["all"]) : null);
+  const orders = new Map<number, MealOrderHolder>();
+  for (const id of ids ?? getData().clients.map((c) => c.id)) {
+    const r = got.orders.get(id);
+    orders.set(id, r?.meal_order ? { meal_order: r.meal_order } : {});
+  }
+  return new FoodRows(MINT, path, listHolder(got.lists), ids ? makeScope(ids, ["all"]) : null, orders);
 }
 const allClientIdsWithFood = () => getData().clients.map((c) => c.id);
 const PAGE = 2000;
@@ -643,6 +733,17 @@ async function writeOnceKey(q: Q, row: { key: string; at: number; result?: unkno
   return rows.length > 0;
 }
 
+/** A client's meal order into food_meal_orders, in the write's transaction, when the code changed it (none: no row). */
+async function writeOrder(q: Q, clientId: number, was: OrderRow | null, now: string[] | null) {
+  if (orderKey(now) === orderKey(was?.meal_order)) return;
+  if (now == null) {
+    await q(sql`DELETE FROM food_meal_orders WHERE client_id = ${clientId}::int`);
+    return;
+  }
+  await q(sql`INSERT INTO food_meal_orders (client_id, meal_order, updated_at) VALUES (${clientId}::int, ${JSON.stringify(now)}::jsonb, now())
+    ON CONFLICT (client_id) DO UPDATE SET meal_order = EXCLUDED.meal_order, updated_at = EXCLUDED.updated_at`);
+}
+
 /** A refusal is answered, not kept (once.ts refused, the same three lines: food/ can't import once.ts, which imports it). */
 function refusedAnswer(result: unknown): boolean {
   if (!result || typeof result !== "object") return false;
@@ -713,6 +814,9 @@ export async function writeFood<T>(path: FoodWritePath, clientId: number, reach:
           inner = { error };
           throw error;
         }
+        // The client's meal order as the table holds it, under the lock: the box's copy, never the mirror in memory.
+        const orderRow = (await readOrders(q, [clientId])).get(clientId) ?? null;
+        orders.set(clientId, orderRow?.meal_order ? { meal_order: [...orderRow.meal_order] } : {});
         const before = await loadScope(q, scope);
         const lists = Object.fromEntries(SHORTS.map((s) => [s, [...(before[s] as unknown[]).map((r) => structuredClone(r))]])) as unknown as Lists;
         const box = new FoodBox(MINT, path, listHolder(lists), scope, orders, () => {}, (paths) => {
@@ -732,6 +836,8 @@ export async function writeFood<T>(path: FoodWritePath, clientId: number, reach:
           const { upserts, deletes } = changedRows(t, before[s] as { id: number }[], lists[s] as { id: number }[]);
           await writeRows(q, t, clientId, upserts, deletes);
         }
+        // The meal order in the same transaction as the food it orders, only when the code changed it.
+        await writeOrder(q, clientId, orderRow, orders.get(clientId)?.meal_order ?? null);
         found = await unusedPictures(q, [...new Set(asked)], clientId);
         // A refusal is answered, not kept (once.ts): its claim given back in the same transaction, so sent again it runs again.
         if (opts.once && refusedAnswer(answer)) await q(sql`DELETE FROM once_keys WHERE key = ${opts.once}::text`);
@@ -744,28 +850,40 @@ export async function writeFood<T>(path: FoodWritePath, clientId: number, reach:
           }
           await writeOnceKey(q, { key: opts.once, at, ...(stored === undefined ? {} : { result: stored }) }, "keep");
         }
+        // Tests alone (food/pg.ts faultBeforeCommit): every statement sent, the commit not yet.
+        throwIfFaultBeforeCommit(path);
         return answer;
       }),
   });
   } catch (error) {
     // Rolled back whole. The code's own error as it threw it (memory mode's), else the database's (made safe, pg.ts).
     const thrown = inner as { error: unknown } | null;
+    // Or not: a lost connection may have come after the commit, its meal order in the table and not on the mirror.
+    if (!thrown && lostConnection(error)) resyncOrder(clientId);
     throw thrown ? thrown.error : error;
   }
   // The files nothing shows, into every list the code was handed back (its answer holds them).
   for (const list of gone) list.push(...found.filter((p) => !list.includes(p)));
-  // The meal order onto the client in memory, and the store saved, only where it changed (a box hands out its copy to
-  // every write that reads it: most change nothing).
+  // The meal order committed with the food (food_meal_orders, the truth); its mirror onto the client in memory, and the
+  // store saved, only where it differs (most writes change nothing; one finding the mirror behind puts it right), so a
+  // rollback to memory mode, or a build before this one, still reads a card's place. A crash before that save loses
+  // nothing: the next pg boot puts the table's order back on the client, the mirror's stamp (saved with it) saying it
+  // was this build's (food/orders.ts).
   let reordered = false;
   for (const [id, o] of orders) {
     const c = getData().clients.find((x) => x.id === id);
-    if (c && JSON.stringify(c.meal_order ?? null) !== JSON.stringify(o.meal_order ?? null)) {
+    if (!c) continue;
+    if (JSON.stringify(c.meal_order ?? null) !== JSON.stringify(o.meal_order ?? null)) {
       if (o.meal_order) c.meal_order = o.meal_order;
       else delete c.meal_order;
       reordered = true;
     }
+    if (stampClient(getData(), c)) reordered = true;
   }
-  if (reordered) persist();
+  if (reordered) {
+    orderMoved();
+    persist();
+  }
   for (const p of found) trashFile(nodePath.join(DATA_DIR, p.startsWith("/") ? p.slice(1) : p));
   return answer as T;
 }
@@ -781,11 +899,56 @@ export async function deleteClientFood(clientId: number, p: FoodWritePath = "w.c
         await q(sql`SET LOCAL statement_timeout = '60s'`);
         await q(foodLock(clientId));
         for (const t of FOOD_TABLES) await q(sql`DELETE FROM ${sql.identifier(t)} WHERE client_id = ${clientId}::int`);
+        // Their meal order with them (the client row's mirror goes with the client in memory).
+        await q(sql`DELETE FROM food_meal_orders WHERE client_id = ${clientId}::int`);
       }),
   });
+  // And its stamp (the review's fix, 20 Nov): nothing of their order is left in kv either, saved by the erase's save.
+  dropStamps([clientId]);
 }
 
-/** Every day's photo row, gone (the workspace reset): the store's list emptied, or the table. */
+/** These clients' stamps out of kv in memory (every one: null); saved by the caller's save. */
+function dropStamps(clientIds: readonly number[] | null) {
+  // chat-door: notes-door: one kv key by its own name (the stamps), never a walk of the store.
+  const d = getData() as unknown as Record<string, unknown>;
+  if (!(FOOD_ORDER_STAMPS in d)) return;
+  if (!clientIds) {
+    d[FOOD_ORDER_STAMPS] = {};
+    return;
+  }
+  const stamps = stampsOf(d);
+  if (!clientIds.some((id) => String(id) in stamps)) return;
+  const next = { ...stamps };
+  for (const id of clientIds) delete next[String(id)];
+  d[FOOD_ORDER_STAMPS] = next;
+}
+
+/**
+ * After a write whose commit's answer was lost (it may have committed: the review's fix, 20 Nov): the client's mirror
+ * read back from food_meal_orders, on the client's chain after it, so a clean stop then saves it and a rollback straight
+ * to d100513 reads it. A client with no row keeps its mirror (orders.ts reconcileOrders' rule). The database still
+ * away: nothing, this build's next boot puts it right. Never throws.
+ */
+function resyncOrder(clientId: number) {
+  void foodWriteRaw(`food:${clientId}`, {
+    op: "w.orderResync",
+    run: async (q) => {
+      const row = (await readOrders(q, [clientId])).get(clientId);
+      const c = getData().clients.find((x) => x.id === clientId);
+      if (!c || !row) return;
+      let moved = putOnClient(c, row.meal_order);
+      if (stampClient(getData(), c)) moved = true;
+      if (!moved) return;
+      orderMoved();
+      persist();
+    },
+  }).catch(() => {});
+}
+
+/**
+ * Every day's photo row, gone (the workspace reset): the store's list emptied, or the table. With FOOD_STORE=pg every
+ * meal order too, in the same transaction: the reset takes every client, and their orders' mirrors with them.
+ */
 export async function wipeFoodPhotos(): Promise<void> {
   noteFoodWrite("w.wipePhotos");
   if (!FOOD_PG) {
@@ -794,7 +957,15 @@ export async function wipeFoodPhotos(): Promise<void> {
   }
   // Every write still on a client's chain settled first, so a photo saved while the reset ran never lands after its DELETE.
   await foodChainsSettled();
-  await foodWriteRaw(null, { op: "w.wipePhotos", run: async (_q, inTx) => inTx(async (q) => void (await q(sql`DELETE FROM meal_photos`))) });
+  await foodWriteRaw(null, {
+    op: "w.wipePhotos",
+    run: async (_q, inTx) =>
+      inTx(async (q) => {
+        await q(sql`DELETE FROM meal_photos`);
+        await q(sql`DELETE FROM food_meal_orders`);
+      }),
+  });
+  dropStamps(null);
 }
 
 /**
@@ -882,12 +1053,24 @@ export function withFoodKeys<T extends Record<string, unknown>>(data: T, rows: F
   // withChatKey and withNotesKey); only the food keys are added here.
   for (const [k, v] of Object.entries(data)) {
     if ((FOOD_TABLES as readonly string[]).includes(k)) continue;
-    out[k] = v;
+    // The stamps of the mirrors stay with this database (food/orders.ts): a JSON imported into a fresh one never reads them.
+    if (k === FOOD_ORDER_STAMPS) continue;
+    // Each client's meal order as food_meal_orders held it in the lists' snapshot (a client with no row keeps its mirror).
+    out[k] = k === "clients" && rows && Array.isArray(v) ? v.map((c) => withTableOrder(c, rows)) : v;
     place(k);
   }
   for (const t of FOOD_TABLES) if (!placed.has(t)) out[t] = lists ? lists[t] : [];
   if (!lists) out._food_in_postgres = true;
   return out as T;
+}
+
+/** A client row as the JSON carries it: its meal order the table's when the export read one for it, else as it is. */
+function withTableOrder(c: unknown, rows: FoodRows): unknown {
+  const id = (c as { id?: unknown } | null)?.id;
+  if (typeof id !== "number") return c;
+  const order = rows.tableOrder(id);
+  if (!order || orderKey(order) === orderKey((c as MealOrderHolder).meal_order)) return c;
+  return { ...(c as object), meal_order: order };
 }
 
 /** For /api/timing. */

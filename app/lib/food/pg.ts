@@ -24,6 +24,8 @@ type State = {
   counts: { reads: number; writes: number; readErrors: number; writeErrors: number; unknown: number; retried: number; poolWaits: number };
   /** Tests: throw a lost connection after this write commits (once), by op. */
   faultAfterCommit: string | null;
+  /** Tests: throw inside this write's transaction once every statement is sent, before its commit (once), by op. */
+  faultBeforeCommit?: string | null;
 };
 
 const g = globalThis as unknown as { __norcoachFoodPg?: State };
@@ -232,4 +234,21 @@ export function foodPgReport() {
 /** Tests: the next write of this op throws a lost connection after it committed. */
 export function faultAfterCommit(op: string | null) {
   state().faultAfterCommit = op;
+}
+
+/** Tests: the next write of this op throws inside its transaction after its last statement, so it rolls back whole. */
+export function faultBeforeCommit(op: string | null) {
+  state().faultBeforeCommit = op;
+}
+/** The write's own check (rows.ts writeFood), after its last statement: the fault set for its op, once. */
+export function throwIfFaultBeforeCommit(op: string) {
+  const s = state();
+  if (s.faultBeforeCommit !== op) return;
+  s.faultBeforeCommit = null;
+  throw new Error("test fault before commit");
+}
+
+/** A write on this key queued or running (rows.ts: a fetch over its client's meal order is a race then, not a drift). */
+export function foodChainBusy(key: string): boolean {
+  return state().chains.has(key);
 }

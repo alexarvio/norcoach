@@ -6,7 +6,7 @@
 // and meal_photos twins on their day keys (counted only: no unique rule is planned for them); P4 entries whose kcal or
 // macros are absent, null or not a number; P6 pictures outside their client's /uploads/meals/<client>/ folder; P7
 // saved_meal_id stamps that are not a whole number, or point at no saved meal; P8 rows of no client (counted); P9 kv keys
-// named like a food table.
+// named like a food table; P10 the meal orders (0022's food_meal_orders against the clients', counted).
 // --with-unique makes the unique rule on calorie_logs inside a transaction rolled back (it fails, and says so, while twins
 // are there). It never changes a row, and starts no store or writer.
 
@@ -80,9 +80,26 @@ async function main() {
       if (r.n) console.log(`P8 ${t}: ${r.n} rows of no client (kept; the backup's JSON keeps them whole)`);
     }
     // P9
-    const p9 = await rows(sql`SELECT key FROM kv WHERE key IN (SELECT jsonb_array_elements_text(${JSON.stringify(FOOD_TABLES)}::jsonb))`);
+    const p9 = await rows(sql`SELECT key FROM kv WHERE key IN (SELECT jsonb_array_elements_text(${JSON.stringify([...FOOD_TABLES, "food_meal_orders"])}::jsonb))`);
     if (p9.length) fail(`P9 kv holds keys named like food tables: ${p9.map((r) => String(r.key)).join(", ")}`);
     else console.log("P9 kv: no key named like a food table");
+    // P10: the meal orders (0022). Counted only: the pg boot makes food_meal_orders from the clients' orders, unless the
+    // boot before was this build's pg mode (kv's mark says `orders`), when it reconciles client by client: the table's
+    // order where the client's is the one stamped, the client's where it isn't or where the table has no row for a
+    // client holding one (app/lib/food/orders.ts reconcileOrders). Before 0022 (foodProblems has failed it above) skipped,
+    // so the checks after it still run and the verdict is still said (the verifier's fix, 20 Nov).
+    const has0022 = (await rows(sql`SELECT to_regclass('food_meal_orders') IS NOT NULL AS ok`))[0]?.ok === true;
+    const p10 = !has0022 ? null : (await rows(sql`SELECT
+        (SELECT count(*)::int FROM clients WHERE jsonb_typeof(extra->'meal_order') = 'array') AS clients,
+        (SELECT count(*)::int FROM food_meal_orders) AS rows,
+        (SELECT count(*)::int FROM clients c JOIN food_meal_orders o ON o.client_id = c.id WHERE c.extra->'meal_order' IS DISTINCT FROM o.meal_order) AS differ,
+        (SELECT count(*)::int FROM clients c WHERE jsonb_typeof(c.extra->'meal_order') = 'array' AND NOT EXISTS (SELECT 1 FROM food_meal_orders o WHERE o.client_id = c.id)) AS no_row,
+        (SELECT count(*)::int FROM food_meal_orders o WHERE NOT EXISTS (SELECT 1 FROM clients c WHERE c.id = o.client_id)) AS orphans,
+        (SELECT (value->>'orders') = '1' FROM kv WHERE key = 'food_pg') AS orders_mark`))[0];
+    if (!p10) console.log("P10 meal orders: skipped, food_meal_orders is missing (migration 0022)");
+    else console.log(
+      `P10 meal orders: ${p10.clients} clients hold one, food_meal_orders ${p10.rows} rows (${p10.differ} differing, ${p10.no_row} clients with an order and no row, ${p10.orphans} rows of no client); the pg boot ${p10.orders_mark ? "reconciles client by client (this build's pg mode before: the stamps decide each differing one, a client with no row keeps its own, rows of no client go)" : "makes the table from the clients"}`
+    );
     if (withUnique) {
       try {
         await db.transaction(async (tx) => {

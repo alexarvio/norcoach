@@ -56,6 +56,8 @@ type State = {
   errors: number[];
   pausedUntil: number;
   said: Set<string>;
+  /** FOOD_STORE=pg: the meal orders' mirror checked on each fetch that read them (noteFoodOrders). */
+  orders?: { reads: number; compared: number; drifted: number; raced: number };
 };
 const g = globalThis as unknown as { __norcoachFoodShadow?: State };
 const state = (): State =>
@@ -89,6 +91,21 @@ export function noteFoodMissed(path: FoodPath, message: string) {
     const s = state();
     s.missed[path] = (s.missed[path] ?? 0) + 1;
     say(`miss:${message}`, message);
+  });
+}
+/**
+ * FOOD_STORE=pg: a fetch's meal orders (read from food_meal_orders in its snapshot) against their mirror on the client
+ * rows in memory (rows.ts checkMirror), whatever FOOD_SHADOW says: no SQL, counts alone. A drift is said once a path.
+ */
+export function noteFoodOrders(path: FoodReadPath, n: { compared: number; drifted: number; raced: number }) {
+  quietly(() => {
+    const s = state();
+    const o = (s.orders ??= { reads: 0, compared: 0, drifted: 0, raced: 0 });
+    o.reads++;
+    o.compared += n.compared;
+    o.drifted += n.drifted;
+    o.raced += n.raced;
+    if (n.drifted) say(`drift:${path}`, `${path}: ${n.drifted} meal order(s) in memory differ from food_meal_orders (the mirror a rollback reads)`);
   });
 }
 export function noteFoodWrite(path: FoodWritePath) {
@@ -167,6 +184,11 @@ export type FoodShadowFetch = {
   /** The scope's clients: only their committed rows are looked at, unless `anyClient` (photos by file, any client). */
   clients: readonly number[];
   anyClient: (table: FoodTable) => boolean;
+  /**
+   * The scope's meal orders (a fetch with the meal lists): `sqlRows` the clients table's (what a pg boot seeds
+   * food_meal_orders from), `committedRows` what the last save committed of the clients, both `{ client_id, meal_order }`.
+   */
+  orders?: { sqlRows: (q: (query: SQL) => Promise<Row[]>) => Promise<Row[]>; committedRows: (committed: ReadonlyMap<string, string>) => Row[] };
 };
 
 /**
@@ -220,8 +242,11 @@ async function readJob(f: FoodShadowFetch, key: string, again = false): Promise<
   const gen = s.writer!.generation;
   const t0 = performance.now();
   let got: Record<string, Row[]>;
+  let orders: Row[] | null = null;
   try {
-    got = await f.sqlRows(async (query) => ((await s.db!.execute(query)) as { rows?: Row[] }).rows ?? []);
+    const run = async (query: SQL) => ((await s.db!.execute(query)) as { rows?: Row[] }).rows ?? [];
+    got = await f.sqlRows(run);
+    if (f.orders) orders = await f.orders.sqlRows(run);
   } catch (error) {
     c.errored++;
     errored();
@@ -259,6 +284,16 @@ async function readJob(f: FoodShadowFetch, key: string, again = false): Promise<
       }
       differs.push(`${t}: missing ${want.filter((r) => !hids.has(r.id)).length}, extra ${have.filter((r) => !ids.has(r.id)).length}, changed ${changed.length}${changed.length ? ` [${changed.slice(0, 5).join(" ")}]` : ""}`);
     }
+  }
+  // The meal orders: the client ids that differ, never an order.
+  if (f.orders && orders) {
+    const committed = s.writer!.committed("clients");
+    const want = committed ? f.orders.committedRows(committed) : [];
+    const key = (list: Row[]) => new Map(list.map((r) => [Number(r.client_id), stableJson(r.meal_order)] as const));
+    const w = key(want);
+    const h = key(orders);
+    const off = [...new Set([...w.keys(), ...h.keys()])].filter((id) => w.get(id) !== h.get(id)).sort((a, b) => a - b);
+    if (off.length) differs.push(`meal orders: ${off.length} client(s) differ [${off.slice(0, 5).join(" ")}]`);
   }
   // The SQL, the decode and the compare: the whole of a sample's cost, main thread included.
   const ms = performance.now() - t0;
@@ -335,6 +370,7 @@ export function foodShadowReport(extra: Record<string, unknown> = {}) {
     week: WEEK,
     paths: Object.fromEntries([...FOOD_READ_PATHS, ...FOOD_WRITE_PATHS].map((p) => [p, { seen: s.seen[p] ?? 0, missed: s.missed[p] ?? 0, writes: s.writes[p] ?? 0 }])),
     queries: s.queries,
+    orders: s.orders ?? null,
     queue: s.queue.length,
     pausedUntil: s.pausedUntil ? new Date(s.pausedUntil).toISOString() : null,
     total: total

@@ -24,7 +24,7 @@ import { freshBox, outbox, startDrainer } from "../notes/outbox";
 import { setNotesStrays } from "../notes/rows";
 import { startNotesShadow } from "../notes/shadow";
 import { FOOD_PG, FOOD_STORE_ASKED } from "../food/mode";
-import { checkFoodJson, foodBootMemory, foodBootPg, foodMaxIds, foodProblems, importFood, kvHoldsFoodMark, markFoodPg } from "../food/boot";
+import { checkFoodJson, foodBootMemory, foodBootPg, foodBootPgStore, foodMaxIds, foodProblems, importFood, kvHoldsFoodMark } from "../food/boot";
 import { startFoodPg } from "../food/pg";
 import { startFoodShadow } from "../food/shadow";
 
@@ -237,8 +237,9 @@ async function start() {
     writer.prime(loaded, moved);
     // A memory boot of this build: the notes' unique rule dropped, an outbox left by a pg instance applied (quest 7).
     if (!NOTES_PG) notesChanged = await notesBootMemory(db, raw);
-    // The food diary the same (quest 8 part 1): a memory boot drops the unique rule and the pg boot's mark; a pg boot sets it.
-    foodChanged = FOOD_PG ? markFoodPg(raw) : await foodBootMemory(db, raw);
+    // The food diary the same (quest 8 part 1): a memory boot drops the unique rule and the pg boot's mark (the meal
+    // orders put back on the clients first); a pg boot sets it (food_meal_orders and the clients' orders agreed first).
+    foodChanged = FOOD_PG ? await foodBootPgStore(db, raw, { fresh: false }) : await foodBootMemory(db, raw);
     const stale = await derivedStale(db, raw as Row);
     for (const [name, keys] of stale) {
       log(`${name}: ${keys.size} row${keys.size === 1 ? "" : "s"} with an instant column to write again`);
@@ -270,7 +271,7 @@ async function start() {
     if (FOOD_PG) {
       await importFood(db, raw);
       await foodBootPg(db);
-      foodChanged = markFoodPg(raw);
+      foodChanged = await foodBootPgStore(db, raw, { fresh: true });
     } else checkFoodJson(raw);
   }
   // The chat's own boot checks (CHAT_STORE=pg): its stamps' instants put right, its strays, its highest id.
