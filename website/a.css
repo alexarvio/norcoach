@@ -688,19 +688,12 @@ html:not(.js) .tt { position: static; opacity: 1; visibility: visible; grid-area
 .sub strong, .lede strong, .tt-line strong { font-weight: 600; color: #fff; }
 .qa p strong { font-weight: 600; color: var(--ink); }
 
-/* No AI's cards on a phone (21 Nov, Alex: "they appear one at a time… I have to scroll through each one"): one row to
-   swipe sideways, each card most of the screen wide with the next one peeking in, so the section is one screen tall. */
+/* No AI's cards on a phone (21 Nov, Alex: "can we not have them all at the same time", then A of docs/boards/noai-mobile-mockup.html):
+   both columns as on the laptop, every card drawn at half size, so all five are on one screen together. */
 @media (max-width: 620px) {
-  .seen {
-    display: flex; align-items: flex-start; gap: 12px; overflow-x: auto; overscroll-behavior-x: contain;
-    scroll-snap-type: x mandatory; scroll-padding-inline: var(--gutter);
-    margin-inline: calc(-1 * var(--gutter)); padding: 4px var(--gutter) 8px;
-    scrollbar-width: none; -webkit-overflow-scrolling: touch;
-  }
-  .seen::-webkit-scrollbar { display: none; }
-  .seen-col { display: contents; }
-  .seen .cardz { flex: 0 0 84%; scroll-snap-align: start; }
-  /* Side by side the cards come in together, not one by one as each scrolls into view. */
+  .seen { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  .seen-col { gap: 8px; }
+  .seen .cardz { zoom: .5; }
   html.js .seen .cardz.reveal { transition-delay: 0s; }
 }
 
