@@ -1533,7 +1533,7 @@ export default async function ClientPage({
 
   const tabs: AppTab[] = [
     // Draws its own light banner (name and main goal); the top bar floats over it.
-    { id: "home", label: "Home", icon: <HomeIcon />, bare: true, content: <HomeTab CLIENT_ID={CLIENT_ID} chat={chatThread} foodRows={foodRows} ck={ck} notes={notes} phoneTz={phoneTz} photos={homePhotos}food={{ eaten: foodDiary.eaten.kcal, target: foodDiary.target?.kcal ?? null, mealsLogged: foodDiary.meals.filter((m) => m.entries.length > 0).length, mealsTotal: foodDiary.meals.length }} /> },
+    { id: "home", label: "Home", icon: <HomeIcon />, bare: true, darkBanner: true, content: <HomeTab CLIENT_ID={CLIENT_ID} chat={chatThread} foodRows={foodRows} ck={ck} notes={notes} phoneTz={phoneTz} photos={homePhotos}food={{ eaten: foodDiary.eaten.kcal, target: foodDiary.target?.kcal ?? null, mealsLogged: foodDiary.meals.filter((m) => m.entries.length > 0).length, mealsTotal: foodDiary.meals.length }} /> },
     {
       id: "training",
       label: "Training",
