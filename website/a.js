@@ -8,6 +8,15 @@
   window.addEventListener('scroll', onScroll, { passive: true });
   onScroll();
 
+  /* The FAQ: a question opens its answer, and shuts it again (21 Nov, Alex). */
+  document.querySelectorAll('.qq').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var open = b.getAttribute('aria-expanded') !== 'true';
+      b.setAttribute('aria-expanded', String(open));
+      b.closest('.qi').classList.toggle('open', open);
+    });
+  });
+
   /* Each section comes in once, as it scrolls into view. */
   var reveals = document.querySelectorAll('.reveal');
   if ('IntersectionObserver' in window && !reduce.matches) {
