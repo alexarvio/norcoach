@@ -59,6 +59,8 @@ import type { LinkView, MessageAbout } from "../lib/messageLinks";
 import { Bars } from "./Bars";
 import NotifPopup, { useLastInStamp, type PopupNote } from "./NotifPopup";
 import VideoReplySheet, { type VideoReplyView } from "./VideoReplySheet";
+import { workoutArrivalAction } from "../lib/liveSessionActions";
+import { listenWorkoutArrive } from "../lib/workoutArrive";
 
 /** The app locked until the coach's first phase goes live, or they open it (19 Nov, Alex: B of
     docs/boards/locked-app-mockup.html; lib/appLock.ts). */
@@ -571,6 +573,26 @@ export default function AppShell({
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arriving
   }, []);
+  // The lock-screen pill tapped while the app is open (21 Nov, Alex: "pressing on the pill… makes the whole app refresh"):
+  // NativeLinks sends its ?workout= here instead of loading the page again, and the workout opens in place as the page's
+  // arrival does (its week and whether it still runs read from the server; with no signal, the week on screen and into it).
+  const goToTabNow = useRef(goToTab);
+  goToTabNow.current = goToTab;
+  const lockedNow = useRef(lockNow);
+  lockedNow.current = lockNow;
+  useEffect(() => {
+    if (readOnly) return;
+    return listenWorkoutArrive((d) => {
+      if (lockedNow.current) return;
+      const open = (week: number | null, live: boolean) =>
+        goToTabNow.current("training", d.workout, { week, exercise: null, resume: live, ...(live && d.finish ? { finish: true } : {}) });
+      workoutArrivalAction(clientId, d.workout)
+        .then((r) => {
+          if (r) open(r.week, r.live);
+        })
+        .catch(() => open(null, true));
+    });
+  }, [readOnly, clientId]);
   // What a tap on a notification opens, as the bell list does: its exact thing, else its screen.
   function openNote(n: { category: NotificationCategory; actionTab: string | null; actionRef: number | null; link: LinkView | null; videoReply?: VideoReplyView | null }) {
     const { category, actionTab, actionRef, link } = n;
