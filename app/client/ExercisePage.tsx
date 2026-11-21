@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type React from "react";
-import { useOffline } from "next/offline";
+import { useSteadyOffline } from "./workout/useSteadyOffline";
 import { enqueueWorkout, useWorkoutOutbox, forgetRefused } from "../components/workoutOutbox";
 import { displayToKg, fmtWeight, kgToDisplay, planToDisplay, stepFor, unitLabel as labelOf, type Unit } from "../lib/units";
 import SwapExerciseDialog from "./workout/SwapExerciseDialog";
@@ -294,7 +294,7 @@ export default function ExercisePage({
   };
   // A set still on its way: "Saving" a moment, then "Not sent yet" in grey once it has waited 3s or the phone is
   // offline; "Saved" once the server has answered.
-  const offline = useOffline();
+  const offline = useSteadyOffline();
   const waitingSince = (n: number) => {
     const slot = `set:${exercise.id}:${n}`;
     for (let i = waiting.length - 1; i >= 0; i--) if (waiting[i].slot === slot) return Date.parse(waiting[i].at);

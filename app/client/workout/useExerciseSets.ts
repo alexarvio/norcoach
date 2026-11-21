@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useOffline } from "next/offline";
+import { useSteadyOffline } from "./useSteadyOffline";
 import { enqueueWorkout, forgetRefused, useWorkoutOutbox } from "../../components/workoutOutbox";
 import { displayToKg, fmtWeight, kgToDisplay, unitLabel, type Unit } from "../../lib/units";
 import { isAssisted } from "../../lib/progressRules";
@@ -256,7 +256,7 @@ export function useExerciseSets(exercise: SessionExercise, { gymId, session, fre
   // ---- The outbox (ExercisePage.tsx :248-311): what waits, what the server refused.
   const { entries: waiting, overlay, refused: refusedSlots } = useWorkoutOutbox();
   const refusedOf = (n: number): string | null => refusedSlots[`set:${exercise.id}:${n}`] ?? null;
-  const offline = useOffline();
+  const offline = useSteadyOffline();
   const waitingSince = (n: number) => {
     const slot = `set:${exercise.id}:${n}`;
     for (let i = waiting.length - 1; i >= 0; i--) if (waiting[i].slot === slot) return Date.parse(waiting[i].at);
