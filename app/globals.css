@@ -22210,3 +22210,31 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
    (translateX), so the trailing .16em is matched on its left rather than cancelled by a margin. */
 .app-header.dark .app-header-brand.brand-name { max-width: calc(100% - 128px); font-family: var(--font-archivo), "Archivo", sans-serif; font-size: 14px; font-weight: 600; letter-spacing: 0.16em; line-height: 1.2; padding-left: 0.16em; }
 .app-menu-head .app-menu-brand.brand-name { font-family: var(--font-archivo), "Archivo", sans-serif; font-size: 14px; font-weight: 600; letter-spacing: 0.16em; color: #141a24; }
+
+/* Home under the dark arc (21 Nov, Alex: A of docs/boards/home-dark-arc-mockup.html): the top bar and the greeting on the
+   website's dark (#1c1c1e, as the apply page and the sign-up), the logo's star in it, white and very faint, at the spot it
+   always had; the paper rises over the dark's foot with 28px round top corners and holds the rest of Home from Today
+   down, plain, with no star of its own. The star is the dark's own, so it scrolls away with it (21 Nov, Alex: "if I scroll
+   down I don't see it anymore"). The top bar is white over it (the tab's darkBanner) and the clock with it. */
+.app-content.app-content:has(> .hm) { background: #F5F5F5; }
+.hm > .hm-banner:not(.st-banner) { overflow: hidden; padding-bottom: 54px; background: #1c1c1e; color: #fff; }
+.hm > .hm-banner:not(.st-banner)::before {
+  content: ""; position: absolute; inset: 0; z-index: 0; width: auto; height: auto; border: 0; border-radius: 0; pointer-events: none; background: #fff; opacity: 0.05;
+  -webkit-mask: var(--bg-mark, url("/brand/mark.svg")) right -120px top var(--mark-y, 6px) / 448px 430px no-repeat;
+  mask: var(--bg-mark, url("/brand/mark.svg")) right -120px top var(--mark-y, 6px) / 448px 430px no-repeat;
+}
+.hm > .hm-banner:not(.st-banner)::after {
+  content: ""; position: absolute; top: auto; left: 0; right: 0; bottom: 0; z-index: 1; width: auto; height: 28px; border: 0; border-radius: 28px 28px 0 0; background: #F5F5F5; -webkit-mask: none; mask: none; pointer-events: none;
+}
+.hm > .hm-banner:not(.st-banner) .hm-greeting { color: #fff; }
+.hm > .hm-banner:not(.st-banner) .hm-date { color: var(--site-bg-muted, #8e8e93); }
+
+/* Training's banner as Nutrition's (21 Nov, Alex: "the chunk of the background picture… occupies a certain amount of
+   space… if I go to nutrition, that expands quite a bit"; Training's was 260px with its picture fitted to that, Nutrition's
+   298px with the picture laid in a 420px box from the top): the top bar and 231px, the picture in the same 420px box, so
+   going from one tab to the other the picture is the same size and nothing jumps. The extra room goes above the week
+   strip, which stays at the foot, as Nutrition's Training day | Rest day does. */
+.tr .tr-banner:not(.ci-banner) { box-sizing: border-box; height: calc(var(--topbar-h, 67px) + 231px); display: flex; flex-direction: column; background-size: auto 420px; background-position: center top; }
+.tr .tr-banner:not(.ci-banner) > :not(.tr-banner-pic) { flex-shrink: 0; }
+.tr .tr-banner:not(.ci-banner) > .tr-weeks { margin-top: auto; }
+.tr .tr-banner.tr-banner:not(.ci-banner) > .tr-banner-pic { bottom: auto; height: 420px; }

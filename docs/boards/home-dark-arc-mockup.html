@@ -1,0 +1,199 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Home under the dark arc</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600&display=swap">
+<!-- 21 Nov, Alex: "mock this style for the home page of the app. With this dark arc" (the apply page on a phone:
+     the website's dark head, the paper rising over it with rounded top corners). Three ways to split Home between them. -->
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#121214;font-family:Archivo,system-ui,sans-serif;font-weight:500;-webkit-font-smoothing:antialiased;color:#c7c7cc}
+.board{max-width:1320px;margin:0 auto;padding:40px 20px 80px}
+.board h1{color:#fff;font-size:26px;font-weight:600}
+.board>p{margin-top:8px;max-width:52em;line-height:1.6;font-size:14.5px}
+.opts{margin-top:30px;display:grid;grid-template-columns:repeat(auto-fit,minmax(390px,1fr));gap:30px;align-items:start}
+.opt-t{display:flex;gap:10px;align-items:center;color:#fff;font-size:16px;font-weight:600}
+.ring{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;box-shadow:inset 0 0 0 1.5px #fff;font-size:13px}
+.opt-n{min-height:62px;margin:6px 0 16px;font-size:13.5px;line-height:1.5;max-width:30em}
+
+/* The phone */
+.phone{position:relative;width:375px;height:812px;border-radius:46px;overflow:hidden;box-shadow:0 0 0 10px #2a2a2e;background:#F5F5F5;color:#141a24}
+.dark{position:relative;background:#1c1c1e;color:#fff;overflow:hidden}
+.dark::before{content:"";position:absolute;right:-150px;top:-120px;width:460px;height:440px;background:url("../../website/img/mark.svg") no-repeat center/contain;filter:invert(1);opacity:.05;pointer-events:none}
+.paper{position:relative;background:#F5F5F5;border-radius:28px 28px 0 0;margin-top:-28px;padding-top:6px;z-index:1}
+.sb{position:relative;display:flex;align-items:center;justify-content:space-between;height:50px;padding:14px 30px 0 34px;font-size:15.5px;font-weight:600}
+.island{position:absolute;left:50%;top:11px;width:120px;height:34px;margin-left:-60px;border-radius:20px;background:#000}
+.sb-r{display:flex;gap:6px;align-items:center}
+.ab{position:relative;display:flex;align-items:center;justify-content:space-between;height:48px;padding:0 20px}
+.ab .word{width:96px;height:17px}
+.ico{width:21px;height:21px}
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:.17em;text-transform:uppercase}
+.hello{padding:12px 24px 0}
+.hello .eyebrow{color:#8e8e93}
+.hello h2{margin-top:8px;font-size:27px;font-weight:600;letter-spacing:-.02em;line-height:1.15}
+.sec{padding:18px 24px 0}
+.sec>.eyebrow{color:#141a24}
+.dark .sec>.eyebrow{color:#fff}
+
+/* Today's row */
+.td{display:grid;grid-template-columns:34px minmax(0,1fr) 84px;align-items:center;gap:6px;height:64px;margin-top:6px}
+.td svg{width:22px;height:22px;color:#a08a5c}
+.td b{display:block;font-size:17px;font-weight:500}
+.td small{display:block;margin-top:3px;font-size:13px;color:#8b93a1}
+.pill{display:grid;place-items:center;height:38px;border-radius:999px;font-size:14px;font-weight:600;background:#fff;box-shadow:inset 0 0 0 1px #E1E5EB;color:#141a24}
+.pill.ink{background:#141a24;color:#fff;box-shadow:none}
+.dark .td small{color:#8e8e93}
+.dark .pill{background:rgba(255,255,255,.08);box-shadow:inset 0 0 0 1px rgba(255,255,255,.22);color:#fff}
+.dark .pill.ink{background:#fff;color:#141a24;box-shadow:none}
+.dark .td svg.tr{color:#a9a3f0}
+
+/* The phase cards */
+.strip{position:relative;height:330px;margin-top:14px}
+.pcard{position:absolute;top:0;width:300px;height:330px;border-radius:26px;overflow:hidden;background:#2a3140}
+.pcard img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.pcard .shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.08) 30%,rgba(0,0,0,.45))}
+.chip{position:absolute;top:14px;display:flex;align-items:center;gap:7px;height:28px;padding:0 12px;border-radius:999px;background:rgba(30,32,38,.42);box-shadow:inset 0 0 0 1px rgba(255,255,255,.25);color:#fff;font-size:11px;font-weight:600;letter-spacing:.16em;backdrop-filter:blur(8px)}
+.chip.plain{letter-spacing:0;font-size:12.5px}
+.glass{position:absolute;left:12px;right:12px;bottom:12px;padding:16px 16px 14px;border-radius:20px;background:rgba(48,50,56,.58);box-shadow:inset 0 0 0 1px rgba(255,255,255,.18);backdrop-filter:blur(14px);color:#fff}
+.g-top{display:flex;justify-content:space-between;align-items:baseline}
+.g-top b{font-size:19px;font-weight:600;letter-spacing:-.01em}
+.g-top span{font-size:12.5px;font-weight:600}
+.g-bar{margin-top:10px;height:3px;border-radius:2px;background:rgba(255,255,255,.28)}
+.g-bar i{display:block;height:100%;width:57%;border-radius:2px;background:#fff}
+.g-dates{display:flex;justify-content:space-between;margin-top:7px;font-size:11.5px;font-weight:600}
+.g-foot{display:flex;justify-content:space-between;align-items:center;margin-top:11px;padding-top:11px;border-top:1px solid rgba(255,255,255,.2)}
+.g-foot small{display:block;font-size:10px;font-weight:600;letter-spacing:.16em;opacity:.85}
+.g-foot b{display:block;margin-top:3px;font-size:16px;font-weight:600}
+.g-start{display:grid;place-items:center;height:38px;padding:0 18px;border-radius:14px;background:rgba(255,255,255,.18);font-size:15px;font-weight:600}
+.dots{display:flex;justify-content:center;gap:6px;margin-top:14px}
+.dots i{width:5px;height:5px;border-radius:3px;background:#C9CFD8}
+.dots i.on{width:18px;background:#141a24}
+.dark .dots i{background:rgba(255,255,255,.3)} .dark .dots i.on{background:#fff}
+
+/* Latest from */
+.latest{display:grid;grid-template-columns:36px minmax(0,1fr);gap:12px;margin-top:12px}
+.face{position:relative;width:36px;height:36px;border-radius:50%;background:#e9ecf1 url("../../website/img/avatars/finlay.svg") center/cover}
+.face i{position:absolute;right:-3px;bottom:-3px;display:grid;place-items:center;width:16px;height:16px;border-radius:50%;background:#3a3390;box-shadow:0 0 0 2px #F5F5F5}
+.face i svg{width:8px;height:8px;color:#fff}
+.l-head{display:flex;justify-content:space-between;font-size:10.5px;font-weight:600;letter-spacing:.16em;color:#3a3390}
+.l-head span{letter-spacing:0;font-size:12px;font-weight:500;color:#8b93a1}
+.latest b{display:block;margin-top:4px;font-size:15px;font-weight:600;line-height:1.35}
+.latest p{margin-top:3px;font-size:14px;line-height:1.4;color:#8b93a1}
+
+/* The tab bar */
+.tabs{position:absolute;left:14px;right:14px;bottom:22px;z-index:3;display:grid;grid-template-columns:repeat(4,1fr);height:62px;border-radius:31px;background:rgba(255,255,255,.88);box-shadow:inset 0 0 0 1px #E1E5EB;backdrop-filter:blur(12px)}
+.tabs span{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;font-weight:600;color:#98A2B3}
+.tabs span.on{color:#141a24}
+.tabs svg{width:20px;height:20px}
+.homebar{position:absolute;left:50%;bottom:7px;z-index:4;width:130px;height:5px;margin-left:-65px;border-radius:3px;background:#141a24}
+
+/* C: the cards ride the edge, the paper's arc behind their middle */
+.c .dark{padding-bottom:190px}
+.c .strip.over{position:relative;z-index:2;margin-top:-176px}
+.c .paper{margin-top:-150px;padding-top:150px}
+</style></head><body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="word" viewBox="0 0 2000 352"><path fill="currentColor" fill-rule="evenodd" d="M 0.2 176.2 L 0.5 351.5 26 351.5 L 51.5 351.5 51.7 253.5 L 52.0 155.5 51.0 147.0 C 50.4 142.4, 50.1 138.5, 50.3 138.3 C 50.6 138.0, 56.0 152.0, 82.6 222 C 89.4 239.8, 98.8 264.4, 103.4 276.5 C 108.0 288.6, 116.1 309.9, 121.5 324 C 126.8 338.0, 131.7 350.0, 132.2 350.7 L 133.2 352.0 155.3 351.7 L 177.5 351.5 177.7 176.2 L 178.0 1 152.5 1 L 127 1 127.0 99.7 L 127.0 198.5 127.9 204.4 C 128.5 207.7, 128.7 210.5, 128.5 210.7 C 128.1 211.1, 128.0 210.9, 80.3 88 C 75.1 74.5, 66.8 53.3, 62.0 41 C 57.2 28.6, 51.7 14.5, 49.9 9.7 L 46.7 1 23.3 1 L -0.0 1 0.2 176.2 M 284.3 2.8 C 281.4 3.8, 277.5 5.8, 275.6 7.3 L 272.1 9.9 269.3 15.7 L 266.5 21.5 266.1 173.5 L 265.8 325.5 266.9 330.6 C 268.9 339.9, 274.5 346.1, 284.2 349.8 L 288.5 351.5 350 351.8 L 411.5 352.1 417.8 350.9 C 429.9 348.9, 436.7 343.8, 440.7 333.9 L 442.5 329.5 442.7 180.5 L 443.0 31.5 441.9 25.1 C 440.0 13.9, 435.7 8.0, 426.5 3.8 L 421.5 1.5 355.5 1.2 L 289.5 1.0 284.3 2.8 M 530.2 176.2 L 530.5 351.5 556.5 351.5 L 582.5 351.5 582.7 198.7 L 583.0 45.9 615.7 46.2 L 648.5 46.5 648.5 101.5 L 648.5 156.5 622.7 156.7 L 597 157.0 597 172.5 L 597 188.0 605.0 210.7 C 609.4 223.2, 615.7 240.9, 618.9 250 C 630.9 283.2, 645.3 323.8, 649.6 336.4 C 652.1 343.6, 654.6 350.0, 655.2 350.7 L 656.2 352 682.4 352 C 696.8 352, 708.9 351.7, 709.2 351.3 C 709.6 351.0, 708.5 347.1, 706.8 342.6 C 696.8 315.6, 653 194.7, 653 194.1 C 653 193.6, 658.2 193.0, 664.7 192.6 C 671.2 192.3, 678.8 191.4, 681.7 190.6 C 691.4 188.1, 697.1 182.4, 699.6 172.7 L 701 167.5 701 96.4 L 701 25.3 699.5 20.3 C 698.6 17.5, 696.6 13.5, 695.0 11.2 L 692.1 7.2 686.3 4.3 L 680.5 1.5 605.2 1.2 L 529.9 0.9 530.2 176.2 M 806.3 2.8 C 803.5 3.8, 800.0 5.3, 798.6 6.3 C 794.4 9.0, 790.2 15.6, 788.9 21.3 L 787.8 26.5 788.1 179 L 788.5 331.5 791.3 337.2 C 794.4 343.5, 798.2 346.9, 805.0 349.7 L 809.5 351.5 873 351.5 L 936.5 351.5 941.9 349.6 L 947.3 347.7 951.9 343.1 L 956.5 338.4 958.2 332.4 L 960 326.3 960 279.6 L 960 233 934 233 L 908 233 908 269.5 L 908 306 873.9 306 L 839.9 306 840.2 176.2 L 840.5 46.5 874 46.5 L 907.5 46.5 907.7 80.7 L 908.0 115 934.0 115 L 960.0 115 959.7 68.2 L 959.5 21.5 956.6 15.7 L 953.8 9.9 949.5 7.0 C 947.1 5.3, 942.5 3.3, 939.3 2.5 L 933.5 1 872.5 1.0 L 811.5 1.0 806.3 2.8 M 1065.3 2.8 C 1062.4 3.8, 1058.5 5.8, 1056.6 7.3 L 1053.1 9.9 1050.3 15.7 L 1047.5 21.5 1047.5 176.5 L 1047.5 331.5 1049.2 335.2 C 1051.6 340.3, 1056.6 345.7, 1060.9 347.9 C 1062.9 348.9, 1067.2 350.3, 1070.4 350.9 L 1076.3 352 1135.4 351.9 L 1194.5 351.9 1201.4 350.4 C 1209.8 348.7, 1215.1 345.3, 1218.9 339.3 L 1221.8 334.8 1222.9 328.1 L 1224.1 321.5 1223.8 172 L 1223.5 22.5 1221.1 17.3 C 1218.3 11.0, 1214.0 6.8, 1207.5 3.8 L 1202.5 1.5 1136.5 1.2 L 1070.5 1.0 1065.3 2.8 M 1366.5 1.2 C 1366.2 1.9, 1362.4 21.4, 1358.0 44.5 C 1353.5 67.6, 1346.3 104.7, 1341.9 127 C 1337.6 149.2, 1332.0 178.0, 1329.6 191 C 1327.1 203.9, 1321.7 231.8, 1317.6 253 C 1305.0 317.5, 1299 349.0, 1299 350.5 L 1299 352.0 1324.7 351.7 L 1350.5 351.5 1352.1 342 C 1352.9 336.7, 1355.4 321.8, 1357.4 308.7 L 1361.2 285 1394.1 285 L 1427 285 1427 286.2 C 1427 289.3, 1436.2 347.7, 1437.0 349.7 L 1437.9 352 1462.9 352 L 1487.8 352 1488.4 351.0 C 1488.7 350.5, 1485.6 332.4, 1481.4 310.8 C 1477.3 289.1, 1469.4 248.1, 1463.9 219.5 C 1458.4 190.9, 1449.4 144.3, 1444.0 116 C 1438.5 87.6, 1431.5 51, 1428.4 34.5 C 1425.2 18, 1422.3 3.4, 1421.8 2.2 L 1421.0 0 1393.9 0 L 1366.9 0 1366.5 1.2 M 1583.8 2.3 C 1575.0 4.7, 1569.0 10.4, 1565.9 19.5 L 1564.5 23.5 1564.5 177 L 1564.5 330.5 1567.5 336.5 L 1570.5 342.5 1574.7 345.7 C 1577.1 347.4, 1580.7 349.4, 1582.7 350.1 L 1586.5 351.4 1646 351.7 L 1705.5 352.0 1712 350.9 C 1715.5 350.3, 1720.7 348.6, 1723.5 347.1 L 1728.5 344.4 1731.5 339.8 L 1734.6 335.2 1735.8 329.4 L 1737 323.6 1737 278.3 L 1737 233 1710.5 233 L 1684 233 1684 269.5 L 1684 306 1650.5 306 L 1617 306 1617 176 L 1617 46 1650.5 46 L 1684 46 1684 80.5 L 1684 115 1710.5 115 L 1737.1 115 1736.8 68.7 L 1736.5 22.5 1734.1 17.3 C 1731.3 11.0, 1727.0 6.8, 1720.5 3.8 L 1715.5 1.5 1652 1.3 L 1588.5 1.1 1583.8 2.3 M 1824 176.5 L 1824 352 1849.9 352 L 1875.9 352 1876.2 273.2 L 1876.5 194.5 1911.5 194.5 L 1946.5 194.5 1947 273 L 1947.5 351.5 1973.7 351.7 L 2000 352.0 2000 176.5 L 2000 1 1973.5 1 L 1947 1 1947 73 L 1947 145 1911.5 145 L 1876 145 1876 73 L 1876 1 1850 1 L 1824 1 1824 176.5 M 319 176 L 319 306 354.5 306 L 390 306 390 176 L 390 46 354.5 46 L 319 46 319 176 M 1100 176 L 1100 306 1135.5 306 L 1171 306 1171 176 L 1171 46 1135.5 46 L 1100 46 1100 176 M 1392.6 89.5 C 1392.3 91.7, 1387.2 122.5, 1381.5 158 C 1375.7 193.4, 1370.3 226.2, 1369.6 230.7 C 1368.9 235.2, 1368.5 239.2, 1368.8 239.4 C 1369.1 239.7, 1380.5 240, 1394.2 240 L 1419.1 240 1418.5 237.2 C 1418.2 235.7, 1415.9 221.4, 1413.5 205.5 C 1404.8 150.0, 1394.8 89.4, 1394.0 87.5 L 1393.2 85.5 1392.6 89.5"/></symbol>
+  <symbol id="sb" viewBox="0 0 70 13"><g fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/><circle cx="31" cy="10.5" r="1.5"/><rect x="43.5" y="2.4" width="19.2" height="8.2" rx="2.2"/></g><g fill="none" stroke="currentColor" stroke-linecap="round"><path stroke-width="1.9" d="M24.2 4.2a10 10 0 0 1 13.6 0M26.8 7a6.2 6.2 0 0 1 8.4 0"/><rect x="41.7" y=".7" width="22.6" height="11.6" rx="3.6" stroke-opacity=".45" stroke-width="1.2"/></g></symbol>
+  <symbol id="burger" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M4 6.5h16M4 12h16M4 17.5h16"/></symbol>
+  <symbol id="bell" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M6 17V11a6 6 0 0 1 12 0v6l1.5 2h-15zM10 21h4"/></symbol>
+  <symbol id="heart" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M12 20s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7.4 4.3 4.3 0 0 1 19.5 10c0 5.4-7.5 10-7.5 10z"/></symbol>
+  <symbol id="dumbbell" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12"/></symbol>
+  <symbol id="home" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M4 10.5L12 4l8 6.5V20h-5v-6h-6v6H4z"/></symbol>
+  <symbol id="apple" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 7.5c-2-1.6-6.5-1.2-6.5 4.2 0 4 2.6 8.3 4.4 8.3 1 0 1.3-.5 2.1-.5s1.1.5 2.1.5c1.8 0 4.4-4.3 4.4-8.3 0-5.4-4.5-5.8-6.5-4.2zM12 7.5c0-2 1-3.5 2.8-4"/></symbol>
+  <symbol id="chat" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 5h16v11H9l-5 4z"/></symbol>
+</defs></svg>
+
+<div class="board">
+  <h1>Home under the dark arc</h1>
+  <p>The apply page's phone look carried into the app: the website's dark head, its faint star, and the paper rising over it with rounded corners. Today's 24 Oct rule says Home's top is paper, so whichever is picked replaces that rule.</p>
+  <div class="opts">
+
+  <!-- A: the greeting on the dark -->
+  <div>
+    <p class="opt-t"><span class="ring">A</span>The greeting on the dark</p>
+    <p class="opt-n">The head holds the bar and the greeting, as the apply page holds its title. The paper starts at Today; everything under it stays as it is now.</p>
+    <div class="phone">
+      <div class="dark">
+        <div class="sb"><b>9:41</b><i class="island"></i><svg width="70" height="13"><use href="#sb"/></svg></div>
+        <div class="ab"><svg class="ico"><use href="#burger"/></svg><svg class="word"><use href="#word"/></svg><svg class="ico"><use href="#bell"/></svg></div>
+        <div class="hello" style="padding-bottom:52px"><p class="eyebrow">Wednesday 28 October</p><h2>Good morning, Emma.</h2></div>
+      </div>
+      <div class="paper">
+        <div class="sec"><p class="eyebrow">Today</p>
+          <div class="td"><svg><use href="#heart"/></svg><div><b>Check-in</b><small>2 of 4 still to fill</small></div><span class="pill">Fill in</span></div>
+        </div>
+        <div class="strip">
+          <div class="pcard" style="left:-282px"><img src="../../public/img/lifestyle-shore.jpg"><i class="shade"></i></div>
+          <div class="pcard" style="left:37px"><img src="../../public/img/training-gym.jpg"><i class="shade"></i>
+            <span class="chip" style="left:12px"><svg width="13" height="13"><use href="#dumbbell"/></svg>TRAINING</span><span class="chip plain" style="right:12px">Week 4</span>
+            <div class="glass"><div class="g-top"><b>Upper strength</b><span>2 weeks left</span></div><div class="g-bar"><i></i></div><div class="g-dates"><span>5 Oct</span><span>15 Nov</span></div><div class="g-foot"><div><small>UP NEXT</small><b>Upper B</b></div><span class="g-start">Start</span></div></div>
+          </div>
+          <div class="pcard" style="left:353px;background:#2f3a2d"><img src="../../public/img/nutrition-bowl.jpg"></div>
+        </div>
+        <div class="dots"><i></i><i class="on"></i><i></i></div>
+      </div>
+      <div class="tabs"><span class="on"><svg><use href="#home"/></svg>Home</span><span><svg><use href="#dumbbell"/></svg>Training</span><span><svg><use href="#apple"/></svg>Nutrition</span><span><svg><use href="#chat"/></svg>Chat</span></div><i class="homebar"></i>
+    </div>
+  </div>
+
+  <!-- B: today on the dark too -->
+  <div>
+    <p class="opt-t"><span class="ring">B</span>Today on the dark too</p>
+    <p class="opt-n">The head also holds Today, white over the dark, so what today asks is the first thing in it. The paper starts at the phase cards.</p>
+    <div class="phone">
+      <div class="dark">
+        <div class="sb"><b>9:41</b><i class="island"></i><svg width="70" height="13"><use href="#sb"/></svg></div>
+        <div class="ab"><svg class="ico"><use href="#burger"/></svg><svg class="word"><use href="#word"/></svg><svg class="ico"><use href="#bell"/></svg></div>
+        <div class="hello"><p class="eyebrow">Wednesday 28 October</p><h2>Good morning, Emma.</h2></div>
+        <div class="sec" style="padding-bottom:44px"><p class="eyebrow">Today</p>
+          <div class="td"><svg class="tr"><use href="#dumbbell"/></svg><div><b>Upper B</b><small>6 exercises</small></div><span class="pill ink">Start</span></div>
+          <div class="td" style="margin-top:0"><svg><use href="#heart"/></svg><div><b>Check-in</b><small>2 of 4 still to fill</small></div><span class="pill">Fill in</span></div>
+        </div>
+      </div>
+      <div class="paper" style="padding-top:22px">
+        <div class="strip" style="margin-top:0">
+          <div class="pcard" style="left:-282px"><img src="../../public/img/lifestyle-shore.jpg"><i class="shade"></i></div>
+          <div class="pcard" style="left:37px"><img src="../../public/img/training-gym.jpg"><i class="shade"></i>
+            <span class="chip" style="left:12px"><svg width="13" height="13"><use href="#dumbbell"/></svg>TRAINING</span><span class="chip plain" style="right:12px">Week 4</span>
+            <div class="glass"><div class="g-top"><b>Upper strength</b><span>2 weeks left</span></div><div class="g-bar"><i></i></div><div class="g-dates"><span>5 Oct</span><span>15 Nov</span></div><div class="g-foot"><div><small>UP NEXT</small><b>Upper B</b></div><span class="g-start">Start</span></div></div>
+          </div>
+          <div class="pcard" style="left:353px"><img src="../../public/img/nutrition-bowl.jpg"></div>
+        </div>
+        <div class="dots"><i></i><i class="on"></i><i></i></div>
+      </div>
+      <div class="tabs"><span class="on"><svg><use href="#home"/></svg>Home</span><span><svg><use href="#dumbbell"/></svg>Training</span><span><svg><use href="#apple"/></svg>Nutrition</span><span><svg><use href="#chat"/></svg>Chat</span></div><i class="homebar"></i>
+    </div>
+  </div>
+
+  <!-- C: the cards ride the edge -->
+  <div class="c">
+    <p class="opt-t"><span class="ring">C</span>The cards ride the edge</p>
+    <p class="opt-n">The greeting and Today on the dark, and the phase cards sit across the arc: their top on the dark, their foot on the paper, with the coach's latest under them.</p>
+    <div class="phone">
+      <div class="dark">
+        <div class="sb"><b>9:41</b><i class="island"></i><svg width="70" height="13"><use href="#sb"/></svg></div>
+        <div class="ab"><svg class="ico"><use href="#burger"/></svg><svg class="word"><use href="#word"/></svg><svg class="ico"><use href="#bell"/></svg></div>
+        <div class="hello"><p class="eyebrow">Wednesday 28 October</p><h2>Good morning, Emma.</h2></div>
+        <div class="sec"><p class="eyebrow">Today</p>
+          <div class="td"><svg><use href="#heart"/></svg><div><b>Check-in</b><small>2 of 4 still to fill</small></div><span class="pill">Fill in</span></div>
+        </div>
+      </div>
+      <div class="strip over">
+        <div class="pcard" style="left:-282px"><img src="../../public/img/lifestyle-shore.jpg"><i class="shade"></i></div>
+        <div class="pcard" style="left:37px"><img src="../../public/img/training-gym.jpg"><i class="shade"></i>
+          <span class="chip" style="left:12px"><svg width="13" height="13"><use href="#dumbbell"/></svg>TRAINING</span><span class="chip plain" style="right:12px">Week 4</span>
+          <div class="glass"><div class="g-top"><b>Upper strength</b><span>2 weeks left</span></div><div class="g-bar"><i></i></div><div class="g-dates"><span>5 Oct</span><span>15 Nov</span></div><div class="g-foot"><div><small>UP NEXT</small><b>Upper B</b></div><span class="g-start">Start</span></div></div>
+        </div>
+        <div class="pcard" style="left:353px"><img src="../../public/img/nutrition-bowl.jpg"></div>
+      </div>
+      <div class="paper">
+        <div class="dots" style="margin-top:2px"><i></i><i class="on"></i><i></i></div>
+        <div class="sec"><p class="eyebrow">Latest from Finlay</p>
+          <div class="latest"><span class="face"><i><svg viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg></i></span><div><p class="l-head">VIDEO REPLY<span>2h ago</span></p><b>Finlay reviewed your squat</b><p>Hips rise first. Brace before you drop.</p></div></div>
+        </div>
+      </div>
+      <div class="tabs"><span class="on"><svg><use href="#home"/></svg>Home</span><span><svg><use href="#dumbbell"/></svg>Training</span><span><svg><use href="#apple"/></svg>Nutrition</span><span><svg><use href="#chat"/></svg>Chat</span></div><i class="homebar"></i>
+    </div>
+  </div>
+
+  </div>
+</div>
+</body></html>
