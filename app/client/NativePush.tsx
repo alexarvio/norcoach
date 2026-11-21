@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { callNative, nativePlatform, onNative, type NativePlatform } from "../lib/native";
+import { arriveInPlace } from "../lib/workoutArrive";
 
 // Notifications in the phone apps: the @capacitor/push-notifications plugin
 // gives the phone a token (Firebase's on Android, Apple's APNs one on an
@@ -75,7 +76,11 @@ export function NativePush() {
     // (the plugin holds a tap from a closed app until this listens).
     onNative<{ notification?: { data?: { url?: string } } }>("PushNotifications", "pushNotificationActionPerformed", (action) => {
       const url = action.notification?.data?.url;
-      if (url && url.startsWith("/") && !url.startsWith("//")) window.location.assign(url);
+      if (!url || !url.startsWith("/") || url.startsWith("//")) return;
+      // A session still going (its ?workout=), with the app open on /client: opened in place, never a reload (21 Nov,
+      // Alex: the lock-screen pill made "the whole app refresh"; this push goes to the same workout).
+      if (arriveInPlace(new URL(url, window.location.origin))) return;
+      window.location.assign(url);
     });
     // The phone can change its token; each opening checks, and a new one
     // replaces the old on the server.

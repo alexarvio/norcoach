@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { callNative, nativeApp, onNative } from "../lib/native";
+import { arriveInPlace } from "../lib/workoutArrive";
 
 // A link tapped outside the app that the app is allowed to open (13 Nov, Alex: the coach's invite; the paths are in
 // app/.well-known/apple-app-site-association): iOS opens the app and hands it the address, and this takes the app's
@@ -20,6 +21,9 @@ function go(raw: string | undefined) {
   }
   if (url.protocol !== "https:" || url.hostname !== OURS) return;
   const here = window.location;
+  // The lock-screen pill's workout, with the app already open on /client (21 Nov, Alex: "makes the whole app refresh"):
+  // opened in place by the app's shell, never a reload.
+  if (arriveInPlace(url)) return;
   if (here.pathname + here.search === url.pathname + url.search) return;
   here.assign(url.pathname + url.search + url.hash);
 }
