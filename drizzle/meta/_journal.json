@@ -169,6 +169,13 @@
       "when": 1795153312108,
       "tag": "0023_checkins",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795235364841,
+      "tag": "0024_feed_slices",
+      "breakpoints": true
     }
   ]
 }

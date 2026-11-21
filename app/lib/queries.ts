@@ -40,7 +40,7 @@ import { PHASE_OBJECTIVE_CHARS, PHASE_OBJECTIVES_MAX } from "./phaseCovers";
 import { cleanRepeat, openEnd, type EventRepeat } from "./eventRepeat";
 import { deleteUpload, trashFile } from "./storage";
 import { FOOD_PG } from "./food/mode";
-import { deleteClientFood, noFoodRows, setFoodLook, type FoodBox, type FoodRows } from "./food/rows";
+import { deleteClientFood, noFoodRows, setFoodLook, type FoodBox, type FoodRows, type FoodSpan } from "./food/rows";
 import { CHECKINS_PG } from "./checkins/mode";
 import { deleteClientCheckIns, fetchDueCheckIns, removeMetricWithReadings, sweepClientCheckIns, whileNoFigures, writeCheckIns, type CheckInBox, type CheckInRows, type CheckInSpan } from "./checkins/rows";
 import { setsDue } from "./setsDue";
@@ -3440,9 +3440,19 @@ const feedDay = dayMonth;
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const feedValue = (v: number) => String(Math.round(v * 10) / 10);
 
-/** Everything one coach's clients logged, newest first. The Feed page filters and pages it. */
-export function getActivityFeed(coachId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows): FeedEvent[] {
-  return activityFeeds([coachId], chat, food, ck).get(coachId) ?? [];
+/**
+ * What a feed's caller reads of it (21 Nov, the bounded slices of docs/database-plan.md): its clients (every client of
+ * the coach by default, or these alone: an action about one client) and how far back, which the food and check-in views
+ * are asked for (`need`): every event (`all`: the old admin, a client's own Activity), the events at or after an instant
+ * and each client's newest (`feedFrom`: the rail, Needs you, the marks), or each coach's newest n (`coachTop`: Coaches).
+ * Each event is built from its own client's rows alone, so a feed of fewer clients gives each of them what the coach's
+ * whole feed gives them; events older than what was asked may be missing or partial, and no caller reads them.
+ */
+export type FeedWant = { clients?: readonly number[]; span: "all" | { feedFrom: number } | { coachTop: number } };
+
+/** Everything one coach's clients logged, newest first, as far back as `want` (the Feed page filters and pages it). */
+export function getActivityFeed(coachId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, want: FeedWant): FeedEvent[] {
+  return activityFeeds([coachId], chat, food, ck, want).get(coachId) ?? [];
 }
 
 /**
@@ -3451,12 +3461,17 @@ export function getActivityFeed(coachId: number, chat: ChatCoachView, food: Food
  * in the order the walk finds them, sorted the same way. The store's rows are filtered to the coaches' clients before
  * they are grouped, so a coach's feed no longer maps every other coach's sets, food, check-ins and chat.
  */
-function activityFeeds(coachIds: readonly number[], chat: ChatCoachView, food: FoodRows, ck: CheckInRows): Map<number, FeedEvent[]> {
+function activityFeeds(coachIds: readonly number[], chat: ChatCoachView, food: FoodRows, ck: CheckInRows, want: FeedWant): Map<number, FeedEvent[]> {
   const data = getData();
   chat.covers("activityFeeds", coachIds);
   const feeds = new Map<number, FeedEvent[]>(coachIds.map((id) => [id, []]));
   // Only these coaches' clients: an event for anyone else is dropped in add(), and their rows are left out before that.
-  const clientsById = new Map(data.clients.filter((c) => c.coach_id != null && feeds.has(c.coach_id)).map((c) => [c.id, c] as const));
+  // A caller about some of them alone (want.clients) has only theirs built.
+  const only = want.clients ? new Set(want.clients) : null;
+  const clientsById = new Map(data.clients.filter((c) => c.coach_id != null && feeds.has(c.coach_id) && (!only || only.has(c.id))).map((c) => [c.id, c] as const));
+  // What the food and check-in views are asked for (food/rows.ts FoodSpan, checkins/rows.ts CheckInSpan).
+  const foodSpan: FoodSpan = want.span === "all" ? "all" : want.span;
+  const ckSpan: CheckInSpan = want.span === "all" ? "all" : "coachTop" in want.span ? { coachTop: want.span.coachTop, of: "all" } : want.span;
   const assignmentsById = new Map(data.workout_assignments.map((wa) => [wa.id, wa] as const));
   // The sessions read below: the clients' own days.
   const ownDays = new Set<number>();
@@ -3619,7 +3634,7 @@ function activityFeeds(coachIds: readonly number[], chat: ChatCoachView, food: F
   // (the diary's total pushed to it, or a figure typed) together, at the latest of them, the client's note on the day as
   // its words. A typed day with no diary is its own row, as before.
   const diary = new Map<string, { clientId: number; date: string; kcal: number; items: number; latest: string | null; note: string | null }>();
-  food.need("activityFeeds", [...clientsById.keys()], "all", ["entries", "calories"]);
+  food.need("activityFeeds", [...clientsById.keys()], foodSpan, ["entries", "calories"]);
   for (const f of food.entries) {
     if (!clientsById.has(f.client_id)) continue;
     const key = `${f.client_id}:${f.date}`;
@@ -3694,7 +3709,7 @@ function activityFeeds(coachIds: readonly number[], chat: ChatCoachView, food: F
 
   const metricDefs = new Map(data.metric_definitions.map((d) => [d.id, d] as const));
   // The check-ins through their door (quest 9): every figure and note of these coaches' clients.
-  ck.need("activityFeeds", [...clientsById.keys()], "all");
+  ck.need("activityFeeds", [...clientsById.keys()], ckSpan);
   for (const e of ck.entries) {
     const def = metricDefs.get(e.metric_definition_id);
     // Steps the phone filled in are no check-in the client did (13 Nov, Alex).
@@ -4069,7 +4084,8 @@ export function listCoachAccounts(chat: ChatCoachView, food: FoodRows, ck: Check
   // Every coach's feed in one walk (17 Nov, mission 2: it was built once per coach), each the list getActivityFeed gives.
   // Only its newest event is read: each client's newest message is in the view (Step 5).
   chat.need("clientTop", 1);
-  const feeds = activityFeeds(coaches.map((u) => u.id), chat, food, ck);
+  // Each coach's newest food and check-in event (21 Nov, the owner's aggregate): the views hold those, not every row.
+  const feeds = activityFeeds(coaches.map((u) => u.id), chat, food, ck, { span: { coachTop: 1 } });
   return coaches
     .map((u) => {
       const latest = feeds.get(u.id)?.[0];
@@ -7747,7 +7763,7 @@ export function dismissHomeAction(clientId: number, actionId: string | string[],
   if (!client || !ids.length) return;
   // Kept small: only the items that still stand stay recorded. Every item, let go or not (2 Nov: the list after the
   // filter left out what was let go before, so each Done brought the one before it back).
-  const standing = new Set(getClientHome(clientId, chat, food, ck).allActionIds);
+  const standing = new Set(getClientHomeActions(clientId, chat, food, ck).allActionIds);
   const next: Record<string, number> = {};
   for (const [id, at] of Object.entries(client.coach_dismissed ?? {})) if (standing.has(id)) next[id] = at;
   const now = Date.now();
@@ -7804,6 +7820,24 @@ export function clientHomeRows(clientIds: readonly number[]): ClientHomeRows {
  * view this client is in (fetchCoachChat).
  */
 export function getClientHome(clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, feed?: FeedEvent[], ix?: TrainingIndex, own?: ClientHomeRows): ClientHome {
+  return clientHomeOf(true, clientId, chat, food, ck, feed, ix, own);
+}
+
+/**
+ * A client's Home as Needs you, the rail, the dots and the to-do strip read it (21 Nov, the bounded slices): its items,
+ * the marks, nothing of the events list itself (`events`, `eventTotal`: the old admin's, which reads getClientHome on
+ * views holding everything). Its feed is the window of the last HOME_NEW_DAYS and the client's newest event: what the
+ * coach-wide views hold (food/rows.ts, checkins/rows.ts `feedFrom`), and all that any of these read.
+ */
+export type ClientHomeActions = Omit<ClientHome, "events" | "eventTotal">;
+export function getClientHomeActions(clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, feed?: FeedEvent[], ix?: TrainingIndex, own?: ClientHomeRows): ClientHomeActions {
+  const home: Partial<ClientHome> = clientHomeOf(false, clientId, chat, food, ck, feed, ix, own);
+  delete home.events;
+  delete home.eventTotal;
+  return home as ClientHomeActions;
+}
+
+function clientHomeOf(full: boolean, clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, feed?: FeedEvent[], ix?: TrainingIndex, own?: ClientHomeRows): ClientHome {
   const data = getData();
   // Their training rows, read once when a check below needs them (23 Oct, speed: it scanned the store per row).
   let tix = ix;
@@ -7812,8 +7846,12 @@ export function getClientHome(clientId: number, chat: ChatCoachView, food: FoodR
   // A phone workout is the coach's logs alone (16 Nov): never news, a dot or a note to read here.
   // Its newest HOME_EVENTS: the chat's part of them in the view (Step 5: a coach view holds each client's newest).
   chat.need("clientTop", HOME_EVENTS, clientId);
-  const all = (feed ?? getActivityFeed(client?.coach_id ?? 0, chat, food, ck)).filter((e) => e.clientId === clientId && !e.health);
   const since = Date.now() - HOME_NEW_DAYS * 86400000;
+  // The food and check-ins read: everything (the events list), or the window and the newest (food/rows.ts FoodSpan).
+  const span = full ? ("all" as const) : { feedFrom: since };
+  food.need("getClientHome", clientId, span, ["entries", "calories"]);
+  ck.need("getClientHome", clientId, span);
+  const all = (feed ?? getActivityFeed(client?.coach_id ?? 0, chat, food, ck, { clients: [clientId], span })).filter((e) => e.clientId === clientId && !e.health);
   const events = all.slice(0, HOME_EVENTS).map((e) => ({ ...e, when: feedTimeLabel(e.at, e.timeKnown), unseen: isUnseen(client?.coach_seen, e, since) }));
   const unseen = events.filter((e) => e.unseen);
 
@@ -8391,7 +8429,7 @@ export function markClientEventsSeen(clientId: number, which: { all: true } | { 
   const since = Date.now() - HOME_NEW_DAYS * 86400000;
   // The client's last 14 days of chat, whole: the marks are kept to them (Step 5).
   chat.need("recent", 0, clientId);
-  const recent = getActivityFeed(client.coach_id ?? 0, chat, food, ck).filter((e) => e.clientId === clientId && e.at >= since);
+  const recent = getActivityFeed(client.coach_id ?? 0, chat, food, ck, { clients: [clientId], span: { feedFrom: since } }).filter((e) => e.clientId === clientId && e.at >= since);
   // A tab clears what is on the tab itself; news about one session waits
   // for that session to be opened.
   const hit = recent.filter((e) =>
@@ -8417,7 +8455,7 @@ export function markClientEventsSeen(clientId: number, which: { all: true } | { 
 /** The same, as the rail's reasons (14 Oct): one line a kind, in its colour, the most pressing first. */
 export function clientReasons(clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, feed?: FeedEvent[]): AttentionReason[] {
   const out: AttentionReason[] = [];
-  for (const a of getClientHome(clientId, chat, food, ck, feed).actions) {
+  for (const a of getClientHomeActions(clientId, chat, food, ck, feed).actions) {
     const since = a.at ?? 0;
     if (a.id.startsWith("reply-video-")) {
       const m = /^(Photo|Video) of (.+?) waiting/.exec(a.title);
@@ -8442,7 +8480,7 @@ export function clientReasons(clientId: number, chat: ChatCoachView, food: FoodR
 export function clientAttention(clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, feed?: FeedEvent[]): string | null {
   // The same list the client's Home spells out; the dot's title is the first
   // of them, and how many more there are.
-  const actions = getClientHome(clientId, chat, food, ck, feed).actions;
+  const actions = getClientHomeActions(clientId, chat, food, ck, feed).actions;
   if (actions.length === 0) return null;
   return actions.length === 1 ? actions[0].title : `${actions[0].title} · and ${actions.length - 1} more`;
 }

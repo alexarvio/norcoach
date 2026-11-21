@@ -1225,7 +1225,7 @@ export function loadHome(clientId: number, chat: { coach: ChatCoachView; thread:
   // for it, as it did.
   const coachId = getData().clients.find((c) => c.id === clientId)?.coach_id ?? 0;
   let coachFeed: FeedEvent[] | null = null;
-  const feedOnce = () => (coachFeed ??= sub("feed", () => getActivityFeed(coachId, chat.coach, food, ck)));
+  const feedOnce = () => (coachFeed ??= sub("feed", () => getActivityFeed(coachId, chat.coach, food, ck, { clients: [clientId], span: "all" })));
   const panel = sub("panel", () => getOverviewPanel(clientId, feedOnce, ck));
   // Activity is the client's whole feed (not the newest 60 rows), so Invoices or Meetings still has its history for a
   // client who chats every day.

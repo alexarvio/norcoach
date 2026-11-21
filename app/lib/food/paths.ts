@@ -107,3 +107,30 @@ export const FOOD_WRITE_PATHS = [
 ] as const;
 export type FoodWritePath = (typeof FOOD_WRITE_PATHS)[number];
 export type FoodPath = FoodReadPath | FoodWritePath;
+
+/**
+ * What each coach-wide read path takes of the coach's clients' food (21 Nov, the bounded slices; food/rows.ts
+ * fetchCoachFood, fetchClientTabFood): the rail's window (each client's events of the last HOME_NEW_DAYS and their
+ * newest), the Feed's too with the coach's newest FEED_KIND_ROWS and its Since, Coaches' newest per coach, the window of
+ * the one client an action is about, or (any path not named here: the old admin, until it is retired) everything.
+ */
+export type FoodShape = "rail" | "feed" | "accounts" | "focus" | "all";
+export const FOOD_SHAPE: Partial<Record<FoodReadPath, FoodShape>> = {
+  ...(Object.fromEntries(FOOD_TABS.map((t) => [`page.tab.${t}`, "rail"])) as Record<`page.tab.${FoodTab}`, FoodShape>),
+  ...(Object.fromEntries(FOOD_TABS.map((t) => [`page.noClients.${t}`, "rail"])) as Record<`page.noClients.${FoodTab}`, FoodShape>),
+  "page.business": "rail",
+  "page.calendar": "rail",
+  "page.library": "rail",
+  "page.settings": "rail",
+  "page.phases": "rail",
+  "page.coaches": "rail",
+  "page.onboarding": "rail",
+  "page.onboarding.screen": "rail",
+  "page.feed": "feed",
+  "page.coaches.accounts": "accounts",
+  "page.onboarding.screen.accounts": "accounts",
+  "api.seen": "focus",
+  "action.markSeen": "focus",
+  "action.markProgramNote": "focus",
+  "action.dismissHome": "focus",
+};

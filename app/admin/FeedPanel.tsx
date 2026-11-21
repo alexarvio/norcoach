@@ -75,7 +75,7 @@ export default function FeedPanel({
 }) {
   // Every event ever, paged here and counted by category (the old admin): the whole chat (Step 5: its view holds it all).
   chat.need("full");
-  const all = getActivityFeed(coachId, chat, food, ck);
+  const all = getActivityFeed(coachId, chat, food, ck, { span: "all" });
   const locks = listLoginLocks({ id: coachId, email: coachEmail }, owner);
   const filter: FilterId = FILTERS.some((f) => f.id === category) ? (category as FilterId) : FILTERS[0].id;
   const events = all.filter((e) => matches(e, filter));

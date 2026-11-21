@@ -116,7 +116,7 @@ export default async function AdminPage({
   // The check-in figures the same (quest 9, app/lib/checkins/rows.ts).
   const ck = await fetchCoachClientsCheckIns(view === "coaches" ? listCoachEmails().map((c) => c.id) : [coach.id], "page.oldAdmin", client?.id ?? null);
   // Read once: the right-hand panel and the client's Home show the same facts.
-  const overview = client ? getOverviewPanel(client.id, () => getActivityFeed(coachIdOfClient(client.id) ?? 0, chat, food, ck), ck) : null;
+  const overview = client ? getOverviewPanel(client.id, () => getActivityFeed(coachIdOfClient(client.id) ?? 0, chat, food, ck, { span: "all" }), ck) : null;
 
   return (
     <AdminShell

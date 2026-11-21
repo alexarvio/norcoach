@@ -6,14 +6,19 @@
 // and walk the lists, never sort or edit them in place.
 
 import { cache } from "react";
-import { clientHomeRows, getActivityFeed, getClientHome, listClients, trainingIndex, type FeedEvent, type HomeAction } from "./queries";
+import { clientHomeRows, getActivityFeed, getClientHomeActions, listClients, trainingIndex, type FeedEvent, type HomeAction } from "./queries";
+import { HOME_NEW_DAYS } from "./chat/pick";
 import { sub } from "./timing";
 import type { ChatCoachView } from "./chat/rows";
 import type { FoodRows } from "./food/rows";
 import type { CheckInRows } from "./checkins/rows";
 
 export type CoachNeeds = {
-  /** Everything the coach's clients logged, newest first (getActivityFeed). */
+  /**
+   * What the coach's clients logged, newest first (getActivityFeed): every event of the last HOME_NEW_DAYS and each
+   * client's newest, exactly; what the page's views hold beyond that (the Feed's newest 200 of each kind) too. Events
+   * older than any of those may be missing or partial: a reader keeps to what its own need() says it reads.
+   */
   feed: FeedEvent[];
   byId: Map<string, FeedEvent>;
   /** Each client's open Needs-you items as their Home spells them, or what getClientHome threw for them (handed on to
@@ -28,7 +33,7 @@ export type CoachNeeds = {
 // `food`: the page's food view the same (fetchCoachFood, app/lib/food/rows.ts), fetched beside it.
 // `ck`: the page's check-in view the same (fetchCoachCheckIns, app/lib/checkins/rows.ts), fetched beside it.
 export const coachNeeds = cache((coachId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows): CoachNeeds => {
-  const feed = sub("feed", () => getActivityFeed(coachId, chat, food, ck));
+  const feed = sub("feed", () => getActivityFeed(coachId, chat, food, ck, { span: { feedFrom: Date.now() - HOME_NEW_DAYS * 86400000 } }));
   const byId = new Map(feed.map((e) => [e.id, e] as const));
   const homes = sub("needsYou", () => {
     const list = listClients(coachId);
@@ -49,7 +54,7 @@ export const coachNeeds = cache((coachId: number, chat: ChatCoachView, food: Foo
     const out: CoachNeeds["homes"] = new Map();
     for (const c of list) {
       try {
-        out.set(c.id, { actions: getClientHome(c.id, chat, food, ck, feedOf.get(c.id) ?? [], ix, own).actions });
+        out.set(c.id, { actions: getClientHomeActions(c.id, chat, food, ck, feedOf.get(c.id) ?? [], ix, own).actions });
       } catch (error) {
         out.set(c.id, { error });
       }
@@ -63,7 +68,7 @@ export const coachNeeds = cache((coachId: number, chat: ChatCoachView, food: Foo
 export function clientActions(coachId: number, clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows): HomeAction[] {
   const needs = coachNeeds(coachId, chat, food, ck);
   const home = needs.homes.get(clientId);
-  if (!home) return getClientHome(clientId, chat, food, ck, needs.feed).actions;
+  if (!home) return getClientHomeActions(clientId, chat, food, ck, needs.feed).actions;
   if ("error" in home) throw home.error;
   return home.actions;
 }

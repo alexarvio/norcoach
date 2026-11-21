@@ -116,7 +116,7 @@ async function main() {
       const k = await ck.fetchClientTabCheckIns(c.coach_id ?? 0, c.id, "page.tab.home");
       return { home: q.getClientHome(c.id, tab.coach, f, k), attention: q.clientAttention(c.id, tab.coach, f, k), dots: loaders.loadDots(c.id, tab.coach, f, k), draft: loaders.loadHome(c.id, tab, f, k) };
     });
-    await safe(`dismissHome:${c.id}`, async () => q.getClientHome(c.id, await rows.fetchCoachChatOfClient(c.id, "action.dismissHome"), await food.fetchCoachFoodOfClient(c.id, "action.dismissHome"), await ck.fetchCoachCheckInsOfClient(c.id, "action.dismissHome")));
+    await safe(`dismissHome:${c.id}`, async () => q.getClientHomeActions(c.id, await rows.fetchCoachChatOfClient(c.id, "action.dismissHome"), await food.fetchCoachFoodOfClient(c.id, "action.dismissHome"), await ck.fetchCoachCheckInsOfClient(c.id, "action.dismissHome")));
   }
   out._errors = errors;
   fs.writeFileSync(process.env.OUT!, JSON.stringify(out));

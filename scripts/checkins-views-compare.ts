@@ -129,7 +129,7 @@ async function main() {
     const pageChat = await chat.fetchCoachPageChat(coach.id, "page.feed");
     const coachFood = await food.fetchCoachFood([coach.id], "page.feed");
     const coachV = await ck.fetchCoachCheckIns([coach.id], "page.feed");
-    await safe(`feed:${coach.id}`, () => q.getActivityFeed(coach.id, pageChat.coach, coachFood, coachV));
+    await safe(`feed:${coach.id}`, () => q.getActivityFeed(coach.id, pageChat.coach, coachFood, coachV, { span: { feedFrom: Date.now() - 14 * 86400000 } }).filter((e: { at: number }) => e.at >= Date.now() - 14 * 86400000));
     await safe(`feedBoard:${coach.id}`, () => feedBoard.getFeedBoard(coach.id, pageChat.coach, coachFood, coachV));
     await safe(`rail:${coach.id}`, () => loaders.loadRail(coach, pageChat.coach, coachFood, coachV));
     await safe(`phaseNeeds:${coach.id}`, () => loaders.loadPhaseNeeds(coach.id, pageChat.coach, coachFood, coachV));

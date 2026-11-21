@@ -47,7 +47,7 @@ function hadPhaseLive(clientId: number, today = localDateStr()): boolean {
 function loggedAnything(clientId: number, logged: FoodRows, ck: CheckInRows): boolean {
   const data = getData();
   // The food diary through its door (quest 8 part 1): the view a page or the timer fetched (fetchFoodLogged).
-  logged.need("appLock.loggedAnything", clientId, "all", ["entries", "calories"]);
+  logged.need("appLock.loggedAnything", clientId, "logged", ["entries", "calories"]);
   if (logged.entries.some((e) => e.client_id === clientId)) return true;
   if (logged.calories.some((l) => l.client_id === clientId && l.source !== "health")) return true;
   if ((data.cardio_logs ?? []).some((l) => l.client_id === clientId)) return true;

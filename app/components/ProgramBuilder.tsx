@@ -16,7 +16,7 @@ import {
   isCardioDone,
   formatRestSeconds,
   getClientProgramNoteMeta,
-  getClientHome,
+  getClientHomeActions,
   getExerciseWeightTrendPct,
   getLogsForAssignment,
   getLogsForAssignmentByWeek,
@@ -178,7 +178,7 @@ export default function ProgramBuilder({
   const currentWeek = weekStart(localDateStr());
   // Sessions with news the coach has not opened yet (a finished workout, a
   // reason for missing one): the week and the session carry the dot.
-  const newDayIds = new Set(getClientHome(clientId, chat, food, ck).unseenDayIds);
+  const newDayIds = new Set(getClientHomeActions(clientId, chat, food, ck).unseenDayIds);
   const liveWeekNumber = deployedProgram ? deployedProgram.start_week + getProgramCurrentWeekIndex(deployedProgram) - 1 : null;
 
   function renderDays(days: ProgramDay[]) {

@@ -42,7 +42,7 @@ export default function AdminSidebar({
   isOwner?: boolean;
 }) {
   // One walk of the store for every client on the rail.
-  const feed = getActivityFeed(coachId, chat, food, ck);
+  const feed = getActivityFeed(coachId, chat, food, ck, { span: "all" });
   const clients: RosterClient[] = listClients(coachId).map((c) => {
     const user = getUserForClient(c.id);
     return {

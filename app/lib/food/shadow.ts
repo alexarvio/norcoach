@@ -189,6 +189,12 @@ export type FoodShadowFetch = {
    * food_meal_orders from), `committedRows` what the last save committed of the clients, both `{ client_id, meal_order }`.
    */
   orders?: { sqlRows: (q: (query: SQL) => Promise<Row[]>) => Promise<Row[]>; committedRows: (committed: ReadonlyMap<string, string>) => Row[] };
+  /**
+   * A coach-wide fetch's asks (21 Nov, the bounded slices: food/slices.ts): resolved over the rows committed of the
+   * scope's clients (each table by id), before `committedIn` is asked; what each side resolved, as a line of ids and days
+   * (never a value), compared: a difference is the resolution's own, counted with the rest as differed.
+   */
+  prepare?: (rowsOf: (table: FoodTable) => Row[]) => Promise<{ sql: string; committed: string }>;
 };
 
 /**
@@ -259,6 +265,14 @@ async function readJob(f: FoodShadowFetch, key: string, again = false): Promise<
     return;
   }
   const differs: string[] = [];
+  if (f.prepare) {
+    const rowsOf = (t: FoodTable) => {
+      const committed = committedOf(t, f.decode);
+      return committed ? f.clients.flatMap((id) => committed.byClient.get(id) ?? []).sort((a, b) => Number(a.id) - Number(b.id)) : [];
+    };
+    const keys = await f.prepare(rowsOf);
+    if (keys.sql !== keys.committed) differs.push(`resolved: SQL and the rows committed differ (${keys.sql.split(";").length} and ${keys.committed.split(";").length} clients)`);
+  }
   for (const t of f.tables) {
     const committed = committedOf(t, f.decode);
     const want: Row[] = [];

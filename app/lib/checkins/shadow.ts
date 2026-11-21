@@ -182,6 +182,12 @@ export type CheckInShadowFetch = {
   clients: readonly number[];
   /** The scope cut from committed rows (candidates: the scope's metrics' figures and clients' notes, by id). */
   cut: (committed: { entries: Row[]; notes: Row[] }) => Record<CheckInTable, Row[]>;
+  /**
+   * A coach-wide fetch's asks (21 Nov, the bounded slices: checkins/slices.ts): resolved over the same committed rows,
+   * before `cut`; what each side resolved, as a line of ids and periods (never a value), compared: a difference is the
+   * resolution's own, counted with the rest as differed.
+   */
+  prepare?: (committed: { entries: Row[]; notes: Row[] }) => Promise<{ sql: string; committed: string }>;
   /** The metrics read as `latest` and the clients read as `logged` alone: their answers checked over every committed row of the metrics too. */
   latestDefs: readonly number[];
   loggedClients: readonly number[];
@@ -288,8 +294,12 @@ async function readJob(f: CheckInShadowFetch, key: string, again = false): Promi
     c.skipped++;
     return;
   }
-  const want = f.cut({ entries: entries.sort(byIdRow), notes: notes.sort(byIdRow) });
   const differs: string[] = [];
+  if (f.prepare) {
+    const keys = await f.prepare({ entries: [...entries].sort(byIdRow), notes: [...notes].sort(byIdRow) });
+    if (keys.sql !== keys.committed) differs.push(`resolved: SQL and the rows committed differ (${keys.sql.split(";").length} and ${keys.committed.split(";").length} clients)`);
+  }
+  const want = f.cut({ entries: entries.sort(byIdRow), notes: notes.sort(byIdRow) });
   for (const t of f.lists) {
     const w = [...(want[t] ?? [])].sort(byIdRow);
     const have = got[t] ?? [];
@@ -398,6 +408,9 @@ export function keepTotals() {
 }
 
 /** For /api/timing: counts and names, never ids or figures. */
+/** Whether a fetch may be sampled (read mode): the coach-wide asks then take their facts at the fetch (checkins/rows.ts). */
+export const checkInsShadowReads = MODE === "read";
+
 export function checkInsShadowReport(extra: Record<string, unknown> = {}) {
   const s = state();
   const total = MODE === "off" ? null : totalsNow();

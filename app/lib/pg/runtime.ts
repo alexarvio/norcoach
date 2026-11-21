@@ -1,13 +1,13 @@
 import path from "path";
 import { eq, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
-import { installIdSource, installStore, prepareStore, readJsonFile, STORE_MODE, type Data } from "../db";
+import { getData, installIdSource, installStore, prepareStore, readJsonFile, STORE_MODE, type Data } from "../db";
 import { errorReason, health, reportSkipped, toSentry } from "./health";
 import { IdPools } from "./ids";
 import { onceKeysFromKvCopy } from "./onceKeys";
 import { healthWorkoutsFromKvCopy, healthWorkoutsKept } from "./healthWorkouts";
 import { COLLECTIONS, kv } from "./schema";
-import { derivedStale, insertRowsOnce, loadStore, PgStoreWriter } from "./store";
+import { derivedStale, insertRowsOnce, loadStore, PgStoreWriter, setDefClientSource } from "./store";
 import { startChatShadow } from "../chat/shadow";
 import { CHAT_ONCE_PREFIX_SQL, CHAT_PG, CHAT_STORE_ASKED } from "../chat/mode";
 import { startChatPg } from "../chat/pg";
@@ -225,6 +225,15 @@ async function start() {
     if (problems.length) throw new Error(`[checkins] Refusing to start with CHECKINS_STORE=pg: ${problems.join("; ")}`);
   }
   let raw: Partial<Data>;
+  // metric_entries' def_client_id (21 Nov, migration 0024): each figure's client from the definitions, the rows being
+  // loaded until the store is installed, the store after.
+  setDefClientSource(() => {
+    try {
+      return getData().metric_definitions;
+    } catch {
+      return (raw as Partial<Data> | undefined)?.metric_definitions;
+    }
+  });
   // Lists still kept in kv under a collection's name while its table is empty: moved into the table by the first save.
   const moved: string[] = [];
   // Rows whose instant columns are to be written again (step 4C).

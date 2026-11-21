@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { boolean, doublePrecision, index, integer, jsonb, pgSequence, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { SQL_BLANK, SQL_NOLOOK_PHOTO, SQL_NOLOOK_SAVED, SQL_NONHEALTH, SQL_ODD_CALORIE, SQL_ODD_ENTRY, SQL_ODD_FIGURE, SQL_ODD_NOTE, SQL_TYPED } from "./feedSlices";
 
 // The Postgres tables behind the store (phase 1 of moving off ironline.json).
 //
@@ -104,8 +105,16 @@ export const calorie_logs = pgTable(
     logged_at: text("logged_at"),
     note: text("note"),
     extra: extra(),
+    // The coach-wide slices (21 Nov, migration 0024; pg/feedSlices.ts): a log by its moment, its odd ones, its unstamped ones.
+    logged_at_tz: instant("logged_at_tz"),
   },
-  (t) => [index("calorie_logs_client_date_idx").on(t.client_id, t.date, t.id)]
+  (t) => [
+    index("calorie_logs_client_date_idx").on(t.client_id, t.date, t.id),
+    index("calorie_logs_client_tz_idx").on(t.client_id, t.logged_at_tz, t.id).where(sql.raw(`logged_at_tz IS NOT NULL AND ${SQL_NONHEALTH()}`)),
+    index("calorie_logs_odd_idx").on(t.client_id, t.date).where(sql.raw(SQL_ODD_CALORIE())),
+    index("calorie_logs_blank_idx").on(t.client_id, sql`(date COLLATE "C")`, t.id).where(sql.raw(`${SQL_NONHEALTH()} AND ${SQL_BLANK("logged_at")}`)),
+    index("calorie_logs_typed_idx").on(t.client_id, t.id).where(sql.raw(SQL_NONHEALTH())),
+  ]
 );
 
 // A client's notes by kind and period (20 Nov, quest 9; migration 0023): what the check-in door's queries need once the
@@ -121,8 +130,15 @@ export const check_in_notes = pgTable(
     text: text("text"),
     created_at: text("created_at"),
     extra: extra(),
+    // The coach-wide slices (21 Nov, migration 0024; pg/feedSlices.ts): a note by its moment, by its period, its odd ones.
+    created_at_tz: instant("created_at_tz"),
   },
-  (t) => [index("check_in_notes_client_idx").on(t.client_id, t.kind, sql`(period COLLATE "C")`, t.id)]
+  (t) => [
+    index("check_in_notes_client_idx").on(t.client_id, t.kind, sql`(period COLLATE "C")`, t.id),
+    index("check_in_notes_client_tz_idx").on(t.client_id, t.created_at_tz, t.id).where(sql`created_at_tz IS NOT NULL`),
+    index("check_in_notes_client_period_idx").on(t.client_id, sql`(period COLLATE "C")`, t.id),
+    index("check_in_notes_odd_idx").on(t.client_id, t.id).where(sql.raw(SQL_ODD_NOTE())),
+  ]
 );
 
 export const client_exercise_notes = pgTable("client_exercise_notes", {
@@ -318,8 +334,16 @@ export const metric_entries = pgTable(
     logged_at: text("logged_at"),
     extra: extra(),
     logged_at_tz: instant("logged_at_tz"),
+    // The client the figure belongs to, through its metric as memory holds it (21 Nov, migration 0024): not a field, filled
+    // by the writer (DERIVED below), so a coach-wide slice reads a client's figures in one probe, not one per metric.
+    def_client_id: integer("def_client_id"),
   },
   (t) => [
+    // The coach-wide slices (21 Nov, migration 0024; pg/feedSlices.ts): a client's typed figures by moment and by period, its odd ones.
+    index("metric_entries_client_tz_idx").on(t.def_client_id, t.logged_at_tz, t.id).where(sql.raw(`logged_at_tz IS NOT NULL AND ${SQL_TYPED()}`)),
+    index("metric_entries_client_period_idx").on(t.def_client_id, sql`(period COLLATE "C")`, t.id),
+    index("metric_entries_client_odd_idx").on(t.def_client_id, t.id).where(sql.raw(SQL_ODD_FIGURE())),
+    index("metric_entries_client_blank_idx").on(t.def_client_id, sql`(period COLLATE "C")`, t.id).where(sql.raw(`${SQL_TYPED()} AND ${SQL_BLANK("logged_at")}`)),
     index("metric_entries_def_period_idx").on(t.metric_definition_id, sql`(period COLLATE "C")`, t.id),
     index("metric_entries_logged_idx").on(t.metric_definition_id, t.id).where(sql`value IS NOT NULL AND (extra ->> 'source') IS DISTINCT FROM 'health'`),
     // The few figures whose period is no day: the minute job reads them whole beside each metric's newest day.
@@ -696,6 +720,10 @@ export const food_entries = pgTable(
   },
   (t) => [
     index("food_entries_client_date_idx").on(t.client_id, t.date, t.id),
+    // The coach-wide slices (21 Nov, migration 0024; pg/feedSlices.ts): an entry by its moment, its odd ones, its unstamped ones.
+    index("food_entries_client_tz_idx").on(t.client_id, t.logged_at_tz, t.id).where(sql`logged_at_tz IS NOT NULL`),
+    index("food_entries_odd_idx").on(t.client_id, t.date).where(sql.raw(SQL_ODD_ENTRY())),
+    index("food_entries_blank_idx").on(t.client_id, sql`(date COLLATE "C")`, t.id).where(sql.raw(SQL_BLANK("logged_at"))),
     // A meal of the client's own on every day it holds food (removeFoodMeal's reach).
     index("food_entries_client_meal_idx").on(t.client_id, t.meal, t.id),
   ]
@@ -753,6 +781,8 @@ export const saved_meals = pgTable(
     index("saved_meals_client_idx").on(t.client_id, t.id),
     // A picture's rows by file (the pictures' clean-up, the look).
     index("saved_meals_picture_idx").on(sql`(extra ->> 'picture')`).where(sql`(extra ->> 'picture') IS NOT NULL`),
+    // The start-up's look back-fill (21 Nov, migration 0024): the saved meals whose picture may want its look.
+    index("saved_meals_nolook_idx").on(t.id).where(sql.raw(SQL_NOLOOK_SAVED)),
   ]
 );
 
@@ -796,7 +826,12 @@ export const meal_photos = pgTable(
     uploaded_at: text("uploaded_at"),
     extra: extra(),
   },
-  (t) => [index("meal_photos_client_date_idx").on(t.client_id, t.date, t.meal, t.id), index("meal_photos_path_idx").on(t.file_path)]
+  (t) => [
+    index("meal_photos_client_date_idx").on(t.client_id, t.date, t.meal, t.id),
+    index("meal_photos_path_idx").on(t.file_path),
+    // The start-up's look back-fill (21 Nov, migration 0024): the day photos that may want their look.
+    index("meal_photos_nolook_idx").on(t.id).where(sql.raw(SQL_NOLOOK_PHOTO)),
+  ]
 );
 
 /**
@@ -997,6 +1032,11 @@ export const DERIVED = [
   { table: metric_entries, name: "metric_entries", column: "logged_at_tz", from: "logged_at", kind: "stamp" },
   { table: food_entries, name: "food_entries", column: "logged_at_tz", from: "logged_at", kind: "stamp" },
   { table: coach_activity, name: "coach_activity", column: "created_at_tz", from: "created_at", kind: "stamp" },
+  // The coach-wide slices (21 Nov, migration 0024; pg/feedSlices.ts).
+  { table: calorie_logs, name: "calorie_logs", column: "logged_at_tz", from: "logged_at", kind: "stamp" },
+  { table: check_in_notes, name: "check_in_notes", column: "created_at_tz", from: "created_at", kind: "stamp" },
+  // Not a stamp: the figure's client, its metric's as memory holds the metric definitions (store.ts defClientOf).
+  { table: metric_entries, name: "metric_entries", column: "def_client_id", from: "metric_definition_id", kind: "defClient" },
   { table: once_keys, name: "once_keys", column: "created_at", from: "at", kind: "ms" },
 ] as const;
 

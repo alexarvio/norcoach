@@ -266,7 +266,8 @@ function sinceOf(ctx: Ctx): FeedBoard["since"] {
   // was sent, a measurement on its date. What the workout answers is not a check-in.
   const checkIns = new Set<string>();
   const defs = new Map(data.metric_definitions.filter((m) => ids.has(m.client_id) && !ctx.fedIds.get(m.client_id)?.has(m.id)).map((m) => [m.id, m] as const));
-  ctx.ck.need("feed.sinceOf", [...ids], "all", ["entries"]);
+  // The figures sent after the coach's last visit (21 Nov, the bounded slices: the view holds them, not every figure).
+  ctx.ck.need("feed.sinceOf", [...ids], { since: prev }, ["entries"]);
   for (const e of ctx.ck.entries) {
     const def = defs.get(e.metric_definition_id);
     if (!def || e.value == null || e.source === "health") continue;
@@ -284,7 +285,7 @@ function sinceOf(ctx: Ctx): FeedBoard["since"] {
 
   // Days with food logged since: a diary entry, or a typed day's calories.
   const food = new Set<string>();
-  ctx.food.need("feed.sinceOf", [...ids], "all", ["entries", "calories"]);
+  ctx.food.need("feed.sinceOf", [...ids], { since: prev }, ["entries", "calories"]);
   for (const f of ctx.food.entries) if (ids.has(f.client_id) && f.date <= today && savedSince(f.logged_at, f.date)) food.add(`${f.client_id}:${f.date}`);
   for (const c of ctx.food.calories) if (ids.has(c.client_id) && c.source !== "health" && c.kcal > 0 && c.date <= today && savedSince(c.logged_at, c.date)) food.add(`${c.client_id}:${c.date}`);
 
@@ -418,6 +419,10 @@ function callAt(date: string, time: string, tz: string | null | undefined): numb
 function activityOf(ctx: Ctx): ActivityRow[] {
   // Each kind's newest KIND_ROWS: the coach's newest chat rows of the kind are in the view.
   ctx.chat.need("coachTop", KIND_ROWS);
+  // And of the food and the check-ins (21 Nov, the bounded slices): the coach's newest of each kind, ties and all.
+  ctx.food.need("feed.activityOf", [...ctx.ids], { coachTop: KIND_ROWS }, ["entries", "calories"]);
+  ctx.ck.need("feed.activityOf", [...ctx.ids], { coachTop: KIND_ROWS, of: "figures" });
+  ctx.ck.need("feed.activityOf", [...ctx.ids], { coachTop: KIND_ROWS, of: "notesOnly" });
   const prev = ctx.prev;
   const isNew = (at: number) => prev != null && at > prev;
   // What each row is, cheaply; its link is read only for the rows kept (each kind's newest KIND_ROWS). Words another row
