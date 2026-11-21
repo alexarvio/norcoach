@@ -673,3 +673,12 @@ html:not(.js) .tt { position: static; opacity: 1; visibility: visible; grid-area
   .quality-grid .nr .nm { min-width: 0; }
   .quality-grid .nr q { display: none; }
 }
+
+/* How it works' three columns on one line (21 Nov, Alex: "are these aligned"): On your laptop and On their phone sit on
+   the track's own label (its 18px row), and each column's first line shares its middle with the track's first line,
+   whatever size that line is at. */
+@media (min-width: 861px) {
+  .tt-col { padding-top: 0; }
+  .tt-label { display: flex; align-items: center; height: 18px; }
+  .tt-col p:last-child { margin-top: calc(1.6px + 0.7 * clamp(19px, 1.6vw, 22px)); }
+}
