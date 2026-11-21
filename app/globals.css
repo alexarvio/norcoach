@@ -22255,12 +22255,12 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
 .coach-mark .cph-thread.cph-thread, .coach-mark .rm-thread.rm-thread { background-position: 0 0, right 16px top 14px; background-size: auto, 200px auto; }
 
 /* The check-in pop-up: a filled row reads as logged (21 Nov, Alex: "make the numbers green and blur them a little bit, so
-   it really gives the visual idea that it is logged in"): its figure in the done green at 600 with a soft green glow round
-   it, its unit green at half strength, a scale's numbers up to the pick green; ink again while the figure has the keyboard. */
-.cki-row.filled .cki-num input { color: #2f7a3f; font-weight: 600; text-shadow: 0 0 10px rgba(47, 122, 63, 0.35); transition: color 0.25s, text-shadow 0.25s; }
-.cki-row.filled .cki-num input:focus { color: #141a24; text-shadow: none; }
+   it really gives the visual idea that it is logged in"; then "take that [glow] away, I just want the number green"): its figure in the done green at 600,
+   no glow, its unit green at half strength, a scale's numbers up to the pick green; ink again while the figure has the keyboard. */
+.cki-row.filled .cki-num input { color: #2f7a3f; font-weight: 600; transition: color 0.25s; }
+.cki-row.filled .cki-num input:focus { color: #141a24; }
 .cki-row.filled .cki-unit { color: rgba(47, 122, 63, 0.55); }
-.cki-row.filled .cki-scale button.in { color: #2f7a3f; font-weight: 600; text-shadow: 0 0 10px rgba(47, 122, 63, 0.35); }
+.cki-row.filled .cki-scale button.in { color: #2f7a3f; font-weight: 600; }
 
 /* Training: the week card to the coach's note (21 Nov, Alex: "a decent amount of space… why is there so much space"):
    measured, the ring's foot to the note's face was 50px (the card's 18px foot, the page's 16px gap and the note's own
