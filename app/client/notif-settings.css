@@ -1,0 +1,12 @@
+/* Settings · Notifications (19 Nov, Alex: docs/boards/notification-popup-mockup.html; NotificationSettings.tsx). The
+   switches are every Settings switch; Quiet hours' From and To the white hairline box, 16px words, the phone's own picker. */
+.nfs-quiet .so-fold-in { padding: 0 2px; }
+.nfs-times { display: flex; align-items: center; gap: 8px; padding: 4px 0 10px; }
+.nfs-time { flex: 1; min-width: 0; height: 40px; padding: 0 12px; border: 0; border-radius: 12px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; font: inherit; font-size: 16px; font-weight: 500; color: #141a24; text-align: center; font-variant-numeric: tabular-nums; -webkit-appearance: none; appearance: none; }
+.nfs-time:focus { outline: none; box-shadow: inset 0 0 0 1px #141a24; }
+.nfs-time::-webkit-date-and-time-value { text-align: center; }
+.nfs-arrow { flex: none; font-size: 14px; color: #8b93a1; }
+/* With the phone's switch off (19 Nov, Alex: the one for all), the groups fade and rest, keeping their own settings. */
+.nfs-groups { transition: opacity .25s cubic-bezier(.22, 1, .36, 1); }
+.nfs-groups.off { opacity: .4; }
+.nfs-blocked { padding: 12px 0 14px; font-size: 13px; font-weight: 500; color: #8b93a1; }

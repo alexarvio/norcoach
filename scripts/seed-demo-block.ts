@@ -19,6 +19,7 @@
 //   npx tsx scripts/seed-demo-block.ts
 
 import { getData, persist, allocId } from "../app/lib/db";
+import { storeCheckInBox } from "../app/lib/checkins/rows";
 import { localDateStr, weekStart } from "../app/lib/queries";
 
 const CLIENT_ID = 1;
@@ -300,11 +301,13 @@ MONTHLY.forEach((m, i) => {
     d.setMonth(d.getMonth() - back, 1);
     const period = localDateStr(d);
     const value = Number((m.start + m.step * (5 - back)).toFixed(1));
-    const already = data.metric_entries.find(
+    // Through the check-ins' door (quest 9): the store's own list.
+    const SEED = storeCheckInBox("w.entry.seed");
+    const already = SEED.entries.find(
       (e) => e.metric_definition_id === def!.id && e.period === period
     );
     if (already) already.value = value;
-    else data.metric_entries.push({ id: allocId("metric_entries"), metric_definition_id: def!.id, period, value });
+    else SEED.entries.push({ id: allocId("metric_entries"), metric_definition_id: def!.id, period, value });
   }
 });
 

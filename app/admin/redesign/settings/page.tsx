@@ -2,6 +2,8 @@ import { isOwner, requireCoach } from "../../../lib/auth";
 import { clerkOn } from "../../../lib/clerk";
 import { getCoachProfileView, getCoachSettings, listCoachEmails } from "../../../lib/queries";
 import { fetchCoachPageChat } from "../../../lib/chat/rows";
+import { fetchCoachFood } from "../../../lib/food/rows";
+import { fetchCoachCheckIns } from "../../../lib/checkins/rows";
 import { getData } from "../../../lib/db";
 import { COUNTRIES, countryOf, invoicingFor } from "../../../lib/countries";
 import { LEGAL } from "../../../lib/legal";
@@ -74,6 +76,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const coach = await t.time("auth", () => requireCoach());
   // The chat first (Step 5, app/lib/chat/rows.ts): the rail's view and the chat list's.
   const chat = await t.time("chat", () => fetchCoachPageChat(coach.id, "page.settings"));
+  // The food diary the rail's feed reads (quest 8 part 1), fetched first as the chat is.
+  const food = await t.time("food", () => fetchCoachFood([coach.id], "page.settings"));
+  // The check-in figures the rail's feed reads (quest 9, app/lib/checkins/rows.ts), fetched first as the food is.
+  const ck = await t.time("checkins", () => fetchCoachCheckIns([coach.id], "page.settings"));
   const params = await searchParams;
 
   // Profile: the coach's own, or for the owner any coach's (?coachId=).
@@ -175,7 +181,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
   return t.end(
     <div className="rd-frame">
-      <RedesignRail rail={t.time("rail", () => loadRail(coach, chat.coach))} clientId={0} />
+      <RedesignRail rail={t.time("rail", () => loadRail(coach, chat.coach, food, ck))} clientId={0} />
       {/* The chat tab and its 60px on the right, as every coach-level page (16 Nov, Alex: the audit). */}
       <ChatDock chats={t.time("chatDock", () => loadChatDock(coach, chat.dock))} />
       <div className="rd-page">

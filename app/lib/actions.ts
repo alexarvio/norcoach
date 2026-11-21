@@ -1,11 +1,16 @@
 "use server";
 
 import { chatChanged, chatCurrent, chatTyping, timedChatRead } from "./chatBus";
-import { once, onceKeyOf } from "./once";
+import { once, onceKeyOf, takenKeyOf } from "./once";
+import { fetchClientFood, fetchCoachFoodOfClient, foodLinkSpan, noFoodRows, writeFood } from "./food/rows";
+import { FOOD_PG } from "./food/mode";
+import { CHECKINS_PG } from "./checkins/mode";
+import { checkInKey, fetchClientCheckIns, fetchCoachCheckInsOfClient, writeCheckIns } from "./checkins/rows";
 import { sendChatAs } from "./chatSend";
 import { CHAT_PG } from "./chat/mode";
 import { createHash } from "crypto";
 import { fetchCoachChatOfClient, fetchFoodComments, fetchThread } from "./chat/rows";
+import { fetchNoteOwner, notesKeyed } from "./notes/rows";
 import { isDialCode, splitTypedPhone } from "./phone";
 import { isMeetingTypeId } from "./meetingTypes";
 import { isClientCall, takesClient } from "./calendarKinds";
@@ -20,6 +25,7 @@ import { listClientGyms } from "./queries";
 import { createCoachAccount, invoiceCheckout, onboardingLink, stripeConfigured } from "./stripe";
 import { canPayOnline } from "./payments";
 import { sendPushInBackground } from "./push";
+import { openAppIfPhaseLive } from "./appLock";
 import { pushCoachMessage, pushCoachNews, pushCoachVideo } from "./coachPush";
 import { coachIdOfClient as coachUserIdOf } from "./tenancy";
 import { appUrl } from "./passwordReset";
@@ -271,7 +277,6 @@ import {
   updateSetLog,
   publishWeek,
   getClientIdForPhotoSlot,
-  getClientIdForNotification,
   markExerciseNoteRead,
   setExerciseNoteKind,
   setAssignmentDemoUrl,
@@ -347,6 +352,7 @@ import {
   copyFoodDay,
   saveDay,
   releaseEmptyRestDay,
+  restDayToRelease,
   createBlankSavedDay,
   renameSavedDay,
   addSavedDayCard,
@@ -685,6 +691,8 @@ export async function deployProgramAction(formData: FormData) {
   // programme can't go out. The button is disabled too; this is the backstop.
   if (!programHasName(programId)) return;
   deployProgram(programId);
+  // A client still locked opens with their first phase live (19 Nov, Alex: "first phase"; app/lib/appLock.ts).
+  await openAppIfPhaseLive(getClientIdForProgram(programId));
   revalidatePath("/client");
   revalidatePath("/admin");
 }
@@ -704,6 +712,8 @@ export async function scheduleProgramDeployAction(formData: FormData) {
     const when = new Date(`${date}T${time}:00`);
     if (!Number.isNaN(when.getTime())) {
       scheduleProgramDeploy(programId, when.toISOString());
+      // A schedule already due opens a client still locked (19 Nov, review; app/lib/appLock.ts).
+      await openAppIfPhaseLive(getClientIdForProgram(programId));
     }
   }
   revalidatePath("/admin");
@@ -979,7 +989,14 @@ export async function saveMeasurementCheckInAction(formData: FormData) {
     const value = Number(String(raw).replace(",", "."));
     setMeasurementValue(field.id, date, Number.isFinite(value) ? value : null, loggedAt);
   });
-  if (formData.has("note")) setCheckInNote(clientId, "measurements", date, String(formData.get("note") ?? "").slice(0, 500));
+  // The note through the check-ins' door (quest 9). With CHECKINS_STORE=pg the values above are saved first (the store's
+  // save waited for), then the note commits, so a crash between loses the note alone, never the values.
+  if (formData.has("note")) {
+    const p = checkInKey(date);
+    const text = checkInKey(String(formData.get("note") ?? "").slice(0, 500));
+    if (CHECKINS_PG) await persistNow();
+    await writeCheckIns("w.note.measure", clientId, () => ({ defIds: [], span: { periods: [] }, notes: [{ kind: "measurements", period: p }] }), (box) => setCheckInNote(box, clientId, "measurements", p, text));
+  }
 
   revalidatePath("/admin");
   revalidatePath("/client");
@@ -1107,7 +1124,7 @@ export async function applyMetricChangesAction(input: {
   const said: string[] = [];
   const retires = (Array.isArray(input.retires) ? input.retires : []).filter(mine);
   const removedNames = [...(Array.isArray(input.removes) ? input.removes : []).filter(mine), ...retires].map(metricName);
-  for (const id of Array.isArray(input.removes) ? input.removes : []) if (mine(id)) removeMetricDefinition(id);
+  for (const id of Array.isArray(input.removes) ? input.removes : []) if (mine(id)) await removeMetricDefinition(id);
   for (const id of retires) retireMetricDefinition(id);
   for (const c of Array.isArray(input.cadence) ? input.cadence : []) {
     if (mine(c.id) && (c.value === "daily" || c.value === "weekly" || c.value === "monthly")) {
@@ -1177,7 +1194,7 @@ export async function addMetricDefinitionAction(formData: FormData) {
 /** Start a phase from what another one asks for, rather than from nothing. */
 export async function copyPhaseMetricsAction(clientId: number, fromPhaseId: number | null, toPhaseId: number, fromIsLive: boolean) {
   if (!(await coachForClient(Number(clientId)))) return;
-  copyPhaseMetrics(fromPhaseId == null ? null : Number(fromPhaseId), Number(toPhaseId), Number(clientId), !!fromIsLive);
+  await copyPhaseMetrics(fromPhaseId == null ? null : Number(fromPhaseId), Number(toPhaseId), Number(clientId), !!fromIsLive);
   revalidatePath("/admin");
   revalidatePath("/client");
 }
@@ -1201,7 +1218,7 @@ export async function removeMetricDefinitionAction(formData: FormData) {
   if (!(await coachForClient(clientIdForMetricDefinition(id)))) return;
   const owner = clientIdForMetricDefinition(id);
   const was = getData().metric_definitions.find((m) => m.id === id)?.name ?? "a metric";
-  removeMetricDefinition(id);
+  await removeMetricDefinition(id);
   checkInChange(owner, `Removed ${was}`);
   revalidatePath("/admin");
   revalidatePath("/client");
@@ -1294,14 +1311,24 @@ export async function logMetricPeriodAction(formData: FormData) {
   const dateRaw = String(formData.get("date") || "");
   if (!dateRaw) return;
   if (await checkInLocked(dateRaw, frequency)) return;
-  const period = frequency === "weekly" ? weekStart(dateRaw) : frequency === "monthly" ? monthStart(dateRaw) : dateRaw;
+  // As Postgres holds it with CHECKINS_STORE=pg (quest 9: a coach may post any period; memory mode keeps it as typed).
+  const period = checkInKey(frequency === "weekly" ? weekStart(dateRaw) : frequency === "monthly" ? monthStart(dateRaw) : dateRaw);
+  const span = { periods: [period] };
+  const note = formData.has("note") && (frequency === "daily" || frequency === "weekly" || frequency === "monthly") ? checkInKey(String(formData.get("note") ?? "").slice(0, 500)) : null;
 
+  // Every figure of the period and its note in one write (one transaction with CHECKINS_STORE=pg), the metrics found
+  // again under the client's lock.
+  await writeCheckIns(
+    "w.entry.typed",
+    clientId,
+    () => ({ defIds: listMetricDefinitions(clientId, frequency).map((d) => d.id), span, notes: [{ kind: frequency, period }] }),
+    (box) => {
   const definitions = listMetricDefinitions(clientId, frequency);
   const loggedAt = new Date().toISOString();
   // A weekly (or monthly) reading changed from a past day in the feed keeps
   // its stamp: the feed files it under the day it was sent.
   const pastWeekly = frequency !== "daily" && dateRaw < localDateStr();
-  const entries = pastWeekly ? getMetricEntries(definitions.map((d) => d.id)) : [];
+  const entries = pastWeekly ? getMetricEntries(box, definitions.map((d) => d.id), span) : [];
   definitions.forEach((def) => {
     const raw = formData.get(`metric_${def.id}`);
     // A field not on the form is untouched. One sent empty is a reading the
@@ -1309,7 +1336,7 @@ export async function logMetricPeriodAction(formData: FormData) {
     // used to come back done when the screen was opened again).
     if (raw === null) return;
     if (raw === "") {
-      if (getMetricEntries([def.id]).some((e) => e.period === period && e.value != null)) setMetricEntry(def.id, period, null);
+      if (getMetricEntries(box, [def.id], span).some((e) => e.period === period && e.value != null)) setMetricEntry(box, def.id, period, null);
       return;
     }
     // Phones on European locales type the decimal comma.
@@ -1318,14 +1345,14 @@ export async function logMetricPeriodAction(formData: FormData) {
     if (isStepsMetric(def.name) && value > MAX_DAY_STEPS) return;
     // The phone's figure sent back as it was (the check-in posts every row of the day) stays the phone's (16 Nov): only a
     // different figure is the client typing over it, so the phone can still bring the rest of the night or a later reading.
-    const was = getMetricEntries([def.id]).find((e) => e.period === period);
+    const was = getMetricEntries(box, [def.id], span).find((e) => e.period === period);
     if (was?.source === "health" && was.value === value) return;
     const stamp = entries.find((e) => e.metric_definition_id === def.id && e.period === period)?.logged_at ?? loggedAt;
-    setMetricEntry(def.id, period, Number.isFinite(value) ? value : null, stamp);
+    setMetricEntry(box, def.id, period, Number.isFinite(value) ? value : null, stamp);
   });
-  if (formData.has("note") && (frequency === "daily" || frequency === "weekly" || frequency === "monthly")) {
-    setCheckInNote(clientId, frequency, period, String(formData.get("note") ?? "").slice(0, 500));
-  }
+  if (note != null) setCheckInNote(box, clientId, frequency, period, note);
+    }
+  );
 
   revalidatePath("/admin");
   revalidatePath("/client");
@@ -1339,7 +1366,7 @@ export async function logMetricPeriodAction(formData: FormData) {
 // and typed none; how many days the phone had is said too.
 export async function syncHealthAction(input: HealthSyncInput): Promise<HealthSyncResult> {
   const { clientId } = await requireClient();
-  const r = syncHealthForClient(clientId, input && typeof input === "object" ? input : {});
+  const r = await syncHealthForClient(clientId, input && typeof input === "object" ? input : {});
   if (r.saved || r.workoutsChanged) {
     revalidatePath("/admin");
     revalidatePath("/client");
@@ -1664,7 +1691,7 @@ export async function uploadMealPhotoAction(formData: FormData) {
   const buffer = fitted?.bytes ?? original;
   const type = fitted?.type ?? (file.type || "image/jpeg");
   // Saved to the disk, then copied into the storage bucket when it is on; on a saved meal it is that meal's picture too.
-  const { path: saved, gone } = saveMealPhoto(clientId, date, meal, buffer, type);
+  const { path: saved, gone } = await writeFood("w.photo.save", clientId, { span: { dates: [date] } }, (box) => saveMealPhoto(box, clientId, date, meal, buffer, type));
   // What it replaced goes, when nothing else shows it (a saved meal may still hold the day's old photo).
   for (const was of gone) await deleteUpload(was);
   await putUpload(saved, buffer, type);
@@ -1746,7 +1773,7 @@ export async function markVideoReplySeenAction(id: number) {
 /** The coach opened the client's note on a programme (the Training tab). */
 export async function markProgramNoteSeenAction(programId: number) {
   if (!Number.isInteger(programId) || !(await coachForClient(getClientIdForProgram(programId)))) return;
-  markProgramNoteSeen(programId, await fetchCoachChatOfClient(getClientIdForProgram(programId) ?? 0, "action.markProgramNote"));
+  markProgramNoteSeen(programId, await fetchCoachChatOfClient(getClientIdForProgram(programId) ?? 0, "action.markProgramNote"), await fetchCoachFoodOfClient(getClientIdForProgram(programId) ?? 0, "action.markProgramNote"), await fetchCoachCheckInsOfClient(getClientIdForProgram(programId) ?? 0, "action.markProgramNote"));
   revalidatePath("/admin");
 }
 
@@ -1840,7 +1867,7 @@ export async function removeMealPhotoAction(formData: FormData) {
   const date = String(formData.get("date") ?? "");
   const meal = String(formData.get("meal") ?? "");
   if (!date || !meal) return;
-  for (const was of removeMealPhoto(clientId, date, meal)) await deleteUpload(was);
+  for (const was of await writeFood("w.photo.remove", clientId, { span: { dates: [date] } }, (box) => removeMealPhoto(box, clientId, date, meal))) await deleteUpload(was);
   revalidatePath("/admin");
 }
 
@@ -1875,7 +1902,9 @@ export async function saveNutritionTargetsAction(formData: FormData) {
     // One note a day (21 Oct: the tab saves as the coach types, so 180 → 1 → 19 → 190
     // mustn't reach the client as three notes): each figure from how the day began to now.
     const key = `nutrition-targets:${localDateStr()}`;
-    const today = data.coach_activity.find((a) => a.client_id === clientId && a.dedupe_key === key);
+    // The day's note read and its change written as one step, one at a time per client and day (the notes' door, quest 7).
+    await notesKeyed(clientId, key, (notes) => {
+    const today = notes.row(key);
     const began = new Map<string, string>();
     for (const part of today ? today.message.slice(today.message.indexOf(": ") + 2).split(" · ") : []) {
       const m = /^(.+) (\S+) → \S+ (?:g|L)$/.exec(part);
@@ -1897,6 +1926,7 @@ export async function saveNutritionTargetsAction(formData: FormData) {
     // Back where the day began: nothing to tell the client, and the day's note goes.
     if (moved.length > 0) logCoachActivity(clientId, `Updated your nutrition targets: ${moved.join(" · ")}`, { kind: "general", actionTab: "nutrition", actionLabel: "See your targets", dedupeKey: key, replace: true });
     else if (today) dropCoachActivity(clientId, key);
+    }, "action.nutritionTargets");
   }
   revalidatePath("/admin");
   revalidatePath("/client");
@@ -2578,8 +2608,10 @@ export async function chatThreadAction(clientId: number, known?: string | null):
   if (chatCurrent(id, known)) return null;
   const t0 = performance.now();
   const thread = await fetchThread(id, "action.chatThread");
+  // The meals its links name (the food diary's door).
+  const food = await fetchClientFood(id, "action.chatThread", foodLinkSpan(thread, id));
   // The revision the rows were read under (the view's), never one read after them.
-  return { rev: thread.rev, messages: timedChatRead("chat · client", () => chatThreadViews(thread), t0) };
+  return { rev: thread.rev, messages: timedChatRead("chat · client", () => chatThreadViews(thread, food), t0) };
 }
 
 /** Typing… (27 Oct, Alex): this side is typing in the chat; nothing is saved. A coach previewing the app is the coach. */
@@ -2662,10 +2694,12 @@ const goalWords = (clientId: number, kg: number, byDate: string) => `${goalWeigh
 export async function saveWeightGoalAction(clientId: number, v: WeightGoalFields, goalId?: number, onceKey?: string): Promise<WeightGoalSaved | null> {
   const coach = await coachForClient(Number(clientId));
   if (!coach) return null;
+  // The client's weigh-ins first (quest 9): a new goal starts at the latest.
+  const ck = await fetchClientCheckIns(Number(clientId), "action.weightGoal");
   // Taken once (6 Nov, one-time key): a new goal sent again after a dropped signal answers the goal the first made,
   // never "one is running already". A change needs none, it lands in the same place.
   return once(`saveWeightGoalAction:${Number(clientId)}`, goalId == null ? onceKeyOf(onceKey) : null, (): WeightGoalSaved => {
-    const row = saveWeightGoal(Number(clientId), v, { who: "coach", userId: coach.id }, goalId == null ? undefined : Number(goalId));
+    const row = saveWeightGoal(ck, Number(clientId), v, { who: "coach", userId: coach.id }, goalId == null ? undefined : Number(goalId));
     if (typeof row === "string") return { error: row };
     // The client hears of it, landing on the goal (a new one rings; a change rewrites today's note).
     noteChange(Number(clientId), `${goalId == null ? "Set a weight goal" : "Changed your weight goal"}: ${goalWords(Number(clientId), row.target_kg, row.by_date)}`, { tab: "home", label: "See it", key: `weight-goal:${row.id}`, ref: row.id, push: goalId == null, replace: true });
@@ -2799,7 +2833,8 @@ export async function setMessageLinkAction(clientId: number, messageId: number, 
     } catch {
       link = null;
     }
-    if (!link || describeMessageLink(id, link).gone) return;
+    const food = link?.kind === "food" && link.meal ? await fetchClientFood(id, "action.setLink", { dates: [link.date] }) : noFoodRows("action.setLink");
+    if (!link || describeMessageLink(food, id, link).gone) return;
   }
   await setChatMessageLink(id, Number(messageId), link);
   bothSides(quiet);
@@ -2846,9 +2881,9 @@ export async function editMealCommentAction(clientId: number, messageId: number,
 // the view changes is a bad place to be mid-submit.
 export async function markNotificationReadAction(id: number) {
   if (!id || (await coachLooking())) return;
-  const owner = getClientIdForNotification(id);
+  const owner = await fetchNoteOwner(id, "action.markRead");
   if (owner == null || !(await canAccessClient(owner))) return;
-  markNotificationRead(id);
+  markNotificationRead(id, owner);
   revalidatePath("/client");
 }
 
@@ -3092,7 +3127,7 @@ export async function deleteClientAction(formData: FormData) {
 export async function dismissHomeActionAction(clientId: number, actionId: string | string[]) {
   if (!(await coachForClient(Number(clientId)))) return;
   const chat = await fetchCoachChatOfClient(Number(clientId), "action.dismissHome");
-  dismissHomeAction(Number(clientId), Array.isArray(actionId) ? actionId.map(String) : String(actionId), chat);
+  dismissHomeAction(Number(clientId), Array.isArray(actionId) ? actionId.map(String) : String(actionId), chat, await fetchCoachFoodOfClient(Number(clientId), "action.dismissHome"), await fetchCoachCheckInsOfClient(Number(clientId), "action.dismissHome"));
   revalidatePath("/admin");
 }
 
@@ -3373,7 +3408,7 @@ export async function addClientPhaseAction(formData: FormData): Promise<{ phaseI
   // Only one of this client's own programmes can be linked.
   const programId = /^\d+$/.test(rawProgram) && getClientIdForProgram(Number(rawProgram)) === clientId ? Number(rawProgram) : null;
   // Taken once (6 Nov, one-time key): sent again after a dropped signal, it answers the phase the first made.
-  return once(`addClientPhaseAction:${clientId}`, onceKeyOf(formData), () => {
+  const made = await once(`addClientPhaseAction:${clientId}`, onceKeyOf(formData), () => {
     // A running phase with no end on this track ends the week before (26 Oct).
     endOpenPhaseBefore(clientId, fields.track, fields.start);
     const added = addClientPhase(clientId, fields.track, fields.name, fields.start, fields.end, programId);
@@ -3383,6 +3418,9 @@ export async function addClientPhaseAction(formData: FormData): Promise<{ phaseI
     revalidatePath("/client");
     return { phaseId: added.id, programId: added.program_id ?? null };
   });
+  // Linked to a programme already out, it can be live at once: a client still locked opens (19 Nov, appLock.ts).
+  await openAppIfPhaseLive(clientId);
+  return made;
 }
 
 /**
@@ -3395,7 +3433,7 @@ export async function duplicateClientPhaseAction(phaseId: number, onceKey?: stri
   const src = getPhaseById(Number(phaseId));
   if (!src || !(await coachForClient(src.client_id))) return null;
   // Taken once (6 Nov, one-time key): sent again after a dropped signal, it answers the copy the first made.
-  return once(`duplicateClientPhaseAction:${src.client_id}`, onceKeyOf(onceKey), () => {
+  return once(`duplicateClientPhaseAction:${src.client_id}`, onceKeyOf(onceKey), async () => {
     const days = phaseDays(src.start_week, src.end_week);
     const nextMonday = new Date(`${weekStart(localDateStr())}T00:00:00`);
     nextMonday.setDate(nextMonday.getDate() + 7);
@@ -3415,7 +3453,7 @@ export async function duplicateClientPhaseAction(phaseId: number, onceKey?: stri
       if (src.monthly_check_in_day !== undefined) row.monthly_check_in_day = src.monthly_check_in_day;
       persist();
     }
-    if (src.track === "lifestyle") copyPhaseMetrics(src.id, made.id, src.client_id, false);
+    if (src.track === "lifestyle") await copyPhaseMetrics(src.id, made.id, src.client_id, false);
     revalidatePath("/admin");
     revalidatePath("/client");
     return made.id;
@@ -3431,6 +3469,8 @@ export async function schedulePhaseAction(formData: FormData) {
   if (!fields) return;
   schedulePhase(id, fields.name, fields.start, fields.end);
   saveObjectivesFrom(id, formData);
+  // Its first day come, a client still locked opens (19 Nov, Alex: "first phase"; app/lib/appLock.ts).
+  await openAppIfPhaseLive(getClientIdForPhase(id));
   revalidatePath("/admin");
   revalidatePath("/client");
 }
@@ -3445,6 +3485,7 @@ export async function schedulePhaseOnItsDatesAction(id: number) {
   if (!phase) return;
   // Its stored dates, its last week the one its last day falls in.
   schedulePhase(phaseId, phase.name, phase.start_week, phaseLastDay(phase.end_week));
+  await openAppIfPhaseLive(phase.client_id);
   revalidatePath("/admin");
   revalidatePath("/client");
 }
@@ -3457,6 +3498,7 @@ export async function deployPhaseNowAction(id: number): Promise<string | null> {
   const empty = phaseEmptyReason(id);
   if (empty) return empty;
   deployPhaseNow(id);
+  await openAppIfPhaseLive(getClientIdForPhase(id));
   revalidatePath("/admin");
   revalidatePath("/client");
   return null;
@@ -3481,6 +3523,7 @@ export async function saveAndSchedulePhaseOrSayWhyAction(formData: FormData): Pr
   // The edits are kept; an empty draft just doesn't go out, and says why (20 Oct: the toast said "scheduled" anyway).
   const empty = phaseEmptyReason(id);
   if (!empty) schedulePhase(id, fields.name, fields.start, fields.end);
+  if (!empty) await openAppIfPhaseLive(getClientIdForPhase(id));
   revalidatePath("/admin");
   revalidatePath("/client");
   return empty;
@@ -3496,6 +3539,7 @@ export async function saveAndDeployPhaseNowAction(formData: FormData): Promise<s
   // Saved either way; live only with something in it, and if not, why not (5 Oct).
   const empty = phaseEmptyReason(id);
   if (!empty) deployPhaseNow(id);
+  if (!empty) await openAppIfPhaseLive(getClientIdForPhase(id));
   revalidatePath("/admin");
   revalidatePath("/client");
   return empty;
@@ -3515,6 +3559,8 @@ export async function updateClientPhaseAction(formData: FormData) {
   updateClientPhase(id, fields.track, fields.name, fields.start, fields.end, formData.get("adjustProgram") === "1");
   saveObjectivesFrom(id, formData);
   openEndedFrom(id, fields, formData);
+  // A scheduled phase moved to start this week opens a client still locked (19 Nov, appLock.ts).
+  await openAppIfPhaseLive(getClientIdForPhase(id));
   revalidatePath("/admin");
   revalidatePath("/client");
 }
@@ -3594,6 +3640,7 @@ export async function removeClientPhaseAction(formData: FormData) {
 export async function deployNutritionPhaseAction(phaseId: number) {
   if (!Number.isInteger(phaseId) || !(await coachForClient(getClientIdForPhase(phaseId)))) return;
   setNutritionPhaseDraft(phaseId, false);
+  await openAppIfPhaseLive(getClientIdForPhase(phaseId));
   revalidatePath("/admin");
   revalidatePath("/client");
 }
@@ -3620,7 +3667,7 @@ export async function logCaloriesAction(formData: FormData) {
   // Training or rest, as the client called the day; absent keeps what it was.
   const rawDayType = formData.get("dayType");
   const dayType = rawDayType === "training" || rawDayType === "rest" ? rawDayType : undefined;
-  setCalorieLog(clientId, date, kcal, note, dayType, null);
+  await writeFood("w.calories.typed", clientId, { span: { dates: [date] } }, (box) => setCalorieLog(box, clientId, date, kcal, note, dayType, null));
   revalidatePath("/client");
   revalidatePath("/admin");
 }
@@ -3960,7 +4007,7 @@ export async function saveCoachNoteAction(clientId: number, text: string) {
 export async function markSeenAction(clientId: number, which: { all: true } | { dayId: number } | { ids: string[] } | { tab: string }) {
   // Read marks are no change to the plan: open while read-only (28 Oct, Alex).
   if (!(await coachForClientOpen(Number(clientId)))) return;
-  markClientEventsSeen(Number(clientId), which, await fetchCoachChatOfClient(Number(clientId), "action.markSeen"));
+  markClientEventsSeen(Number(clientId), which, await fetchCoachChatOfClient(Number(clientId), "action.markSeen"), await fetchCoachFoodOfClient(Number(clientId), "action.markSeen"), await fetchCoachCheckInsOfClient(Number(clientId), "action.markSeen"));
   // The chat read: its unread mark goes on every open screen of it (27 Oct).
   if ("tab" in which && which.tab === "messages") chatChanged(Number(clientId));
   revalidatePath("/admin");
@@ -4841,15 +4888,18 @@ export async function addFoodEntryAction(formData: FormData): Promise<FoodDiaryV
   const meal = String(formData.get("meal") ?? "");
   const foodId = String(formData.get("foodId") ?? "");
   const grams = gramsOf(formData.get("grams"));
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !hasFoodMeal(clientId, meal, date) || !foodId || grams == null) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !hasFoodMeal(await fetchClientFood(clientId, "action.food.add", { dates: [date] }), clientId, meal, date) || !foodId || grams == null) return null;
   const serving = String(formData.get("serving") ?? "").trim().slice(0, 80) || null;
   // Taken once (6 Nov, one-time key): sent again after a dropped signal, it adds no second food. The day is read after
-  // it either way, so the answer is the day as it now is (and no day is kept with the key).
-  await once(`addFoodEntryAction:${clientId}`, onceKeyOf(formData), () => {
-    addFoodEntry(clientId, date, meal as FoodMeal, foodId, grams, serving);
+  // it either way, so the answer is the day as it now is (and no day is kept with the key). Through the food diary's
+  // door (quest 8 part 1): with FOOD_STORE=pg the key is claimed in the write's own transaction.
+  const addKey = onceKeyOf(formData);
+  await once(`addFoodEntryAction:${clientId}`, addKey, async () => {
+    await writeFood("w.entry.add", clientId, { span: { dates: [date] } }, (box) => void addFoodEntry(box, clientId, date, meal as FoodMeal, foodId, grams, serving), { once: takenKeyOf(`addFoodEntryAction:${clientId}`, addKey) });
     revalidatePath("/admin");
   });
-  return getFoodDiary(clientId, date, await fetchFoodComments(clientId, "action.food.add"));
+  const food = await fetchClientFood(clientId, "action.food.add");
+  return getFoodDiary(food, clientId, date, await fetchFoodComments(clientId, "action.food.add"));
 }
 
 export async function updateFoodEntryAction(formData: FormData): Promise<FoodDiaryView | null> {
@@ -4858,20 +4908,24 @@ export async function updateFoodEntryAction(formData: FormData): Promise<FoodDia
   const grams = gramsOf(formData.get("grams"));
   if (!Number.isInteger(id) || grams == null) return null;
   const serving = String(formData.get("serving") ?? "").trim().slice(0, 80) || null;
-  updateFoodEntry(clientId, id, grams, serving);
+  await writeFood("w.entry.update", clientId, { entryIds: [id] }, (box) => updateFoodEntry(box, clientId, id, grams, serving));
   revalidatePath("/admin");
   const date = String(formData.get("date") ?? "");
-  return diaryDateOk(date) ? getFoodDiary(clientId, date, await fetchFoodComments(clientId, "action.food.update")) : null;
+  if (!diaryDateOk(date)) return null;
+  const food = await fetchClientFood(clientId, "action.food.update");
+  return getFoodDiary(food, clientId, date, await fetchFoodComments(clientId, "action.food.update"));
 }
 
 export async function removeFoodEntryAction(formData: FormData): Promise<FoodDiaryView | null> {
   const clientId = await requireClientAccess(Number(formData.get("clientId")));
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return null;
-  removeFoodEntry(clientId, id);
+  await writeFood("w.entry.remove", clientId, { entryIds: [id] }, (box) => removeFoodEntry(box, clientId, id));
   revalidatePath("/admin");
   const date = String(formData.get("date") ?? "");
-  return diaryDateOk(date) ? getFoodDiary(clientId, date, await fetchFoodComments(clientId, "action.food.remove")) : null;
+  if (!diaryDateOk(date)) return null;
+  const food = await fetchClientFood(clientId, "action.food.remove");
+  return getFoodDiary(food, clientId, date, await fetchFoodComments(clientId, "action.food.remove"));
 }
 
 /** Returns the new food's id ("custom:12") so the diary can add it straight away. */
@@ -4910,8 +4964,13 @@ export async function getFoodDiaryAction(clientId: number, date: string, opening
   const owner = await requireClientAccess(Number(clientId));
   // Reading reaches back a year (24 Oct, Alex: a coach's link to an older day opened today); writing keeps its 30 days.
   if (!diaryDateOk(String(date), 366)) return null;
-  if (opening) releaseEmptyRestDay(owner, String(date));
-  return getFoodDiary(owner, String(date), await fetchFoodComments(owner, "action.food.diary"));
+  // A day being opened lets go of an empty Rest pick (a write inside this read, as before: the food diary's door).
+  // With FOOD_STORE=pg the day is read first and written only when there is a pick to let go, so opening a day is no
+  // transaction (memory mode as before: the write returns at once when there is nothing to let go).
+  if (opening && (!FOOD_PG || restDayToRelease(await fetchClientFood(owner, "action.food.diary", { dates: [String(date)] }), owner, String(date))))
+    await writeFood("w.day.release", owner, { span: { dates: [String(date)] } }, (box) => releaseEmptyRestDay(box, owner, String(date)));
+  const food = await fetchClientFood(owner, "action.food.diary");
+  return getFoodDiary(food, owner, String(date), await fetchFoodComments(owner, "action.food.diary"));
 }
 
 export async function addFoodMealAction(formData: FormData): Promise<string | null> {
@@ -4920,10 +4979,10 @@ export async function addFoodMealAction(formData: FormData): Promise<string | nu
   const date = String(formData.get("date") ?? "");
   if (!name || !diaryDateOk(date)) return null;
   // Taken once (6 Nov, one-time key): sent again after a dropped signal, it answers the meal the first made.
-  return once(`addFoodMealAction:${clientId}`, onceKeyOf(formData), () => {
-    const row = addFoodMeal(clientId, name, date);
-    return `m:${row.id}`;
-  });
+  const key = onceKeyOf(formData);
+  return once(`addFoodMealAction:${clientId}`, key, () =>
+    writeFood("w.meal.add", clientId, { span: { dates: [date] } }, (box) => `m:${addFoodMeal(box, clientId, name, date).id}`, { once: takenKeyOf(`addFoodMealAction:${clientId}`, key) })
+  );
 }
 
 export async function renameFoodMealAction(formData: FormData) {
@@ -4931,7 +4990,7 @@ export async function renameFoodMealAction(formData: FormData) {
   const id = Number(String(formData.get("meal") ?? "").replace(/^m:/, ""));
   const name = String(formData.get("name") ?? "").trim().slice(0, 30);
   if (!Number.isInteger(id) || !name) return;
-  renameFoodMeal(clientId, id, name);
+  await writeFood("w.meal.rename", clientId, {}, (box) => renameFoodMeal(box, clientId, id, name));
 }
 
 export async function removeFoodMealAction(formData: FormData) {
@@ -4939,7 +4998,10 @@ export async function removeFoodMealAction(formData: FormData) {
   const id = Number(String(formData.get("meal") ?? "").replace(/^m:/, ""));
   if (!Number.isInteger(id)) return;
   const date = String(formData.get("date") ?? "");
-  for (const was of removeFoodMeal(clientId, id, /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null) ?? []) await deleteUpload(was);
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+  // Its rows on any day (whether any still holds it) and that day's photo: one transaction with FOOD_STORE=pg.
+  const gone = await writeFood("w.meal.remove", clientId, { span: { dates: day ? [day] : [] }, meals: [`m:${id}`] }, (box) => removeFoodMeal(box, clientId, id, day));
+  for (const was of gone ?? []) await deleteUpload(was);
   revalidatePath("/admin");
   revalidatePath("/client");
 }
@@ -4951,7 +5013,7 @@ export async function copyFoodMealAction(formData: FormData) {
   const toDate = String(formData.get("toDate") ?? "");
   const toMeal = String(formData.get("toMeal") ?? "");
   if (!DATE.test(fromDate) || !diaryDateOk(toDate)) return;
-  copyFoodMeal(clientId, fromDate, fromMeal, toDate, toMeal);
+  await writeFood("w.meal.copy", clientId, { span: { dates: [fromDate, toDate] } }, (box) => copyFoodMeal(box, clientId, fromDate, fromMeal, toDate, toMeal));
   revalidatePath("/client");
   revalidatePath("/admin");
 }
@@ -4961,7 +5023,7 @@ export async function setFoodDayTypeAction(formData: FormData) {
   const date = String(formData.get("date") ?? "");
   const dayType = formData.get("dayType");
   if (!diaryDateOk(date) || (dayType !== "training" && dayType !== "rest")) return;
-  setFoodDayType(clientId, date, dayType);
+  await writeFood("w.day.type", clientId, { span: { dates: [date] } }, (box) => setFoodDayType(box, clientId, date, dayType));
   revalidatePath("/admin");
 }
 
@@ -4974,14 +5036,14 @@ export async function reorderFoodMealsAction(formData: FormData) {
     .map((s) => s.trim())
     .filter(Boolean)
     .slice(0, 30);
-  reorderFoodMeals(clientId, date, ids);
+  await writeFood("w.meal.reorder", clientId, { span: { dates: [date] } }, (box) => reorderFoodMeals(box, clientId, date, ids));
 }
 
 export async function pushFoodDayAction(formData: FormData) {
   const clientId = await requireClientAccess(Number(formData.get("clientId")));
   const date = String(formData.get("date") ?? "");
   if (!diaryDateOk(date)) return;
-  pushFoodDayToCalorieLog(clientId, date);
+  await writeFood("w.day.push", clientId, { span: { dates: [date] } }, (box) => pushFoodDayToCalorieLog(box, clientId, date));
   revalidatePath("/admin");
 }
 
@@ -4991,10 +5053,12 @@ export async function saveMealAction(formData: FormData) {
   const meal = String(formData.get("meal") ?? "");
   const name = String(formData.get("name") ?? "").trim().slice(0, 40);
   if (!DATE.test(date) || !name) return;
-  // Taken once (6 Nov, one-time key): sent again after a dropped signal, it saves no second meal.
-  await once(`saveMealAction:${clientId}`, onceKeyOf(formData), () => {
-    saveMeal(clientId, date, meal, name);
-  });
+  // Taken once (6 Nov, one-time key): sent again after a dropped signal, it saves no second meal. Save meal is one
+  // transaction with FOOD_STORE=pg: the saved meal, its picture and the slot's rows stamped with it.
+  const key = onceKeyOf(formData);
+  await once(`saveMealAction:${clientId}`, key, () =>
+    writeFood("w.savedMeal.save", clientId, { span: { dates: [date] } }, (box) => void saveMeal(box, clientId, date, meal, name), { once: takenKeyOf(`saveMealAction:${clientId}`, key) })
+  );
 }
 
 /** A saved meal made what a slot holds that day (11 Nov, Alex), the foods added that day included. */
@@ -5003,8 +5067,11 @@ export async function updateSavedMealFromSlotAction(formData: FormData): Promise
   const date = String(formData.get("date") ?? "");
   const meal = String(formData.get("meal") ?? "");
   if (!DATE.test(date) || !meal) return false;
-  // Taken once (one-time key): sent again after a dropped signal, it changes nothing twice.
-  const done = await once(`updateSavedMealFromSlotAction:${clientId}`, onceKeyOf(formData), () => updateSavedMealFromSlot(clientId, date, meal));
+  // Taken once (one-time key): sent again after a dropped signal, it changes nothing twice. One transaction (Update {name}).
+  const key = onceKeyOf(formData);
+  const done = await once(`updateSavedMealFromSlotAction:${clientId}`, key, () =>
+    writeFood("w.savedMeal.update", clientId, { span: { dates: [date] } }, (box) => updateSavedMealFromSlot(box, clientId, date, meal), { once: takenKeyOf(`updateSavedMealFromSlotAction:${clientId}`, key) })
+  );
   if (done) revalidatePath("/client");
   return !!done;
 }
@@ -5015,7 +5082,10 @@ export async function createSavedMealCardAction(formData: FormData): Promise<num
   const name = String(formData.get("name") ?? "").trim().slice(0, 40);
   if (!name) return null;
   const slot = String(formData.get("slot") ?? "") || null;
-  const id = await once(`createSavedMealCardAction:${clientId}`, onceKeyOf(formData), () => createSavedMeal(clientId, name, [], slot)?.id ?? null);
+  const key = onceKeyOf(formData);
+  const id = await once(`createSavedMealCardAction:${clientId}`, key, () =>
+    writeFood("w.savedMeal.create", clientId, {}, (box) => createSavedMeal(box, clientId, name, [], slot)?.id ?? null, { once: takenKeyOf(`createSavedMealCardAction:${clientId}`, key) })
+  );
   if (id != null) revalidatePath("/client");
   return id;
 }
@@ -5024,7 +5094,10 @@ export async function createSavedMealCardAction(formData: FormData): Promise<num
 export async function createSavedDayAction(formData: FormData): Promise<number | null> {
   const clientId = await requireClientAccess(Number(formData.get("clientId")));
   const name = String(formData.get("name") ?? "");
-  const id = await once(`createSavedDayAction:${clientId}`, onceKeyOf(formData), () => createBlankSavedDay(clientId, name)?.id ?? null);
+  const key = onceKeyOf(formData);
+  const id = await once(`createSavedDayAction:${clientId}`, key, () =>
+    writeFood("w.savedDay.create", clientId, {}, (box) => createBlankSavedDay(box, clientId, name)?.id ?? null, { once: takenKeyOf(`createSavedDayAction:${clientId}`, key) })
+  );
   if (id != null) revalidatePath("/client");
   return id;
 }
@@ -5033,7 +5106,7 @@ export async function renameSavedDayAction(formData: FormData): Promise<boolean>
   const clientId = await requireClientAccess(Number(formData.get("clientId")));
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return false;
-  const done = renameSavedDay(clientId, id, String(formData.get("name") ?? ""));
+  const done = await writeFood("w.savedDay.rename", clientId, {}, (box) => renameSavedDay(box, clientId, id, String(formData.get("name") ?? "")));
   if (done) revalidatePath("/client");
   return done;
 }
@@ -5054,32 +5127,41 @@ export async function changeSavedDayCardAction(formData: FormData): Promise<bool
   const serving = String(formData.get("serving") ?? "") || null;
   if (!Number.isInteger(id) || !key) return false;
   let gone: string[] = [];
-  const done = await once(`changeSavedDayCardAction:${clientId}`, onceKeyOf(formData), () => {
-    switch (op) {
-      case "card-add":
-        return addSavedDayCard(clientId, id, key, name);
-      case "card-order":
-        return reorderSavedDayCards(clientId, id, String(formData.get("order") ?? "").split(","));
-      case "card-rename":
-        return renameSavedDayCard(clientId, id, key, name);
-      case "card-remove": {
-        const files = removeSavedDayCard(clientId, id, key);
-        gone = files ?? [];
-        return files != null;
-      }
-      case "food-add":
-        return addSavedDayFood(clientId, id, key, { foodId, grams, serving });
-      case "food-update":
-        return Number.isInteger(index) && updateSavedDayFood(clientId, id, key, index, foodId, grams, serving);
-      case "food-remove":
-        return Number.isInteger(index) && removeSavedDayFood(clientId, id, key, index, foodId);
-      case "picture-remove":
-        gone = key === DAY_COVER ? removeSavedDayCover(clientId, id) : removeSavedDayPicture(clientId, id, key);
-        return true;
-      default:
-        return false;
-    }
-  });
+  const onceKey = onceKeyOf(formData);
+  const done = await once(`changeSavedDayCardAction:${clientId}`, onceKey, () =>
+    writeFood(
+      op === "picture-remove" || op === "card-remove" ? "w.savedDay.picture" : "w.savedDay.card",
+      clientId,
+      {},
+      (box) => {
+        switch (op) {
+          case "card-add":
+            return addSavedDayCard(box, clientId, id, key, name);
+          case "card-order":
+            return reorderSavedDayCards(box, clientId, id, String(formData.get("order") ?? "").split(","));
+          case "card-rename":
+            return renameSavedDayCard(box, clientId, id, key, name);
+          case "card-remove": {
+            const files = removeSavedDayCard(box, clientId, id, key);
+            gone = files ?? [];
+            return files != null;
+          }
+          case "food-add":
+            return addSavedDayFood(box, clientId, id, key, { foodId, grams, serving });
+          case "food-update":
+            return Number.isInteger(index) && updateSavedDayFood(box, clientId, id, key, index, foodId, grams, serving);
+          case "food-remove":
+            return Number.isInteger(index) && removeSavedDayFood(box, clientId, id, key, index, foodId);
+          case "picture-remove":
+            gone = key === DAY_COVER ? removeSavedDayCover(box, clientId, id) : removeSavedDayPicture(box, clientId, id, key);
+            return true;
+          default:
+            return false;
+        }
+      },
+      { once: takenKeyOf(`changeSavedDayCardAction:${clientId}`, onceKey) }
+    )
+  );
   for (const was of gone) await deleteUpload(was);
   if (done) revalidatePath("/client");
   return done;
@@ -5095,7 +5177,7 @@ export async function uploadSavedDayPictureAction(formData: FormData): Promise<b
   const fitted = await fitPhoto(original);
   const buffer = fitted?.bytes ?? original;
   const type = fitted?.type ?? (file.type || "image/jpeg");
-  const saved = key === DAY_COVER ? setSavedDayCover(clientId, id, buffer, type) : setSavedDayPicture(clientId, id, key, buffer, type);
+  const saved = await writeFood("w.savedDay.picture", clientId, {}, (box) => (key === DAY_COVER ? setSavedDayCover(box, clientId, id, buffer, type) : setSavedDayPicture(box, clientId, id, key, buffer, type)));
   if (!saved) return false;
   for (const was of saved.gone) await deleteUpload(was);
   await putUpload(saved.path, buffer, type);
@@ -5109,7 +5191,7 @@ export async function deleteSavedMealAction(formData: FormData) {
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return;
   // Its picture's file goes only when nothing else shows it.
-  for (const was of deleteSavedMeal(clientId, id)) await deleteUpload(was);
+  for (const was of await writeFood("w.savedMeal.delete", clientId, {}, (box) => deleteSavedMeal(box, clientId, id))) await deleteUpload(was);
   revalidatePath("/client");
 }
 
@@ -5118,7 +5200,7 @@ export async function renameSavedMealAction(formData: FormData): Promise<boolean
   const clientId = await requireClientAccess(Number(formData.get("clientId")));
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return false;
-  const done = renameSavedMeal(clientId, id, String(formData.get("name") ?? ""));
+  const done = await writeFood("w.savedMeal.rename", clientId, {}, (box) => renameSavedMeal(box, clientId, id, String(formData.get("name") ?? "")));
   if (done) revalidatePath("/client");
   return done;
 }
@@ -5133,13 +5215,22 @@ export async function changeSavedMealFoodAction(formData: FormData): Promise<boo
   const serving = String(formData.get("serving") ?? "") || null;
   if (!Number.isInteger(id) || !foodId) return false;
   // Its one-time key: sent again, the food goes in once.
-  const done = await once(`changeSavedMealFoodAction:${clientId}`, onceKeyOf(formData), () => {
-    if (op === "add") return addSavedMealFood(clientId, id, { foodId, grams, serving });
-    if (!Number.isInteger(index)) return false;
-    if (op === "update") return updateSavedMealFood(clientId, id, index, foodId, grams, serving);
-    if (op === "remove") return removeSavedMealFood(clientId, id, index, foodId);
-    return false;
-  });
+  const key = onceKeyOf(formData);
+  const done = await once(`changeSavedMealFoodAction:${clientId}`, key, () =>
+    writeFood(
+      "w.savedMeal.food",
+      clientId,
+      {},
+      (box) => {
+        if (op === "add") return addSavedMealFood(box, clientId, id, { foodId, grams, serving });
+        if (!Number.isInteger(index)) return false;
+        if (op === "update") return updateSavedMealFood(box, clientId, id, index, foodId, grams, serving);
+        if (op === "remove") return removeSavedMealFood(box, clientId, id, index, foodId);
+        return false;
+      },
+      { once: takenKeyOf(`changeSavedMealFoodAction:${clientId}`, key) }
+    )
+  );
   if (done) revalidatePath("/client");
   return done;
 }
@@ -5153,7 +5244,7 @@ export async function uploadSavedMealPictureAction(formData: FormData): Promise<
   const fitted = await fitPhoto(original);
   const buffer = fitted?.bytes ?? original;
   const type = fitted?.type ?? (file.type || "image/jpeg");
-  const saved = setSavedMealPicture(clientId, id, buffer, type);
+  const saved = await writeFood("w.savedMeal.picture", clientId, {}, (box) => setSavedMealPicture(box, clientId, id, buffer, type));
   if (!saved) return false;
   for (const was of saved.gone) await deleteUpload(was);
   await putUpload(saved.path, buffer, type);
@@ -5167,7 +5258,7 @@ export async function removeSavedMealPictureAction(formData: FormData): Promise<
   const clientId = await requireClientAccess(Number(formData.get("clientId")));
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return false;
-  for (const was of removeSavedMealPicture(clientId, id)) await deleteUpload(was);
+  for (const was of await writeFood("w.savedMeal.picture", clientId, {}, (box) => removeSavedMealPicture(box, clientId, id))) await deleteUpload(was);
   revalidatePath("/admin");
   revalidatePath("/client");
   return true;
@@ -5179,10 +5270,12 @@ export async function addSavedMealAction(formData: FormData) {
   const date = String(formData.get("date") ?? "");
   const meal = String(formData.get("meal") ?? "");
   if (!Number.isInteger(id) || !diaryDateOk(date)) return;
-  // Taken once (6 Nov, one-time key): sent again after a dropped signal, its foods are not added twice.
-  await once(`addSavedMealAction:${clientId}`, onceKeyOf(formData), () => {
-    addSavedMeal(clientId, id, date, meal);
-  });
+  // Taken once (6 Nov, one-time key): sent again after a dropped signal, its foods are not added twice. Using a saved meal
+  // is one transaction with FOOD_STORE=pg: all its foods, or none.
+  const key = onceKeyOf(formData);
+  await once(`addSavedMealAction:${clientId}`, key, () =>
+    writeFood("w.savedMeal.use", clientId, { span: { dates: [date] } }, (box) => void addSavedMeal(box, clientId, id, date, meal), { once: takenKeyOf(`addSavedMealAction:${clientId}`, key) })
+  );
 }
 
 /** Add a meal, Copy a meal (10 Nov, Alex): the saved meal as a new card on the day. */
@@ -5191,8 +5284,10 @@ export async function addSavedMealCardAction(formData: FormData) {
   const id = Number(formData.get("id"));
   const date = String(formData.get("date") ?? "");
   if (!Number.isInteger(id) || !diaryDateOk(date)) return;
-  await once(`addSavedMealCardAction:${clientId}`, onceKeyOf(formData), () => {
-    addSavedMealCard(clientId, id, date);
+  // The card and its foods in one transaction with FOOD_STORE=pg.
+  const key = onceKeyOf(formData);
+  await once(`addSavedMealCardAction:${clientId}`, key, async () => {
+    await writeFood("w.savedMeal.useCard", clientId, { span: { dates: [date] } }, (box) => void addSavedMealCard(box, clientId, id, date), { once: takenKeyOf(`addSavedMealCardAction:${clientId}`, key) });
     revalidatePath("/admin");
     revalidatePath("/client");
   });
@@ -5233,8 +5328,9 @@ export async function copyFoodDayAction(formData: FormData) {
   const toDate = String(formData.get("toDate") ?? "");
   if (!DATE.test(fromDate) || !diaryDateOk(toDate) || fromDate === toDate) return;
   // Taken once (6 Nov, one-time key): sent again after a dropped signal, the day's foods are not copied twice.
-  await once(`copyFoodDayAction:${clientId}`, onceKeyOf(formData), () => {
-    copyFoodDay(clientId, fromDate, toDate);
+  const key = onceKeyOf(formData);
+  await once(`copyFoodDayAction:${clientId}`, key, async () => {
+    await writeFood("w.day.copy", clientId, { span: { dates: [fromDate, toDate] } }, (box) => void copyFoodDay(box, clientId, fromDate, toDate), { once: takenKeyOf(`copyFoodDayAction:${clientId}`, key) });
     revalidatePath("/admin");
   });
 }
@@ -5245,8 +5341,9 @@ export async function saveDayAction(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim().slice(0, 40);
   if (!DATE.test(date) || !name) return;
   // Taken once (6 Nov, one-time key): sent again after a dropped signal, it saves no second day.
-  await once(`saveDayAction:${clientId}`, onceKeyOf(formData), () => {
-    saveDay(clientId, date, name);
+  const key = onceKeyOf(formData);
+  await once(`saveDayAction:${clientId}`, key, async () => {
+    await writeFood("w.savedDay.save", clientId, { span: { dates: [date] } }, (box) => void saveDay(box, clientId, date, name), { once: takenKeyOf(`saveDayAction:${clientId}`, key) });
     revalidatePath("/client");
   });
 }
@@ -5255,7 +5352,7 @@ export async function deleteSavedDayAction(formData: FormData) {
   const clientId = await requireClientAccess(Number(formData.get("clientId")));
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return;
-  for (const was of deleteSavedDay(clientId, id)) await deleteUpload(was);
+  for (const was of await writeFood("w.savedDay.delete", clientId, {}, (box) => deleteSavedDay(box, clientId, id))) await deleteUpload(was);
   revalidatePath("/client");
 }
 
@@ -5264,9 +5361,11 @@ export async function addSavedDayAction(formData: FormData) {
   const id = Number(formData.get("id"));
   const date = String(formData.get("date") ?? "");
   if (!Number.isInteger(id) || !diaryDateOk(date)) return;
-  // Taken once (6 Nov, one-time key): sent again after a dropped signal, its foods are not added twice.
-  await once(`addSavedDayAction:${clientId}`, onceKeyOf(formData), () => {
-    addSavedDay(clientId, id, date);
+  // Taken once (6 Nov, one-time key): sent again after a dropped signal, its foods are not added twice. Using a saved
+  // day is one transaction with FOOD_STORE=pg (its cards, foods and pictures), the meal order put on the client after.
+  const key = onceKeyOf(formData);
+  await once(`addSavedDayAction:${clientId}`, key, async () => {
+    await writeFood("w.savedDay.use", clientId, { span: { dates: [date] } }, (box) => void addSavedDay(box, clientId, id, date), { once: takenKeyOf(`addSavedDayAction:${clientId}`, key) });
     revalidatePath("/admin");
     revalidatePath("/client");
   });

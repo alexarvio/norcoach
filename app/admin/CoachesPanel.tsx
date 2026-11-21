@@ -2,6 +2,8 @@ import { approveCoachAction, createCoachAction, declineCoachAction, removeCoachA
 import { getData } from "../lib/db";
 import { listCoachAccounts } from "../lib/queries";
 import type { ChatCoachView } from "../lib/chat/rows";
+import type { FoodRows } from "../lib/food/rows";
+import type { CheckInRows } from "../lib/checkins/rows";
 import ConfirmDeleteButton from "../components/ConfirmDeleteButton";
 import OnceKeyField from "./OnceKeyField";
 import { dayMonth } from "../lib/dayMonth";
@@ -24,8 +26,8 @@ const ERROR: Record<string, string> = {
   self: "Your own owner account can't be changed here.",
 };
 
-export default function CoachesPanel({ ownerId, ok, error, chat }: { ownerId: number; ok?: string; error?: string; /** Every coach's chat view (fetchCoachChat, app/admin/page.tsx). */ chat: ChatCoachView }) {
-  const coaches = listCoachAccounts(chat);
+export default function CoachesPanel({ ownerId, ok, error, chat, food, ck }: { ownerId: number; ok?: string; error?: string; /** Every coach's chat view (fetchCoachChat, app/admin/page.tsx). */ chat: ChatCoachView; /** Their food diary the same (fetchCoachFood). */ food: FoodRows; /** Every client's check-ins (fetchEveryCheckIn). */ ck: CheckInRows }) {
+  const coaches = listCoachAccounts(chat, food, ck);
   // Coaches who signed up themselves and wait for the owner (sign-in through Clerk).
   const waiting = getData().users.filter((u) => u.role === "coach" && u.pending);
 

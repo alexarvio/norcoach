@@ -7,6 +7,9 @@ import { getSessionUser } from "../lib/auth";
 import { touchPresence } from "../lib/presence";
 import { getData } from "../lib/db";
 import { fetchThread, type ChatThread } from "../lib/chat/rows";
+import { fetchClientNotes, type ClientNotes } from "../lib/notes/rows";
+import { fetchClientPageFood, noFoodRows, type FoodRows } from "../lib/food/rows";
+import { fetchClientPageCheckIns, type CheckInRows } from "../lib/checkins/rows";
 import {
   getAssignmentsForDay,
   getFreeSessions,
@@ -75,6 +78,7 @@ import {
   weekStart,
   weeklyCheckInAskedToday,
   dropUnusedAutoWeight,
+  dropUnusedAutoWeightPg,
   monthlyCheckInAskedToday,
   getPhotoCadence,
   getPhotoInstructions,
@@ -121,7 +125,8 @@ import FitTitle from "./FitTitle";
 import { Bars } from "./Bars";
 import PhaseObjectives from "./PhaseObjectives";
 import { FEATURES } from "../lib/features";
-import PushToggle from "./PushToggle";
+import NotificationSettings from "./NotificationSettings";
+import { readNotifPrefs } from "../lib/notifPrefs";
 import { ConnectedApps } from "./HealthSync";
 import { nativePushReady, pushPublicKey } from "../lib/push";
 import SupplementsCard, { type SupplementRow } from "./SupplementsCard";
@@ -137,6 +142,8 @@ import { passwordsOnHint } from "../lib/clerkPasswords";
 import ClientWeekSwitcher from "./ClientWeekSwitcher";
 import AppShell, { AppTab, type Arrival, type PhoneScreen } from "./AppShell";
 import { liveNowFor } from "../lib/liveSessionNow";
+import { appLockFor } from "../lib/appLock";
+import { popupNotesFor } from "../lib/notifPopup";
 import { ownTab } from "../lib/tabMemory";
 import NativeCoachRedirect from "../coach/NativeCoachRedirect";
 import OpeningSplash from "./OpeningSplash";
@@ -156,7 +163,6 @@ import {
   DumbbellIcon,
   HomeIcon,
 } from "../components/icons";
-import PrefSwitch from "./PrefSwitch";
 import { trainingBests } from "../lib/homeBoardData";
 import { workoutSheetOn } from "../lib/workoutSheet";
 import { coachBrandInline, coachMarkInline } from "../lib/brandMark";
@@ -287,7 +293,7 @@ function clientMeetingView(m: ReturnType<typeof listMeetings>[number], events: R
 }
 
 /** The client's events (theirs and the coach's) with the coach's categories: Home's "Coming up" card and the Events screen. */
-function homeEvents(clientId: number): HomeEvents {
+function homeEvents(clientId: number, ck: CheckInRows): HomeEvents {
   // The plan's phases on the same timeline as their start (9 Oct): one day,
   // "Strength block 2 starts", in the track's colour, the objectives behind
   // the chevron. Not a stretch: the phase itself is Home's to keep track of.
@@ -300,7 +306,7 @@ function homeEvents(clientId: number): HomeEvents {
   const unit = askedWeightUnit(clientId);
   const coachFirst = getCoachFirstName(clientId);
   const w = (kg: number | null) => (kg == null ? null : kgIn(kg, unit));
-  const goals: HomeEvent[] = getWeightGoalViews(clientId).map((g) => ({
+  const goals: HomeEvent[] = getWeightGoalViews(ck, clientId).map((g) => ({
     id: goalItemId(g.id),
     kind: null,
     title: `${kgIn(g.targetKg, unit)} ${unit}`,
@@ -338,13 +344,13 @@ function homeEvents(clientId: number): HomeEvents {
 
 /** Home's Weight (3 Nov, Alex): the readings and windows the row draws, as the coach's Weight card reads them; null with no
     weigh-in. */
-function homeWeight(clientId: number, today: string): HomeWeight | null {
+function homeWeight(clientId: number, today: string, ck: CheckInRows): HomeWeight | null {
   const unit = askedWeightUnit(clientId);
-  const readings = bodyWeightReadings(clientId).filter((r) => r.kg > 0 && r.date <= today);
+  const readings = bodyWeightReadings(ck, clientId).filter((r) => r.kg > 0 && r.date <= today);
   if (!readings.length) return null;
   const v = (kg: number) => Math.round(kgIn(kg, unit) * 10) / 10;
   const r1 = (n: number) => Math.round(n * 10) / 10;
-  const goal = getWeightGoalViews(clientId, today).find((g) => g.active) ?? null;
+  const goal = getWeightGoalViews(ck, clientId, today).find((g) => g.active) ?? null;
   const phase = getCurrentPhase(clientId, "nutrition") ?? getCurrentPhase(clientId, "training") ?? getCurrentPhase(clientId, "lifestyle");
   const since = phase && phase.start_week <= today ? phase.start_week : null;
   const from7 = isoPlusDays(today, -6);
@@ -391,7 +397,7 @@ function isoPlusDays(iso: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function HomeTab({ CLIENT_ID, chat, photos, food, phoneTz }: { CLIENT_ID: number; chat: ChatThread; photos: ProgressPics; food: PhaseFoodToday; phoneTz: string | null }) {
+function HomeTab({ CLIENT_ID, chat, notes, photos, food, phoneTz, foodRows, ck }: { CLIENT_ID: number; chat: ChatThread; notes: ClientNotes; photos: ProgressPics; food: PhaseFoodToday; phoneTz: string | null; /** The client's food diary (app/lib/food/rows.ts): the coach's meal links' labels. */ foodRows: FoodRows; /** Their check-in figures (app/lib/checkins/rows.ts). */ ck: CheckInRows }) {
   const client = getClient(CLIENT_ID);
   const today = localDateStr();
 
@@ -404,10 +410,10 @@ function HomeTab({ CLIENT_ID, chat, photos, food, phoneTz }: { CLIENT_ID: number
   // the week's on its day or while still owed), for the lifestyle card. ----
   // No Weight seeded for a client with no check-in lines (17 Oct, Alex): a new client starts with nothing; the coach adds what they want asked.
   // One the app added before that, untouched and invisible to the coach, goes.
-  dropUnusedAutoWeight(CLIENT_ID);
-  const sections = getCheckInSections(CLIENT_ID);
-  const weeklyOpen = weeklyCheckInAskedToday(CLIENT_ID, sections.sections);
-  const monthlyOpen = monthlyCheckInAskedToday(CLIENT_ID, sections.sections);
+  dropUnusedAutoWeight(ck, CLIENT_ID);
+  const sections = getCheckInSections(ck, CLIENT_ID);
+  const weeklyOpen = weeklyCheckInAskedToday(ck, CLIENT_ID, sections.sections);
+  const monthlyOpen = monthlyCheckInAskedToday(ck, CLIENT_ID, sections.sections);
   const onScreen = sections.sections.filter((s) => s.id === "daily" || (s.id === "monthly" ? monthlyOpen : weeklyOpen)).flatMap((s) => s.metrics);
   const checkInCount = { done: onScreen.filter((m) => m.value !== "").length, total: onScreen.length };
 
@@ -483,7 +489,7 @@ function HomeTab({ CLIENT_ID, chat, photos, food, phoneTz }: { CLIENT_ID: number
       coach={{ firstName: coachFirst, photoPath: getCoachAvatarPath(CLIENT_ID) }}
       session={session}
       progressPics={photos}
-      latestActivity={latestCoachActivity(CLIENT_ID, chat, coachFirst, phoneTz)}
+      latestActivity={latestCoachActivity(CLIENT_ID, chat, foodRows, notes, coachFirst, phoneTz)}
       upcoming={upcoming}
       recap={getLastMeetingRecap(CLIENT_ID)}
       phases={phases}
@@ -501,12 +507,12 @@ function HomeTab({ CLIENT_ID, chat, photos, food, phoneTz }: { CLIENT_ID: number
           .sort((a, b) => a.start_week.localeCompare(b.start_week))[0];
         return { next: next ? { track: next.track, name: next.name, start: next.start_week } : null };
       })()}
-      events={homeEvents(CLIENT_ID)}
+      events={homeEvents(CLIENT_ID, ck)}
       checkInForm={{ date: today, sections: sections.sections, weeklyOpen, monthlyOpen }}
       // To focus on (23 Oct, Alex; lib/focus.ts): the coach's goals until the next call, at the top of Home.
       focus={homeFocus(CLIENT_ID, today, phoneTz)}
       // The weight row (3 Nov, Alex): always, with Goal | 7d | 30d | Phase.
-      weight={homeWeight(CLIENT_ID, today)}
+      weight={homeWeight(CLIENT_ID, today, ck)}
     />
   );
 }
@@ -537,15 +543,15 @@ function actionOnly(message: string): string {
 // What a comment was on, in words: "Commented on your nutrition".
 const COMMENT_ON = { nutrition: "your nutrition", checkin: "your check-in", photos: "your shape update", training: "your training" } as const;
 
-function latestCoachActivity(clientId: number, chat: ChatThread, coachFirst: string, phoneTz: string | null = null): LatestActivity {
+function latestCoachActivity(clientId: number, chat: ChatThread, foodRows: FoodRows, noteView: ClientNotes, coachFirst: string, phoneTz: string | null = null): LatestActivity {
   const weekAgo = Date.now() - 7 * 86400000;
-  const sent = coachMessagesFor(chat).filter((m) => !m.mine && (m.text.trim() || m.media));
+  const sent = coachMessagesFor(chat, foodRows).filter((m) => !m.mine && (m.text.trim() || m.media));
   const latestMsg = sent[sent.length - 1] ?? null;
   // A coach chat message's own notification ("Your coach sent you a video")
   // is only its echo: read the message itself (17 Oct), so a form review shows
   // as the reply it is rather than a bare "Sent you a note".
   // A time in the coach's zone read in the client's own (12 Nov, Alex).
-  const notes = getNotifications(clientId).filter(isListed).map((n) => ({ ...n, message: clockToZone(n.message, phoneTz) }));
+  const notes = getNotifications(noteView, clientId).filter(isListed).map((n) => ({ ...n, message: clockToZone(n.message, phoneTz) }));
   const latestNote = notes[0] ?? null;
   const msgAt = latestMsg ? new Date(`${latestMsg.dateIso}T${latestMsg.timeLabel}:00`).getTime() : 0;
   const noteAt = latestNote ? new Date(latestNote.created_at).getTime() : 0;
@@ -553,7 +559,7 @@ function latestCoachActivity(clientId: number, chat: ChatThread, coachFirst: str
     sent.filter((m) => new Date(`${m.dateIso}T00:00:00`).getTime() >= weekAgo).length +
     notes.filter((n) => new Date(n.created_at).getTime() >= weekAgo).length;
   const moreThisWeek = Math.max(0, more - 1);
-  const unread = getNotifications(clientId).filter((n) => n.kind === "coach_note" && !n.read).length;
+  const unread = getNotifications(noteView, clientId).filter((n) => n.kind === "coach_note" && !n.read).length;
 
   if (latestMsg && msgAt >= noteAt) {
     const iso = `${latestMsg.dateIso}T${latestMsg.timeLabel}:00`;
@@ -657,6 +663,7 @@ function TrainingTab({
   currentWeek,
   showMyNotes,
   workoutSheet = false,
+  ck,
 }: {
   CLIENT_ID: number;
   week: number;
@@ -664,6 +671,8 @@ function TrainingTab({
   showMyNotes: boolean;
   /** The workout as one scrolling sheet (15 Nov, on test: workoutSheetOn); off, the pager. */
   workoutSheet?: boolean;
+  /** The client's check-in figures (app/lib/checkins/rows.ts): an assisted lift's PB reads the body weight. */
+  ck: CheckInRows;
 }) {
   const days = getWeekDays(CLIENT_ID, week);
   // The client's note about the whole programme sits between the week's
@@ -788,7 +797,7 @@ function TrainingTab({
           let bests: ReturnType<typeof trainingBests>["bests"] = new Map();
           let barOf: ReturnType<typeof trainingBests>["barOf"] = () => null;
           try {
-            ({ bests, barOf } = trainingBests(CLIENT_ID));
+            ({ bests, barOf } = trainingBests(ck, CLIENT_ID));
           } catch {
             /* none shown */
           }
@@ -917,7 +926,7 @@ function TrainingTab({
   );
 }
 
-function NutritionTab({ CLIENT_ID, diary, readOnly = false }: { CLIENT_ID: number; diary: FoodDiaryProps; readOnly?: boolean }) {
+function NutritionTab({ CLIENT_ID, diary, readOnly = false, foodRows }: { CLIENT_ID: number; diary: FoodDiaryProps; readOnly?: boolean; /** The client's food diary (app/lib/food/rows.ts): Last 7 days. */ foodRows: FoodRows }) {
   const summary = getNutritionGoalsSummary(CLIENT_ID);
   const plan = getNutritionPlan(CLIENT_ID);
   const storedPlan = getStoredNutritionPlan(CLIENT_ID);
@@ -982,7 +991,7 @@ function NutritionTab({ CLIENT_ID, diary, readOnly = false }: { CLIENT_ID: numbe
     return kcal > 0 ? kcal : null;
   };
   const weekAgo = addDays(today, -7);
-  const lastWeek = listCalorieDays(CLIENT_ID, 14)
+  const lastWeek = listCalorieDays(foodRows, CLIENT_ID, 14)
     .filter((c) => c.date < today && c.date >= weekAgo && c.kcal != null)
     .map((c) => {
       const kcal = c.kcal as number;
@@ -1074,17 +1083,11 @@ function SettingsTab({ CLIENT_ID, own = false, passwordsHint = null }: { CLIENT_
   const client = getClient(CLIENT_ID);
   const coach = getCoachProfileForClient(CLIENT_ID);
   const profile = getClientProfile(CLIENT_ID);
-  const prefs = getClientPreferences(CLIENT_ID);
 
   // Weekly summary and the units toggle are out for now: the summary is
   // not built, and the units live on the Kg | Lbs switch in a session.
   // Push notifications, when this server has keys for them (lib/push.ts).
   const pushKey = pushPublicKey();
-  // The title alone, no line under it (3 Nov, Alex: the words audit).
-  const toggleDefs: { key: "coach_notes" | "checkin_reminders"; label: string }[] = [
-    { key: "coach_notes", label: `Messages from ${getCoachFirstName(CLIENT_ID)}` },
-    { key: "checkin_reminders", label: "Check-in reminders" },
-  ];
 
   return (
     <div className="settings-dark">
@@ -1136,14 +1139,10 @@ function SettingsTab({ CLIENT_ID, own = false, passwordsHint = null }: { CLIENT_
         </div>
       </SettingsFold>
 
-      <SettingsFold title="Preferences">
-        <div className="home-dark-rows">
-          <PushToggle publicKey={pushKey} nativeReady={nativePushReady()} />
-          {toggleDefs.map((t) => (
-            <PrefSwitch key={t.key} clientId={CLIENT_ID} prefKey={t.key} label={t.label} on={prefs[t.key]} />
-          ))}
-        </div>
-      </SettingsFold>
+      {/* Notifications (19 Nov, Alex: docs/boards/notification-popup-mockup.html): this phone's switch, a switch a group
+          (the push alone; the bell keeps them all) and quiet hours. It took Preferences' place, which held only the phone's
+          switch, Messages from {Coach} (now its group) and Check-in reminders (a switch that changed nothing anyone saw). */}
+      <NotificationSettings coachFirst={getCoachFirstName(CLIENT_ID)} prefs={readNotifPrefs(CLIENT_ID)} publicKey={pushKey} nativeReady={nativePushReady()} />
 
       <ConnectedApps coachName={getCoachFirstName(CLIENT_ID)} />
 
@@ -1170,7 +1169,7 @@ function SettingsTab({ CLIENT_ID, own = false, passwordsHint = null }: { CLIENT_
 // The Notifications screen (9 Oct): every row the coach caused, as a
 // category with a title and a body, newest first; reminders and chat
 // messages stay out (Home and the chat tab have them).
-function NotificationsPanel({ CLIENT_ID, phoneTz = null }: { CLIENT_ID: number; phoneTz?: string | null }) {
+function NotificationsPanel({ CLIENT_ID, notes, phoneTz = null }: { CLIENT_ID: number; notes: ClientNotes; phoneTz?: string | null }) {
   const coachFirst = getCoachFirstName(CLIENT_ID);
   const videoReplies = listVideoReplies(CLIENT_ID);
   // A call-notes notification from before 10 Oct carries no meeting: it is read as the latest call with a recap on or before its day.
@@ -1193,7 +1192,7 @@ function NotificationsPanel({ CLIENT_ID, phoneTz = null }: { CLIENT_ID: number; 
     if (byTopic) return byTopic.id;
     return [...allMeetings].filter((m) => m.date >= day).sort((x, y) => (x.date < y.date ? -1 : 1))[0]?.id ?? null;
   };
-  const items: NotifView[] = getNotifications(CLIENT_ID, 300)
+  const items: NotifView[] = getNotifications(notes, CLIENT_ID, 300)
     .filter(isListed)
     .map((n) => {
       const { title, body } = titleAndBody(clockToZone(n.message, phoneTz), coachFirst);
@@ -1213,7 +1212,7 @@ function NotificationsPanel({ CLIENT_ID, phoneTz = null }: { CLIENT_ID: number; 
         actionRef,
         videoReply: n.action_tab === "video" ? videoReplies.find((r) => r.id === n.action_ref) ?? null : null,
         // The exact thing it is about, as a message link (24 Oct, Alex): a session, an exercise, the shape update.
-        link: category === "pics_reviewed" ? describeMessageLink(CLIENT_ID, { kind: "photos" }) : notificationLink(CLIENT_ID, n),
+        link: category === "pics_reviewed" ? describeMessageLink(noFoodRows("page.client"), CLIENT_ID, { kind: "photos" }) : notificationLink(CLIENT_ID, n),
       };
     });
   return <NotificationsScreen items={items} clientId={CLIENT_ID} coachName={coachFirst} />;
@@ -1348,12 +1347,20 @@ export default async function ClientPage({
   const client = getClient(CLIENT_ID);
   // The chat first (Step 5, app/lib/chat/rows.ts): the thread, Home's latest from the coach and the diary's comments.
   const chatThread = await fetchThread(CLIENT_ID, "page.client");
+  // The notifications the same (quest 7, app/lib/notes/rows.ts): the newest 500, every cut below is inside them.
+  const notes = await fetchClientNotes(CLIENT_ID, phone ? "page.client.phone" : "page.client");
+  // The food diary the same (quest 8 part 1, app/lib/food/rows.ts): the client's whole diary, every cut below is inside it.
+  const foodRows = await fetchClientPageFood(CLIENT_ID, phone ? "page.client.phone" : "page.client");
+  // The check-in figures the same (quest 9, app/lib/checkins/rows.ts): the client's whole history; with CHECKINS_STORE=pg
+  // the untouched auto Weight line goes first, under their lock (a render can't wait for a transaction).
+  await dropUnusedAutoWeightPg(CLIENT_ID);
+  const ck = await fetchClientPageCheckIns(CLIENT_ID, "page.client");
   // The Check-in screen's three sections, the measurement deltas and this
   // period's photo slots. Built here rather than in HomeTab because the
   // screen is a full-screen push view owned by AppShell.
-  const checkInData = getCheckInSections(CLIENT_ID);
+  const checkInData = getCheckInSections(ck, CLIENT_ID);
   // Same source Home reads, so the tab dots and Home's count can't disagree.
-  const checkInStatusForScreen = getCheckInStatus(CLIENT_ID);
+  const checkInStatusForScreen = getCheckInStatus(ck, CLIENT_ID);
   // Home's progress-pictures card, from the same sheet the check-in shows:
   // due while the open sheet is missing angles (none or some), Completed for
   // the rest of the local day its last angle went in, and gone otherwise.
@@ -1380,8 +1387,8 @@ export default async function ClientPage({
     pictures: bannerPictures(CLIENT_ID, "lifestyle"),
     sections: checkInData.sections,
     dueSections: checkInStatusForScreen.dueTypes as string[],
-    weeklyOpen: weeklyCheckInAskedToday(CLIENT_ID, checkInData.sections),
-    monthlyOpen: monthlyCheckInAskedToday(CLIENT_ID, checkInData.sections),
+    weeklyOpen: weeklyCheckInAskedToday(ck, CLIENT_ID, checkInData.sections),
+    monthlyOpen: monthlyCheckInAskedToday(ck, CLIENT_ID, checkInData.sections),
     objectives: FEATURES.phaseGoals ? getCurrentPhase(CLIENT_ID, "lifestyle")?.objectives ?? [] : [],
     // The coach's note on the lifestyle phase (21 Oct), dated as Training's is.
     coachNote: (() => {
@@ -1389,22 +1396,22 @@ export default async function ClientPage({
       const text = ph?.client_note?.trim();
       return text ? { text, date: ph?.client_note_at ? dayWords(new Date(ph.client_note_at)) : null } : null;
     })(),
-    history: getCheckInHistory(CLIENT_ID),
+    history: getCheckInHistory(ck, CLIENT_ID),
     // The hub's streak and month, and everything done, day by day, for its calendar (28 Sep).
     stats: (() => {
       const month = localDateStr().slice(0, 7);
       const calendar = getWorkoutCalendar(CLIENT_ID);
       return {
-        streak: getCheckInStreak(CLIENT_ID),
+        streak: getCheckInStreak(ck, CLIENT_ID),
         workoutsThisMonth: calendar.filter((d) => d.date.startsWith(month)).reduce((n, d) => n + d.sessions.length, 0),
       };
     })(),
-    calendar: getActivityCalendar(CLIENT_ID),
+    calendar: getActivityCalendar(foodRows, CLIENT_ID, ck),
   };
   const progressPictures = progressPicturesData(CLIENT_ID);
   // The bell: anything unread but the chat, which has its own dot on the Messages tab (7 Oct).
   // Reminders and chat messages are not notifications (9 Oct): neither counts for the bell.
-  const hasUnreadNotifications = getNotifications(CLIENT_ID).some((n) => isListed(n) && !n.read);
+  const hasUnreadNotifications = getNotifications(notes, CLIENT_ID).some((n) => isListed(n) && !n.read);
 
   const currentWeekNum = getCurrentWeekNumber(CLIENT_ID);
   // Only the currently deployed program's own weeks — not every published
@@ -1420,7 +1427,7 @@ export default async function ClientPage({
   const trainingWeekLabels = deployedProgram
     ? Object.fromEntries(trainingWeeks.map((w) => [w, programWeekLabel(deployedProgram, w)]))
     : undefined;
-  const trainingWeekContents = Object.fromEntries(trainingWeeks.map((w) => [w, <TrainingTab key={w} CLIENT_ID={CLIENT_ID} week={w} currentWeek={currentWeekNum} showMyNotes={viewerIsClient} workoutSheet={workoutSheet} />]));
+  const trainingWeekContents = Object.fromEntries(trainingWeeks.map((w) => [w, <TrainingTab key={w} CLIENT_ID={CLIENT_ID} week={w} currentWeek={currentWeekNum} showMyNotes={viewerIsClient} workoutSheet={workoutSheet} ck={ck} />]));
   // A week is complete when every planned set on every training day is
   // logged — the same rule TrainingTab's progress ring uses for 100%.
   const completedWeeks = trainingWeeks.filter((w) => {
@@ -1475,7 +1482,7 @@ export default async function ClientPage({
   })();
 
   // Today's food diary, opened from the ring on Nutrition.
-  const foodDiary = getFoodDiary(CLIENT_ID, localDateStr(), chatThread);
+  const foodDiary = getFoodDiary(foodRows, CLIENT_ID, localDateStr(), chatThread);
 
   // The Meetings screen (9 Oct): every call still to come, then the ones that
   // happened, each with the events made from it. Cancelled calls are left out.
@@ -1526,7 +1533,7 @@ export default async function ClientPage({
 
   const tabs: AppTab[] = [
     // Draws its own light banner (name and main goal); the top bar floats over it.
-    { id: "home", label: "Home", icon: <HomeIcon />, bare: true, content: <HomeTab CLIENT_ID={CLIENT_ID} chat={chatThread} phoneTz={phoneTz} photos={homePhotos} food={{ eaten: foodDiary.eaten.kcal, target: foodDiary.target?.kcal ?? null, mealsLogged: foodDiary.meals.filter((m) => m.entries.length > 0).length, mealsTotal: foodDiary.meals.length }} /> },
+    { id: "home", label: "Home", icon: <HomeIcon />, bare: true, content: <HomeTab CLIENT_ID={CLIENT_ID} chat={chatThread} foodRows={foodRows} ck={ck} notes={notes} phoneTz={phoneTz} photos={homePhotos}food={{ eaten: foodDiary.eaten.kcal, target: foodDiary.target?.kcal ?? null, mealsLogged: foodDiary.meals.filter((m) => m.entries.length > 0).length, mealsTotal: foodDiary.meals.length }} /> },
     {
       id: "training",
       label: "Training",
@@ -1555,9 +1562,12 @@ export default async function ClientPage({
       // Draws its own photo banner, darkened; the top bar floats over it in white.
       bare: true,
       darkBanner: true,
-      content: <NutritionTab CLIENT_ID={CLIENT_ID} diary={foodDiary} readOnly={phone} />,
+      content: <NutritionTab CLIENT_ID={CLIENT_ID} diary={foodDiary} readOnly={phone} foodRows={foodRows} />,
     },
   ];
+  // Locked until the first phase goes live (19 Nov, Alex: B of docs/boards/locked-app-mockup.html): the client's own
+  // app alone, never the coach's phone preview or a coach looking.
+  const lockView = phone || !viewerIsClient ? null : await appLockFor(CLIENT_ID, foodRows, ck);
 
   return (
     <>
@@ -1568,7 +1578,7 @@ export default async function ClientPage({
     <AppShell
       clientName={client?.name ?? ""}
       tabs={tabs}
-      notificationsContent={<NotificationsPanel CLIENT_ID={CLIENT_ID} phoneTz={phoneTz} />}
+      notificationsContent={<NotificationsPanel CLIENT_ID={CLIENT_ID} notes={notes} phoneTz={phoneTz} />}
       hasUnreadNotifications={hasUnreadNotifications}
       clientId={CLIENT_ID}
       preview={preview}
@@ -1579,18 +1589,18 @@ export default async function ClientPage({
         coachPhoto: getCoachAvatarPath(CLIENT_ID),
         myPhoto: client?.avatar_path ?? null,
         myName: client?.name ?? "You",
-        messages: coachMessagesFor(chatThread),
+        messages: coachMessagesFor(chatThread, foodRows),
         // The coach's quiet hours: the chat says they are away while they hold (27 Oct, Alex).
         quiet: coachQuietHours(CLIENT_ID),
         viewerIsClient,
         // How many of the coach's messages are new, so the chat opens on the first of them (25 Oct, Alex).
-        unreadCount: getNotifications(CLIENT_ID).filter((n) => n.kind === "coach_note" && !n.read).length,
+        unreadCount: getNotifications(notes, CLIENT_ID).filter((n) => n.kind === "coach_note" && !n.read).length,
         events: { categories: listEventCategories(client?.coach_id ?? 0).map(({ id, label, color }) => ({ id, label, color })), today: localDateStr() },
       }}
-      chatUnread={getNotifications(CLIENT_ID).some((n) => n.kind === "coach_note" && !n.read)}
+      chatUnread={getNotifications(notes, CLIENT_ID).some((n) => n.kind === "coach_note" && !n.read)}
       // Settings left the bottom nav for the burger (7 Oct): the chat has its tab.
       settingsContent={<SettingsTab CLIENT_ID={CLIENT_ID} own={viewerIsClient} passwordsHint={viewerIsClient ? await passwordsOnHint() : null} />}
-      events={homeEvents(CLIENT_ID)}
+      events={homeEvents(CLIENT_ID, ck)}
       helpEmail={getCoachEmail(CLIENT_ID)}
       coachProfile={getCoachProfileForClient(CLIENT_ID)}
       coachAvatarPath={getCoachAvatarPath(CLIENT_ID)}
@@ -1598,12 +1608,16 @@ export default async function ClientPage({
       foodDiary={foodDiary}
       meetings={meetings}
       invoices={invoices}
-      arrival={phone ? null : arrivalFrom(CLIENT_ID, params.n, params.meeting, params.workout, params.finish === "1")}
+      arrival={phone ? null : arrivalFrom(CLIENT_ID, notes, params.n, params.meeting, params.workout, params.finish === "1")}
       initialPush={phone ? (PHONE_TAB_SCREENS.has(phoneScreen) ? null : (phoneScreen as Exclude<PhoneScreen, "home" | "training" | "nutrition">)) : params.open === "invoices" ? "invoices" : params.open === "messages" ? "messages" : null}
       initialTab={initialTab}
       readOnly={phone}
       // The session going, for the lock-screen pill (19 Nov, Alex): the client's own app alone.
       liveNow={phone || !viewerIsClient ? null : liveNowFor(CLIENT_ID)}
+      lock={lockView}
+      // A push's notification as the pop-up (19 Nov, Alex: A of docs/boards/notification-popup-mockup.html): never in the
+      // coach's phone preview, a coach looking, or while locked (the locked sheet stays).
+      popup={phone || !viewerIsClient || lockView ? null : popupNotesFor(CLIENT_ID, params.n, notes, phoneTz)}
       // Their coach's banner or name where NORCOACH is, and colour (19 Nov, Alex); in the phone preview the client's coach's,
       // their faint mark with it, so the pills and the mark never wear two coaches.
       brand={phone ? { ...(await coachBrandInline(client?.coach_id)), mark: await coachMarkInline(client?.coach_id) } : await coachBrandInline(client?.coach_id)}
@@ -1619,7 +1633,7 @@ export default async function ClientPage({
  * pill's Finish (19 Nov, Alex: C), its wrap-up open too while it runs; over, as ?workout= alone. Null for anything else
  * or another client's.
  */
-function arrivalFrom(clientId: number, n: string | undefined, meeting: string | undefined, workout?: string, finish = false): Arrival | null {
+function arrivalFrom(clientId: number, notes: ClientNotes, n: string | undefined, meeting: string | undefined, workout?: string, finish = false): Arrival | null {
   if (meeting && Number.isInteger(Number(meeting))) return { meetingId: Number(meeting) };
   if (workout && Number.isInteger(Number(workout))) {
     const day = getData().program_days.find((pd) => pd.id === Number(workout) && pd.client_id === clientId);
@@ -1629,7 +1643,7 @@ function arrivalFrom(clientId: number, n: string | undefined, meeting: string | 
   }
   const id = Number(n);
   if (!n || !Number.isInteger(id)) return null;
-  const note = getNotifications(clientId, 500).find((x) => x.id === id);
+  const note = getNotifications(notes, clientId, 500).find((x) => x.id === id);
   // An old push about a progress report opens the app as it is (18 Nov, Alex: reports are gone).
   if (!note || note.kind === "report") return null;
   const category = categorize(note);
@@ -1638,6 +1652,6 @@ function arrivalFrom(clientId: number, n: string | undefined, meeting: string | 
     category,
     actionTab: note.action_tab,
     actionRef: note.action_ref,
-    link: category === "pics_reviewed" ? describeMessageLink(clientId, { kind: "photos" }) : notificationLink(clientId, note),
+    link: category === "pics_reviewed" ? describeMessageLink(noFoodRows("page.client"), clientId, { kind: "photos" }) : notificationLink(clientId, note),
   };
 }

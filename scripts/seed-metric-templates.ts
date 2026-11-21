@@ -14,6 +14,7 @@
 
    Run with: npx tsx scripts/seed-metric-templates.ts
 */
+import { storeCheckInBox } from "../app/lib/checkins/rows";
 import { getData } from "../app/lib/db";
 import {
   addMetricTemplateCategory,
@@ -25,6 +26,9 @@ import {
   weekStart,
   localDateStr,
 } from "../app/lib/queries";
+
+// The check-in figures through their door (quest 9): the store's own lists, as these scripts always wrote them.
+const SEED = storeCheckInBox("w.entry.seed");
 
 const today = new Date();
 function daysAgo(n: number) {
@@ -115,7 +119,7 @@ if (alex) {
         const base = category === "Stress" ? 4 : 7; // lower stress score = better, higher wellbeing = better
         const drift = category === "Stress" ? -wi : wi; // trending down / up over time
         const value = Math.max(1, Math.min(10, base + drift + ((di + wi) % 3)));
-        setMetricEntry(def.id, weekStart(daysAgo(wb * 7)), value);
+        setMetricEntry(SEED, def.id, weekStart(daysAgo(wb * 7)), value);
       });
     });
     console.log(`Applied "${category}" to Alex with 4 weeks of sample ratings.`);

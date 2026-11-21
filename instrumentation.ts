@@ -25,16 +25,41 @@ export async function register() {
   // for them; now once ~20 s after start and every minute, so one still comes in within the minute its day, week or
   // photo period opens, and goes once it is no longer due. Not in `next build`'s prerender workers.
   if (process.env.NEXT_PHASE !== "phase-production-build") {
-    const { applyDueClientReminders } = await import("./app/lib/queries");
+    // Fetches the notes it reads first since quest 7 (app/lib/notes/rows.ts), so it answers a promise; one tick at a time.
+    const { runClientReminders } = await import("./app/lib/queries");
     const remindCheckIns = () => {
-      try {
-        applyDueClientReminders();
-      } catch (e) {
-        console.error("[reminders] check-in reminders failed:", e instanceof Error ? e.message : e);
-      }
+      void runClientReminders().catch((e) => console.error("[reminders] check-in reminders failed:", e instanceof Error ? e.message : e));
     };
     setInterval(remindCheckIns, 60_000).unref?.();
     setTimeout(remindCheckIns, 20_000).unref?.();
+    // The read reminders over 30 days old deleted (19 Nov, Alex; app/lib/notes/prune.ts): once a night at 04:30, after
+    // the 03:15 backup, in the background; one at a time (the door's own guard), and a failure waits for the next night.
+    // Only where the nightly backup is (BACKUP_*), and only once tonight's snapshot is in the bucket, so what goes is in
+    // the night's copy: never on a local copy with none. NOTES_PRUNE=off stops it; =on runs it with no backup too.
+    const { backupConfigured, backupTakenToday } = await import("./app/lib/backup");
+    const pruneAsked = process.env.NOTES_PRUNE;
+    if (pruneAsked === "on" || (pruneAsked !== "off" && backupConfigured())) {
+      const { runReminderPrune } = await import("./app/lib/queries");
+      const { msUntilPrune } = await import("./app/lib/notes/prune");
+      const { pruneBooked } = await import("./app/lib/notes/rows");
+      const pruneTonight = async () => {
+        if (backupConfigured() && !(await backupTakenToday())) return console.log("[reminders] clean-up skipped tonight (no backup in the bucket for today)");
+        const n = await runReminderPrune();
+        console.log(n == null ? "[reminders] clean-up skipped tonight (a check-in tick or a clean-up still running)" : `[reminders] clean-up: ${n} read reminder${n === 1 ? "" : "s"} over 30 days old deleted`);
+      };
+      const pruneNightly = () => {
+        // Worked out from a minute on, so a timer fired a hair early never runs it twice the same night.
+        const wait = 60_000 + msUntilPrune(new Date(Date.now() + 60_000));
+        pruneBooked(Date.now() + wait);
+        setTimeout(() => {
+          pruneBooked(null);
+          void pruneTonight()
+            .catch((e) => console.error("[reminders] clean-up failed:", e instanceof Error ? e.message : e))
+            .finally(pruneNightly);
+        }, wait).unref?.();
+      };
+      pruneNightly();
+    }
   }
   // Storage bucket on (UPLOADS_STORE=bucket): copy any files the bucket does
   // not have yet, in the background so the server starts straight away.
@@ -75,6 +100,42 @@ export async function register() {
     };
     setInterval(remindWorkouts, 5 * 60_000).unref?.();
     setTimeout(remindWorkouts, 120_000).unref?.();
+  }
+  // A client's quiet hours (19 Nov, Alex: Settings · Notifications; app/lib/push.ts): what was held is sent once they
+  // end, the newest of each, checked every minute on the live server (NOTIF_HOLD, as the reminders).
+  const { notifHoldOn, releaseHeldPushes } = await import("./app/lib/push");
+  if (notifHoldOn() && process.env.NEXT_PHASE !== "phase-production-build") {
+    let busy = false;
+    const release = () => {
+      if (busy) return;
+      busy = true;
+      void releaseHeldPushes()
+        .then((n) => n && console.log(`[push] quiet hours over: sent ${n} held`))
+        .catch((e) => console.error("[push] releasing held pushes failed:", e instanceof Error ? e.message : e))
+        .finally(() => {
+          busy = false;
+        });
+    };
+    setInterval(release, 60_000).unref?.();
+    setTimeout(release, 45_000).unref?.();
+  }
+  // The locked app (19 Nov, Alex: "first phase"; app/lib/appLock.ts): a client let in whose first phase has begun (one
+  // scheduled for today) opens, with `Your app is ready` pushed once, every five minutes on the live server.
+  const { appLockPushOn, checkAppLocks } = await import("./app/lib/appLock");
+  if (appLockPushOn() && process.env.NEXT_PHASE !== "phase-production-build") {
+    let busy = false;
+    const openLocks = () => {
+      if (busy) return;
+      busy = true;
+      void checkAppLocks()
+        .then((n) => n && console.log(`[app-lock] opened ${n}`))
+        .catch((e) => console.error("[app-lock] failed:", e instanceof Error ? e.message : e))
+        .finally(() => {
+          busy = false;
+        });
+    };
+    setInterval(openLocks, 5 * 60_000).unref?.();
+    setTimeout(openLocks, 150_000).unref?.();
   }
   // Recurring invoices (21 Oct): each series makes its next invoice on its day, checked every ten minutes. Locally
   // too, so a series can be seen working; the client's buzz for a sent one only from the live server (as reminders).

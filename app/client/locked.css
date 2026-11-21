@@ -1,0 +1,47 @@
+/* The locked app (19 Nov, Alex: B of docs/boards/locked-app-mockup.html, "first phase"; AppShell `lock`, lib/appLock.ts):
+   Home blurred under a soft dark veil, out of reach; over it the join's dark as a sheet from the bottom, the coach's face
+   breathing as on the join's wait (its .jn- parts, globals.css), You're in, Message {First}, Settings | Log out. Open, the
+   sheet drops and the blur lifts over 600ms on the fold's curve; reduced motion simply goes. */
+.app-layer-main.lk-under { filter: blur(9px) saturate(.8); transition: filter .6s cubic-bezier(.22, 1, .36, 1); }
+.app-layer-main.lk-under.lk-lifting { filter: none; }
+
+/* --jn-ease too: the join's ring and title read it, and globals.css sets it only on .jn and .jn-wait. */
+.lk { --jn-ease: cubic-bezier(.22, 1, .36, 1); --lk-ease: var(--jn-ease); position: relative; z-index: 4; overflow: hidden; }
+.lk-veil { position: absolute; inset: 0; background: rgba(20, 22, 26, .35); transition: opacity .6s var(--lk-ease); }
+.lk-sheet {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  height: 62%; min-height: 430px; max-height: calc(100% - max(var(--sat, 0px), env(safe-area-inset-top, 0px)) - 24px);
+  display: flex; flex-direction: column; align-items: flex-start;
+  padding: 34px max(24px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 24px) max(24px, env(safe-area-inset-left, 0px));
+  border-radius: 28px 28px 0 0; background: #1c1c1e; color: #fff;
+  font-family: var(--font-archivo), system-ui, sans-serif;
+  overflow-y: auto; overscroll-behavior: contain;
+  transition: transform .6s var(--lk-ease);
+}
+.lk.lifting .lk-veil { opacity: 0; }
+.lk.lifting .lk-sheet { transform: translateY(100%); }
+
+/* The face, 58px, its ring breathing out of it, the lock on its edge: a ring in the dark, the lock at 1.6. */
+.lk .lk-face-wrap, .lk .jn-face.lk-face { width: 58px; height: 58px; }
+.lk .jn-face.lk-face { font-size: 22px; }
+.lk-badge { position: absolute; right: -4px; bottom: -4px; width: 22px; height: 22px; border-radius: 50%; background: #1c1c1e; box-shadow: inset 0 0 0 1.5px #48484c; color: #fff; display: grid; place-items: center; }
+.lk-badge svg { display: block; }
+
+.lk .lk-title { margin-top: 28px; line-height: 1.15; }
+.lk .lk-facts { margin-top: 14px; }
+.lk .cl-sep { background: #5a5a5e; }
+.lk .lk-msg { margin-top: 26px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 20px; }
+.lk .lk-msg svg { flex: none; translate: 0 -0.5px; }
+.lk .lk-foot { margin-top: auto; padding-top: 24px; align-self: center; display: inline-flex; align-items: center; }
+.lk .lk-foot form { display: inline-flex; margin: 0; }
+.lk .lk-foot .jn-word { font-size: 13px; }
+
+/* Zoomed in, nothing is blurred through (2 Nov, Alex; ZoomCalm): the veil stands in for the blur. */
+html.zoomed .app-layer-main.lk-under { filter: none; }
+html.zoomed .lk-veil { background: rgba(20, 22, 26, .85); }
+
+@media (prefers-reduced-motion: reduce) {
+  .app-layer-main.lk-under, .lk-veil, .lk-sheet { transition: none; }
+  .lk .jn-ring::after { animation: none; opacity: 0; }
+  .lk .jn-sent-title span { animation: none; }
+}

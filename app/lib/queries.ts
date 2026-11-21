@@ -6,7 +6,12 @@ import { CHAT_TABLE, chatFileLacksLook, chatShowsFile, deleteClientChat, deleteR
 import { chatNeedOf, dockLineOf, HOME_EVENTS, HOME_NEW_DAYS } from "./chat/pick";
 import type { ChatWritePath } from "./chat/paths";
 import { CHAT_PG } from "./chat/mode";
+import { NOTES_PG, NOTES_TABLE } from "./notes/mode";
+import { deleteClientNotes, fetchChatNote, fetchReminderState, fetchUnreadReminderClients, pruneReadReminders, writeNote, writeReminderTick, type ClientNotes, type ReminderPair } from "./notes/rows";
+import type { NoteOp } from "./notes/apply";
+import type { ClientNotification } from "./notes/pick";
 import { noteTakenKey } from "./onceKeep";
+import { groupOfNotification } from "./notifGroups";
 import { healthStoreName, healthWorkoutFacts, healthWorkoutWords } from "./healthWorkouts";
 import { allocId, DATA_DIR, DAY_NAMES_FULL, getData, persist, mergeDuplicateMetricDefinitions, CardioEntry } from "./db";
 import type { CalorieLog, CheckInNote, CustomFood, FoodDay, FoodEntry, FoodMealSlot, OffFood, SavedDay, SavedMeal, ClientEvent, ClientGym, ClientPhase, CoachProfile, CoachBusiness, CoachNotify, CoachInvoicing, CoachPayments, CoachSettings, Data, EventCategory, InvoiceEvery, InvoiceLine, InvoiceParty, InvoiceRecipient, InvoiceRepeat, InvoiceTemplate, KeptActivity, MetricAskAt, PhaseTrack, SessionAnswer, VideoRequest, WorkoutQuestion, MeetingRequest } from "./db";
@@ -27,13 +32,17 @@ import { countryOf, invoicingFor } from "./countries";
 import { addressLine } from "./address";
 import { LOCK_MS, type LockScope } from "./loginLockout";
 import { endWeekFor, phaseCovers, phaseDays, phaseLastDay, phaseWeekIndex, phaseWeeks } from "./phases";
-import { metricAskAt, metricFromWorkout } from "./metricAskAt";
+import { metricAskAt } from "./metricAskAt";
 import { metricSummary, type MetricSummary } from "./metricSummary";
 import { DEFAULT_WORKOUT_QUESTIONS, EARLIER_DEFAULT_QUESTIONS, MAX_QUESTION_LENGTH, MAX_WORKOUT_QUESTIONS } from "./workoutQuestions";
 import { colourOfGroup, groupColour } from "./categoryColors";
 import { PHASE_OBJECTIVE_CHARS, PHASE_OBJECTIVES_MAX } from "./phaseCovers";
 import { cleanRepeat, openEnd, type EventRepeat } from "./eventRepeat";
 import { deleteUpload, trashFile } from "./storage";
+import { FOOD_PG } from "./food/mode";
+import { deleteClientFood, noFoodRows, setFoodLook, type FoodBox, type FoodRows } from "./food/rows";
+import { CHECKINS_PG } from "./checkins/mode";
+import { deleteClientCheckIns, fetchDueCheckIns, removeMetricWithReadings, sweepClientCheckIns, whileNoFigures, writeCheckIns, type CheckInBox, type CheckInRows, type CheckInSpan } from "./checkins/rows";
 import { setsDue } from "./setsDue";
 import { assistedRow, beforeStop, copiedWeights, isReset, laneKg, laneOfGym, laneTypedAt, laterSlot, liftOf, raisedTo, repWindow, setsSinceReset, stopAfter, writeLane, type Lane } from "./targetRule";
 import { FEATURES } from "./features";
@@ -305,6 +314,14 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
   // With CHAT_STORE=pg their chat goes first, in Postgres: a DELETE that fails stops the erase here, before anything in
   // memory changes, so it never reports done with their messages left behind (eraseClient says it failed; again is safe).
   if (CHAT_PG) await deleteClientChat(clientId, "w.client.delete");
+  // With NOTES_STORE=pg their notifications the same (quest 7): a DELETE that fails stops the erase before anything changes.
+  if (NOTES_PG) await deleteClientNotes(clientId, "w.client.delete");
+  // With FOOD_STORE=pg their food diary the same (quest 8 part 1): one transaction under their lock, before anything changes.
+  if (FOOD_PG) await deleteClientFood(clientId, "w.client.delete");
+  // With CHECKINS_STORE=pg their check-in figures and notes the same (quest 9): one transaction under their lock, the
+  // figures by their metrics (a figure has no client of its own), before anything in memory changes.
+  const checkInDefs = data.metric_definitions.filter((m) => m.client_id === clientId).map((m) => m.id);
+  if (CHECKINS_PG) await deleteClientCheckIns(clientId, checkInDefs, "w.client.delete");
   // A Personal block that still has them saved is the coach's own: it stays.
   detachStrayEntryClients();
 
@@ -324,7 +341,8 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
   data.training_programs = data.training_programs.filter((p) => p.client_id !== clientId);
   data.training_columns = data.training_columns.filter((c) => c.client_id !== clientId);
 
-  data.metric_entries = data.metric_entries.filter((e) => !metricIds.has(e.metric_definition_id));
+  // Memory mode: their figures out of the store's list, here and at once (the body runs before the call returns).
+  if (!CHECKINS_PG) void writeCheckIns("w.client.delete", clientId, () => ({ defIds: [...metricIds], span: "all" }), (box) => void (box.entries = box.entries.filter((e) => !metricIds.has(e.metric_definition_id))));
   data.metric_definitions = data.metric_definitions.filter((m) => m.client_id !== clientId);
   data.measurement_values = data.measurement_values.filter((v) => !fieldIds.has(v.field_id) && v.client_id !== clientId);
   data.measurement_fields = data.measurement_fields.filter((f) => f.client_id !== clientId);
@@ -358,8 +376,14 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
     return deleteClientChat(clientId, "w.client.delete");
   })();
   const store = data as unknown as Record<string, unknown>;
-  // chat-door: chat rows go through deleteClientChat
-  for (const [name, value] of Object.entries(store)) {
+  // chat-door: chat rows go through deleteClientChat. food-door: the food lists by the same filter (pg: deleteClientFood above)
+  // notes-door: the notifications go through deleteClientNotes, in their turn among the collections (memory: at once, the
+  // same filter; with NOTES_STORE=pg they went first, above)
+  for (const [name, value] of Object.entries(store)) { // checkins-door: the check-in notes by this filter in memory (pg: deleteClientCheckIns above)
+    if (name === NOTES_TABLE) {
+      if (!NOTES_PG) void deleteClientNotes(clientId, "w.client.delete");
+      continue;
+    }
     if (!Array.isArray(value) || name === "users" || name === "account_deletions" || name === "client_departures" || name === CHAT_TABLE) continue;
     if (name === "invoices" && opts.keepInvoices) continue;
     store[name] = value.filter((row) => !(row && typeof row === "object" && (row as { client_id?: unknown }).client_id === clientId));
@@ -375,6 +399,33 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
       await deleteClientChat(clientId, "w.client.delete");
     } catch (error) {
       console.error(`[chat] the second sweep of client ${clientId}'s chat failed; the boot's orphan report will name what is left:`, error instanceof Error ? error.message : error);
+    }
+  }
+  // The notifications the same (NOTES_STORE=pg): a job (the reminders, a recurring invoice) may have queued one between.
+  if (NOTES_PG) {
+    try {
+      await deleteClientNotes(clientId, "w.client.delete");
+    } catch (error) {
+      console.error(`[notes] the second sweep of client ${clientId}'s notifications failed; the boot's orphan report will name what is left:`, error instanceof Error ? error.message : error);
+    }
+  }
+  // The food diary the same (FOOD_STORE=pg): a write already queued on the client's chain when the first DELETE ran
+  // (a phone sync, an upload) is refused once the client is gone from memory (writeFood), and this sweep takes what any
+  // committed between.
+  if (FOOD_PG) {
+    try {
+      await deleteClientFood(clientId, "w.client.delete");
+    } catch (error) {
+      console.error(`[food] the second sweep of client ${clientId}'s food diary failed; the preflight's orphan count will name what is left:`, error instanceof Error ? error.message : error);
+    }
+  }
+  // The check-in figures the same (CHECKINS_STORE=pg): a check-in or a phone sync queued behind the first DELETE is refused
+  // once the client is gone from memory (writeCheckIns), and this sweep takes what any committed between.
+  if (CHECKINS_PG) {
+    try {
+      await sweepClientCheckIns(clientId, checkInDefs);
+    } catch (error) {
+      console.error(`[checkins] the second sweep of client ${clientId}'s check-ins failed; the boot's orphan count will name what is left:`, error instanceof Error ? error.message : error);
     }
   }
 }
@@ -914,7 +965,7 @@ export type LinkTargets = {
   photos: boolean;
 };
 
-export function listMessageLinkTargets(clientId: number): LinkTargets {
+export function listMessageLinkTargets(food: FoodRows, clientId: number): LinkTargets {
   const data = getData();
   const span = linkableWeeks(clientId);
   const training = span
@@ -937,7 +988,8 @@ export function listMessageLinkTargets(clientId: number): LinkTargets {
     d.setDate(d.getDate() - 14);
     return localDateStr(d);
   })();
-  const foodDays = [...new Set((data.food_entries ?? []).filter((e) => e.client_id === clientId && e.date >= from && e.date <= today).map((e) => e.date))]
+  food.need("listMessageLinkTargets", clientId, { from, to: today }, ["entries"]);
+  const foodDays = [...new Set(food.entries.filter((e) => e.client_id === clientId && e.date >= from && e.date <= today).map((e) => e.date))]
     .sort()
     .reverse()
     .map((date) => ({ date, label: shortDay(date) }));
@@ -959,7 +1011,7 @@ export function listMessageLinkTargets(clientId: number): LinkTargets {
  * shown, not when sent: a renamed session reads its new name, and a deleted
  * exercise says it is gone rather than leading nowhere.
  */
-export function describeMessageLink(clientId: number, link: MessageLink): LinkView {
+export function describeMessageLink(food: FoodRows, clientId: number, link: MessageLink): LinkView {
   const data = getData();
   const view = (area: LinkView["area"], label: string, week: number | null = null, gone = false, removed = false): LinkView => ({ link, area, label, week, gone, removed });
   switch (link.kind) {
@@ -981,7 +1033,7 @@ export function describeMessageLink(clientId: number, link: MessageLink): LinkVi
       return view("Nutrition", "Nutrition targets");
     case "food": {
       if (!link.meal) return view("Nutrition", `Food diary · ${shortDay(link.date)}`);
-      const meal = listFoodMeals(clientId, link.date).find((m) => m.id === link.meal);
+      const meal = listFoodMeals(food, clientId, link.date).find((m) => m.id === link.meal);
       return view("Nutrition", `${meal?.label ?? "A meal"} · ${shortDay(link.date)}`);
     }
     case "checkin": {
@@ -1005,8 +1057,9 @@ export function describeMessageLink(clientId: number, link: MessageLink): LinkVi
 export function notificationLink(clientId: number, n: { action_tab: string | null; action_ref: number | null; dedupe_key: string | null }): LinkView | null {
   if (n.action_tab !== "training" || n.action_ref == null || !n.dedupe_key) return null;
   const ask = /^video-ask:(\d+):/.exec(n.dedupe_key);
-  if (ask) return describeMessageLink(clientId, { kind: "exercise", dayId: n.action_ref, assignmentId: Number(ask[1]) });
-  if (/^training:\d+:/.test(n.dedupe_key)) return describeMessageLink(clientId, { kind: "session", dayId: n.action_ref });
+  // A training link: no food read (describeMessageLink reads food only for a food link).
+  if (ask) return describeMessageLink(noFoodRows("page.client"), clientId, { kind: "exercise", dayId: n.action_ref, assignmentId: Number(ask[1]) });
+  if (/^training:\d+:/.test(n.dedupe_key)) return describeMessageLink(noFoodRows("page.client"), clientId, { kind: "session", dayId: n.action_ref });
   return null;
 }
 
@@ -1373,7 +1426,22 @@ export function endOpenPhaseBefore(clientId: number, track: PhaseTrack, newStart
 // notification feed. dedupeKey is scoped to the due item's own period (day,
 // week, or photo period) so it only fires once per rollover, not once per
 // request — logCoachActivity no-ops if that key already exists.
-export function applyDueClientReminders() {
+//
+// Since quest 7 it fetches the notes it reads first (the clients with an unread reminder, then those clients' keys and
+// unread reminders), then works as before; it writes only the keys missing (memory mode did nothing for the others
+// anyway), so with NOTES_STORE=pg a minute's tick queues no op for a reminder already there. One tick at a time: one
+// still running when the next is due makes the next skip.
+let remindersRunning = false;
+export async function runClientReminders(): Promise<void> {
+  if (remindersRunning) return;
+  remindersRunning = true;
+  try {
+    await applyDueClientReminders();
+  } finally {
+    remindersRunning = false;
+  }
+}
+async function applyDueClientReminders() {
   const data = getData();
   const today = localDateStr();
   const weekKey = weekStart(today);
@@ -1392,33 +1460,120 @@ export function applyDueClientReminders() {
   // A reminder ticks itself off once it is no longer due: the check-in was
   // done, or its day, week or photo period has passed. So clients with an
   // unread reminder are looked at too, whatever they have set up now.
-  for (const a of data.coach_activity) if (a.kind === "reminder" && !a.read) clientIds.add(a.client_id);
+  for (const id of await fetchUnreadReminderClients("job.reminders.unread")) clientIds.add(id);
 
-  let cleared = false;
-  clientIds.forEach((clientId) => {
+  // Each client's newest check-in periods fetched first (quest 9), then their due items and keys, worked out as before.
+  const ck = await fetchDueCheckIns([...clientIds], "job.reminders", dueCheckInDefIds);
+  const due = [...clientIds].map((clientId) => {
+    const items = getDueItems(ck, clientId).map((item) => ({ item, dedupeKey: reminderKey(item.id, clientId, today, weekKey) }));
+    return { clientId, items };
+  });
+  const state = await fetchReminderState(
+    [...clientIds],
+    due.flatMap((d) => d.items.map((i) => ({ clientId: d.clientId, key: i.dedupeKey }))),
+    "job.reminders.state"
+  );
+
+  // Each client's reminders to add and those to tick off, worked out first, then written by the door (in memory mode
+  // through logCoachActivity, client by client, as before; with NOTES_STORE=pg as a few statements, never the outbox).
+  // Worked out before the writes: a new reminder's key is due, so it is never one of the tick-offs.
+  const plans = due.map(({ clientId, items }) => {
     const dueKeys = new Set<string>();
-    getDueItems(clientId).forEach((item) => {
-      const periodKey =
-        item.id === "weekly"
-          ? weekKey
-          : item.id === "monthly"
-          ? monthStart(today)
-          : item.id === "photos"
-          ? photoSheetFor(clientId, today) ?? today
-          : today;
-      const dedupeKey = `reminder:${item.id}:${clientId}:${periodKey}`;
+    const add: { message: string; dedupeKey: string }[] = [];
+    items.forEach(({ item, dedupeKey }) => {
       dueKeys.add(dedupeKey);
       if (!getClientPreferences(clientId).checkin_reminders) return;
-      logCoachActivity(clientId, `${item.label}: ${item.detail}`, { kind: "reminder", dedupeKey });
+      // A key there already, read or not: nothing to do (logCoachActivity's own duplicate check, asked first).
+      if (state.exists(clientId, dedupeKey)) return;
+      add.push({ message: `${item.label}: ${item.detail}`, dedupeKey });
     });
-    for (const a of data.coach_activity) {
-      if (a.client_id !== clientId || a.kind !== "reminder" || a.read || !a.dedupe_key) continue;
-      if (dueKeys.has(a.dedupe_key)) continue;
-      a.read = true;
-      cleared = true;
-    }
+    const off = state.unread(clientId).filter((a) => !dueKeys.has(a.dedupe_key)).map((a) => a.id);
+    return { clientId, add, off };
   });
+  const cleared = await writeReminderTick(plans, (clientId, message, dedupeKey) => logCoachActivity(clientId, message, { kind: "reminder", dedupeKey }));
   if (cleared) persist();
+}
+
+/** A due item's reminder key: scoped to its day, week, month or photo period (the job's rule, one place since 19 Nov). */
+function reminderKey(itemId: string, clientId: number, today: string, weekKey = weekStart(today)): string {
+  const periodKey =
+    itemId === "weekly"
+      ? weekKey
+      : itemId === "monthly"
+      ? monthStart(today)
+      : itemId === "photos"
+      ? photoSheetFor(clientId, today) ?? today
+      : today;
+  return `reminder:${itemId}:${clientId}:${periodKey}`;
+}
+
+/** The reminder items, by the ids getDueItems gives them. */
+const REMINDER_ITEMS = ["daily", "weekly", "monthly", "measurements", "photos"] as const;
+
+/**
+ * Every key the minute job still counts as its own (19 Nov, the nightly clean-up): for each client who could have
+ * something due (the tables getDueItems gates on, and every client), the key of the period each item is in now, and
+ * every due item's key, as the job works them out. The job sends a key again once no row holds it, read or not, so
+ * none of these is ever pruned: a photo sheet open past 30 days, a monthly one near its month's end, a check-in done
+ * and then taken back. A key of a period that is over is never asked again.
+ */
+function keysInPlayClients(): Set<number> {
+  const data = getData();
+  return new Set<number>([
+    ...data.metric_definitions.map((d) => d.client_id),
+    ...data.measurement_fields.map((f) => f.client_id),
+    ...data.photo_slots.map((s) => s.client_id),
+    ...data.clients.map((c) => c.id),
+  ]);
+}
+function reminderKeysInPlay(ck: CheckInRows, clientIds: Set<number>): ReminderPair[] {
+  const today = localDateStr();
+  const weekKey = weekStart(today);
+  const pairs: ReminderPair[] = [];
+  for (const clientId of clientIds) {
+    const keys = new Set<string>(REMINDER_ITEMS.map((id) => reminderKey(id, clientId, today, weekKey)));
+    for (const item of getDueItems(ck, clientId)) keys.add(reminderKey(item.id, clientId, today, weekKey));
+    for (const key of keys) pairs.push({ clientId, key });
+  }
+  return pairs;
+}
+
+/**
+ * The day from which a photo reminder's key stays (19 Nov, the review): a new start date or rhythm hands the open sheet
+ * back to the calendar (resetPhotoOpenSheet), which on any day from now opens one at most a sheet's length back (six
+ * weeks, a month), so a key of that day or later could be the job's again.
+ */
+function photoKeysFrom(today: string): string {
+  const days = Math.max(31, 7 * Math.max(...Object.values(PHOTO_WEEKS_PER_SHEET)));
+  const [y, m, d] = today.split("-").map(Number);
+  return localDateStr(new Date(y, m - 1, d - days));
+}
+
+/**
+ * The nightly clean-up of old read reminders (19 Nov, Alex: "lets go with your suggestion"; notes/prune.ts): read and
+ * over 30 days old, but never a key in play, nor a photo key the calendar could open again. Never beside a minute tick
+ * (it waits up to a minute for one to end, and the ticks skip while it runs), so the keys it keeps are the ones the
+ * next tick works from. The keys are worked out at once on the main thread (every client's due items: a few ms a
+ * hundred clients, at 04:30). How many went, or null when it didn't run (a tick that wouldn't end, a clean-up already
+ * running).
+ */
+// Once a local day (19 Nov proof): a second clean-up the same day, or one asked while another runs, does nothing.
+let prunedOn: string | null = null;
+export async function runReminderPrune(): Promise<number | null> {
+  const day = localDateStr();
+  if (prunedOn === day) return null;
+  prunedOn = day;
+  for (let i = 0; remindersRunning && i < 120; i++) await new Promise((r) => setTimeout(r, 500));
+  if (remindersRunning) return null;
+  remindersRunning = true;
+  try {
+    // The newest check-in periods fetched first (quest 9), then the keys worked out at once, as before.
+    const clientIds = keysInPlayClients();
+    const ck = await fetchDueCheckIns([...clientIds], "job.reminders.prune", dueCheckInDefIds);
+    return await pruneReadReminders(reminderKeysInPlay(ck, clientIds), { photosFrom: photoKeysFrom(localDateStr()) });
+  } finally {
+    remindersRunning = false;
+  }
 }
 
 // Deletes an entire week (days + assignments + their logs). Weeks are
@@ -2446,9 +2601,6 @@ export function getClientIdForPhotoSlot(slotId: number): number | null {
   return getData().photo_slots.find((s) => s.id === slotId)?.client_id ?? null;
 }
 
-export function getClientIdForNotification(notificationId: number): number | null {
-  return getData().coach_activity.find((a) => a.id === notificationId)?.client_id ?? null;
-}
 
 export function getLogsForAssignment(workoutAssignmentId: number): SetLog[] {
   return getData()
@@ -2986,11 +3138,11 @@ export type OverviewPanel = {
 };
 
 /** feedOf: the coach's feed, when the caller reads it too (loadHome): asked for here at the same moment, built once. */
-export function getOverviewPanel(clientId: number, feedOf: () => FeedEvent[]): OverviewPanel {
+export function getOverviewPanel(clientId: number, feedOf: () => FeedEvent[], ck: CheckInRows): OverviewPanel {
   const client = getClient(clientId);
   const profile = getClientProfile(clientId);
   const nutrition = getNutritionGoalsSummary(clientId);
-  const weight = getLatestWeight(clientId);
+  const weight = getLatestWeight(ck, clientId);
   const invoices = listInvoices(clientId);
   const today = localDateStr();
 
@@ -3019,7 +3171,7 @@ export function getOverviewPanel(clientId: number, feedOf: () => FeedEvent[]): O
     getCurrentPhase(clientId, "nutrition") ?? getCurrentPhase(clientId, "training") ?? getCurrentPhase(clientId, "lifestyle");
   const weightMove = (() => {
     if (weight == null) return "";
-    const series = getWeightSeriesAll(clientId);
+    const series = getWeightSeriesAll(ck, clientId);
     let base: number | null = null;
     let when = "since the start";
     if (weightPhase && series.length > 0) {
@@ -3179,32 +3331,6 @@ export function getOverviewPanel(clientId: number, feedOf: () => FeedEvent[]): O
   };
 }
 
-export function getClientSummary(clientId: number) {
-  const data = getData();
-  const dayIds = new Set(
-    data.program_days.filter((pd) => pd.client_id === clientId).map((pd) => pd.id)
-  );
-  const assignmentIds = new Set(
-    data.workout_assignments.filter((wa) => dayIds.has(wa.program_day_id)).map((wa) => wa.id)
-  );
-  const publishedDays = data.program_days.filter(
-    (pd) => pd.client_id === clientId && pd.status === "published"
-  );
-  const planned = new Set(data.program_days.filter((pd) => pd.client_id === clientId && !pd.free).map((pd) => pd.id));
-  // The sessions with a row in them, read once (23 Oct, speed: it scanned every row per session).
-  const built = new Set<number>();
-  for (const wa of data.workout_assignments) if (dayIds.has(wa.program_day_id)) built.add(wa.program_day_id);
-  const trainingDaysBuilt = [...dayIds].filter((id) => planned.has(id) && built.has(id)).length;
-  const totalSets = data.set_logs.filter((sl) => assignmentIds.has(sl.workout_assignment_id)).length;
-
-  return {
-    trainingDaysBuilt,
-    programPublished: publishedDays.length > 0,
-    totalSetsLogged: totalSets,
-    lastActive: getLastActive(clientId),
-  };
-}
-
 // ---- Cross-client activity feed ----
 // Every event here is sourced from real, timestamped writes elsewhere in the
 // store — nothing here is synthesized. When a new kind of client logging is
@@ -3315,8 +3441,8 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const feedValue = (v: number) => String(Math.round(v * 10) / 10);
 
 /** Everything one coach's clients logged, newest first. The Feed page filters and pages it. */
-export function getActivityFeed(coachId: number, chat: ChatCoachView): FeedEvent[] {
-  return activityFeeds([coachId], chat).get(coachId) ?? [];
+export function getActivityFeed(coachId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows): FeedEvent[] {
+  return activityFeeds([coachId], chat, food, ck).get(coachId) ?? [];
 }
 
 /**
@@ -3325,7 +3451,7 @@ export function getActivityFeed(coachId: number, chat: ChatCoachView): FeedEvent
  * in the order the walk finds them, sorted the same way. The store's rows are filtered to the coaches' clients before
  * they are grouped, so a coach's feed no longer maps every other coach's sets, food, check-ins and chat.
  */
-function activityFeeds(coachIds: readonly number[], chat: ChatCoachView): Map<number, FeedEvent[]> {
+function activityFeeds(coachIds: readonly number[], chat: ChatCoachView, food: FoodRows, ck: CheckInRows): Map<number, FeedEvent[]> {
   const data = getData();
   chat.covers("activityFeeds", coachIds);
   const feeds = new Map<number, FeedEvent[]>(coachIds.map((id) => [id, []]));
@@ -3493,7 +3619,8 @@ function activityFeeds(coachIds: readonly number[], chat: ChatCoachView): Map<nu
   // (the diary's total pushed to it, or a figure typed) together, at the latest of them, the client's note on the day as
   // its words. A typed day with no diary is its own row, as before.
   const diary = new Map<string, { clientId: number; date: string; kcal: number; items: number; latest: string | null; note: string | null }>();
-  for (const f of data.food_entries ?? []) {
+  food.need("activityFeeds", [...clientsById.keys()], "all", ["entries", "calories"]);
+  for (const f of food.entries) {
     if (!clientsById.has(f.client_id)) continue;
     const key = `${f.client_id}:${f.date}`;
     const d = diary.get(key) ?? { clientId: f.client_id, date: f.date, kcal: 0, items: 0, latest: null, note: null };
@@ -3504,7 +3631,7 @@ function activityFeeds(coachIds: readonly number[], chat: ChatCoachView): Map<nu
   }
   // A figure the phone filled (Apple Health / Health Connect, 17 Nov) is no row of the client's doing: the coach reads it as the
   // day's calories elsewhere, never as "Logged food" in Activity.
-  for (const c of data.calorie_logs) {
+  for (const c of food.calories) {
     if (c.source === "health" || !clientsById.has(c.client_id)) continue;
     const d = diary.get(`${c.client_id}:${c.date}`);
     if (d) {
@@ -3566,7 +3693,9 @@ function activityFeeds(coachIds: readonly number[], chat: ChatCoachView): Map<nu
   };
 
   const metricDefs = new Map(data.metric_definitions.map((d) => [d.id, d] as const));
-  for (const e of data.metric_entries) {
+  // The check-ins through their door (quest 9): every figure and note of these coaches' clients.
+  ck.need("activityFeeds", [...clientsById.keys()], "all");
+  for (const e of ck.entries) {
     const def = metricDefs.get(e.metric_definition_id);
     // Steps the phone filled in are no check-in the client did (13 Nov, Alex).
     if (!def || e.value == null || e.source === "health" || !clientsById.has(def.client_id)) continue;
@@ -3583,7 +3712,7 @@ function activityFeeds(coachIds: readonly number[], chat: ChatCoachView): Map<nu
     c.values.push({ order: field.order_index, text: `${field.name} ${feedValue(v.value)}${field.unit ? ` ${field.unit}` : ""}` });
     c.latest = latestOf(c.latest, v.logged_at);
   }
-  for (const n of data.check_in_notes) {
+  for (const n of ck.notes) {
     if (!clientsById.has(n.client_id)) continue;
     const c = checkIn(n.client_id, n.kind, n.period);
     c.note = n.text;
@@ -3934,13 +4063,13 @@ export function feedTimeLabel(at: number, timeKnown = true): string {
  * clients the coach has and when one of them last logged something. Nothing
  * about the clients themselves.
  */
-export function listCoachAccounts(chat: ChatCoachView) {
+export function listCoachAccounts(chat: ChatCoachView, food: FoodRows, ck: CheckInRows) {
   const data = getData();
   const coaches = data.users.filter((u) => u.role === "coach").sort((a, b) => a.id - b.id);
   // Every coach's feed in one walk (17 Nov, mission 2: it was built once per coach), each the list getActivityFeed gives.
   // Only its newest event is read: each client's newest message is in the view (Step 5).
   chat.need("clientTop", 1);
-  const feeds = activityFeeds(coaches.map((u) => u.id), chat);
+  const feeds = activityFeeds(coaches.map((u) => u.id), chat, food, ck);
   return coaches
     .map((u) => {
       const latest = feeds.get(u.id)?.[0];
@@ -4157,8 +4286,9 @@ export const weightIn = (r: BodyWeightReading, unit: string): number => weightIn
 // their latest log): each Weight metric's readings, any phase and any rhythm, and the legacy Weight measurement field's.
 // A daily reading is for its day; a weekly or monthly one for the day it was sent (its period with no stamp). Two on
 // one day: the one saved last. lbs are kg here once. Nothing is stored: every reader follows the next log.
-export function bodyWeightReadings(clientId: number): BodyWeightReading[] {
+export function bodyWeightReadings(ck: CheckInRows, clientId: number): BodyWeightReading[] {
   const data = getData();
+  ck.need("bodyWeightReadings", clientId, "all", ["entries"]);
   const byDay = new Map<string, BodyWeightReading>();
   const savedMs = (at: string | null) => {
     const t = at ? Date.parse(at) : NaN;
@@ -4175,7 +4305,7 @@ export function bodyWeightReadings(clientId: number): BodyWeightReading[] {
     for (const v of data.measurement_values) if (v.field_id === f.id) add(String(v.date).slice(0, 10), v.value, f.unit, v.logged_at);
   }
   const defs = new Map(data.metric_definitions.filter((m) => m.client_id === clientId && WEIGHT_NAME.test(m.name.trim())).map((m) => [m.id, m] as const));
-  for (const e of data.metric_entries) {
+  for (const e of ck.entries) {
     const def = defs.get(e.metric_definition_id);
     if (!def) continue;
     const period = String(e.period ?? "");
@@ -4187,14 +4317,14 @@ export function bodyWeightReadings(clientId: number): BodyWeightReading[] {
 
 // The client's weight, in kg, a day each, oldest first: their readings from every place they log it
 // (bodyWeightReadings). Everything that shows "the client's weight" reads through here.
-export function getWeightSeriesAll(clientId: number): { date: string; value: number }[] {
-  return bodyWeightReadings(clientId).map((r) => ({ date: r.date, value: r.kg }));
+export function getWeightSeriesAll(ck: CheckInRows, clientId: number): { date: string; value: number }[] {
+  return bodyWeightReadings(ck, clientId).map((r) => ({ date: r.date, value: r.kg }));
 }
 
 /** The client's body weight on a day (23 Oct): the reading nearest on or before it, else the first after, else the
     starting weight on their card; a set with no day weighs the latest. For an assisted lift's sets, each by its day. */
-export function bodyWeightOn(clientId: number): (day: string | null | undefined) => number | null {
-  const readings = bodyWeightReadings(clientId).filter((r) => r.kg > 0);
+export function bodyWeightOn(ck: CheckInRows, clientId: number): (day: string | null | undefined) => number | null {
+  const readings = bodyWeightReadings(ck, clientId).filter((r) => r.kg > 0);
   const start = getData().client_profiles.find((p) => p.client_id === clientId)?.starting_weight_kg;
   const fallback = typeof start === "number" && start > 0 ? start : null;
   return (day) => {
@@ -4212,9 +4342,9 @@ export function bodyWeightOn(clientId: number): (day: string | null | undefined)
 
 /** The client's body weight now (23 Oct): their latest weight reading, else the starting weight on their card; null
     with neither. What an assisted lift really lifts is this less the help (progressRules.liftedKg). */
-export function bodyWeightKg(clientId: number): number | null {
+export function bodyWeightKg(ck: CheckInRows, clientId: number): number | null {
   let latest: { date: string; value: number } | null = null;
-  for (const p of getWeightSeriesAll(clientId)) {
+  for (const p of getWeightSeriesAll(ck, clientId)) {
     const value = Number(p.value);
     if (!(Number.isFinite(value) && value > 0)) continue;
     if (!latest || String(p.date) > latest.date) latest = { date: String(p.date), value };
@@ -4757,7 +4887,7 @@ export function listMetricsForPhase(clientId: number, phaseId: number | null, _i
  * and all: the phase takes them over when it goes live anyway, and copying
  * them first left every one in there twice.
  */
-export function copyPhaseMetrics(fromPhaseId: number | null, toPhaseId: number, clientId: number, fromIsLive: boolean) {
+export async function copyPhaseMetrics(fromPhaseId: number | null, toPhaseId: number, clientId: number, fromIsLive: boolean): Promise<void> {
   const data = getData();
   const source = listMetricsForPhase(clientId, fromPhaseId, fromIsLive);
   const already = new Set(
@@ -4775,8 +4905,48 @@ export function copyPhaseMetrics(fromPhaseId: number | null, toPhaseId: number, 
       phase_id: toPhaseId,
     });
   }
-  mergeDuplicateMetricDefinitions(data);
+  // The twins merged with their figures (quest 9): in memory as before; with CHECKINS_STORE=pg in one transaction on the
+  // client's figures, the definitions it merged away taken out of memory after its commit.
+  if (CHECKINS_PG) {
+    persist();
+    // The copy is made and saved: a merge that fails (the database away a moment) is left to the next pg boot, which
+    // merges twin metrics on their figures, never thrown, so the coach's action never reads as failed and is never sent
+    // again (a duplicated phase sent again after an error would be made twice).
+    await mergeClientMetricTwins(clientId, "w.def.merge").catch((error) => console.error("[checkins] the twin metrics' merge after a copy failed (the next pg boot merges them):", error instanceof Error ? error.message.split("\n")[0] : error));
+    return;
+  }
+  await writeCheckIns("w.def.merge", clientId, () => ({ defIds: [], span: "all" }), (box) => mergeDuplicateMetricDefinitions(data, box));
   persist();
+}
+
+/**
+ * A client's twin metrics merged with their figures in Postgres (CHECKINS_STORE=pg): db.ts's merge, its body unchanged, on
+ * a copy of the client's definitions and their figures read under the client's lock; after the commit the definitions it
+ * merged away go from memory, and the store is saved. The keeper is never a metric just added (more figures, else the
+ * lower id). A crash between leaves zero-figure twins, which the next boot merges.
+ */
+async function mergeClientMetricTwins(clientId: number, path: "w.def.merge"): Promise<void> {
+  await writeCheckIns(
+    path,
+    clientId,
+    () => ({ defIds: getData().metric_definitions.filter((m) => m.client_id === clientId).map((m) => m.id), span: "all" }),
+    (box) => {
+      const defs = { metric_definitions: getData().metric_definitions.filter((m) => m.client_id === clientId) };
+      const was = new Set(defs.metric_definitions.map((m) => m.id));
+      mergeDuplicateMetricDefinitions(defs, box);
+      const kept = new Set(defs.metric_definitions.map((m) => m.id));
+      return [...was].filter((id) => !kept.has(id));
+    },
+    {
+      afterCommit: (gone) => {
+        const ids = new Set(gone as number[]);
+        if (!ids.size) return;
+        const data = getData();
+        data.metric_definitions = data.metric_definitions.filter((m) => !ids.has(m.id));
+        persist();
+      },
+    }
+  );
 }
 
 export function updateMetricDefinition(id: number, category: string, name: string, unit: string) {
@@ -4831,11 +5001,21 @@ export function unretireMetricDefinition(clientId: number, name: string, phaseId
   return def.id;
 }
 
-export function removeMetricDefinition(id: number) {
+/**
+ * A metric gone with everything logged for it (the days it was checked in kept on the client). Through the door (quest 9):
+ * in memory as before; with CHECKINS_STORE=pg memory first with a tombstone, then the figures' DELETE (checkins/rows.ts
+ * removeMetricWithReadings).
+ */
+export async function removeMetricDefinition(id: number): Promise<void> {
+  await removeMetricWithReadings(id, (box) => removeMetricInMemory(box, id));
+}
+
+/** Today's removal, on a box (the store's own lists in memory mode; the figures read from Postgres otherwise). */
+function removeMetricInMemory(box: CheckInBox, id: number) {
   const data = getData();
-  keepMetricReadings(id);
+  keepMetricReadings(box, id);
   data.metric_definitions = data.metric_definitions.filter((m) => m.id !== id);
-  data.metric_entries = data.metric_entries.filter((e) => e.metric_definition_id !== id);
+  box.entries = box.entries.filter((e) => e.metric_definition_id !== id);
   persist();
 }
 
@@ -4888,29 +5068,6 @@ export type PinnedMetricSummary = {
   entryCount: number;
 };
 
-// Latest value + running average for every metric the coach has pinned for
-// this client, across both daily and weekly trackers — used by the Start
-// Page's pinned-metrics panel.
-export function getPinnedMetricsSummary(clientId: number): PinnedMetricSummary[] {
-  const data = getData();
-  const defs = data.metric_definitions.filter((m) => m.client_id === clientId && m.pinned && !m.retired_at);
-  return defs.map((def) => {
-    const logged = data.metric_entries
-      .filter((e) => e.metric_definition_id === def.id && e.value != null)
-      .sort((a, b) => (a.period < b.period ? -1 : 1));
-    const latestEntry = logged.length > 0 ? logged[logged.length - 1] : null;
-    const average =
-      logged.length >= 3 ? logged.reduce((sum, e) => sum + (e.value as number), 0) / logged.length : null;
-    return {
-      def,
-      latest: latestEntry?.value ?? null,
-      latestPeriod: latestEntry?.period ?? null,
-      average,
-      entryCount: logged.length,
-    };
-  });
-}
-
 // ---- Client graphs: which of this client's figures are charted on their
 // Home screen. The coach picks up to PINNED_METRIC_LIMIT (4) across BOTH
 // tracker metrics and measurement fields (Weight lives in the latter), and
@@ -4938,7 +5095,7 @@ export function getMeasurementSeries(fieldId: number): { date: string; value: nu
 
 // Every figure the coach could graph for this client, measurements first
 // (Weight leads) then tracker metrics in their usual display order.
-export function listGraphChoices(clientId: number): GraphChoice[] {
+export function listGraphChoices(ck: CheckInRows, clientId: number): GraphChoice[] {
   const fields: GraphChoice[] = listMeasurementFields(clientId).map((f) => ({
     key: `field-${f.id}`,
     kind: "field",
@@ -4958,29 +5115,9 @@ export function listGraphChoices(clientId: number): GraphChoice[] {
     unit: m.unit,
     cadenceLabel: cadence[m.frequency] ?? m.frequency,
     pinned: !!m.pinned,
-    pointCount: getMetricSeries(m.id).length,
+    pointCount: getMetricSeries(ck, m.id).length,
   }));
   return [...fields, ...metrics];
-}
-
-// The graphed set with its data, in carousel order. A client whose coach has
-// never picked anything still gets a Weight chart if they track weight at
-// all, which is what the Home screen always showed before the picker existed.
-export function getGraphedSeries(
-  clientId: number
-): { key: string; name: string; unit: string; series: { date: string; value: number }[] }[] {
-  const choices = listGraphChoices(clientId);
-  let picked = choices.filter((c) => c.pinned);
-  if (picked.length === 0) {
-    const weight = choices.find((c) => c.name.toLowerCase().includes("weight"));
-    if (weight) picked = [weight];
-  }
-  return picked.map((c) => ({
-    key: c.key,
-    name: c.name,
-    unit: c.unit,
-    series: c.kind === "field" ? getMeasurementSeries(c.id) : getMetricSeries(c.id),
-  }));
 }
 
 // Full logged history for one metric, oldest first, ready to hand straight
@@ -5006,71 +5143,10 @@ export type MetricHistory = {
   change: HistoryChange;
 };
 
-export function getMetricHistory(clientId: number, cadence: MetricCadence): MetricHistory {
-  const data = getData();
-  const defs = listAllMetrics(clientId).filter((m) => m.frequency === cadence);
-
-  const columns: HistoryColumn[] = defs.map((d) => ({
-    id: d.id,
-    name: d.name,
-    unit: d.unit,
-    group: d.category,
-  }));
-
-  // Collapse runs of the same group into one spanning header.
-  const bands: HistoryBand[] = [];
-  columns.forEach((c) => {
-    const g = metricGroup(c.group);
-    const last = bands[bands.length - 1];
-    if (last && last.group === g.key) {
-      last.span++;
-      return;
-    }
-    bands.push({ group: g.key, label: g.label, tint: g.tint, span: 1 });
-  });
-
-  const ids = new Set(defs.map((d) => d.id));
-  const periods = Array.from(
-    new Set(data.metric_entries.filter((e) => ids.has(e.metric_definition_id)).map((e) => e.period))
-  ).sort((a, b) => b.localeCompare(a));
-
-  const noteKind: CheckInNote["kind"] = cadence;
-  const rows: HistoryRow[] = periods.map((period) => ({
-    period,
-    note: noteKind ? getCheckInNote(clientId, noteKind, period) : null,
-    label: new Date(`${period}T00:00:00`).toLocaleDateString("en-GB", {
-      month: "short",
-      day: "numeric",
-      year: cadence === "monthly" ? "numeric" : undefined,
-    }).replace("Sept", "Sep"),
-    values: defs.map(
-      (d) =>
-        data.metric_entries.find((e) => e.metric_definition_id === d.id && e.period === period)?.value ?? null
-    ),
-  }));
-
-  // First to latest, per column — the row pinned to the bottom of the table.
-  const change: HistoryChange = defs.map((_, i) => {
-    const withValues = [...rows].reverse().filter((r) => r.values[i] != null);
-    if (withValues.length < 2) return { delta: null, pct: null, label: "-" };
-    const first = withValues[0].values[i]!;
-    const latest = withValues[withValues.length - 1].values[i]!;
-    const delta = latest - first;
-    const pct = first !== 0 ? (delta / first) * 100 : null;
-    const sign = delta > 0 ? "+" : "";
-    return {
-      delta,
-      pct,
-      label: `${sign}${Number(delta.toFixed(1))}${pct != null ? ` (${sign}${pct.toFixed(0)}%)` : ""}`,
-    };
-  });
-
-  return { columns, bands, rows, change };
-}
-
-export function getMetricSeries(metricDefinitionId: number): { date: string; value: number }[] {
-  return getData()
-    .metric_entries.filter((e) => e.metric_definition_id === metricDefinitionId && e.value != null)
+export function getMetricSeries(ck: CheckInRows, metricDefinitionId: number): { date: string; value: number }[] {
+  ck.need("getMetricSeries", metricClients([metricDefinitionId]), "all", ["entries"]);
+  return ck.entries
+    .filter((e) => e.metric_definition_id === metricDefinitionId && e.value != null)
     .map((e) => ({ date: e.period, value: e.value as number }))
     .sort((a, b) => (a.date < b.date ? -1 : 1));
 }
@@ -5221,6 +5297,7 @@ export function applyMetricTemplateToClient(clientId: number, templateCategoryId
 // Upsert: logging the same metric for the same period again overwrites the
 // value rather than creating a duplicate row.
 export function setMetricEntry(
+  box: CheckInBox,
   metricDefinitionId: number,
   period: string,
   value: number | null,
@@ -5229,8 +5306,9 @@ export function setMetricEntry(
   /** The phone's reading carries its own moment (a weigh-in): it takes it even over an older one's (16 Nov). */
   restamp?: boolean
 ): boolean {
-  const data = getData();
-  const existing = data.metric_entries.find(
+  // Inside what the write loaded (quest 9): a figure outside it could otherwise be added a second time.
+  box.inReach(metricDefinitionId, period);
+  const existing = box.entries.find(
     (e) => e.metric_definition_id === metricDefinitionId && e.period === period
   );
   if (existing) {
@@ -5244,8 +5322,8 @@ export function setMetricEntry(
     if (source) existing.source = source;
     else delete existing.source;
   } else {
-    data.metric_entries.push({
-      id: allocId("metric_entries"),
+    box.entries.push({
+      id: box.alloc("entries"),
       metric_definition_id: metricDefinitionId,
       period,
       value,
@@ -5253,13 +5331,21 @@ export function setMetricEntry(
       ...(source ? { source } : {}),
     });
   }
-  persist();
+  box.persist();
   return true;
 }
 
-export function getMetricEntries(metricDefinitionIds: number[]): MetricEntry[] {
+/** The clients these metrics belong to (a figure is its client's through its metric): what a reader of them needs. */
+function metricClients(metricDefinitionIds: readonly number[]): number[] {
+  const ids = new Set(metricDefinitionIds);
+  return [...new Set(getData().metric_definitions.filter((m) => ids.has(m.id)).map((m) => m.client_id))];
+}
+
+/** Every figure of these metrics in the view; `span` is what the reader reads of them (its need). */
+export function getMetricEntries(ck: CheckInRows, metricDefinitionIds: number[], span: CheckInSpan = "all"): MetricEntry[] {
   const idSet = new Set(metricDefinitionIds);
-  return getData().metric_entries.filter((e) => idSet.has(e.metric_definition_id));
+  if (idSet.size) ck.need("getMetricEntries", metricClients(metricDefinitionIds), span, ["entries"], metricDefinitionIds);
+  return ck.entries.filter((e) => idSet.has(e.metric_definition_id));
 }
 
 // All distinct periods logged across a set of metrics, most recent first.
@@ -5268,8 +5354,9 @@ export function getMetricEntries(metricDefinitionIds: number[]): MetricEntry[] {
 // names frozen on the left as more weeks/days accumulate — the whole point
 // of that frozen column is to not have to cap history at a handful of
 // periods, so this returns everything by default.
-export function listMetricPeriods(metricDefinitionIds: number[], limit = 500): string[] {
-  const entries = getMetricEntries(metricDefinitionIds);
+export function listMetricPeriods(ck: CheckInRows, metricDefinitionIds: number[], limit = 500): string[] {
+  // The newest period alone (limit 1) is what the minute job asks: the `latest` view holds it (checkins/rows.ts).
+  const entries = getMetricEntries(ck, metricDefinitionIds, limit === 1 ? "latest" : "all");
   const periods = [...new Set(entries.map((e) => e.period))];
   return periods.sort((a, b) => (a < b ? -1 : 1)).slice(-limit);
 }
@@ -5741,19 +5828,6 @@ export function reorderPhotoSlots(clientId: number, orderedIds: number[]) {
   persist();
 }
 
-// When the client was last reminded about this sheet. Photo reminders carry
-// a reminder:photos… dedupe key that ends in the client and period.
-export function lastPhotoReminderAt(clientId: number, period: string): string | null {
-  const tail = `:${clientId}:${period}`;
-  const stamps = getData()
-    .coach_activity.filter(
-      (a) => a.client_id === clientId && a.kind === "reminder" && !!a.dedupe_key?.startsWith("reminder:photos") && a.dedupe_key.includes(tail)
-    )
-    .map((a) => a.created_at)
-    .sort();
-  return stamps[stamps.length - 1] ?? null;
-}
-
 // Writes the uploaded file under DATA_DIR/uploads and records it — this is
 // the only place in the app that touches the filesystem outside db.ts, since
 // it deals with actual image bytes rather than JSON data. Served back out by
@@ -5874,6 +5948,10 @@ export type ClientPreferences = {
   checkin_reminders: boolean;
   weekly_digest: boolean;
   units: "metric" | "imperial";
+  /** Settings · Notifications (19 Nov, Alex): a group's push switched off; a group missing is on (app/lib/notifPrefs.ts). */
+  push_groups?: Partial<Record<import("./notifGroups").NotifGroup, boolean>>;
+  /** Quiet hours, in the phone's own zone (`tz`, IANA): pushes held until they end. */
+  quiet?: { on: boolean; from: string; to: string; tz: string };
 };
 
 const DEFAULT_CLIENT_PREFERENCES: Omit<ClientPreferences, "client_id"> = {
@@ -6009,15 +6087,6 @@ export function listLoggedExercisesForClient(clientId: number): { id: number; na
 // (the original spreadsheet had a broken cross-tab formula there — this
 // avoids that class of bug entirely by computing from the same source).
 
-// Client's logged Weight column from Measurements, as a date/value series —
-// same "find the weight column by name" approach as getLatestWeight, since
-// coaches can rename/remove columns and there's no fixed schema to rely on.
-export function getWeightSeries(clientId: number, days: number) {
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - days);
-  return getWeightSeriesAll(clientId).filter((p) => new Date(p.date) >= cutoff);
-}
-
 export type ClientProfile = {
   client_id: number;
   birthdate: string | null;
@@ -6149,9 +6218,9 @@ export function getTimeToGoal(profile: ClientProfile): string | null {
 
 // The client's most recent logged weight from Measurements, so "current
 // weight" on the Start Page always matches what they've actually checked in.
-export function getLatestWeight(clientId: number): number | null {
+export function getLatestWeight(ck: CheckInRows, clientId: number): number | null {
   // A 0 is no weigh-in (23 Oct), as bodyWeightKg reads it.
-  const latest = getWeightSeriesAll(clientId).filter((p) => p.value > 0).at(-1)?.value ?? null;
+  const latest = getWeightSeriesAll(ck, clientId).filter((p) => p.value > 0).at(-1)?.value ?? null;
   // Round away float noise (e.g. 71.2 - 0.4 === 70.79999999999999) so the UI
   // never shows a raw binary-floating-point artifact.
   return latest != null ? Math.round(latest * 10) / 10 : null;
@@ -6881,28 +6950,9 @@ export async function setChatMediaLook(path: string, look: MediaLook) {
     n++;
     chatChanged(clientId);
   }
-  // A meal's picture too (10 Nov, Alex: as the chat's), on the day's photo and on any saved meal showing the same file.
-  for (const p of getData().meal_photos) {
-    if (p.file_path !== path) continue;
-    p.thumb = look.thumb;
-    n++;
-  }
-  for (const s of getData().saved_meals) {
-    if (s.picture !== path) continue;
-    s.picture_thumb = look.thumb;
-    n++;
-  }
-  for (const d of getData().saved_days) {
-    if (d.picture === path) {
-      d.picture_thumb = look.thumb;
-      n++;
-    }
-    for (const c of d.cards ?? []) {
-      if (c.picture !== path) continue;
-      c.picture_thumb = look.thumb;
-      n++;
-    }
-  }
+  // A meal's picture too (10 Nov, Alex: as the chat's), on the day's photo and on any saved meal showing the same file
+  // (the food diary's door: in memory the store's rows changed in place, saved below; with FOOD_STORE=pg its own write).
+  n += await setFoodLook(path, look.thumb);
   if (n) persist();
 }
 /** A chat file some message shows with no look yet. */
@@ -6942,7 +6992,7 @@ export function chatSeenTest(clientId: number): (m: ChatMessage) => boolean {
   return (m) => stampMs(m.created_at) <= (m.sender === "client" ? coachAt : clientAt);
 }
 
-export function chatThreadViews(thread: ChatThread): ChatThreadView[] {
+export function chatThreadViews(thread: ChatThread, food: FoodRows): ChatThreadView[] {
   const clientId = thread.clientId;
   const all = thread.inTextOrder(clientId);
   // Each reply's quote from this chat's own messages, looked up once (17 Nov).
@@ -6967,7 +7017,7 @@ export function chatThreadViews(thread: ChatThread): ChatThreadView[] {
         dateIso: m.created_at.slice(0, 10),
         dayLabel: dayWords(d, { weekday: "long", long: true }),
         timeLabel: clock(d),
-        link: m.link ? describeMessageLink(clientId, m.link) : null,
+        link: m.link ? describeMessageLink(food, clientId, m.link) : null,
         replyTo: (() => {
           const q = m.reply_to == null ? null : chatQuoteOf(byId.get(m.reply_to));
           return q ? { id: q.id, fromMe: q.sender === "client", text: q.text } : null;
@@ -7000,7 +7050,7 @@ export async function sendChatMessage(
   link?: MessageLink | null,
   /** The message it answers, one in this chat. */
   replyTo?: number | null,
-  opts: { createdAt?: string; onceKey?: { key: string; at: number; result?: unknown } | null; mealGuard?: { date: string; meal: string } | null; path?: ChatWritePath } = {}
+  opts: { createdAt?: string; onceKey?: { key: string; at: number; result?: unknown } | null; mealGuard?: { date: string; meal: string } | null; path?: ChatWritePath; /** No buzz of its own: the review's reply, whose "replied to your video" buzzed already (19 Nov, Alex: two pushes for one reply). */ silent?: boolean } = {}
 ): Promise<boolean> {
   const row = await insertChatRow(
     { clientId, sender, text, media: media ? { path: media.path, type: media.type, name: media.name ?? null } : null, link, replyTo, createdAt: opts.createdAt, onceKey: opts.onceKey, mealGuard: opts.mealGuard },
@@ -7017,8 +7067,10 @@ export async function sendChatMessage(
     // the bell leaves coach_note out), so it is written whatever the client
     // chose (21 Oct: with "Messages from your coach" off, a new message never
     // showed as unread). The setting decides the buzz on the lock screen.
-    // With CHAT_STORE=pg the note carries the message's id, so an edit or a delete finds it however late it lands.
-    logCoachActivity(clientId, text || `Your coach sent you ${mediaWords(media?.type ?? null)}`, { kind: "coach_note", push: getClientPreferences(clientId).coach_notes, ...(CHAT_PG ? { messageId: row.id } : {}) });
+    // The note carries the message's id in every mode (19 Nov, Alex: "it should change"), so an edit or a delete finds it
+    // by that: a photo-only message's "sent you a photo" too, one logged late, and a past-stamped message's (the demo
+    // client's). Notes from before keep the words-and-5-s match (notes/pick.ts chatNoteOf).
+    logCoachActivity(clientId, text || `Your coach sent you ${mediaWords(media?.type ?? null)}`, { kind: "coach_note", push: !opts.silent && getClientPreferences(clientId).coach_notes, messageId: row.id });
   }
   return true;
 }
@@ -7032,20 +7084,16 @@ export async function setChatReaction(clientId: number, messageId: number, who: 
 }
 
 /**
- * The notification a coach message was logged with: by the message's id where the note carries it (CHAT_STORE=pg, Step
- * 5's cut-over: an insert can take longer than the 5 s the words-and-time match allows), else in the same breath and
- * the same words, as always.
+ * The notification a coach message was logged with: by the message's id whatever its words (every new note carries it
+ * since 19 Nov, in every mode), else, for a note from before ids, in the same breath (5 s) with the same words. Through
+ * the notes' door since quest 7 (notes/pick.ts chatNoteOf holds the rule); then the note reworded or removed by its id.
  */
-function noteFor(msg: { id: number; client_id: number; text: string | null; created_at: string | null; unknown?: true }) {
-  const notes = getData().coach_activity;
-  // By id, with the same words the memory match asks, so pg mode touches exactly the notes memory mode does (a photo-only
-  // message's "sent you a photo" note never matched its empty words, and still doesn't). Its words unknown (a write that
-  // committed as its connection was lost, rows.ts): by id alone.
-  const byMessage = notes.find((a) => a.client_id === msg.client_id && a.kind === "coach_note" && a.message_id === msg.id && (msg.unknown || a.message === msg.text));
-  if (byMessage) return byMessage;
-  if (msg.unknown || msg.created_at == null) return null;
-  const sent = new Date(msg.created_at).getTime();
-  return notes.find((a) => a.client_id === msg.client_id && a.kind === "coach_note" && a.message_id == null && a.message === msg.text && Math.abs(new Date(a.created_at).getTime() - sent) < 5000) ?? null;
+async function chatNoteFollows(msg:{ id: number; client_id: number; text: string | null; created_at: string | null; unknown?: true }, path: "action.chatNote.edit" | "action.chatNote.delete" | "action.chatNote.mealEdit" | "action.chatNote.mealRemove", to: { reword: string } | "delete") {
+  const note = await fetchChatNote(msg, path);
+  if (!note) return;
+  const op: NoteOp = to === "delete" ? { op: "delete", clientId: msg.client_id, id: note.id } : { op: "reword", clientId: msg.client_id, id: note.id, text: to.reword };
+  // The caller persists, as it did.
+  writeNote(op, { persist: false });
 }
 
 /**
@@ -7058,19 +7106,16 @@ export async function editChatMessage(clientId: number, messageId: number, text:
   // Only the coach's own message (the door matches the sender), the chat first, then the notification it carried.
   const was = await editText(clientId, messageId, { sender: "coach", text: clean, editedAt: new Date().toISOString() }, "w.edit.coach");
   if (!was) return;
-  const note = noteFor({ id: messageId, client_id: clientId, text: was.was_text, created_at: was.was_at, unknown: was.unknown });
-  if (note) note.message = clean;
+  await chatNoteFollows({ id: messageId, client_id: clientId, text: was.was_text, created_at: was.was_at, unknown: was.unknown }, "action.chatNote.edit", { reword: clean });
   persist();
   chatChanged(clientId);
 }
 
 /** Takes a coach message back: from the chat, the client's Home and their notifications. Returns its file to delete from the bucket, when nothing else shows it (chatFileLeft). */
 export async function deleteChatMessage(clientId: number, messageId: number): Promise<string | null> {
-  const data = getData();
   const gone = await deleteRow(clientId, messageId, { sender: "coach" }, "w.delete.coach");
   if (!gone) return null;
-  const note = noteFor({ id: messageId, client_id: clientId, text: gone.text, created_at: gone.created_at, unknown: gone.unknown });
-  if (note) data.coach_activity = data.coach_activity.filter((a) => a !== note);
+  await chatNoteFollows({ id: messageId, client_id: clientId, text: gone.text, created_at: gone.created_at, unknown: gone.unknown }, "action.chatNote.delete", "delete");
   persist();
   chatChanged(clientId);
   return chatFileLeft(gone.media_path);
@@ -7355,21 +7400,21 @@ export function monthlyCheckInOpen(clientId: number, dateStr = localDateStr()): 
 // filled they stop riding along every day after, which also stops the ring
 // starting each day with that chunk already full. Filled today, they stay
 // for the rest of today so what was just saved can be seen and edited.
-function periodAskedToday(section: CheckInSection | undefined, period: string, isTheDay: boolean, dateStr: string): boolean {
+function periodAskedToday(ck: CheckInRows, section: CheckInSection | undefined, period: string, isTheDay: boolean, dateStr: string): boolean {
   if (isTheDay || !section?.metrics.length) return true;
   if (section.metrics.some((m) => m.value === "")) return true;
-  return getMetricEntries(section.metrics.map((m) => Number(m.id))).some((e) => e.period === period && e.logged_at?.slice(0, 10) === dateStr);
+  return getMetricEntries(ck, section.metrics.map((m) => Number(m.id))).some((e) => e.period === period && e.logged_at?.slice(0, 10) === dateStr);
 }
 
-export function weeklyCheckInAskedToday(clientId: number, sections: CheckInSection[], dateStr = localDateStr()): boolean {
+export function weeklyCheckInAskedToday(ck: CheckInRows, clientId: number, sections: CheckInSection[], dateStr = localDateStr()): boolean {
   if (!weeklyCheckInOpen(clientId, dateStr)) return false;
   const monBased = (new Date(`${dateStr}T00:00:00`).getDay() + 6) % 7;
-  return periodAskedToday(sections.find((s) => s.id === "weekly"), weekStart(dateStr), monBased === (weeklyCheckInWeekday(clientId) ?? 0), dateStr);
+  return periodAskedToday(ck, sections.find((s) => s.id === "weekly"), weekStart(dateStr), monBased === (weeklyCheckInWeekday(clientId) ?? 0), dateStr);
 }
 
-export function monthlyCheckInAskedToday(clientId: number, sections: CheckInSection[], dateStr = localDateStr()): boolean {
+export function monthlyCheckInAskedToday(ck: CheckInRows, clientId: number, sections: CheckInSection[], dateStr = localDateStr()): boolean {
   if (!monthlyCheckInOpen(clientId, dateStr)) return false;
-  return periodAskedToday(sections.find((s) => s.id === "monthly"), monthStart(dateStr), Number(dateStr.slice(8, 10)) === monthlyCheckInDay(clientId), dateStr);
+  return periodAskedToday(ck, sections.find((s) => s.id === "monthly"), monthStart(dateStr), Number(dateStr.slice(8, 10)) === monthlyCheckInDay(clientId), dateStr);
 }
 
 /** The monthly metrics the client is asked for: none until the coach has picked the day. */
@@ -7421,15 +7466,15 @@ export function askedWeightUnit(clientId: number): "kg" | "lbs" {
 }
 
 /** Every goal of the client, read against every weigh-in they logged. */
-export function getWeightGoalViews(clientId: number, today: string = localDateStr()): WeightGoalView[] {
-  return weightGoalViews(listWeightGoals(clientId), bodyWeightReadings(clientId).filter((r) => r.kg > 0).map((r) => ({ date: r.date, kg: r.kg })), today);
+export function getWeightGoalViews(ck: CheckInRows, clientId: number, today: string = localDateStr()): WeightGoalView[] {
+  return weightGoalViews(listWeightGoals(clientId), bodyWeightReadings(ck, clientId).filter((r) => r.kg > 0).map((r) => ({ date: r.date, kg: r.kg })), today);
 }
 
 /** Where a new goal starts (3 Nov, Alex: "from now and the current weight… this line is straight… always stay where it
     is"): the client's latest weigh-in, else the starting weight on their card; null with none. Stored on the goal, so
     the line never moves while it runs. */
-export function goalStartKg(clientId: number): number | null {
-  const last = bodyWeightReadings(clientId).filter((r) => r.kg > 0).at(-1);
+export function goalStartKg(ck: CheckInRows, clientId: number): number | null {
+  const last = bodyWeightReadings(ck, clientId).filter((r) => r.kg > 0).at(-1);
   if (last) return Math.round(last.kg * 100) / 100;
   const s = getData().client_profiles.find((p) => p.client_id === clientId)?.starting_weight_kg;
   return typeof s === "number" && s > 0 ? s : null;
@@ -7442,7 +7487,7 @@ export type WeightGoalRefusal = "no-weight" | "too-soon" | "taken" | "invalid" |
 /** Adds a goal, or changes one. One at a time (2 Nov, Alex: "once there is a goal take out the option of adding another
     one, but give the option of editing"): a new one only once the last is reached or missed. It starts where the client
     is now (their latest weigh-in, today); its start never moves after, an edit changing only the goal and its date. */
-export function saveWeightGoal(clientId: number, v: WeightGoalFields, by: { who: "coach" | "client"; userId: number | null }, goalId?: number): WeightGoal | WeightGoalRefusal {
+export function saveWeightGoal(ck: CheckInRows, clientId: number, v: WeightGoalFields, by: { who: "coach" | "client"; userId: number | null }, goalId?: number): WeightGoal | WeightGoalRefusal {
   const target = Number(v.targetKg);
   const byDate = String(v.byDate ?? "").slice(0, 10);
   const unit = v.unit === "lbs" ? "lbs" : "kg";
@@ -7460,8 +7505,8 @@ export function saveWeightGoal(clientId: number, v: WeightGoalFields, by: { who:
     persist();
     return row;
   }
-  if (getWeightGoalViews(clientId, today).some((g) => !g.settled)) return "running";
-  const startKg = goalStartKg(clientId);
+  if (getWeightGoalViews(ck, clientId, today).some((g) => !g.settled)) return "running";
+  const startKg = goalStartKg(ck, clientId);
   const startDate = today;
   if (startKg == null) return "no-weight";
   if (daysBetween(startDate, byDate) < 7) return "too-soon";
@@ -7485,16 +7530,28 @@ function measuredOn(fields: MeasurementFieldDef[], date: string): boolean {
   return getMeasurementValues(fields.map((f) => f.id)).some((v) => v.date === date);
 }
 
-export function getDueItems(clientId: number): DueItem[] {
+/** The metrics getDueItems reads the newest period of, each rhythm's (the minute job fetches these alone, quest 9). */
+function dueCheckInDefs(clientId: number) {
+  return {
+    dailyDefs: listMetricDefinitions(clientId, "daily").filter(deployedToClient),
+    weeklyDefs: listMetricDefinitions(clientId, "weekly").filter(deployedToClient),
+    monthlyDefs: listMonthlyMetricsAsked(clientId),
+  };
+}
+/** Their ids, for fetchDueCheckIns. */
+export function dueCheckInDefIds(clientId: number): number[] {
+  const { dailyDefs, weeklyDefs, monthlyDefs } = dueCheckInDefs(clientId);
+  return [...dailyDefs, ...weeklyDefs, ...monthlyDefs].map((d) => d.id);
+}
+
+export function getDueItems(ck: CheckInRows, clientId: number): DueItem[] {
   const today = localDateStr();
   const currentWeekStart = weekStart(today);
 
-  const dailyDefs = listMetricDefinitions(clientId, "daily").filter(deployedToClient);
-  const weeklyDefs = listMetricDefinitions(clientId, "weekly").filter(deployedToClient);
-  const monthlyDefs = listMonthlyMetricsAsked(clientId);
-  const dailyLoggedToday = listMetricPeriods(dailyDefs.map((d) => d.id), 1)[0] === today;
-  const weeklyLoggedThisWeek = listMetricPeriods(weeklyDefs.map((d) => d.id), 1)[0] === currentWeekStart;
-  const monthlyLoggedThisMonth = listMetricPeriods(monthlyDefs.map((d) => d.id), 1)[0] === monthStart(today);
+  const { dailyDefs, weeklyDefs, monthlyDefs } = dueCheckInDefs(clientId);
+  const dailyLoggedToday = listMetricPeriods(ck, dailyDefs.map((d) => d.id), 1)[0] === today;
+  const weeklyLoggedThisWeek = listMetricPeriods(ck, weeklyDefs.map((d) => d.id), 1)[0] === currentWeekStart;
+  const monthlyLoggedThisMonth = listMetricPeriods(ck, monthlyDefs.map((d) => d.id), 1)[0] === monthStart(today);
 
   const measurementFields = measureFieldsAskedOf(clientId);
   const measurementLoggedToday = measuredOn(measurementFields, today);
@@ -7684,13 +7741,13 @@ const STANDING_ACTIONS = new Set(["no-phase", "week", "program-ending", "quiet",
 const DISMISS_STANDING_MS = 14 * 86400000;
 
 /** The coach marked a Needs-you item as read (12 Oct): it leaves Home, the Feed and the rail's dot. */
-export function dismissHomeAction(clientId: number, actionId: string | string[], chat: ChatCoachView) {
+export function dismissHomeAction(clientId: number, actionId: string | string[], chat: ChatCoachView, food: FoodRows, ck: CheckInRows) {
   const client = getData().clients.find((c) => c.id === clientId);
   const ids = (Array.isArray(actionId) ? actionId : [actionId]).filter(Boolean);
   if (!client || !ids.length) return;
   // Kept small: only the items that still stand stay recorded. Every item, let go or not (2 Nov: the list after the
   // filter left out what was let go before, so each Done brought the one before it back).
-  const standing = new Set(getClientHome(clientId, chat).allActionIds);
+  const standing = new Set(getClientHome(clientId, chat, food, ck).allActionIds);
   const next: Record<string, number> = {};
   for (const [id, at] of Object.entries(client.coach_dismissed ?? {})) if (standing.has(id)) next[id] = at;
   const now = Date.now();
@@ -7746,7 +7803,7 @@ export function clientHomeRows(clientIds: readonly number[]): ClientHomeRows {
  * video and call asks and invoices (clientHomeRows). `chat`: the coach's chat
  * view this client is in (fetchCoachChat).
  */
-export function getClientHome(clientId: number, chat: ChatCoachView, feed?: FeedEvent[], ix?: TrainingIndex, own?: ClientHomeRows): ClientHome {
+export function getClientHome(clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, feed?: FeedEvent[], ix?: TrainingIndex, own?: ClientHomeRows): ClientHome {
   const data = getData();
   // Their training rows, read once when a check below needs them (23 Oct, speed: it scanned the store per row).
   let tix = ix;
@@ -7755,7 +7812,7 @@ export function getClientHome(clientId: number, chat: ChatCoachView, feed?: Feed
   // A phone workout is the coach's logs alone (16 Nov): never news, a dot or a note to read here.
   // Its newest HOME_EVENTS: the chat's part of them in the view (Step 5: a coach view holds each client's newest).
   chat.need("clientTop", HOME_EVENTS, clientId);
-  const all = (feed ?? getActivityFeed(client?.coach_id ?? 0, chat)).filter((e) => e.clientId === clientId && !e.health);
+  const all = (feed ?? getActivityFeed(client?.coach_id ?? 0, chat, food, ck)).filter((e) => e.clientId === clientId && !e.health);
   const since = Date.now() - HOME_NEW_DAYS * 86400000;
   const events = all.slice(0, HOME_EVENTS).map((e) => ({ ...e, when: feedTimeLabel(e.at, e.timeKnown), unseen: isUnseen(client?.coach_seen, e, since) }));
   const unseen = events.filter((e) => e.unseen);
@@ -7895,7 +7952,7 @@ export function getClientHome(clientId: number, chat: ChatCoachView, feed?: Feed
       });
     }
   }
-  const due = getCheckInStatus(clientId);
+  const due = getCheckInStatus(ck, clientId);
   const DUE = { weekly: "This week's weekly check-in", monthly: "This month's monthly check-in", measurements: "Today's measurements" };
   for (const t of due.dueTypes) {
     // Today's daily check-in not in yet is not a signal at nine in the
@@ -7905,7 +7962,7 @@ export function getClientHome(clientId: number, chat: ChatCoachView, feed?: Feed
   }
   const dailyDefs = listMetricDefinitions(clientId, "daily").filter(deployedToClient);
   if (dailyDefs.length) {
-    const lastDaily = listMetricPeriods(dailyDefs.map((d) => d.id), 1)[0] ?? null;
+    const lastDaily = listMetricPeriods(ck, dailyDefs.map((d) => d.id), 1)[0] ?? null;
     const gap = lastDaily ? Math.floor((middayMs(today) - middayMs(lastDaily)) / 86400000) : null;
     // Three days (12 Oct; two lit up half the clients on any Monday).
     if (gap != null && gap >= 3) {
@@ -8055,8 +8112,10 @@ const plusDays = (iso: string, n: number) => {
  * which says a client doing half of what they are asked. Days before they
  * started are not days they missed.
  */
-export function clientStartDate(clientId: number): string | null {
+export function clientStartDate(food: FoodRows, clientId: number, ck: CheckInRows): string | null {
   const data = getData();
+  food.need("clientStartDate", clientId, "all", ["entries", "calories"]);
+  ck.need("clientStartDate", clientId, "all", ["entries"]);
   let first: string | null = null;
   const see = (day: string | null | undefined) => {
     if (day && (first == null || day < first)) first = day;
@@ -8064,9 +8123,9 @@ export function clientStartDate(clientId: number): string | null {
   // Daily check-ins only: a weekly one is filed under its Monday, which can
   // be days before the client actually began.
   const daily = new Set(data.metric_definitions.filter((m) => m.client_id === clientId && m.frequency === "daily").map((m) => m.id));
-  for (const e of data.metric_entries) if (daily.has(e.metric_definition_id)) see(e.period);
-  for (const e of data.food_entries ?? []) if (e.client_id === clientId) see(e.date);
-  for (const c of data.calorie_logs) if (c.client_id === clientId && c.source !== "health") see(c.date);
+  for (const e of ck.entries) if (daily.has(e.metric_definition_id)) see(e.period);
+  for (const e of food.entries) if (e.client_id === clientId) see(e.date);
+  for (const c of food.calories) if (c.client_id === clientId && c.source !== "health") see(c.date);
   const dayIds = new Set(data.program_days.filter((pd) => pd.client_id === clientId).map((pd) => pd.id));
   const assignmentIds = new Set(data.workout_assignments.filter((wa) => dayIds.has(wa.program_day_id)).map((wa) => wa.id));
   for (const s of data.set_logs) if (assignmentIds.has(s.workout_assignment_id)) see(s.logged_at?.slice(0, 10));
@@ -8084,7 +8143,7 @@ export function clientStartDate(clientId: number): string | null {
 // altogether and lose eight points. Normalise first and the difference in
 // rhythm stops mattering — which is the whole reason a daily thing and a
 // weekly thing can sit in one score at all.
-function engagementWindow(clientId: number, days: number, back: number, since: string | null): { parts: EngagementPart[]; all: EngagementPart[]; overall: number | null } {
+function engagementWindow(food: FoodRows, ck: CheckInRows, clientId: number, days: number, back: number, since: string | null): { parts: EngagementPart[]; all: EngagementPart[]; overall: number | null } {
   const data = getData();
   const today = localDateStr();
   const to = plusDays(today, -days * back);
@@ -8169,14 +8228,14 @@ function engagementWindow(clientId: number, days: number, back: number, since: s
 
   const dailyDefs = listMetricDefinitions(clientId, "daily").filter(deployedToClient);
   if (dailyDefs.length > 0) {
-    const logged = new Set(listMetricPeriods(dailyDefs.map((d) => d.id)));
+    const logged = new Set(listMetricPeriods(ck, dailyDefs.map((d) => d.id)));
     checkInsAsked += pastDays.length;
     checkInsDone += pastDays.filter((d) => logged.has(d)).length;
     dailyStreak = streakTo((d) => logged.has(d));
   }
   const weeklyDefs = listMetricDefinitions(clientId, "weekly").filter(deployedToClient);
   if (weeklyDefs.length > 0) {
-    const logged = new Set(listMetricPeriods(weeklyDefs.map((d) => d.id)));
+    const logged = new Set(listMetricPeriods(ck, weeklyDefs.map((d) => d.id)));
     // The weeks that have closed, plus this one once its check-in day has come.
     // Only the weeks since the client began.
     const mondays: string[] = [];
@@ -8194,8 +8253,9 @@ function engagementWindow(clientId: number, days: number, back: number, since: s
   // days they were given a target — over the same days the daily check-in is,
   // so today's blank does not count against either.
   if (getNutritionGoalsSummary(clientId).trainingKcal) {
-    const logged = new Set(listCalorieLogs(clientId, 400).map((c) => c.date));
-    for (const e of data.food_entries ?? []) if (e.client_id === clientId) logged.add(e.date);
+    food.need("engagementWindow", clientId, "all", ["entries", "calories"]);
+    const logged = new Set(listCalorieLogs(food, clientId, 400).map((c) => c.date));
+    for (const e of food.entries) if (e.client_id === clientId) logged.add(e.date);
     const run = streakTo((d) => logged.has(d));
     add("nutrition", "Food logged", pastDays.filter((d) => logged.has(d)).length, pastDays.length, "day", run >= 2 ? `${run}-day streak` : undefined);
 
@@ -8203,8 +8263,8 @@ function engagementWindow(clientId: number, days: number, back: number, since: s
     const goals = getNutritionGoalsSummary(clientId);
     const kcalOf = new Map<string, number>();
     const proteinOf = new Map<string, number>();
-    for (const c of listCalorieLogs(clientId, 400)) kcalOf.set(c.date, (kcalOf.get(c.date) ?? 0) + (c.kcal ?? 0));
-    for (const e of data.food_entries ?? []) {
+    for (const c of listCalorieLogs(food, clientId, 400)) kcalOf.set(c.date, (kcalOf.get(c.date) ?? 0) + (c.kcal ?? 0));
+    for (const e of food.entries) {
       if (e.client_id !== clientId) continue;
       kcalOf.set(e.date, (kcalOf.get(e.date) ?? 0) + (e.kcal ?? 0));
       proteinOf.set(e.date, (proteinOf.get(e.date) ?? 0) + (e.protein ?? 0));
@@ -8234,13 +8294,13 @@ function engagementWindow(clientId: number, days: number, back: number, since: s
   return { parts: counted, all: parts, overall: counted.length ? Math.round(counted.reduce((s, p) => s + p.pct, 0) / counted.length) : null };
 }
 
-export function getClientEngagement(clientId: number, days: number = ENGAGEMENT_DAYS): ClientEngagement {
-  const start = clientStartDate(clientId);
-  const now = engagementWindow(clientId, days, 0, start);
+export function getClientEngagement(food: FoodRows, ck: CheckInRows, clientId: number, days: number = ENGAGEMENT_DAYS): ClientEngagement {
+  const start = clientStartDate(food, clientId, ck);
+  const now = engagementWindow(food, ck, clientId, days, 0, start);
   // The same thirty days before those thirty. Null until there is anything
   // in them, so a new client is not told they are down on a month that never
   // happened.
-  const before = engagementWindow(clientId, days, 1, start);
+  const before = engagementWindow(food, ck, clientId, days, 1, start);
   const windowFrom = plusDays(localDateStr(), -(days - 1));
   const can = new Set(now.all.map((p) => p.id));
   const hasNutrition = !!getNutritionGoalsSummary(clientId).trainingKcal;
@@ -8317,7 +8377,7 @@ export function chatUnreadCount(thread: ChatThread): number {
   return thread.rows(clientId).filter((m) => m.client_id === clientId && m.sender === "client" && (m.text.trim() || m.media_path) && stampMs(m.created_at) >= since && !(`chat-${m.id}` in seen)).length;
 }
 
-export function markClientEventsSeen(clientId: number, which: { all: true } | { dayId: number } | { ids: string[] } | { tab: string }, chat: ChatCoachView) {
+export function markClientEventsSeen(clientId: number, which: { all: true } | { dayId: number } | { ids: string[] } | { tab: string }, chat: ChatCoachView, food: FoodRows, ck: CheckInRows) {
   const data = getData();
   const client = data.clients.find((c) => c.id === clientId);
   if (!client) return;
@@ -8331,7 +8391,7 @@ export function markClientEventsSeen(clientId: number, which: { all: true } | { 
   const since = Date.now() - HOME_NEW_DAYS * 86400000;
   // The client's last 14 days of chat, whole: the marks are kept to them (Step 5).
   chat.need("recent", 0, clientId);
-  const recent = getActivityFeed(client.coach_id ?? 0, chat).filter((e) => e.clientId === clientId && e.at >= since);
+  const recent = getActivityFeed(client.coach_id ?? 0, chat, food, ck).filter((e) => e.clientId === clientId && e.at >= since);
   // A tab clears what is on the tab itself; news about one session waits
   // for that session to be opened.
   const hit = recent.filter((e) =>
@@ -8355,9 +8415,9 @@ export function markClientEventsSeen(clientId: number, which: { all: true } | { 
  * "who needs me", not "how many things".
  */
 /** The same, as the rail's reasons (14 Oct): one line a kind, in its colour, the most pressing first. */
-export function clientReasons(clientId: number, chat: ChatCoachView, feed?: FeedEvent[]): AttentionReason[] {
+export function clientReasons(clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, feed?: FeedEvent[]): AttentionReason[] {
   const out: AttentionReason[] = [];
-  for (const a of getClientHome(clientId, chat, feed).actions) {
+  for (const a of getClientHome(clientId, chat, food, ck, feed).actions) {
     const since = a.at ?? 0;
     if (a.id.startsWith("reply-video-")) {
       const m = /^(Photo|Video) of (.+?) waiting/.exec(a.title);
@@ -8379,10 +8439,10 @@ export function clientReasons(clientId: number, chat: ChatCoachView, feed?: Feed
   return sortReasons(out);
 }
 
-export function clientAttention(clientId: number, chat: ChatCoachView, feed?: FeedEvent[]): string | null {
+export function clientAttention(clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, feed?: FeedEvent[]): string | null {
   // The same list the client's Home spells out; the dot's title is the first
   // of them, and how many more there are.
-  const actions = getClientHome(clientId, chat, feed).actions;
+  const actions = getClientHome(clientId, chat, food, ck, feed).actions;
   if (actions.length === 0) return null;
   return actions.length === 1 ? actions[0].title : `${actions[0].title} · and ${actions.length - 1} more`;
 }
@@ -8402,19 +8462,45 @@ export function ensureDefaultMetrics(clientId: number) {
 // is still exactly that: the client's only line, Body · Weight · kg · daily,
 // no phase, nothing logged, no measurement fields, no lifestyle phase. Anything a
 // coach set up, or that has a reading, stays.
-export function dropUnusedAutoWeight(clientId: number) {
-  const data = getData();
-  const mine = data.metric_definitions.filter((m) => m.client_id === clientId);
-  if (mine.length !== 1) return;
-  const m = mine[0];
-  if (m.name !== "Weight" || m.category !== "Body" || m.unit !== "kg" || m.frequency !== "daily" || m.phase_id != null) return;
-  if (data.measurement_fields.some((f) => f.client_id === clientId)) return;
-  if (data.metric_entries.some((e) => e.metric_definition_id === m.id)) return;
+export function dropUnusedAutoWeight(ck: CheckInRows, clientId: number) {
+  // With CHECKINS_STORE=pg the page awaited dropUnusedAutoWeightPg at its top instead (no transaction in a render).
+  if (CHECKINS_PG) return;
+  const m = unusedAutoWeightCandidate(clientId);
+  if (!m) return;
+  ck.need("dropUnusedAutoWeight", clientId, "all", ["entries"]);
+  if (ck.entries.some((e) => e.metric_definition_id === m.id)) return;
   if (listClientPhases(clientId).some((p) => p.track === "lifestyle")) return;
-  removeMetricDefinition(m.id);
+  // At once (memory mode: the body runs before the call returns), as the render always did it.
+  void writeCheckIns("w.def.dropUnused", clientId, () => ({ defIds: [m.id], span: "all" }), (box) => removeMetricInMemory(box, m.id));
 }
 
-export function getCheckInStatus(clientId: number): CheckInStatus {
+/** The auto Weight line, while it is still exactly that (no figure looked at yet). */
+function unusedAutoWeightCandidate(clientId: number): MetricDefinition | null {
+  const data = getData();
+  const mine = data.metric_definitions.filter((m) => m.client_id === clientId);
+  if (mine.length !== 1) return null;
+  const m = mine[0];
+  if (m.name !== "Weight" || m.category !== "Body" || m.unit !== "kg" || m.frequency !== "daily" || m.phase_id != null) return null;
+  if (data.measurement_fields.some((f) => f.client_id === clientId)) return null;
+  return m;
+}
+
+/**
+ * dropUnusedAutoWeight with CHECKINS_STORE=pg, awaited at the top of the client's page and the admin's client tabs (a
+ * render can't wait for a transaction): under the client's lock, the line goes only when it holds no figure at all
+ * (null and the phone's too), nothing to delete. Memory mode: nothing (the render does it, as before).
+ */
+export async function dropUnusedAutoWeightPg(clientId: number): Promise<void> {
+  if (!CHECKINS_PG) return;
+  const m = unusedAutoWeightCandidate(clientId);
+  if (!m || listClientPhases(clientId).some((p) => p.track === "lifestyle")) return;
+  await whileNoFigures(clientId, m.id, () => {
+    const data = getData();
+    data.metric_definitions = data.metric_definitions.filter((x) => x.id !== m.id);
+  });
+}
+
+export function getCheckInStatus(ck: CheckInRows, clientId: number): CheckInStatus {
   const today = localDateStr();
   const thisWeek = weekStart(today);
 
@@ -8423,13 +8509,13 @@ export function getCheckInStatus(clientId: number): CheckInStatus {
   const fields = measureFieldsAskedOf(clientId);
 
   const dailyDue =
-    dailyDefs.length > 0 && listMetricPeriods(dailyDefs.map((d) => d.id), 1)[0] !== today;
+    dailyDefs.length > 0 && listMetricPeriods(ck, dailyDefs.map((d) => d.id), 1)[0] !== today;
   const weeklyDue =
     weeklyDefs.length > 0 &&
-    listMetricPeriods(weeklyDefs.map((d) => d.id), 1)[0] !== thisWeek &&
+    listMetricPeriods(ck, weeklyDefs.map((d) => d.id), 1)[0] !== thisWeek &&
     weeklyCheckInOpen(clientId);
   const monthlyDefs = listMonthlyMetricsAsked(clientId);
-  const monthlyDue = monthlyDefs.length > 0 && listMetricPeriods(monthlyDefs.map((d) => d.id), 1)[0] !== monthStart(today) && monthlyCheckInOpen(clientId);
+  const monthlyDue = monthlyDefs.length > 0 && listMetricPeriods(ck, monthlyDefs.map((d) => d.id), 1)[0] !== monthStart(today) && monthlyCheckInOpen(clientId);
   const measurementsDue = fields.length > 0 && !measuredOn(fields, today);
 
   const dueTypes: ("daily" | "weekly" | "monthly" | "measurements")[] = [];
@@ -8618,18 +8704,18 @@ export function checkInEditable(date: string, today: string = localDateStr()): b
   return date >= localDateStr(first) && date <= today;
 }
 
-export function getCheckInHistory(clientId: number): CheckInHistory {
+export function getCheckInHistory(ck: CheckInRows, clientId: number): CheckInHistory {
   const today = localDateStr();
   const series: CheckInSeries[] = [];
   // One Weight chart, of every weigh-in wherever it was logged (23 Oct, Alex: bodyWeightReadings), each on its day, in
   // the unit the client is asked in; kept with no phase running. The legacy field's own Weight chart goes.
-  const weighIns = bodyWeightReadings(clientId).filter((r) => r.date <= today);
+  const weighIns = bodyWeightReadings(ck, clientId).filter((r) => r.date <= today);
   let weightKey: string | null = null;
   let weightOwnDays = new Set<string>();
   const weightPoints = (unit: string) => weighIns.map((r) => ({ date: r.date, value: weightIn(r, unit), at: r.at }));
   for (const cadence of ["daily", "weekly", "monthly"] as const) {
     const defs = metricsAsked(clientId, cadence);
-    const entries = getMetricEntries(defs.map((d) => d.id));
+    const entries = getMetricEntries(ck, defs.map((d) => d.id));
     for (const def of defs) {
       const isWeight = WEIGHT_NAME.test(def.name.trim());
       if (isWeight && weightKey) continue;
@@ -8715,7 +8801,7 @@ export function getCheckInHistory(clientId: number): CheckInHistory {
   // draw the flat Goal line beside the plan.
   const weightSeries = weightKey ? series.find((s) => s.key === weightKey) : undefined;
   if (weightSeries) {
-    const goals = getWeightGoalViews(clientId, today);
+    const goals = getWeightGoalViews(ck, clientId, today);
     weightSeries.goals = [];
     if (goals.length) {
       const u = weightSeries.unit || "kg";
@@ -8762,13 +8848,13 @@ export function getCheckInHistory(clientId: number): CheckInHistory {
       const p = s.key !== weightKey && (s.cadence === "weekly" || s.cadence === "monthly") ? s.points.find((x) => x.at && localDateStr(new Date(x.at)) === date) : s.points.find((x) => x.date === date);
       if (p) items.push({ name: s.name, value: shown(s, p.value) });
     }
-    const note = [getCheckInNote(clientId, "daily", date), getCheckInNote(clientId, "measurements", date)].filter((n): n is string => !!n?.trim()).join("\n") || null;
+    const note = [getCheckInNote(ck, clientId, "daily", date), getCheckInNote(ck, clientId, "measurements", date)].filter((n): n is string => !!n?.trim()).join("\n") || null;
     const daily = series.filter((s) => s.cadence === "daily" && !workoutFed(clientId, s.name));
     const edit = [
-      checkInTrackerSection(clientId, "daily", date, "Daily", ""),
-      checkInTrackerSection(clientId, "weekly", weekStart(date), "Weekly", "", (e) => e?.value != null && !!e.logged_at && localDateStr(new Date(e.logged_at)) === date),
-      checkInTrackerSection(clientId, "monthly", monthStart(date), "Monthly", "", (e) => e?.value != null && !!e.logged_at && localDateStr(new Date(e.logged_at)) === date),
-      checkInMeasureSection(clientId, date, true),
+      checkInTrackerSection(ck, clientId, "daily", date, "Daily", ""),
+      checkInTrackerSection(ck, clientId, "weekly", weekStart(date), "Weekly", "", (e) => e?.value != null && !!e.logged_at && localDateStr(new Date(e.logged_at)) === date),
+      checkInTrackerSection(ck, clientId, "monthly", monthStart(date), "Monthly", "", (e) => e?.value != null && !!e.logged_at && localDateStr(new Date(e.logged_at)) === date),
+      checkInMeasureSection(ck, clientId, date, true),
     ].filter((s): s is CheckInSection => s !== null);
     // A daily line is done by its own reading: a weigh-in sent elsewhere that day still leaves the daily Weight to fill in.
     days.push({ date, items, note, dailyTotal: daily.length, dailyDone: daily.filter((s) => (s.key === weightKey ? weightOwnDays.has(date) : s.points.some((x) => x.date === date))).length, edit });
@@ -8782,6 +8868,7 @@ const checkInFmtDate = (iso: string) => dayWords(iso);
 // entry from any earlier period as the hint. `only` narrows it to some of the
 // metrics (a past day's weekly readings: the ones sent on that day).
 function checkInTrackerSection(
+  ck: CheckInRows,
   clientId: number,
   frequency: "daily" | "weekly" | "monthly",
   period: string,
@@ -8791,18 +8878,18 @@ function checkInTrackerSection(
 ): CheckInSection | null {
   // What a workout's wrap-up answers is not asked here (metricFromWorkout).
   const all = metricsAsked(clientId, frequency).filter((d) => !workoutFed(clientId, d.name));
-  const entries = getMetricEntries(all.map((d) => d.id));
+  const entries = getMetricEntries(ck, all.map((d) => d.id));
   const currentOf = (id: number) => entries.find((e) => e.metric_definition_id === id && e.period === period);
   const defs = only ? all.filter((d) => only(currentOf(d.id))) : all;
   if (defs.length === 0) return null;
   // A Weight row's last reading is the client's last weigh-in from anywhere (23 Oct, Alex): a new phase's Weight said
   // "First time" over a reading logged the day before under the old one.
-  const weights = defs.some((d) => WEIGHT_NAME.test(d.name.trim())) ? bodyWeightReadings(clientId) : [];
+  const weights = defs.some((d) => WEIGHT_NAME.test(d.name.trim())) ? bodyWeightReadings(ck, clientId) : [];
   return {
     id: frequency,
     label,
     intro,
-    note: getCheckInNote(clientId, frequency, period),
+    note: getCheckInNote(ck, clientId, frequency, period),
     metrics: defs.map((def) => {
       const current = currentOf(def.id);
       const isWeight = WEIGHT_NAME.test(def.name.trim());
@@ -8844,7 +8931,7 @@ function checkInTrackerSection(
 // hint. Null without fields, or (onlyIfLogged, a past day's) with nothing
 // measured that date. The old Weight box only while no Weight metric is asked
 // (measureFieldsAskedOf); a past day's weigh-in in it still shows in the feed.
-function checkInMeasureSection(clientId: number, date: string, onlyIfLogged = false): CheckInSection | null {
+function checkInMeasureSection(ck: CheckInRows, clientId: number, date: string, onlyIfLogged = false): CheckInSection | null {
   const fields = measureFieldsAskedOf(clientId);
   if (fields.length === 0) return null;
   const values = getMeasurementValues(fields.map((f) => f.id));
@@ -8855,7 +8942,7 @@ function checkInMeasureSection(clientId: number, date: string, onlyIfLogged = fa
     values.filter((v) => v.field_id === fieldId && v.value != null && v.date < date).sort((a, b) => (a.date < b.date ? 1 : -1))[0] ?? null;
   return {
     id: "measurements",
-    note: getCheckInNote(clientId, "measurements", date),
+    note: getCheckInNote(ck, clientId, "measurements", date),
     label: "Measure",
     intro: "Same spots, same time of day: first thing, before food.",
     metrics: fields.map((f) => {
@@ -8879,13 +8966,14 @@ function checkInMeasureSection(clientId: number, date: string, onlyIfLogged = fa
   };
 }
 
-export function getCheckInSections(clientId: number): CheckInData {
+export function getCheckInSections(ck: CheckInRows, clientId: number): CheckInData {
   const today = localDateStr();
   const thisWeek = weekStart(today);
   const fmtDate = checkInFmtDate;
 
   const sections: CheckInSection[] = [];
   const daily = checkInTrackerSection(
+    ck,
     clientId,
     "daily",
     today,
@@ -8894,14 +8982,14 @@ export function getCheckInSections(clientId: number): CheckInData {
   );
   if (daily) sections.push(daily);
 
-  const weekly = checkInTrackerSection(clientId, "weekly", thisWeek, "Weekly", "One entry covers the whole week.");
+  const weekly = checkInTrackerSection(ck, clientId, "weekly", thisWeek, "Weekly", "One entry covers the whole week.");
   if (weekly) sections.push(weekly);
 
-  const monthly = checkInTrackerSection(clientId, "monthly", monthStart(today), "Monthly", "One entry covers the whole month.");
+  const monthly = checkInTrackerSection(ck, clientId, "monthly", monthStart(today), "Monthly", "One entry covers the whole month.");
   if (monthly) sections.push(monthly);
 
   // ---- Measurements ----
-  const measure = checkInMeasureSection(clientId, today);
+  const measure = checkInMeasureSection(ck, clientId, today);
   if (measure) sections.push(measure);
 
   // For the deltas below.
@@ -8991,27 +9079,28 @@ export type CoachActivityKind = "coach_note" | "report" | "programme" | "reminde
 // bottom-nav tabs, or "chat" to open the chat/notifications panel itself.
 export type CoachActivityActionTab = "home" | "training" | "nutrition" | "settings" | "chat" | "video" | "invoices" | "checkin";
 
-export type ClientNotification = {
-  id: number;
-  client_id: number;
-  message: string;
-  created_at: string;
-  kind: CoachActivityKind;
-  read: boolean;
-  action_tab: CoachActivityActionTab | null;
-  action_label: string | null;
-  action_ref: number | null;
-  /** What it is about, as its writer keyed it ("training:{day}:…", "video-ask:{row}:…"): read by notificationLink. */
-  dedupe_key: string | null;
-};
+export type { ClientNotification };
 
 /** A note taken back: what it said was undone the same day (a target put back where the day began). */
 export function dropCoachActivity(clientId: number, dedupeKey: string) {
+  writeNote({ op: "drop", clientId, key: dedupeKey });
+}
+
+/**
+ * The locked app's own push wins (19 Nov, Alex): a client let in whose app is still locked (no app_opened_at once every
+ * client from before was swept open, lib/appLock.ts), or whose app opened by a phase or by the coach in the last 15 min,
+ * gets "Your app is ready" and no second buzz for the programme or phase behind it. Before the sweep has run, never.
+ */
+const APP_READY_WINDOW_MS = 15 * 60_000;
+function appReadyHoldsTheBuzz(clientId: number): boolean {
   const data = getData();
-  const note = data.coach_activity.find((a) => a.client_id === clientId && a.dedupe_key === dedupeKey);
-  if (!note) return;
-  data.coach_activity = data.coach_activity.filter((a) => a !== note);
-  persist();
+  if (!data.app_lock_swept) return false;
+  const c = data.clients.find((x) => x.id === clientId);
+  if (!c) return false;
+  if (!c.app_opened_at) return true;
+  if (c.app_opened_by !== "phase" && c.app_opened_by !== "coach") return false;
+  const at = Date.parse(c.app_opened_at);
+  return Number.isFinite(at) && Date.now() - at < APP_READY_WINDOW_MS;
 }
 
 export function logCoachActivity(
@@ -9042,128 +9131,98 @@ export function logCoachActivity(
     mergeDetail?: string;
     /** With a dedupe key that already has a row: that row says this instead, unread again (a day's targets, from how the day began to now). */
     replace?: boolean;
-    /** A coach message's note: the message it carries (CHAT_STORE=pg; noteFor finds it by this). */
+    /** A coach message's note: the message it carries (every mode since 19 Nov; edits and deletes find it by this; NOTES_STORE=pg's backfill sets it on old notes). */
     messageId?: number;
   }
 ) {
-  const data = getData();
-  const dup = opts.dedupeKey ? data.coach_activity.find((a) => a.client_id === clientId && a.dedupe_key === opts.dedupeKey) : null;
-  if (dup) {
-    if (opts.replace) {
-      dup.message = message;
-      dup.created_at = new Date().toISOString();
-      dup.read = false;
-      if (opts.actionRef != null) dup.action_ref = opts.actionRef;
-      persist();
-      return;
+  // The duplicate check, replace, merge and insert are the notes' door's since quest 7 (notes/apply.ts, the code moved
+  // verbatim): applied to the store at once (memory), or queued and written once the store's save has it (NOTES_STORE=pg).
+  const mode = !opts.dedupeKey ? "plain" : opts.replace ? "replace" : opts.mergeDetail ? "merge" : "keep";
+  // Once only (19 Nov, Alex: "yes once only key"): a note with no key of its own that says exactly what one just said
+  // (the same client, kind, words and place to open) within 10 s is the same action run again (a double click, a retry
+  // after a dropped connection), so neither the note nor its buzz comes twice. Not a coach message: two "ok"s a second
+  // apart are two messages, and a resent one is stopped by the chat's own once key.
+  if (mode === "plain" && opts.kind !== "coach_note" && !noteOnce(clientId, message, opts)) return;
+  writeNote(
+    {
+      op: "insert",
+      mode,
+      ...(opts.mergeDetail ? { detail: opts.mergeDetail } : {}),
+      row: {
+        id: 0,
+        client_id: clientId,
+        message,
+        created_at: "",
+        kind: opts.kind,
+        read: false,
+        action_tab: opts.actionTab ?? null,
+        action_label: opts.actionLabel ?? null,
+        action_ref: opts.actionRef ?? null,
+        dedupe_key: opts.dedupeKey ?? null,
+        ...(opts.messageId != null ? { message_id: opts.messageId } : {}),
+      },
+    },
+    {
+      // To the lock screen too, when the client has notifications on, for the
+      // moments that are worth it (see opts.push). Never reminders: those are
+      // made whenever someone happens to load a page, so their timing means
+      // nothing and they would arrive at random hours. Worked out only for a row that goes in.
+      push: () => {
+        const worthABuzz = opts.push ?? (opts.kind === "coach_note" || opts.kind === "programme" || opts.kind === "report");
+        if (opts.kind === "reminder" || !worthABuzz) return null;
+        // One push for one moment (19 Nov, Alex: "your app is ready is deffo the more important one"): while the app is
+        // locked, and for 15 min after it opens, only the coach's messages buzz; the rest goes to the bell alone.
+        if (opts.kind !== "coach_note" && appReadyHoldsTheBuzz(clientId)) return null;
+        const user = getData().users.find((u) => u.role === "client" && u.client_id === clientId);
+        if (!user) return null;
+        // The phone shows "Norcoach" and the icon above this already, so the
+        // title says what kind of news it is and the body what happened.
+        const coach = getCoachDisplayName(clientId);
+        const title =
+          opts.actionTab === "video" ? `${coach} replied to your video`
+          : opts.kind === "coach_note" ? `Message from ${coach}`
+          : opts.kind === "report" ? `New progress report from ${coach}`
+          : opts.kind === "programme" ? `New program from ${coach}`
+          : `Update from ${coach}`;
+        // Tapped, it opens where the news is: the chat for a message (21 Oct: it opened whatever tab was last), else this
+        // notification's own thing, as a tap on it in the list does (24 Oct, Alex: a session, an exercise, an invoice…).
+        // The coach by name on the lock screen too, never "Your coach" (3 Nov, Alex: as the app's list reads it).
+        const body = message.replace(/\byour coach\b/gi, () => coach.split(" ")[0]);
+        // url null: this notification's own (`/client?n=<its id>`), filled in once the id is known.
+        // Its Settings · Notifications group (19 Nov, Alex): off there, no push; in quiet hours, held (lib/push.ts).
+        const group = groupOfNotification({ kind: opts.kind, action_tab: opts.actionTab ?? null, message, dedupe_key: opts.dedupeKey ?? null }) ?? "always";
+        return { userId: user.id, title, body, url: opts.kind === "coach_note" ? "/client?open=messages" : null, tag: opts.dedupeKey, group };
+      },
     }
-    if (opts.mergeDetail) {
-      const colon = dup.message.indexOf(": ");
-      const base = colon > 0 ? dup.message.slice(0, colon) : dup.message;
-      const details = colon > 0 ? dup.message.slice(colon + 2).split(" · ") : [];
-      if (!details.includes(opts.mergeDetail)) details.push(opts.mergeDetail);
-      dup.message = `${base}: ${details.slice(-4).join(" · ")}`;
-      dup.created_at = new Date().toISOString();
-      dup.read = false;
-      if (opts.actionRef != null) dup.action_ref = opts.actionRef;
-      persist();
-    }
-    return;
-  }
-  const noteId = allocId("coach_activity");
-  data.coach_activity.push({
-    id: noteId,
-    client_id: clientId,
-    message,
-    created_at: new Date().toISOString(),
-    kind: opts.kind,
-    read: false,
-    action_tab: opts.actionTab ?? null,
-    action_label: opts.actionLabel ?? null,
-    action_ref: opts.actionRef ?? null,
-    dedupe_key: opts.dedupeKey ?? null,
-    ...(opts.messageId != null ? { message_id: opts.messageId } : {}),
-  });
-  persist();
-  // To the lock screen too, when the client has notifications on, for the
-  // moments that are worth it (see opts.push). Never reminders: those are
-  // made whenever someone happens to load a page, so their timing means
-  // nothing and they would arrive at random hours.
-  const worthABuzz = opts.push ?? (opts.kind === "coach_note" || opts.kind === "programme" || opts.kind === "report");
-  if (opts.kind !== "reminder" && worthABuzz) {
-    const user = data.users.find((u) => u.role === "client" && u.client_id === clientId);
-    if (user) {
-      // The phone shows "Norcoach" and the icon above this already, so the
-      // title says what kind of news it is and the body what happened.
-      const coach = getCoachDisplayName(clientId);
-      const title =
-        opts.actionTab === "video" ? `${coach} replied to your video`
-        : opts.kind === "coach_note" ? `Message from ${coach}`
-        : opts.kind === "report" ? `New progress report from ${coach}`
-        : opts.kind === "programme" ? `New program from ${coach}`
-        : `Update from ${coach}`;
-      // Tapped, it opens where the news is: the chat for a message (21 Oct: it opened whatever tab was last), else this
-      // notification's own thing, as a tap on it in the list does (24 Oct, Alex: a session, an exercise, an invoice…).
-      // The coach by name on the lock screen too, never "Your coach" (3 Nov, Alex: as the app's list reads it).
-      const body = message.replace(/\byour coach\b/gi, () => coach.split(" ")[0]);
-      const lockScreen = { title, body, url: opts.kind === "coach_note" ? "/client?open=messages" : `/client?n=${noteId}`, tag: opts.dedupeKey };
-      void import("./push").then((push) => push.sendPushInBackground(user.id, lockScreen)).catch(() => {});
-    }
-  }
+  );
 }
 
-export function getLatestCoachActivity(clientId: number) {
-  const data = getData();
-  const entries = data.coach_activity.filter((a) => a.client_id === clientId);
-  if (entries.length === 0) return null;
-  return entries.reduce((latest, e) => (e.created_at > latest.created_at ? e : latest));
+/**
+ * The last keyless note of each thing in the last 10 s (logCoachActivity's once-only check): by the client, kind, tab
+ * and ref it points at, what it said. A repeat is dropped only while it is still that thing's latest note, so a call
+ * moved Tue, Wed and back to Tue inside 10 s still tells the client Tuesday. One process holds them.
+ */
+const NOTE_ONCE_MS = 10_000;
+const g_noteOnce = globalThis as unknown as { __norcoachNoteOnce?: Map<string, { said: string; at: number }> };
+function noteOnce(clientId: number, message: string, opts: { kind: CoachActivityKind; actionTab?: CoachActivityActionTab; actionLabel?: string; actionRef?: number }): boolean {
+  const last = (g_noteOnce.__norcoachNoteOnce ??= new Map());
+  const now = Date.now();
+  for (const [k, v] of last) if (now - v.at >= NOTE_ONCE_MS) last.delete(k);
+  const thing = JSON.stringify([clientId, opts.kind, opts.actionTab ?? null, opts.actionRef ?? null]);
+  const said = JSON.stringify([message, opts.actionLabel ?? null]);
+  if (last.get(thing)?.said === said) return false;
+  last.set(thing, { said, at: now });
+  return true;
 }
 
-// Rows written before `kind`/`read`/etc. existed (or restored from an older
-// export) won't have them — default defensively rather than trusting the
-// stored shape to match the current type. Old, kind-less rows default to
-// read so they don't surface as a wall of new unread notifications.
-function normalizeNotification(a: {
-  id: number;
-  client_id: number;
-  message: string;
-  created_at: string;
-  kind?: CoachActivityKind;
-  read?: boolean;
-  action_tab?: CoachActivityActionTab | null;
-  action_label?: string | null;
-  action_ref?: number | null;
-  dedupe_key?: string | null;
-}): ClientNotification {
-  return {
-    id: a.id,
-    client_id: a.client_id,
-    message: a.message,
-    created_at: a.created_at,
-    kind: a.kind ?? "general",
-    read: a.read ?? true,
-    action_tab: a.action_tab ?? null,
-    action_label: a.action_label ?? null,
-    action_ref: a.action_ref ?? null,
-    dedupe_key: a.dedupe_key ?? null,
-  };
+/** The client's newest notifications, from the view their page fetched (notes/rows.ts fetchClientNotes). */
+export function getNotifications(view: ClientNotes, clientId: number, limit = 50): ClientNotification[] {
+  return view.newest(clientId, limit);
 }
 
-export function getNotifications(clientId: number, limit = 50): ClientNotification[] {
-  const data = getData();
-  return data.coach_activity
-    .filter((a) => a.client_id === clientId)
-    .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : b.id - a.id))
-    .slice(0, limit)
-    .map(normalizeNotification);
-}
-
-export function markNotificationRead(id: number) {
-  const data = getData();
-  const entry = data.coach_activity.find((a) => a.id === id);
-  if (!entry) return;
-  entry.read = true;
-  persist();
+/** A notification read, by its id and the client it belongs to (markNotificationReadAction checks the owner first). */
+export function markNotificationRead(id: number, clientId: number) {
+  writeNote({ op: "read", clientId, id });
 }
 
 // Opening the coach's message feed reads every message at once.
@@ -9176,22 +9235,11 @@ export function markCoachNotesRead(clientId: number) {
     persist();
     chatChanged(clientId);
   }
-  let changed = false;
-  data.coach_activity.forEach((a) => {
-    if (a.client_id === clientId && a.kind === "coach_note" && !a.read) {
-      a.read = true;
-      changed = true;
-    }
-  });
-  if (changed) persist();
+  writeNote({ op: "readCoachNotes", clientId });
 }
 
 export function markAllNotificationsRead(clientId: number) {
-  const data = getData();
-  data.coach_activity.forEach((a) => {
-    if (a.client_id === clientId) a.read = true;
-  });
-  persist();
+  writeNote({ op: "readAll", clientId });
 }
 
 // Chat attachments: same "write to DATA_DIR/uploads, store the public path"
@@ -9230,70 +9278,6 @@ export function saveChatMedia(clientId: number, buffer: Buffer, mimeType: string
   const filename = `${Date.now()}-${allocId("chat_media")}.${ext}`;
   fs.writeFileSync(path.join(dir, filename), buffer);
   return { path: `/uploads/chat/${clientId}/${filename}`, type, name: type === "file" ? originalName?.trim() || null : null };
-}
-
-export function getClientSnapshot(clientId: number): ClientSnapshot {
-  const summary = getClientSummary(clientId);
-  const nutrition = getNutritionGoalsSummary(clientId);
-  const plan = getNutritionPlan(clientId);
-
-  const measurementFields = listMeasurementFields(clientId);
-  const weightField = measurementFields.find((f) => f.name.toLowerCase().includes("weight"));
-  const change = getMeasurementChangeSummary(clientId);
-
-  const photoSlots = listActivePhotoSlots(clientId);
-  const photoUploads = listPhotoUploads(photoSlots.map((s) => s.id));
-  const currentWeek = weekStart(localDateStr());
-  const uploadedThisWeek = photoUploads.filter((u) => u.period === currentWeek).length;
-
-  const dailyDefs = listMetricDefinitions(clientId, "daily");
-  const weeklyDefs = listMetricDefinitions(clientId, "weekly");
-  const dailyPeriods = listMetricPeriods(dailyDefs.map((d) => d.id), 1);
-  const weeklyPeriods = listMetricPeriods(weeklyDefs.map((d) => d.id), 1);
-
-  const upcomingMeetings = listMeetings(clientId)
-    .filter((m) => m.status === "scheduled")
-    .sort((a, b) => (a.date === b.date ? (a.time < b.time ? -1 : 1) : a.date < b.date ? -1 : 1));
-  const today = localDateStr();
-  const next = upcomingMeetings.find((m) => m.date >= today) ?? null;
-
-  const invoices = listInvoices(clientId);
-  const openInvoices = invoices.filter((i) => i.status !== "paid");
-
-  return {
-    training: {
-      daysBuilt: summary.trainingDaysBuilt,
-      published: summary.programPublished,
-      totalSetsLogged: summary.totalSetsLogged,
-      lastActive: summary.lastActive,
-    },
-    nutrition: {
-      trainingKcal: nutrition.trainingKcal,
-      restKcal: nutrition.restKcal,
-      maintenanceKcal: plan.maintenance_kcal,
-    },
-    measurements: {
-      currentWeight: getLatestWeight(clientId),
-      weightChange: weightField ? change[weightField.id] ?? null : null,
-    },
-    photos: {
-      uploadedThisWeek,
-      totalSlots: photoSlots.length,
-    },
-    dailyTracker: {
-      metricCount: dailyDefs.length,
-      lastLogged: dailyPeriods[0] ?? null,
-    },
-    weeklyTracker: {
-      metricCount: weeklyDefs.length,
-      lastLogged: weeklyPeriods[0] ?? null,
-    },
-    meetings: { next },
-    invoices: {
-      outstanding: openInvoices.reduce((s, i) => s + i.amount, 0),
-      openCount: openInvoices.length,
-    },
-  };
 }
 
 // Progress reports are gone (18 Nov, Alex: "take away the whole report thing"): nothing writes, sends or shows one,
@@ -9766,27 +9750,29 @@ export type { CalorieLog } from "./db";
 
 /** Each day's calories, newest first (10 Nov, Alex: the diary's Log button gone): the diary's total where food was logged,
     else a figure typed or pushed before. */
-export function listCalorieDays(clientId: number, limit = 30): CalorieLog[] {
-  const data = getData();
+export function listCalorieDays(rows: FoodRows, clientId: number, limit = 30): CalorieLog[] {
+  rows.need("listCalorieDays", clientId, "all", ["entries", "calories", "days"]);
   const days = new Map<string, CalorieLog>();
-  for (const c of data.calorie_logs) if (c.client_id === clientId) days.set(c.date, c);
+  for (const c of rows.calories) if (c.client_id === clientId) days.set(c.date, c);
   const food = new Map<string, number>();
-  for (const e of data.food_entries) if (e.client_id === clientId) food.set(e.date, (food.get(e.date) ?? 0) + (Number(e.kcal) || 0));
+  for (const e of rows.entries) if (e.client_id === clientId) food.set(e.date, (food.get(e.date) ?? 0) + (Number(e.kcal) || 0));
   for (const [date, kcal] of food) {
     const log = days.get(date);
-    days.set(date, { ...(log ?? { id: 0, client_id: clientId, date, logged_at: date }), kcal: Math.round(kcal), day_type: foodDayType(clientId, date) } as CalorieLog);
+    days.set(date, { ...(log ?? { id: 0, client_id: clientId, date, logged_at: date }), kcal: Math.round(kcal), day_type: foodDayType(rows, clientId, date) } as CalorieLog);
   }
   return [...days.values()].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, limit);
 }
 
-export function getCalorieLog(clientId: number, date: string): CalorieLog | null {
-  return getData().calorie_logs.find((c) => c.client_id === clientId && c.date === date) ?? null;
+export function getCalorieLog(rows: FoodRows, clientId: number, date: string): CalorieLog | null {
+  rows.need("getCalorieLog", clientId, { dates: [date] }, ["calories"]);
+  return rows.calories.find((c) => c.client_id === clientId && c.date === date) ?? null;
 }
 
 // Most recent first.
-export function listCalorieLogs(clientId: number, limit = 30): CalorieLog[] {
-  return getData()
-    .calorie_logs.filter((c) => c.client_id === clientId)
+export function listCalorieLogs(rows: FoodRows, clientId: number, limit = 30): CalorieLog[] {
+  rows.need("listCalorieLogs", clientId, "all", ["calories"]);
+  return rows.calories
+    .filter((c) => c.client_id === clientId)
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
     .slice(0, limit);
 }
@@ -9794,6 +9780,7 @@ export function listCalorieLogs(clientId: number, limit = 30): CalorieLog[] {
 // null clears the day.
 // `note` and `dayType` left undefined keep what the day already has.
 export function setCalorieLog(
+  box: FoodBox,
   clientId: number,
   date: string,
   kcal: number | null,
@@ -9801,10 +9788,11 @@ export function setCalorieLog(
   dayType: "training" | "rest" | undefined = undefined,
   source: "diary" | null | undefined = undefined
 ) {
-  const data = getData();
-  const existing = data.calorie_logs.find((c) => c.client_id === clientId && c.date === date);
+  box.need("setCalorieLog", clientId, { dates: [date] }, ["calories"]);
+  const data = box;
+  const existing = data.calories.find((c) => c.client_id === clientId && c.date === date);
   if (kcal == null) {
-    if (existing) data.calorie_logs = data.calorie_logs.filter((c) => c !== existing);
+    if (existing) data.calories = data.calories.filter((c) => c !== existing);
   } else if (existing) {
     existing.kcal = kcal;
     existing.logged_at = new Date().toISOString();
@@ -9812,8 +9800,8 @@ export function setCalorieLog(
     if (dayType !== undefined) existing.day_type = dayType;
     if (source !== undefined) existing.source = source;
   } else {
-    data.calorie_logs.push({
-      id: allocId("calorie_logs"),
+    data.calories.push({
+      id: box.alloc("calories"),
       client_id: clientId,
       date,
       kcal,
@@ -9823,24 +9811,25 @@ export function setCalorieLog(
       ...(source ? { source } : {}),
     });
   }
-  persist();
+  box.persist();
 }
 
 // ---- Check-in notes: the client's own words beside the numbers ----
 
-export function setCheckInNote(clientId: number, kind: CheckInNote["kind"], period: string, text: string) {
-  const data = getData();
+export function setCheckInNote(box: CheckInBox, clientId: number, kind: CheckInNote["kind"], period: string, text: string) {
   const clean = text.trim();
-  const existing = data.check_in_notes.find((n) => n.client_id === clientId && n.kind === kind && n.period === period);
+  // Inside what the write loaded (quest 9), so the note is never added a second time.
+  box.noteInReach(kind, period);
+  const existing = box.notes.find((n) => n.client_id === clientId && n.kind === kind && n.period === period);
   if (!clean) {
-    if (existing) data.check_in_notes = data.check_in_notes.filter((n) => n !== existing);
+    if (existing) box.notes = box.notes.filter((n) => n !== existing);
   } else if (existing) {
     existing.text = clean;
     existing.created_at = new Date().toISOString();
   } else {
-    data.check_in_notes.push({ id: allocId("check_in_notes"), client_id: clientId, kind, period, text: clean, created_at: new Date().toISOString() });
+    box.notes.push({ id: box.alloc("notes"), client_id: clientId, kind, period, text: clean, created_at: new Date().toISOString() });
   }
-  persist();
+  box.persist();
 }
 
 // ---- The client's own exercise notes ----------------------------------
@@ -10882,34 +10871,7 @@ export function endSession(programDayId: number, at: string, note: string, answe
   else delete day.session_enjoyment;
   if (adherence != null) day.session_adherence = adherence;
   else delete day.session_adherence;
-  syncWorkoutMetrics(day.client_id, at);
   persist();
-}
-
-// The lifestyle metrics a workout answers (metricFromWorkout) take the
-// wrap-up's value: a daily one the day's sessions, a weekly one the week's,
-// averaged when there were two. Run when a session ends or is thrown away.
-function syncWorkoutMetrics(clientId: number, at: string) {
-  const date = localDateStr(new Date(at));
-  const data = getData();
-  for (const frequency of ["daily", "weekly"] as const) {
-    const period = frequency === "daily" ? date : weekStart(date);
-    for (const def of listMetricDefinitions(clientId, frequency)) {
-      const kind = metricFromWorkout(def.name);
-      if (!kind || !workoutFed(clientId, def.name)) continue;
-      const scores = data.program_days
-        .filter((pd) => pd.client_id === clientId && pd.session_ended_at)
-        .filter((pd) => {
-          const d = localDateStr(new Date(pd.session_ended_at!));
-          return frequency === "daily" ? d === date : weekStart(d) === period;
-        })
-        .map((pd) => sessionAnswers(pd).find((a) => a.id === kind)?.value)
-        .filter((v): v is number => v != null);
-      const value = scores.length ? Math.round((scores.reduce((s, v) => s + v, 0) / scores.length) * 10) / 10 : null;
-      if (value != null) setMetricEntry(def.id, period, value, new Date().toISOString());
-      else if (getMetricEntries([def.id]).some((e) => e.period === period && e.value != null)) setMetricEntry(def.id, period, null);
-    }
-  }
 }
 
 /** A finished session back in progress (13 Nov, Alex: ended by mistake): its end goes, everything logged, its note and
@@ -10947,14 +10909,12 @@ export function discardSession(programDayId: number) {
   }
   const cardioIds = new Set(listCardioForDay(day.id).map((c) => c.id));
   data.cardio_logs = (data.cardio_logs ?? []).filter((c) => !cardioIds.has(c.cardio_entry_id));
-  const endedAt = day.session_ended_at;
   delete day.session_started_at;
   delete day.session_ended_at;
   delete day.session_note;
   delete day.session_enjoyment;
   delete day.session_adherence;
   delete day.session_answers;
-  if (endedAt) syncWorkoutMetrics(day.client_id, endedAt);
   persist();
 }
 
@@ -11382,12 +11342,12 @@ export function getClientProgramNoteMeta(clientId: number, programId: number): {
 }
 
 /** The coach opened the client's note on a programme: it is not new again until the client writes. */
-export function markProgramNoteSeen(programId: number, chat: ChatCoachView) {
+export function markProgramNoteSeen(programId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows) {
   const n = (getData().client_program_notes ?? []).find((x) => x.program_id === programId);
   if (!n || n.coach_seen_at === n.updated_at) return;
   n.coach_seen_at = n.updated_at;
   persist();
-  markClientEventsSeen(n.client_id, { ids: [`program-note-${n.id}`] }, chat);
+  markClientEventsSeen(n.client_id, { ids: [`program-note-${n.id}`] }, chat, food, ck);
 }
 
 export function getClientIdForProgram(programId: number): number | null {
@@ -11410,14 +11370,16 @@ export function setClientProgramNote(clientId: number, programId: number, text: 
   persist();
 }
 
-export function getCheckInNote(clientId: number, kind: CheckInNote["kind"], period: string): string | null {
-  return getData().check_in_notes.find((n) => n.client_id === clientId && n.kind === kind && n.period === period)?.text ?? null;
+export function getCheckInNote(ck: CheckInRows, clientId: number, kind: CheckInNote["kind"], period: string): string | null {
+  ck.need("getCheckInNote", clientId, { periods: [period] }, ["notes"]);
+  return ck.notes.find((n) => n.client_id === clientId && n.kind === kind && n.period === period)?.text ?? null;
 }
 
 /** Newest first, for the coach. */
-export function listCheckInNotes(clientId: number, limit = 20): CheckInNote[] {
-  return getData()
-    .check_in_notes.filter((n) => n.client_id === clientId)
+export function listCheckInNotes(ck: CheckInRows, clientId: number, limit = 20): CheckInNote[] {
+  ck.need("listCheckInNotes", clientId, "all", ["notes"]);
+  return ck.notes
+    .filter((n) => n.client_id === clientId)
     .sort((a, b) => (a.period < b.period ? 1 : a.period > b.period ? -1 : a.created_at < b.created_at ? 1 : -1))
     .slice(0, limit);
 }
@@ -12024,11 +11986,11 @@ export function getClientIdForGoal(id: number): number | null {
 // The client's own calorie log is a figure a goal can track too ("Drop kcal
 // to 2,400"), though it is not a check-in metric. One point per logged day.
 export const KCAL_GOAL_KEY = "kcal";
-function calorieSeries(clientId: number): { name: string; unit: string; series: SeriesPoint[] } {
+function calorieSeries(food: FoodRows, clientId: number): { name: string; unit: string; series: SeriesPoint[] } {
   return {
     name: "Calories logged",
     unit: "kcal",
-    series: listCalorieDays(clientId, 100000)
+    series: listCalorieDays(food, clientId, 100000)
       .map((c) => ({ date: c.date, value: c.kcal }))
       .sort((a, b) => (a.date < b.date ? -1 : 1)),
   };
@@ -12036,7 +11998,7 @@ function calorieSeries(clientId: number): { name: string; unit: string; series: 
 
 /** The food diary's daily macro totals, one point a day, as a goal can watch them. */
 export const MACRO_GOAL_KEYS = { protein: "protein", carbs: "carbs", fat: "fat" } as const;
-function macroSeries(clientId: number, which: keyof typeof MACRO_GOAL_KEYS): { name: string; unit: string; series: SeriesPoint[] } {
+function macroSeries(food: FoodRows, clientId: number, which: keyof typeof MACRO_GOAL_KEYS): { name: string; unit: string; series: SeriesPoint[] } {
   const today = localDateStr();
   const from = (() => {
     const d = new Date(`${today}T00:00:00`);
@@ -12044,20 +12006,20 @@ function macroSeries(clientId: number, which: keyof typeof MACRO_GOAL_KEYS): { n
     return localDateStr(d);
   })();
   const name = which === "protein" ? "Protein logged" : which === "carbs" ? "Carbs logged" : "Fat logged";
-  return { name, unit: "g", series: getLoggedDays(clientId, from, today, "no-comments").days.map((d) => ({ date: d.date, value: d[which] })).sort((a, b) => (a.date < b.date ? -1 : 1)) };
+  return { name, unit: "g", series: getLoggedDays(food, clientId, from, today, "no-comments").days.map((d) => ({ date: d.date, value: d[which] })).sort((a, b) => (a.date < b.date ? -1 : 1)) };
 }
 const macroKey = (key: string): keyof typeof MACRO_GOAL_KEYS | null => (key === "protein" || key === "carbs" || key === "fat" ? key : null);
 
 /** Series for a graph-choice key ("field-3" / "metric-7"), the calorie log, or a macro. */
-function seriesForKey(clientId: number, key: string): { name: string; unit: string; series: SeriesPoint[] } | null {
-  if (key === KCAL_GOAL_KEY) return calorieSeries(clientId);
+function seriesForKey(food: FoodRows, clientId: number, key: string, ck: CheckInRows): { name: string; unit: string; series: SeriesPoint[] } | null {
+  if (key === KCAL_GOAL_KEY) return calorieSeries(food, clientId);
   const macro = macroKey(key);
-  if (macro) return macroSeries(clientId, macro);
-  const choice = listGraphChoices(clientId).find((c) => c.key === key);
+  if (macro) return macroSeries(food, clientId, macro);
+  const choice = listGraphChoices(ck, clientId).find((c) => c.key === key);
   if (!choice) return null;
   // A Weight goal watches every weigh-in (23 Oct, Alex: bodyWeightReadings), in the unit its target was set in.
-  if (WEIGHT_NAME.test(choice.name.trim())) return { name: choice.name, unit: choice.unit, series: bodyWeightReadings(clientId).map((r) => ({ date: r.date, value: weightIn(r, choice.unit) })) };
-  return { name: choice.name, unit: choice.unit, series: choice.kind === "field" ? getMeasurementSeries(choice.id) : getMetricSeries(choice.id) };
+  if (WEIGHT_NAME.test(choice.name.trim())) return { name: choice.name, unit: choice.unit, series: bodyWeightReadings(ck, clientId).map((r) => ({ date: r.date, value: weightIn(r, choice.unit) })) };
+  return { name: choice.name, unit: choice.unit, series: choice.kind === "field" ? getMeasurementSeries(choice.id) : getMetricSeries(ck, choice.id) };
 }
 
 /** Every exercise on any of the client's days, once each, by name. */
@@ -12098,48 +12060,40 @@ function goalGymName(clientId: number, t: GoalTracking | null): string | null {
 }
 
 /** This Monday-to-Sunday week's values of a daily metric. */
-function habitWeekValues(metricId: number, today: string): SeriesPoint[] {
+function habitWeekValues(ck: CheckInRows, metricId: number, today: string): SeriesPoint[] {
   const monday = weekStart(today);
   const sunday = (() => {
     const d = new Date(`${monday}T00:00:00`);
     d.setDate(d.getDate() + 6);
     return localDateStr(d);
   })();
-  return getMetricSeries(metricId).filter((p) => p.date >= monday && p.date <= sunday);
+  return getMetricSeries(ck, metricId).filter((p) => p.date >= monday && p.date <= sunday);
 }
 
-export function goalContext(clientId: number, goal: ClientGoal): GoalContext {
+export function goalContext(food: FoodRows, clientId: number, goal: ClientGoal, ck: CheckInRows): GoalContext {
   const today = localDateStr();
   const ctx: GoalContext = { today, createdAt: goal.created_at ?? today };
   const t = goal.tracked_by ?? null;
   if (t?.kind === "metric") {
-    const s = seriesForKey(clientId, t.metricKey);
+    const s = seriesForKey(food, clientId, t.metricKey, ck);
     if (s) ctx.metric = s;
   } else if (t?.kind === "exercise") {
     const name = getData().exercises.find((e) => e.id === t.exerciseId)?.name ?? "Exercise";
     ctx.exercise = { name, sets: loggedSetsForExercise(clientId, t.exerciseId, t.gymId ?? null), gymName: goalGymName(clientId, t) };
   } else if (t?.kind === "habit") {
     const name = getData().metric_definitions.find((m) => m.id === t.metricId)?.name ?? "Check-in";
-    ctx.habit = { name, weekValues: habitWeekValues(t.metricId, today) };
+    ctx.habit = { name, weekValues: habitWeekValues(ck, t.metricId, today) };
   }
   return ctx;
 }
 
-/** Goal rows as the client sees them, open goals first, done text goals last. */
-/** The client's current goals: open only, in the coach's own order. */
-export function getGoalViews(clientId: number): GoalView[] {
-  return listClientGoals(clientId)
-    .filter((g) => !g.done)
-    .map((g) => computeGoalView({ id: g.id, text: g.text, done: g.done, tracking: g.tracked_by ?? null }, goalContext(clientId, g)));
-}
-
 /** The coach's list: every goal the client sees, with its tracking in words. */
-export function getGoalSummaries(clientId: number): { goal: ClientGoal; view: GoalView; tracking: string }[] {
+export function getGoalSummaries(food: FoodRows, clientId: number, ck: CheckInRows): { goal: ClientGoal; view: GoalView; tracking: string }[] {
   return listClientGoals(clientId).map((g) => {
     const t = g.tracked_by ?? null;
     const names: { metric?: string; unit?: string; exercise?: string; habit?: string; gym?: string | null } = {};
     if (t?.kind === "metric") {
-      const s = seriesForKey(clientId, t.metricKey);
+      const s = seriesForKey(food, clientId, t.metricKey, ck);
       names.metric = s?.name;
       names.unit = s?.unit;
     } else if (t?.kind === "exercise") {
@@ -12149,7 +12103,7 @@ export function getGoalSummaries(clientId: number): { goal: ClientGoal; view: Go
     else if (t?.kind === "habit") names.habit = getData().metric_definitions.find((m) => m.id === t.metricId)?.name;
     return {
       goal: g,
-      view: computeGoalView({ id: g.id, text: g.text, done: g.done, tracking: t }, goalContext(clientId, g)),
+      view: computeGoalView({ id: g.id, text: g.text, done: g.done, tracking: t }, goalContext(food, clientId, g, ck)),
       tracking: describeTracking(t, names),
     };
   });
@@ -12168,7 +12122,7 @@ export type GoalEditorOptions = {
   gyms: { id: number; name: string; removed: boolean }[];
 };
 
-export function getGoalEditorOptions(clientId: number): GoalEditorOptions {
+export function getGoalEditorOptions(food: FoodRows, clientId: number, ck: CheckInRows): GoalEditorOptions {
   const today = localDateStr();
   const phase = getCurrentPhase(clientId, "nutrition") ?? getCurrentPhase(clientId, "training");
   const phaseEnd = phase
@@ -12183,20 +12137,20 @@ export function getGoalEditorOptions(clientId: number): GoalEditorOptions {
     phaseEnd,
     metrics: [
       // What the client logs in the food diary comes first: nutrition goals are set on these.
-      { key: KCAL_GOAL_KEY, group: "nutrition", ...calorieSeries(clientId) },
-      { key: MACRO_GOAL_KEYS.protein, group: "nutrition", ...macroSeries(clientId, "protein") },
-      { key: MACRO_GOAL_KEYS.carbs, group: "nutrition", ...macroSeries(clientId, "carbs") },
-      { key: MACRO_GOAL_KEYS.fat, group: "nutrition", ...macroSeries(clientId, "fat") },
-      ...listGraphChoices(clientId).map((c) => ({
+      { key: KCAL_GOAL_KEY, group: "nutrition", ...calorieSeries(food, clientId) },
+      { key: MACRO_GOAL_KEYS.protein, group: "nutrition", ...macroSeries(food, clientId, "protein") },
+      { key: MACRO_GOAL_KEYS.carbs, group: "nutrition", ...macroSeries(food, clientId, "carbs") },
+      { key: MACRO_GOAL_KEYS.fat, group: "nutrition", ...macroSeries(food, clientId, "fat") },
+      ...listGraphChoices(ck, clientId).map((c) => ({
         key: c.key,
         name: c.name,
         unit: c.unit,
         group: c.kind === "field" ? "measurements" : metricGroup(getData().metric_definitions.find((m) => m.id === c.id)?.category ?? "other").key,
-        series: c.kind === "field" ? getMeasurementSeries(c.id) : getMetricSeries(c.id),
+        series: c.kind === "field" ? getMeasurementSeries(c.id) : getMetricSeries(ck, c.id),
       })),
     ],
     exercises: listClientExercises(clientId).map((e) => ({ ...e, sets: loggedSetsForExercise(clientId, e.id) })),
-    habits: listMetricDefinitions(clientId, "daily").map((m) => ({ id: m.id, name: m.name, weekValues: habitWeekValues(m.id, today) })),
+    habits: listMetricDefinitions(clientId, "daily").map((m) => ({ id: m.id, name: m.name, weekValues: habitWeekValues(ck, m.id, today) })),
     gyms: (() => {
       const home = homeGymId(clientId);
       return listClientGyms(clientId, true)
@@ -12221,57 +12175,6 @@ export type DataTile = {
   firstLabel: string;
   lastLabel: string;
 };
-
-export function getHomeDataTiles(clientId: number, weightGoalIsDown: boolean | null): DataTile[] {
-  const today = localDateStr();
-  const goals = listClientGoals(clientId).filter((g) => !g.done && g.tracked_by?.kind === "metric");
-  const choices = listGraphChoices(clientId).filter((c) => c.pointCount > 0);
-  const picked = (choices.some((c) => c.pinned) ? choices.filter((c) => c.pinned) : choices).slice(0, PINNED_METRIC_LIMIT);
-  const fmt = (n: number) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10));
-  return picked.map((c) => {
-    const series = c.kind === "field" ? getMeasurementSeries(c.id) : getMetricSeries(c.id);
-    const latest = series[series.length - 1];
-    const weekAgo = (() => {
-      const cutoff = (() => {
-        const d = new Date(`${today}T00:00:00`);
-        d.setDate(d.getDate() - 7);
-        return localDateStr(d);
-      })();
-      const before = series.filter((p) => p.date <= cutoff);
-      return before[before.length - 1] ?? null;
-    })();
-    const delta = weekAgo ? latest.value - weekAgo.value : null;
-    const linked = goals.find((g) => g.tracked_by?.kind === "metric" && g.tracked_by.metricKey === c.key)?.tracked_by;
-    const goodDown =
-      linked?.kind === "metric" ? linked.op === "<=" : c.name.toLowerCase().includes("weight") ? weightGoalIsDown : null;
-    const trendTone: DataTile["trendTone"] =
-      delta == null || delta === 0 || goodDown == null ? "neutral" : (delta < 0) === goodDown ? "green" : "orange";
-    const bars: (number | null)[] = [];
-    for (let i = 7; i >= 0; i--) {
-      const d = new Date(`${weekStart(today)}T00:00:00`);
-      d.setDate(d.getDate() - i * 7);
-      const monday = localDateStr(d);
-      const e = new Date(d);
-      e.setDate(e.getDate() + 6);
-      const sunday = localDateStr(e);
-      const inWeek = series.filter((p) => p.date >= monday && p.date <= sunday);
-      bars.push(inWeek.length ? inWeek[inWeek.length - 1].value : null);
-    }
-    const present = bars.filter((b): b is number => b != null);
-    return {
-      key: c.key,
-      name: c.name,
-      unit: c.unit,
-      valueLabel: fmt(latest.value),
-      trendLabel: delta == null ? "–" : delta === 0 ? "= 7 days" : `${delta > 0 ? "▲" : "▼"} ${fmt(Math.abs(delta))}${c.unit ? ` ${c.unit}` : ""}`,
-      trendTone,
-      bars,
-      goal: linked?.kind === "metric" ? linked.target : null,
-      firstLabel: present.length ? fmt(present[0]) : "–",
-      lastLabel: present.length ? fmt(present[present.length - 1]) : "–",
-    };
-  });
-}
 
 
 // ---------------------------------------------------------------------------
@@ -12566,13 +12469,13 @@ export function getPlanPhases(clientId: number) {
   return { today, thisWeek, phases, programs: programOptions };
 }
 
-export function getPlanData(clientId: number) {
+export function getPlanData(food: FoodRows, clientId: number, ck: CheckInRows) {
   const { today, thisWeek, phases, programs: programOptions } = getPlanPhases(clientId);
 
   // The goals table.
   const fmtShort = dayMonth;
   const meetingsById = new Map(listMeetings(clientId).map((m) => [m.id, m] as const));
-  const goals: PlanGoalRow[] = getGoalSummaries(clientId).map(({ goal, view }) => {
+  const goals: PlanGoalRow[] = getGoalSummaries(food, clientId, ck).map(({ goal, view }) => {
     const t = goal.tracked_by ?? null;
     let live = "";
     let pct = goal.done ? 100 : 0;
@@ -12585,7 +12488,7 @@ export function getPlanData(clientId: number) {
       // The figure alone: the coach reads it against the rule underneath.
       live = figure;
       pct = view.reached ? 100 : Math.round((view.bar ?? 0) * 100);
-      const s = seriesForKey(clientId, t.metricKey);
+      const s = seriesForKey(food, clientId, t.metricKey, ck);
       tracks = s?.name ?? "Metric";
       rule = `Metric · ${tracks} ${t.op} ${fmtNumber(t.target)}${s?.unit ? ` ${s.unit}` : ""} · by ${fmtShort(t.byDate)}`;
       by = fmtShort(t.byDate);
@@ -12644,7 +12547,7 @@ export function getPlanData(clientId: number) {
     programs: programOptions,
     goals,
     nextReview: next ? { id: next.id, date: next.date, topic: next.topic || "Check-in call" } : null,
-    goalOptions: getGoalEditorOptions(clientId),
+    goalOptions: getGoalEditorOptions(food, clientId, ck),
     mainGoal: getClientProfile(clientId).main_goal ?? "",
     mainGoalSavedAt: getClientProfile(clientId).main_goal_saved_at ?? null,
   };
@@ -13121,9 +13024,10 @@ export function searchFoods(clientId: number, query: string, limit = 30): FoodOp
 
 /** What the client logged last, the latest first, each with the amount and unit it was logged at then (11 Nov, Alex:
  * "peanut butter I added yesterday… if I added 60 g then it adds 60 g"), for the top of an empty search. */
-export function recentFoods(clientId: number, limit = 8): FoodOption[] {
+export function recentFoods(rows: FoodRows, clientId: number, limit = 8): FoodOption[] {
+  rows.need("recentFoods", clientId, "all", ["entries"]);
   const latest = new Map<string, FoodEntry>();
-  for (const e of getData().food_entries) {
+  for (const e of rows.entries) {
     if (e.client_id !== clientId || !(e.grams > 0)) continue;
     const had = latest.get(e.food_id);
     if (!had || e.logged_at > had.logged_at) latest.set(e.food_id, e);
@@ -13140,68 +13044,71 @@ export function recentFoods(clientId: number, limit = 8): FoodOption[] {
     .slice(0, limit);
 }
 
-export function listFoodEntries(clientId: number, date: string): FoodEntry[] {
-  return getData()
-    .food_entries.filter((e) => e.client_id === clientId && e.date === date)
+export function listFoodEntries(rows: FoodRows, clientId: number, date: string): FoodEntry[] {
+  rows.need("listFoodEntries", clientId, { dates: [date] }, ["entries"]);
+  return rows.entries
+    .filter((e) => e.client_id === clientId && e.date === date)
     .sort((a, b) => a.logged_at.localeCompare(b.logged_at));
 }
 
 const r1 = (n: number) => Math.round(n * 10) / 10;
 
 /** The day's kcal from the diary into the calorie log the coach reads, when the client pushes it. Nothing logged in the diary: nothing happens. */
-export function pushFoodDayToCalorieLog(clientId: number, date: string): boolean {
-  const entries = listFoodEntries(clientId, date);
+export function pushFoodDayToCalorieLog(box: FoodBox, clientId: number, date: string): boolean {
+  const entries = listFoodEntries(box, clientId, date);
   if (entries.length === 0) return false;
   const kcal = Math.round(entries.reduce((s, e) => s + e.kcal, 0));
-  setCalorieLog(clientId, date, kcal, undefined, foodDayType(clientId, date), "diary");
+  setCalorieLog(box, clientId, date, kcal, undefined, foodDayType(box, clientId, date), "diary");
   return true;
 }
 
 /** The four standard meals, then the ones the client added for that day (or that hold food on it). */
-export function listFoodMeals(clientId: number, date: string): { id: FoodMeal; label: string; own: boolean }[] {
-  const data = getData();
-  const withFood = new Set(data.food_entries.filter((e) => e.client_id === clientId && e.date === date).map((e) => e.meal));
-  const extra = data.food_meals
+export function listFoodMeals(rows: FoodRows, clientId: number, date: string): { id: FoodMeal; label: string; own: boolean }[] {
+  rows.need("listFoodMeals", clientId, { dates: [date] }, ["entries", "meals"]);
+  const data = rows;
+  const withFood = new Set(data.entries.filter((e) => e.client_id === clientId && e.date === date).map((e) => e.meal));
+  const extra = data.meals
     .filter((m) => m.client_id === clientId && (m.date === date || withFood.has(`m:${m.id}`)))
     // The newest on top (10 Nov, Alex: "you always have the new one at the top"), until the client drags it elsewhere.
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
     .map((m) => ({ id: `m:${m.id}`, label: m.name, own: true }));
   const all = [...extra, ...FOOD_MEALS.map((m) => ({ ...m, own: false }))];
-  const order = getClient(clientId)?.meal_order;
+  const order = rows.client(clientId)?.meal_order;
   if (!order?.length) return all;
   const rank = new Map(order.map((id, i) => [id, i]));
   return all.map((m, i) => ({ m, i })).sort((a, b) => (rank.get(a.m.id) ?? (a.m.own ? -1000 : 1000) + a.i) - (rank.get(b.m.id) ?? (b.m.own ? -1000 : 1000) + b.i)).map((x) => x.m);
 }
 
 /** The meals in the order the client put them; ids not theirs are ignored, missing ones keep their place at the end. */
-export function reorderFoodMeals(clientId: number, date: string, ids: string[]) {
-  const client = getClient(clientId);
+export function reorderFoodMeals(box: FoodBox, clientId: number, date: string, ids: string[]) {
+  const client = box.client(clientId);
   if (!client) return;
-  const have = new Set(listFoodMeals(clientId, date).map((m) => m.id));
+  const have = new Set(listFoodMeals(box, clientId, date).map((m) => m.id));
   // Meals from other days keep their place in the order; today's are put as asked, in the places they held.
   const queue = ids.filter((id) => have.has(id));
   const placed = (client.meal_order ?? []).map((id) => (have.has(id) ? queue.shift() : id)).filter((id): id is string => !!id);
   client.meal_order = [...placed, ...queue];
-  persist();
+  box.persist();
 }
 
-export function hasFoodMeal(clientId: number, meal: string, date: string): boolean {
-  return listFoodMeals(clientId, date).some((m) => m.id === meal);
+export function hasFoodMeal(rows: FoodRows, clientId: number, meal: string, date: string): boolean {
+  return listFoodMeals(rows, clientId, date).some((m) => m.id === meal);
 }
 
-export function addFoodMeal(clientId: number, name: string, date: string): FoodMealSlot {
-  const data = getData();
-  const row: FoodMealSlot = { id: allocId("food_meals"), client_id: clientId, name, date, created_at: new Date().toISOString() };
-  data.food_meals.push(row);
-  persist();
+export function addFoodMeal(box: FoodBox, clientId: number, name: string, date: string): FoodMealSlot {
+  const data = box;
+  const row: FoodMealSlot = { id: box.alloc("meals"), client_id: clientId, name, date, created_at: new Date().toISOString() };
+  data.meals.push(row);
+  box.persist();
   return row;
 }
 
-export function renameFoodMeal(clientId: number, id: number, name: string): boolean {
-  const row = getData().food_meals.find((m) => m.id === id && m.client_id === clientId);
+export function renameFoodMeal(box: FoodBox, clientId: number, id: number, name: string): boolean {
+  box.need("renameFoodMeal", clientId, { dates: [] }, ["meals"]);
+  const row = box.meals.find((m) => m.id === id && m.client_id === clientId);
   if (!row) return false;
   row.name = name;
-  persist();
+  box.persist();
   return true;
 }
 
@@ -13211,34 +13118,36 @@ export function renameFoodMeal(clientId: number, id: number, name: string): bool
  * no date and can hold food on many. A saved day holding it keeps its name, so using that day still makes a card of it.
  * Returns the files nothing shows any more, for the bucket copies; null when nothing went.
  */
-export function removeFoodMeal(clientId: number, id: number, date: string | null = null): string[] | null {
-  const data = getData();
-  const row = data.food_meals.find((m) => m.id === id && m.client_id === clientId);
+export function removeFoodMeal(box: FoodBox, clientId: number, id: number, date: string | null = null): string[] | null {
+  // The meal's rows on every day (its `held` checks), its photo on the day, the saved days naming it (writeFood's reach).
+  box.need("removeFoodMeal", clientId, { dates: date == null ? [] : [date] }, ["meals", "photos", "savedDays"]);
+  const data = box;
+  const row = data.meals.find((m) => m.id === id && m.client_id === clientId);
   if (!row) return null;
   const key = `m:${id}`;
   const held = (e: FoodEntry) => e.client_id === clientId && e.meal === key;
-  if (date == null && data.food_entries.some(held)) return null;
-  data.food_entries = data.food_entries.filter((e) => !(held(e) && e.date === date));
-  const photos = data.meal_photos.filter((p) => p.client_id === clientId && p.meal === key && p.date === date);
-  data.meal_photos = data.meal_photos.filter((p) => !photos.includes(p));
-  if (!data.food_entries.some(held)) {
-    for (const d of data.saved_days) if (d.client_id === clientId) for (const i of d.items) if (i.meal === key) i.meal_name = row.name;
-    data.food_meals = data.food_meals.filter((m) => m !== row);
+  if (date == null && data.entries.some(held)) return null;
+  data.entries = data.entries.filter((e) => !(held(e) && e.date === date));
+  const photos = data.photos.filter((p) => p.client_id === clientId && p.meal === key && p.date === date);
+  data.photos = data.photos.filter((p) => !photos.includes(p));
+  if (!data.entries.some(held)) {
+    for (const d of data.savedDays) if (d.client_id === clientId) for (const i of d.items) if (i.meal === key) i.meal_name = row.name;
+    data.meals = data.meals.filter((m) => m !== row);
   }
-  const gone = dropUnusedMealPictures(photos.map((p) => p.file_path));
-  persist();
+  const gone = box.gc(photos.map((p) => p.file_path));
+  box.persist();
   return gone;
 }
 
 /** Everything in one meal on one day, copied into a meal on another (the same food and amounts, logged now). */
-export function copyFoodMeal(clientId: number, fromDate: string, fromMeal: string, toDate: string, toMeal: string): number {
-  const data = getData();
-  const rows = listFoodEntries(clientId, fromDate).filter((e) => e.meal === fromMeal);
+export function copyFoodMeal(box: FoodBox, clientId: number, fromDate: string, fromMeal: string, toDate: string, toMeal: string): number {
+  const data = box;
+  const rows = listFoodEntries(box, clientId, fromDate).filter((e) => e.meal === fromMeal);
   const now = new Date().toISOString();
-  const to = mealOnDay(clientId, toMeal, toDate);
-  for (const e of rows) data.food_entries.push({ ...e, id: allocId("food_entries"), date: toDate, meal: to, logged_at: now });
+  const to = mealOnDay(box, clientId, toMeal, toDate);
+  for (const e of rows) data.entries.push({ ...e, id: box.alloc("entries"), date: toDate, meal: to, logged_at: now });
   if (rows.length) {
-    persist();
+    box.persist();
   }
   return rows.length;
 }
@@ -13246,36 +13155,37 @@ export function copyFoodMeal(clientId: number, fromDate: string, fromMeal: strin
 export type SavedMealItemView = { food_id: string; name: string; grams: number; serving: string | null; kcal: number; protein: number; carbs: number; fat: number };
 export type SavedMealView = { id: number; name: string; kcal: number; protein: number; carbs: number; fat: number; picture: string | null; thumb: string | null; count: number; names: string[]; items: SavedMealItemView[] };
 
-export function listSavedMeals(clientId: number): SavedMealView[] {
-  return getData()
-    .saved_meals.filter((m) => m.client_id === clientId)
+export function listSavedMeals(rows: FoodRows, clientId: number): SavedMealView[] {
+  rows.need("listSavedMeals", clientId, { dates: [] }, ["savedMeals"]);
+  return rows.savedMeals
+    .filter((m) => m.client_id === clientId)
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
     .map((m) => ({ id: m.id, name: m.name, kcal: Math.round(m.items.reduce((s, i) => s + i.kcal, 0)), protein: Math.round(m.items.reduce((s, i) => s + i.protein, 0)), carbs: Math.round(m.items.reduce((s, i) => s + i.carbs, 0)), fat: Math.round(m.items.reduce((s, i) => s + i.fat, 0)), picture: m.picture ?? null, thumb: m.picture_thumb ?? null, count: m.items.length, names: [...new Set(m.items.map((i) => i.name))], items: m.items.map((i) => ({ food_id: i.food_id, name: i.name, grams: i.grams, serving: i.serving, kcal: i.kcal, protein: i.protein, carbs: i.carbs, fat: i.fat })) }));
 }
 
 /** One meal on one day, kept under a name to add again. */
-export function saveMeal(clientId: number, date: string, meal: FoodMeal, name: string): SavedMeal | null {
-  const rows = listFoodEntries(clientId, date).filter((e) => e.meal === meal);
+export function saveMeal(box: FoodBox, clientId: number, date: string, meal: FoodMeal, name: string): SavedMeal | null {
+  const rows = listFoodEntries(box, clientId, date).filter((e) => e.meal === meal);
   if (rows.length === 0) return null;
-  const data = getData();
+  const data = box;
   const row: SavedMeal = {
     ...(FOOD_MEALS.some((m) => m.id === meal) ? { slot: meal } : {}),
-    id: allocId("saved_meals"),
+    id: box.alloc("savedMeals"),
     client_id: clientId,
     name,
     items: rows.map((e) => ({ food_id: e.food_id, name: e.name, grams: e.grams, serving: e.serving, kcal: e.kcal, protein: e.protein, carbs: e.carbs, fat: e.fat })),
     created_at: new Date().toISOString(),
   };
   // The day's photo becomes the saved meal's picture (9 Nov, Alex): the same file, so nothing is copied.
-  const photo = getMealPhoto(clientId, date, meal);
+  const photo = getMealPhoto(box, clientId, date, meal);
   if (photo) {
     row.picture = photo;
-    row.picture_thumb = getData().meal_photos.find((p) => p.file_path === photo)?.thumb ?? null;
+    row.picture_thumb = box.photos.find((p) => p.file_path === photo)?.thumb ?? null;
   }
-  data.saved_meals.push(row);
+  data.savedMeals.push(row);
   // And the slot now is that meal: its card takes the name, its camera the saved meal.
   for (const e of rows) e.saved_meal_id = row.id;
-  persist();
+  box.persist();
   return row;
 }
 
@@ -13289,15 +13199,15 @@ function createdItem(clientId: number, i: CreatedItem) {
 }
 
 /** A saved meal made from nothing, on the Saved meals screen (10 Nov, Alex): a card named first and filled after, so it may hold no food yet. */
-export function createSavedMeal(clientId: number, name: string, items: CreatedItem[] = [], slot: string | null = null): SavedMeal | null {
+export function createSavedMeal(box: FoodBox, clientId: number, name: string, items: CreatedItem[] = [], slot: string | null = null): SavedMeal | null {
   const rows = items.map((i) => createdItem(clientId, i)).filter((r): r is NonNullable<typeof r> => r != null);
   if (!name.trim() || (items.length > 0 && rows.length === 0)) return null;
-  const data = getData();
+  const data = box;
   // Made for Breakfast, Lunch, Dinner or Snacks (12 Nov, Alex): used, it goes into that meal's card.
   const meal = slot && FOOD_MEALS.some((m) => m.id === slot) ? slot : null;
-  const row: SavedMeal = { ...(meal ? { slot: meal } : {}), id: allocId("saved_meals"), client_id: clientId, name, items: rows, created_at: new Date().toISOString() };
-  data.saved_meals.push(row);
-  persist();
+  const row: SavedMeal = { ...(meal ? { slot: meal } : {}), id: box.alloc("savedMeals"), client_id: clientId, name, items: rows, created_at: new Date().toISOString() };
+  data.savedMeals.push(row);
+  box.persist();
   return row;
 }
 
@@ -13305,122 +13215,125 @@ export function createSavedMeal(clientId: number, name: string, items: CreatedIt
 type SavedDayCard = NonNullable<SavedDay["cards"]>[number];
 
 /** Its cards: the ones kept on it, else, saved before and not changed since, one a meal it holds, the standard ones first. */
-function cardsOfSavedDay(d: SavedDay): SavedDayCard[] {
+function cardsOfSavedDay(rows: FoodRows, d: SavedDay): SavedDayCard[] {
   if (d.cards) return d.cards;
   const keys = [...new Set(d.items.map((i) => i.meal))];
   const standard = FOOD_MEALS.map((m) => m.id as string).filter((k) => keys.includes(k));
   const label = (key: string) =>
-    FOOD_MEALS.find((m) => m.id === key)?.label ?? d.items.find((i) => i.meal === key)?.meal_name ?? getData().food_meals.find((m) => `m:${m.id}` === key && m.client_id === d.client_id)?.name ?? "Meal";
+    FOOD_MEALS.find((m) => m.id === key)?.label ?? d.items.find((i) => i.meal === key)?.meal_name ?? rows.meals.find((m) => `m:${m.id}` === key && m.client_id === d.client_id)?.name ?? "Meal";
   return [...standard, ...keys.filter((k) => !standard.includes(k))].map((key) => ({ key, name: label(key) }));
 }
 
-const savedDayOf = (clientId: number, id: number) => getData().saved_days.find((d) => d.id === id && d.client_id === clientId) ?? null;
+const savedDayOf = (box: FoodRows, clientId: number, id: number) => {
+  box.need("savedDayOf", clientId, { dates: [] }, ["savedDays", "meals"]);
+  return box.savedDays.find((d) => d.id === id && d.client_id === clientId) ?? null;
+};
 
 /** The day and its card, the cards made its own so a change has somewhere to go. */
-function savedDayCard(clientId: number, id: number, key: string): { day: SavedDay; card: SavedDayCard } | null {
-  const day = savedDayOf(clientId, id);
+function savedDayCard(box: FoodBox, clientId: number, id: number, key: string): { day: SavedDay; card: SavedDayCard } | null {
+  const day = savedDayOf(box, clientId, id);
   if (!day) return null;
-  day.cards = cardsOfSavedDay(day);
+  day.cards = cardsOfSavedDay(box, day);
   const card = day.cards.find((c) => c.key === key);
   return card ? { day, card } : null;
 }
 
 /** Create a day (10 Nov, Alex): its name and the four standard cards, empty. */
-export function createBlankSavedDay(clientId: number, name: string): SavedDay | null {
+export function createBlankSavedDay(box: FoodBox, clientId: number, name: string): SavedDay | null {
   const clean = name.trim().slice(0, 40);
   if (!clean) return null;
-  const row: SavedDay = { id: allocId("saved_days"), client_id: clientId, name: clean, day_type: null, items: [], cards: FOOD_MEALS.map((m) => ({ key: m.id, name: m.label })), created_at: new Date().toISOString() };
-  getData().saved_days.push(row);
-  persist();
+  const row: SavedDay = { id: box.alloc("savedDays"), client_id: clientId, name: clean, day_type: null, items: [], cards: FOOD_MEALS.map((m) => ({ key: m.id, name: m.label })), created_at: new Date().toISOString() };
+  box.savedDays.push(row);
+  box.persist();
   return row;
 }
 
-export function renameSavedDay(clientId: number, id: number, name: string): boolean {
-  const day = savedDayOf(clientId, id);
+export function renameSavedDay(box: FoodBox, clientId: number, id: number, name: string): boolean {
+  const day = savedDayOf(box, clientId, id);
   const clean = name.trim().slice(0, 40);
   if (!day || !clean) return false;
   day.name = clean;
-  persist();
+  box.persist();
   return true;
 }
 
-export function addSavedDayCard(clientId: number, id: number, key: string, name: string): boolean {
-  const day = savedDayOf(clientId, id);
+export function addSavedDayCard(box: FoodBox, clientId: number, id: number, key: string, name: string): boolean {
+  const day = savedDayOf(box, clientId, id);
   const clean = name.trim().slice(0, 40);
   if (!day || !clean || !/^c:\d+$/.test(key)) return false;
-  day.cards = cardsOfSavedDay(day);
+  day.cards = cardsOfSavedDay(box, day);
   if (day.cards.some((c) => c.key === key)) return true;
   day.cards.unshift({ key, name: clean });
-  persist();
+  box.persist();
   return true;
 }
 
 /** The cards in the order dragged; keys not on the day are ignored, any left out keep their place at the end. */
-export function reorderSavedDayCards(clientId: number, id: number, keys: string[]): boolean {
-  const day = savedDayOf(clientId, id);
+export function reorderSavedDayCards(box: FoodBox, clientId: number, id: number, keys: string[]): boolean {
+  const day = savedDayOf(box, clientId, id);
   if (!day) return false;
-  const cards = cardsOfSavedDay(day);
+  const cards = cardsOfSavedDay(box, day);
   const placed = keys.flatMap((k) => cards.filter((c) => c.key === k));
   day.cards = [...new Set([...placed, ...cards])];
   day.ordered = true;
-  persist();
+  box.persist();
   return true;
 }
 
-export function renameSavedDayCard(clientId: number, id: number, key: string, name: string): boolean {
-  const found = savedDayCard(clientId, id, key);
+export function renameSavedDayCard(box: FoodBox, clientId: number, id: number, key: string, name: string): boolean {
+  const found = savedDayCard(box, clientId, id, key);
   const clean = name.trim().slice(0, 40);
   if (!found || !clean) return false;
   found.card.name = clean;
   // Its own meal now: a saved meal's name and picture would otherwise win when the day is used.
   for (const i of found.day.items) if (i.meal === key) delete i.saved_meal_id;
-  persist();
+  box.persist();
   return true;
 }
 
 /** A card off a saved day, with its foods. Returns its picture's file when nothing shows it any more; null when there is no such card. */
-export function removeSavedDayCard(clientId: number, id: number, key: string): string[] | null {
-  const found = savedDayCard(clientId, id, key);
+export function removeSavedDayCard(box: FoodBox, clientId: number, id: number, key: string): string[] | null {
+  const found = savedDayCard(box, clientId, id, key);
   if (!found) return null;
   found.day.cards = found.day.cards!.filter((c) => c !== found.card);
   found.day.items = found.day.items.filter((i) => i.meal !== key);
-  const gone = dropUnusedMealPictures([found.card.picture]);
-  persist();
+  const gone = box.gc([found.card.picture]);
+  box.persist();
   return gone;
 }
 
-export function addSavedDayFood(clientId: number, id: number, key: string, item: CreatedItem): boolean {
-  const found = savedDayCard(clientId, id, key);
+export function addSavedDayFood(box: FoodBox, clientId: number, id: number, key: string, item: CreatedItem): boolean {
+  const found = savedDayCard(box, clientId, id, key);
   const made = createdItem(clientId, item);
   if (!found || !made) return false;
   found.day.items.push({ meal: key, ...made });
-  persist();
+  box.persist();
   return true;
 }
 
 /** The card's food at `index`, checked against `foodId`. Its figures scale with the amount. */
-export function updateSavedDayFood(clientId: number, id: number, key: string, index: number, foodId: string, grams: number, serving: string | null): boolean {
-  const found = savedDayCard(clientId, id, key);
+export function updateSavedDayFood(box: FoodBox, clientId: number, id: number, key: string, index: number, foodId: string, grams: number, serving: string | null): boolean {
+  const found = savedDayCard(box, clientId, id, key);
   const item = found?.day.items.filter((i) => i.meal === key)[index];
   if (!item || item.food_id !== foodId || !(grams > 0) || grams > 5000 || !(item.grams > 0)) return false;
   const k = grams / item.grams;
   Object.assign(item, { grams: r1(grams), serving, kcal: r1(item.kcal * k), protein: r1(item.protein * k), carbs: r1(item.carbs * k), fat: r1(item.fat * k) });
-  persist();
+  box.persist();
   return true;
 }
 
-export function removeSavedDayFood(clientId: number, id: number, key: string, index: number, foodId: string): boolean {
-  const found = savedDayCard(clientId, id, key);
+export function removeSavedDayFood(box: FoodBox, clientId: number, id: number, key: string, index: number, foodId: string): boolean {
+  const found = savedDayCard(box, clientId, id, key);
   const item = found?.day.items.filter((i) => i.meal === key)[index];
   if (!found || !item || item.food_id !== foodId) return false;
   found.day.items = found.day.items.filter((i) => i !== item);
-  persist();
+  box.persist();
   return true;
 }
 
 /** The picture on the day's own card in the list. Returns its public path and the earlier file when nothing shows it any more. */
-export function setSavedDayCover(clientId: number, id: number, buffer: Buffer, mimeType: string): { path: string; gone: string[] } | null {
-  const day = savedDayOf(clientId, id);
+export function setSavedDayCover(box: FoodBox, clientId: number, id: number, buffer: Buffer, mimeType: string): { path: string; gone: string[] } | null {
+  const day = savedDayOf(box, clientId, id);
   if (!day) return null;
   const ext = (mimeType.split("/")[1] || "jpg").replace("jpeg", "jpg").replace(/[^a-z0-9]/gi, "") || "jpg";
   const date = localDateStr();
@@ -13432,25 +13345,25 @@ export function setSavedDayCover(clientId: number, id: number, buffer: Buffer, m
   const was = day.picture;
   day.picture = publicPath;
   delete day.picture_thumb;
-  const gone = dropUnusedMealPictures([was]);
-  persist();
+  const gone = box.gc([was]);
+  box.persist();
   return { path: publicPath, gone };
 }
 
-export function removeSavedDayCover(clientId: number, id: number): string[] {
-  const day = savedDayOf(clientId, id);
+export function removeSavedDayCover(box: FoodBox, clientId: number, id: number): string[] {
+  const day = savedDayOf(box, clientId, id);
   if (!day?.picture) return [];
   const was = day.picture;
   delete day.picture;
   delete day.picture_thumb;
-  const gone = dropUnusedMealPictures([was]);
-  persist();
+  const gone = box.gc([was]);
+  box.persist();
   return gone;
 }
 
 /** A card's picture on a saved day. Returns its public path and the earlier file when nothing shows it any more. */
-export function setSavedDayPicture(clientId: number, id: number, key: string, buffer: Buffer, mimeType: string): { path: string; gone: string[] } | null {
-  const found = savedDayCard(clientId, id, key);
+export function setSavedDayPicture(box: FoodBox, clientId: number, id: number, key: string, buffer: Buffer, mimeType: string): { path: string; gone: string[] } | null {
+  const found = savedDayCard(box, clientId, id, key);
   if (!found) return null;
   const ext = (mimeType.split("/")[1] || "jpg").replace("jpeg", "jpg").replace(/[^a-z0-9]/gi, "") || "jpg";
   const date = localDateStr();
@@ -13463,30 +13376,31 @@ export function setSavedDayPicture(clientId: number, id: number, key: string, bu
   found.card.picture = publicPath;
   delete found.card.picture_thumb;
   for (const i of found.day.items) if (i.meal === key) delete i.saved_meal_id;
-  const gone = dropUnusedMealPictures([was]);
-  persist();
+  const gone = box.gc([was]);
+  box.persist();
   return { path: publicPath, gone };
 }
 
-export function removeSavedDayPicture(clientId: number, id: number, key: string): string[] {
-  const found = savedDayCard(clientId, id, key);
+export function removeSavedDayPicture(box: FoodBox, clientId: number, id: number, key: string): string[] {
+  const found = savedDayCard(box, clientId, id, key);
   if (!found?.card.picture) return [];
   const was = found.card.picture;
   delete found.card.picture;
   delete found.card.picture_thumb;
-  const gone = dropUnusedMealPictures([was]);
-  persist();
+  const gone = box.gc([was]);
+  box.persist();
   return gone;
 }
 
 /** Forgets a saved meal. Returns the picture files that went with it (only when nothing else shows them), for the bucket copies. */
-export function deleteSavedMeal(clientId: number, id: number): string[] {
-  const data = getData();
-  const row = data.saved_meals.find((m) => m.id === id && m.client_id === clientId);
+export function deleteSavedMeal(box: FoodBox, clientId: number, id: number): string[] {
+  box.need("deleteSavedMeal", clientId, { dates: [] }, ["savedMeals"]);
+  const data = box;
+  const row = data.savedMeals.find((m) => m.id === id && m.client_id === clientId);
   if (!row) return [];
-  data.saved_meals = data.saved_meals.filter((m) => m !== row);
-  const gone = dropUnusedMealPictures([row.picture]);
-  persist();
+  data.savedMeals = data.savedMeals.filter((m) => m !== row);
+  const gone = box.gc([row.picture]);
+  box.persist();
   return gone;
 }
 
@@ -13494,54 +13408,57 @@ const foodsKey = (rows: { food_id: string; grams: number }[]) => rows.map((e) =>
 
 // A saved meal changed on its own card (10 Nov, Alex: its picture, its name, its foods, as a day's card). What is logged
 // never changes with it: a day it filled keeps the foods eaten, and stays that saved meal (was_foods).
-const savedMealOf = (clientId: number, id: number) => getData().saved_meals.find((m) => m.id === id && m.client_id === clientId) ?? null;
+const savedMealOf = (box: FoodRows, clientId: number, id: number) => {
+  box.need("savedMealOf", clientId, { dates: [] }, ["savedMeals"]);
+  return box.savedMeals.find((m) => m.id === id && m.client_id === clientId) ?? null;
+};
 
-function changeSavedFoods(row: SavedMeal, change: () => void) {
+function changeSavedFoods(box: FoodBox, row: SavedMeal, change: () => void) {
   const before = foodsKey(row.items);
   change();
   if (foodsKey(row.items) !== before) row.was_foods = [...(row.was_foods ?? []).filter((k) => k !== before), before].slice(-20);
-  persist();
+  box.persist();
 }
 
-export function renameSavedMeal(clientId: number, id: number, name: string): boolean {
-  const row = savedMealOf(clientId, id);
+export function renameSavedMeal(box: FoodBox, clientId: number, id: number, name: string): boolean {
+  const row = savedMealOf(box, clientId, id);
   const clean = name.trim().slice(0, 40);
   if (!row || !clean) return false;
   row.name = clean;
-  persist();
+  box.persist();
   return true;
 }
 
-export function addSavedMealFood(clientId: number, id: number, item: CreatedItem): boolean {
-  const row = savedMealOf(clientId, id);
+export function addSavedMealFood(box: FoodBox, clientId: number, id: number, item: CreatedItem): boolean {
+  const row = savedMealOf(box, clientId, id);
   const made = createdItem(clientId, item);
   if (!row || !made) return false;
-  changeSavedFoods(row, () => row.items.push(made));
+  changeSavedFoods(box, row, () => row.items.push(made));
   return true;
 }
 
 /** The food at `index`, checked against `foodId` so a list out of date never changes the wrong one. Its figures scale with the amount. */
-export function updateSavedMealFood(clientId: number, id: number, index: number, foodId: string, grams: number, serving: string | null): boolean {
-  const row = savedMealOf(clientId, id);
+export function updateSavedMealFood(box: FoodBox, clientId: number, id: number, index: number, foodId: string, grams: number, serving: string | null): boolean {
+  const row = savedMealOf(box, clientId, id);
   const item = row?.items[index];
   if (!row || !item || item.food_id !== foodId || !(grams > 0) || grams > 5000 || !(item.grams > 0)) return false;
   const k = grams / item.grams;
-  changeSavedFoods(row, () => {
+  changeSavedFoods(box, row, () => {
     row.items[index] = { ...item, grams: r1(grams), serving, kcal: r1(item.kcal * k), protein: r1(item.protein * k), carbs: r1(item.carbs * k), fat: r1(item.fat * k) };
   });
   return true;
 }
 
-export function removeSavedMealFood(clientId: number, id: number, index: number, foodId: string): boolean {
-  const row = savedMealOf(clientId, id);
+export function removeSavedMealFood(box: FoodBox, clientId: number, id: number, index: number, foodId: string): boolean {
+  const row = savedMealOf(box, clientId, id);
   if (!row || row.items[index]?.food_id !== foodId) return false;
-  changeSavedFoods(row, () => row.items.splice(index, 1));
+  changeSavedFoods(box, row, () => row.items.splice(index, 1));
   return true;
 }
 
 /** The saved meal's own picture, set from its card: that meal alone, no day's photo. Returns its public path and the earlier file when nothing shows it any more. */
-export function setSavedMealPicture(clientId: number, id: number, buffer: Buffer, mimeType: string): { path: string; gone: string[] } | null {
-  const row = savedMealOf(clientId, id);
+export function setSavedMealPicture(box: FoodBox, clientId: number, id: number, buffer: Buffer, mimeType: string): { path: string; gone: string[] } | null {
+  const row = savedMealOf(box, clientId, id);
   if (!row) return null;
   const ext = (mimeType.split("/")[1] || "jpg").replace("jpeg", "jpg").replace(/[^a-z0-9]/gi, "") || "jpg";
   const date = localDateStr();
@@ -13554,20 +13471,20 @@ export function setSavedMealPicture(clientId: number, id: number, buffer: Buffer
   const was = row.picture;
   row.picture = publicPath;
   delete row.picture_thumb;
-  const gone = dropUnusedMealPictures([was]);
-  persist();
+  const gone = box.gc([was]);
+  box.persist();
   return { path: publicPath, gone };
 }
 
 /** Takes the picture off a saved meal. Other days' photos stay. Returns the file when nothing shows it any more. */
-export function removeSavedMealPicture(clientId: number, id: number): string[] {
-  const row = savedMealOf(clientId, id);
+export function removeSavedMealPicture(box: FoodBox, clientId: number, id: number): string[] {
+  const row = savedMealOf(box, clientId, id);
   if (!row?.picture) return [];
   const was = row.picture;
   delete row.picture;
   delete row.picture_thumb;
-  const gone = dropUnusedMealPictures([was]);
-  persist();
+  const gone = box.gc([was]);
+  box.persist();
   return gone;
 }
 
@@ -13606,60 +13523,55 @@ function slotAddsToSavedMeal(rows: FoodEntry[], saved: SavedMeal): boolean {
  * foods become that day's, the foods added that day included, and every row is stamped as having come with it. Other days
  * it filled keep what was eaten and stay that meal (was_foods). False when the slot is no saved meal.
  */
-export function updateSavedMealFromSlot(clientId: number, date: string, meal: string): boolean {
-  const rows = listFoodEntries(clientId, date).filter((e) => e.meal === meal);
-  const saved = savedMealOfRows(rows, getData().saved_meals.filter((s) => s.client_id === clientId));
+export function updateSavedMealFromSlot(box: FoodBox, clientId: number, date: string, meal: string): boolean {
+  const rows = listFoodEntries(box, clientId, date).filter((e) => e.meal === meal);
+  const saved = savedMealOfRows(rows, box.savedMeals.filter((s) => s.client_id === clientId));
   if (!saved || !slotAddsToSavedMeal(rows, saved)) return false;
-  changeSavedFoods(saved, () => {
+  changeSavedFoods(box, saved, () => {
     saved.items = rows.map((e) => ({ food_id: e.food_id, name: e.name, grams: e.grams, serving: e.serving, kcal: e.kcal, protein: e.protein, carbs: e.carbs, fat: e.fat }));
   });
   for (const e of rows) e.saved_meal_id = saved.id;
-  persist();
+  box.persist();
   return true;
 }
 
-function savedMealOfSlot(clientId: number, date: string, meal: string): SavedMeal | null {
-  return savedMealOfRows(listFoodEntries(clientId, date).filter((e) => e.meal === meal), getData().saved_meals.filter((s) => s.client_id === clientId));
+function savedMealOfSlot(box: FoodRows, clientId: number, date: string, meal: string): SavedMeal | null {
+  return savedMealOfRows(listFoodEntries(box, clientId, date).filter((e) => e.meal === meal), box.savedMeals.filter((s) => s.client_id === clientId));
 }
 
-/** Of these picture files, the ones no saved meal and no day's photo holds any more: taken off the disk and returned, for the bucket copies. */
-function dropUnusedMealPictures(paths: (string | null | undefined)[]): string[] {
-  const data = getData();
-  const gone = [...new Set(paths.filter((p): p is string => !!p))].filter((p) => !data.saved_meals.some((s) => s.picture === p) && !data.meal_photos.some((m) => m.file_path === p) && !data.saved_days.some((d) => d.picture === p || d.cards?.some((c) => c.picture === p)));
-  for (const p of gone) trashFile(path.join(DATA_DIR, p.startsWith("/") ? p.slice(1) : p));
-  return gone;
-}
+// Of these picture files, the ones no saved meal and no day's photo holds any more: FoodBox.gc (app/lib/food/rows.ts,
+// the store's lists in memory as before; SQL in the same transaction with FOOD_STORE=pg).
 
 /** Own cards just made on a day, on top in this order: made within a millisecond of each other, "newest first" alone would be a coin toss. */
-function rankOwnCards(clientId: number, meals: string[]) {
-  const client = getClient(clientId);
+function rankOwnCards(box: FoodBox, clientId: number, meals: string[]) {
+  const client = box.client(clientId);
   const own = [...new Set(meals.filter((m) => m.startsWith("m:")))];
   if (!client || own.length === 0) return;
   client.meal_order = [...own, ...(client.meal_order ?? []).filter((id) => !own.includes(id))];
 }
 
 /** Where a meal id from another day (or a saved day) lands on a date: itself when it is a standard meal or already on that day, else an added meal of the same name on that day, made if needed; Snacks when the source meal is gone. */
-function mealOnDay(clientId: number, meal: string, date: string, taken: Set<string> = new Set(), deletedName?: string): string {
-  if (hasFoodMeal(clientId, meal, date)) return meal;
-  const data = getData();
-  const source = meal.startsWith("m:") ? data.food_meals.find((m) => m.id === Number(meal.slice(2)) && m.client_id === clientId) : null;
+function mealOnDay(box: FoodBox, clientId: number, meal: string, date: string, taken: Set<string> = new Set(), deletedName?: string): string {
+  if (hasFoodMeal(box, clientId, meal, date)) return meal;
+  const data = box;
+  const source = meal.startsWith("m:") ? data.meals.find((m) => m.id === Number(meal.slice(2)) && m.client_id === clientId) : null;
   // A meal deleted since keeps its name on the saved day (10 Nov, Alex: a different meal is a card of its own, never Snacks).
   const name = source?.name ?? deletedName;
   if (!name) return "snacks";
-  const twin = data.food_meals.find((m) => m.client_id === clientId && m.date === date && m.name.toLowerCase() === name.toLowerCase() && !taken.has(`m:${m.id}`));
-  const landed = `m:${twin ? twin.id : addFoodMeal(clientId, name, date).id}`;
+  const twin = data.meals.find((m) => m.client_id === clientId && m.date === date && m.name.toLowerCase() === name.toLowerCase() && !taken.has(`m:${m.id}`));
+  const landed = `m:${twin ? twin.id : addFoodMeal(box, clientId, name, date).id}`;
   taken.add(landed);
   return landed;
 }
 
 /** A saved meal's foods and amounts into a meal on a day, logged now. */
-export function addSavedMeal(clientId: number, id: number, date: string, meal: FoodMeal): number {
-  const data = getData();
-  const saved = data.saved_meals.find((m) => m.id === id && m.client_id === clientId);
-  if (!saved || !hasFoodMeal(clientId, meal, date)) return 0;
+export function addSavedMeal(box: FoodBox, clientId: number, id: number, date: string, meal: FoodMeal): number {
+  const data = box;
+  const saved = data.savedMeals.find((m) => m.id === id && m.client_id === clientId);
+  if (!saved || !hasFoodMeal(box, clientId, meal, date)) return 0;
   const now = new Date().toISOString();
-  for (const i of saved.items) data.food_entries.push({ id: allocId("food_entries"), client_id: clientId, date, meal, ...i, logged_at: now, saved_meal_id: saved.id });
-  persist();
+  for (const i of saved.items) data.entries.push({ id: box.alloc("entries"), client_id: clientId, date, meal, ...i, logged_at: now, saved_meal_id: saved.id });
+  box.persist();
   return saved.items.length;
 }
 
@@ -13667,60 +13579,63 @@ export function addSavedMeal(clientId: number, id: number, date: string, meal: F
     top of each other ("it's a different meal"). The one exception: saved from or made for Breakfast, Lunch, Dinner or
     Snacks (or named as one of them) it always goes into that meal's card, added to what is there ("always the breakfast
     slot with that meal"; 12 Nov, Alex: "so we don't have two breakfasts", Snacks too). Nothing logged is taken away. */
-export function addSavedMealCard(clientId: number, id: number, date: string): number {
-  const saved = getData().saved_meals.find((m) => m.id === id && m.client_id === clientId);
+export function addSavedMealCard(box: FoodBox, clientId: number, id: number, date: string): number {
+  box.need("addSavedMealCard", clientId, { dates: [date] }, ["savedMeals", "meals", "entries"]);
+  const saved = box.savedMeals.find((m) => m.id === id && m.client_id === clientId);
   if (!saved || saved.items.length === 0) return 0;
   const named = FOOD_MEALS.find((m) => m.label.toLowerCase() === saved.name.trim().toLowerCase())?.id ?? null;
   const slot = saved.slot && FOOD_MEALS.some((m) => m.id === saved.slot) ? saved.slot : named;
-  if (slot) return addSavedMeal(clientId, id, date, slot);
-  const card = addFoodMeal(clientId, saved.name, date);
-  return addSavedMeal(clientId, id, date, `m:${card.id}`);
+  if (slot) return addSavedMeal(box, clientId, id, date, slot);
+  const card = addFoodMeal(box, clientId, saved.name, date);
+  return addSavedMeal(box, clientId, id, date, `m:${card.id}`);
 }
 
 export type SavedDayCardView = { key: string; name: string; picture: string | null; thumb: string | null; items: SavedMealItemView[] };
 export type SavedDayView = { id: number; name: string; kcal: number; count: number; dayType: "training" | "rest" | null; picture: string | null; thumb: string | null; cards: SavedDayCardView[] };
 
-export function listSavedDays(clientId: number): SavedDayView[] {
-  return getData()
-    .saved_days.filter((d) => d.client_id === clientId)
+export function listSavedDays(rows: FoodRows, clientId: number): SavedDayView[] {
+  rows.need("listSavedDays", clientId, { dates: [] }, ["savedDays", "meals"]);
+  return rows.savedDays
+    .filter((d) => d.client_id === clientId)
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
-    .map((d) => ({ id: d.id, name: d.name, kcal: Math.round(d.items.reduce((s, i) => s + i.kcal, 0)), count: d.items.length, dayType: d.day_type ?? null, picture: d.picture ?? null, thumb: d.picture_thumb ?? null, cards: cardsOfSavedDay(d).map((c) => ({ key: c.key, name: c.name, picture: c.picture ?? null, thumb: c.picture_thumb ?? null, items: d.items.filter((i) => i.meal === c.key).map((i) => ({ food_id: i.food_id, name: i.name, grams: i.grams, serving: i.serving, kcal: i.kcal, protein: i.protein, carbs: i.carbs, fat: i.fat })) })) }));
+    .map((d) => ({ id: d.id, name: d.name, kcal: Math.round(d.items.reduce((s, i) => s + i.kcal, 0)), count: d.items.length, dayType: d.day_type ?? null, picture: d.picture ?? null, thumb: d.picture_thumb ?? null, cards: cardsOfSavedDay(rows, d).map((c) => ({ key: c.key, name: c.name, picture: c.picture ?? null, thumb: c.picture_thumb ?? null, items: d.items.filter((i) => i.meal === c.key).map((i) => ({ food_id: i.food_id, name: i.name, grams: i.grams, serving: i.serving, kcal: i.kcal, protein: i.protein, carbs: i.carbs, fat: i.fat })) })) }));
 }
 
 /** One whole day, kept under a name to log again. */
-export function saveDay(clientId: number, date: string, name: string): SavedDay | null {
-  const rows = listFoodEntries(clientId, date);
+export function saveDay(box: FoodBox, clientId: number, date: string, name: string): SavedDay | null {
+  const rows = listFoodEntries(box, clientId, date);
   if (rows.length === 0) return null;
-  const data = getData();
+  const data = box;
   const row: SavedDay = {
-    id: allocId("saved_days"),
+    id: box.alloc("savedDays"),
     client_id: clientId,
     name,
-    day_type: foodDayType(clientId, date),
+    day_type: foodDayType(box, clientId, date),
     // A meal that came from a saved meal stays that meal when the day is used again (its card, its picture).
     items: rows.map((e) => ({ meal: e.meal, food_id: e.food_id, name: e.name, grams: e.grams, serving: e.serving, kcal: e.kcal, protein: e.protein, carbs: e.carbs, fat: e.fat, ...(e.saved_meal_id != null ? { saved_meal_id: e.saved_meal_id } : {}) })),
     created_at: new Date().toISOString(),
   };
-  data.saved_days.push(row);
-  persist();
+  data.savedDays.push(row);
+  box.persist();
   return row;
 }
 
 /** Forgets a saved day. Returns its pictures' files that nothing else shows, for the bucket copies. */
-export function deleteSavedDay(clientId: number, id: number): string[] {
-  const data = getData();
-  const row = savedDayOf(clientId, id);
+export function deleteSavedDay(box: FoodBox, clientId: number, id: number): string[] {
+  const data = box;
+  const row = savedDayOf(box, clientId, id);
   if (!row) return [];
-  data.saved_days = data.saved_days.filter((d) => d !== row);
-  const gone = dropUnusedMealPictures([row.picture, ...(row.cards ?? []).map((c) => c.picture)]);
-  persist();
+  data.savedDays = data.savedDays.filter((d) => d !== row);
+  const gone = box.gc([row.picture, ...(row.cards ?? []).map((c) => c.picture)]);
+  box.persist();
   return gone;
 }
 
 /** A saved day's meals onto a date, logged now; meals that no longer exist go to Snacks. */
-export function addSavedDay(clientId: number, id: number, date: string): number {
-  const data = getData();
-  const saved = data.saved_days.find((d) => d.id === id && d.client_id === clientId);
+export function addSavedDay(box: FoodBox, clientId: number, id: number, date: string): number {
+  box.need("addSavedDay", clientId, { dates: [date] });
+  const data = box;
+  const saved = data.savedDays.find((d) => d.id === id && d.client_id === clientId);
   if (!saved) return 0;
   const now = new Date().toISOString();
   const landing = new Map<string, string>();
@@ -13730,47 +13645,47 @@ export function addSavedDay(clientId: number, id: number, date: string): number 
       // A card as it was named: a standard meal under its own name goes there, any other is a card under the name it has.
       const shown = saved.cards?.find((c) => c.key === i.meal)?.name;
       const asIs = shown == null || FOOD_MEALS.some((m) => m.id === i.meal && m.label === shown);
-      landing.set(i.meal, asIs ? mealOnDay(clientId, i.meal, date, taken, meal_name) : mealOnDay(clientId, `c:${i.meal}`, date, taken, shown));
+      landing.set(i.meal, asIs ? mealOnDay(box, clientId, i.meal, date, taken, meal_name) : mealOnDay(box, clientId, `c:${i.meal}`, date, taken, shown));
     }
-    data.food_entries.push({ id: allocId("food_entries"), client_id: clientId, date, ...i, meal: landing.get(i.meal)!, logged_at: now });
+    data.entries.push({ id: box.alloc("entries"), client_id: clientId, date, ...i, meal: landing.get(i.meal)!, logged_at: now });
   }
   // The order it was dragged into, else its own cards as they stand on it.
   const landed = (saved.cards ?? []).flatMap((c) => landing.get(c.key) ?? []);
-  if (saved.ordered) reorderFoodMeals(clientId, date, [...new Set([...landed, ...listFoodMeals(clientId, date).map((m) => m.id)])]);
-  else rankOwnCards(clientId, landed.length > 0 ? landed : [...landing.values()]);
+  if (saved.ordered) reorderFoodMeals(box, clientId, date, [...new Set([...landed, ...listFoodMeals(box, clientId, date).map((m) => m.id)])]);
+  else rankOwnCards(box, clientId, landed.length > 0 ? landed : [...landing.values()]);
   // A card's picture comes with it as that day's photo, the same file, never over one the day already has.
   for (const c of saved.cards ?? []) {
     const meal = landing.get(c.key);
-    if (!c.picture || !meal || data.meal_photos.some((p) => p.client_id === clientId && p.date === date && p.meal === meal)) continue;
-    data.meal_photos.push({ id: allocId("meal_photos"), client_id: clientId, date, meal, file_path: c.picture, uploaded_at: now, ...(c.picture_thumb ? { thumb: c.picture_thumb } : {}) });
+    if (!c.picture || !meal || data.photos.some((p) => p.client_id === clientId && p.date === date && p.meal === meal)) continue;
+    data.photos.push({ id: box.alloc("photos"), client_id: clientId, date, meal, file_path: c.picture, uploaded_at: now, ...(c.picture_thumb ? { thumb: c.picture_thumb } : {}) });
   }
-  if (saved.items.length) persist();
+  if (saved.items.length) box.persist();
   return saved.items.length;
 }
 
 /** Every meal of one day into another, the same foods and amounts, logged now; meals that no longer exist go to Snacks. */
-export function copyFoodDay(clientId: number, fromDate: string, toDate: string): number {
-  const data = getData();
-  const rows = listFoodEntries(clientId, fromDate);
+export function copyFoodDay(box: FoodBox, clientId: number, fromDate: string, toDate: string): number {
+  const data = box;
+  const rows = listFoodEntries(box, clientId, fromDate);
   const now = new Date().toISOString();
   const landing = new Map<string, string>();
   const taken = new Set<string>();
   for (const e of rows) {
-    if (!landing.has(e.meal)) landing.set(e.meal, mealOnDay(clientId, e.meal, toDate, taken));
-    data.food_entries.push({ ...e, id: allocId("food_entries"), date: toDate, meal: landing.get(e.meal)!, logged_at: now });
+    if (!landing.has(e.meal)) landing.set(e.meal, mealOnDay(box, clientId, e.meal, toDate, taken));
+    data.entries.push({ ...e, id: box.alloc("entries"), date: toDate, meal: landing.get(e.meal)!, logged_at: now });
   }
-  rankOwnCards(clientId, listFoodMeals(clientId, fromDate).flatMap((m) => landing.get(m.id) ?? []));
-  if (rows.length) persist();
+  rankOwnCards(box, clientId, listFoodMeals(box, clientId, fromDate).flatMap((m) => landing.get(m.id) ?? []));
+  if (rows.length) box.persist();
   return rows.length;
 }
 
-export function addFoodEntry(clientId: number, date: string, meal: FoodMeal, foodId: string, grams: number, serving: string | null): FoodEntry | null {
+export function addFoodEntry(box: FoodBox, clientId: number, date: string, meal: FoodMeal, foodId: string, grams: number, serving: string | null): FoodEntry | null {
   const food = getFoodOption(clientId, foodId);
-  if (!food || !hasFoodMeal(clientId, meal, date)) return null;
-  const data = getData();
+  if (!food || !hasFoodMeal(box, clientId, meal, date)) return null;
+  const data = box;
   const k = grams / 100;
   const entry: FoodEntry = {
-    id: allocId("food_entries"),
+    id: box.alloc("entries"),
     client_id: clientId,
     date,
     meal,
@@ -13784,13 +13699,13 @@ export function addFoodEntry(clientId: number, date: string, meal: FoodMeal, foo
     fat: r1(food.fat * k),
     logged_at: new Date().toISOString(),
   };
-  data.food_entries.push(entry);
-  persist();
+  data.entries.push(entry);
+  box.persist();
   return entry;
 }
 
-export function updateFoodEntry(clientId: number, id: number, grams: number, serving: string | null): boolean {
-  const e = getData().food_entries.find((x) => x.id === id && x.client_id === clientId);
+export function updateFoodEntry(box: FoodBox, clientId: number, id: number, grams: number, serving: string | null): boolean {
+  const e = box.entries.find((x) => x.id === id && x.client_id === clientId);
   if (!e) return false;
   const food = getFoodOption(clientId, e.food_id);
   // The food is gone (a custom one deleted): scale the snapshot instead.
@@ -13802,16 +13717,16 @@ export function updateFoodEntry(clientId: number, id: number, grams: number, ser
   e.protein = r1(per100.protein * k);
   e.carbs = r1(per100.carbs * k);
   e.fat = r1(per100.fat * k);
-  persist();
+  box.persist();
   return true;
 }
 
-export function removeFoodEntry(clientId: number, id: number): boolean {
-  const data = getData();
-  const e = data.food_entries.find((x) => x.id === id && x.client_id === clientId);
+export function removeFoodEntry(box: FoodBox, clientId: number, id: number): boolean {
+  const data = box;
+  const e = data.entries.find((x) => x.id === id && x.client_id === clientId);
   if (!e) return false;
-  data.food_entries = data.food_entries.filter((x) => x !== e);
-  persist();
+  data.entries = data.entries.filter((x) => x !== e);
+  box.persist();
   return true;
 }
 
@@ -13840,13 +13755,15 @@ export function addCustomFood(clientId: number, food: { name: string; kcal: numb
 // simply replaces the first, on the disk as well as in the table.
 
 /** The client's picture of one meal, or null. */
-export function getMealPhoto(clientId: number, date: string, meal: string): string | null {
-  return getData().meal_photos.find((p) => p.client_id === clientId && p.date === date && p.meal === meal)?.file_path ?? null;
+export function getMealPhoto(rows: FoodRows, clientId: number, date: string, meal: string): string | null {
+  rows.need("getMealPhoto", clientId, { dates: [date] }, ["photos"]);
+  return rows.photos.find((p) => p.client_id === clientId && p.date === date && p.meal === meal)?.file_path ?? null;
 }
 
 /** Every meal on a date that has a picture, by meal key. */
-export function mealPhotosOn(clientId: number, date: string): Map<string, string> {
-  return new Map(getData().meal_photos.filter((p) => p.client_id === clientId && p.date === date).map((p) => [p.meal, p.file_path] as const));
+export function mealPhotosOn(rows: FoodRows, clientId: number, date: string): Map<string, string> {
+  rows.need("mealPhotosOn", clientId, { dates: [date] }, ["photos"]);
+  return new Map(rows.photos.filter((p) => p.client_id === clientId && p.date === date).map((p) => [p.meal, p.file_path] as const));
 }
 
 // ---- Video requests: the coach asks for a video of an exercise ----------
@@ -14011,7 +13928,7 @@ export async function replyToMedia(id: number, text: string, withPicture = false
   const picture = withPicture && row.reply_media === "photo" && row.reply_file_path ? { path: row.reply_file_path, type: "image" as const, name: "Reply.jpg" } : undefined;
   // With CHAT_STORE=pg the message carries a key of its own (chatReplyMedia…, never once()'s, which once() keeps after
   // the store has the reply): a false back means it went already, so this is that reply.
-  await sendChatMessage(row.client_id, "coach", clean, picture, exerciseLinkFor(row), null, { path: "w.insert.replyMedia", ...(CHAT_PG && onceKey ? { onceKey } : {}) });
+  await sendChatMessage(row.client_id, "coach", clean, picture, exerciseLinkFor(row), null, { path: "w.insert.replyMedia", silent: true, ...(CHAT_PG && onceKey ? { onceKey } : {}) });
   return true;
 }
 /** A recorded form review: its file is already up (/api/video-reply); the message, its length and the drawing count follow. */
@@ -14022,7 +13939,7 @@ export async function sendFormReview(id: number, message: string, meta: { durati
   row.reply_annotations = Number.isFinite(meta.annotations) ? Math.max(0, Math.round(meta.annotations)) : null;
   if (!sendVideoReply(id, message, onceKey?.key)) return false;
   // The clip in the chat too, pointing at the exercise.
-  await sendChatMessage(row.client_id, "coach", message.trim().slice(0, 2000), { path: row.reply_file_path, type: "video", name: "Form review.mp4" }, exerciseLinkFor(row), null, { path: "w.insert.formReview", ...(CHAT_PG && onceKey ? { onceKey } : {}) });
+  await sendChatMessage(row.client_id, "coach", message.trim().slice(0, 2000), { path: row.reply_file_path, type: "video", name: "Form review.mp4" }, exerciseLinkFor(row), null, { path: "w.insert.formReview", silent: true, ...(CHAT_PG && onceKey ? { onceKey } : {}) });
   return true;
 }
 /**
@@ -14156,7 +14073,7 @@ export function markVideoSeen(id: number) {
  * Writes the picture to the disk and files it as that day's photo; on a meal that is a saved meal, as the saved meal's
  * picture as well (9 Nov, Alex). Returns its public path and the earlier files nothing shows any more.
  */
-export function saveMealPhoto(clientId: number, date: string, meal: string, buffer: Buffer, mimeType: string): { path: string; gone: string[] } {
+export function saveMealPhoto(box: FoodBox, clientId: number, date: string, meal: string, buffer: Buffer, mimeType: string): { path: string; gone: string[] } {
   const ext = (mimeType.split("/")[1] || "jpg").replace("jpeg", "jpg").replace(/[^a-z0-9]/gi, "") || "jpg";
   // "m:12" is a meal the client added; a colon is not a filename anywhere.
   const slug = meal.replace(/[^a-z0-9]/gi, "-");
@@ -14167,24 +14084,25 @@ export function saveMealPhoto(clientId: number, date: string, meal: string, buff
   fs.writeFileSync(path.join(dir, filename), buffer);
   const publicPath = `/uploads/meals/${clientId}/${date}/${filename}`;
 
-  const data = getData();
-  const row = data.meal_photos.find((p) => p.client_id === clientId && p.date === date && p.meal === meal);
+  const data = box;
+  box.need("saveMealPhoto", clientId, { dates: [date] }, ["photos", "entries", "savedMeals"]);
+  const row = data.photos.find((p) => p.client_id === clientId && p.date === date && p.meal === meal);
   const was: (string | null | undefined)[] = [row?.file_path];
   if (row) {
     row.file_path = publicPath;
     row.uploaded_at = new Date().toISOString();
     delete row.thumb;
   } else {
-    data.meal_photos.push({ id: allocId("meal_photos"), client_id: clientId, date, meal, file_path: publicPath, uploaded_at: new Date().toISOString() });
+    data.photos.push({ id: box.alloc("photos"), client_id: clientId, date, meal, file_path: publicPath, uploaded_at: new Date().toISOString() });
   }
-  const saved = savedMealOfSlot(clientId, date, meal);
+  const saved = savedMealOfSlot(box, clientId, date, meal);
   if (saved) {
     was.push(saved.picture);
     saved.picture = publicPath;
     delete saved.picture_thumb;
   }
-  const gone = dropUnusedMealPictures(was);
-  persist();
+  const gone = box.gc(was);
+  box.persist();
   return { path: publicPath, gone };
 }
 
@@ -14194,19 +14112,20 @@ export function saveMealPhoto(clientId: number, date: string, meal: string, buff
  * stays and stands in as the card's picture, as do other days' photos, the coach's record of what was eaten.
  * Returns the files nothing shows any more, for the bucket copies.
  */
-export function removeMealPhoto(clientId: number, date: string, meal: string): string[] {
-  const data = getData();
-  const row = data.meal_photos.find((p) => p.client_id === clientId && p.date === date && p.meal === meal);
-  const saved = savedMealOfSlot(clientId, date, meal);
+export function removeMealPhoto(box: FoodBox, clientId: number, date: string, meal: string): string[] {
+  const data = box;
+  box.need("removeMealPhoto", clientId, { dates: [date] }, ["photos", "entries", "savedMeals"]);
+  const row = data.photos.find((p) => p.client_id === clientId && p.date === date && p.meal === meal);
+  const saved = savedMealOfSlot(box, clientId, date, meal);
   const shown = saved?.picture ?? row?.file_path;
   if (!shown) return [];
-  if (row?.file_path === shown) data.meal_photos = data.meal_photos.filter((p) => p !== row);
+  if (row?.file_path === shown) data.photos = data.photos.filter((p) => p !== row);
   if (saved?.picture) {
     delete saved.picture;
     delete saved.picture_thumb;
   }
-  const gone = dropUnusedMealPictures([shown]);
-  persist();
+  const gone = box.gc([shown]);
+  box.persist();
   return gone;
 }
 
@@ -14251,33 +14170,43 @@ const dayLabelFor = (date: string, today: string): string => {
 
 /** Training or rest on a date: as set on the diary, else as logged with the calories, else by whether a set was logged. */
 // Training day unless the client picked otherwise (10 Nov, Alex: "have it on training day always").
-export function foodDayType(clientId: number, date: string): "training" | "rest" {
-  return getData().food_days.find((d) => d.client_id === clientId && d.date === date)?.day_type ?? "training";
+export function foodDayType(rows: FoodRows, clientId: number, date: string): "training" | "rest" {
+  rows.need("foodDayType", clientId, { dates: [date] }, ["days"]);
+  return rows.days.find((d) => d.client_id === clientId && d.date === date)?.day_type ?? "training";
+}
+
+/** Whether opening this day has a Rest pick to let go (releaseEmptyRestDay would change something): FOOD_STORE=pg reads first. */
+export function restDayToRelease(rows: FoodRows, clientId: number, date: string): boolean {
+  rows.need("restDayToRelease", clientId, { dates: [date] }, ["days", "entries"]);
+  const row = rows.days.find((d) => d.client_id === clientId && d.date === date);
+  return row?.day_type === "rest" && listFoodEntries(rows, clientId, date).length === 0;
 }
 
 /** A day being opened: Rest picked on it counts only with something logged under it (10 Nov, Alex). While the day stays open the pick holds. */
-export function releaseEmptyRestDay(clientId: number, date: string) {
-  const data = getData();
-  const row = data.food_days.find((d) => d.client_id === clientId && d.date === date);
-  if (row?.day_type !== "rest" || listFoodEntries(clientId, date).length > 0) return;
-  data.food_days = data.food_days.filter((d) => d !== row);
-  persist();
+export function releaseEmptyRestDay(box: FoodBox, clientId: number, date: string) {
+  const data = box;
+  box.need("releaseEmptyRestDay", clientId, { dates: [date] }, ["days", "entries"]);
+  const row = data.days.find((d) => d.client_id === clientId && d.date === date);
+  if (row?.day_type !== "rest" || listFoodEntries(box, clientId, date).length > 0) return;
+  data.days = data.days.filter((d) => d !== row);
+  box.persist();
 }
 
-export function setFoodDayType(clientId: number, date: string, dayType: "training" | "rest") {
-  const data = getData();
-  const row = data.food_days.find((d) => d.client_id === clientId && d.date === date);
+export function setFoodDayType(box: FoodBox, clientId: number, date: string, dayType: "training" | "rest") {
+  const data = box;
+  box.need("setFoodDayType", clientId, { dates: [date] }, ["days", "calories"]);
+  const row = data.days.find((d) => d.client_id === clientId && d.date === date);
   if (row) row.day_type = dayType;
-  else data.food_days.push({ id: allocId("food_days"), client_id: clientId, date, day_type: dayType } as FoodDay);
+  else data.days.push({ id: box.alloc("days"), client_id: clientId, date, day_type: dayType } as FoodDay);
   // The calorie log the coach reads says the same.
-  const log = getCalorieLog(clientId, date);
-  if (log) setCalorieLog(clientId, date, log.kcal, undefined, dayType);
-  persist();
+  const log = getCalorieLog(box, clientId, date);
+  if (log) setCalorieLog(box, clientId, date, log.kcal, undefined, dayType);
+  box.persist();
 }
 
 /** The kcal and macro targets the diary counts down from on a date: the ring's, for the kind of day it is. */
-export function foodDiaryTargetOn(clientId: number, date: string): FoodDiaryView["target"] {
-  return foodDiaryTargetsFor(clientId)[foodDayType(clientId, date)];
+export function foodDiaryTargetOn(rows: FoodRows, clientId: number, date: string): FoodDiaryView["target"] {
+  return foodDiaryTargetsFor(clientId)[foodDayType(rows, clientId, date)];
 }
 
 /** A training day's targets and a rest day's, each null without targets. */
@@ -14314,12 +14243,10 @@ export type MealComment = { id: number; text: string; when: string };
  * comment of this client's; anything else is left alone.
  */
 export async function removeMealComment(clientId: number, messageId: number) {
-  const data = getData();
   const msg = await deleteRow(clientId, messageId, { sender: "coach", foodMeal: true }, "w.mealComment.remove");
   if (!msg) return;
-  // Its notification: by the message's id, else logged in the same breath, with the same words (noteFor).
-  const note = noteFor({ id: messageId, client_id: clientId, text: msg.text, created_at: msg.created_at, unknown: msg.unknown });
-  if (note) data.coach_activity = data.coach_activity.filter((a) => a !== note);
+  // Its notification: by the message's id, else logged in the same breath, with the same words (chatNoteFollows).
+  await chatNoteFollows({ id: messageId, client_id: clientId, text: msg.text, created_at: msg.created_at, unknown: msg.unknown }, "action.chatNote.mealRemove", "delete");
   persist();
   chatChanged(clientId);
 }
@@ -14335,8 +14262,7 @@ export async function editMealComment(clientId: number, messageId: number, text:
   // No edited_at on a meal comment (as it always was): the door leaves it alone when given none.
   const msg = await editText(clientId, messageId, { sender: "coach", text: clean, editedAt: null, foodMeal: true }, "w.mealComment.edit");
   if (!msg) return;
-  const note = noteFor({ id: messageId, client_id: clientId, text: msg.was_text, created_at: msg.was_at, unknown: msg.unknown });
-  if (note) note.message = clean;
+  await chatNoteFollows({ id: messageId, client_id: clientId, text: msg.was_text, created_at: msg.was_at, unknown: msg.unknown }, "action.chatNote.mealEdit", { reword: clean });
   persist();
   chatChanged(clientId);
 }
@@ -14381,12 +14307,14 @@ export type LoggedDaysView = {
 };
 
 /** The days a client logged food on, newest first, inside a date range. */
-export function getLoggedDays(clientId: number, from: string, to: string, comments: ChatThread | "no-comments"): LoggedDaysView {
-  const data = getData();
+export function getLoggedDays(food: FoodRows, clientId: number, from: string, to: string, comments: ChatThread | "no-comments"): LoggedDaysView {
+  // The calorie logs whole (the day-type map keeps the last of each date), the rest over the window.
+  food.need("getLoggedDays", clientId, "all", ["calories"]);
+  food.need("getLoggedDays", clientId, { from, to }, ["entries", "meals", "photos"]);
   const derived = getNutritionGoalsSummary(clientId);
   const trainedOn = trainingDates(clientId);
-  const dayType = new Map(data.calorie_logs.filter((c) => c.client_id === clientId).map((c) => [c.date, c] as const));
-  const entries = data.food_entries.filter((e) => e.client_id === clientId && e.date >= from && e.date <= to);
+  const dayType = new Map(food.calories.filter((c) => c.client_id === clientId).map((c) => [c.date, c] as const));
+  const entries = food.entries.filter((e) => e.client_id === clientId && e.date >= from && e.date <= to);
 
   const byDate = new Map<string, typeof entries>();
   for (const e of entries) {
@@ -14398,8 +14326,8 @@ export function getLoggedDays(clientId: number, from: string, to: string, commen
   const days: LoggedDay[] = [...byDate.entries()]
     .sort((a, b) => b[0].localeCompare(a[0]))
     .map(([date, rows]) => {
-      const labels = new Map(listFoodMeals(clientId, date).map((m) => [m.id, m.label] as const));
-      const photos = mealPhotosOn(clientId, date);
+      const labels = new Map(listFoodMeals(food, clientId, date).map((m) => [m.id, m.label] as const));
+      const photos = mealPhotosOn(food, clientId, date);
       // "no-comments": a reader that throws the comments away (macroSeries) reads no chat for them.
       const commentsOn = comments === "no-comments" ? new Map<string, MealComment[]>() : mealCommentsOn(comments, clientId, date);
       const order = [...labels.keys()];
@@ -14494,12 +14422,14 @@ export type LoggedValues = {
  * phase that has ended) rather than today.
  */
 export function getLoggedValues(
+  ck: CheckInRows,
   clientId: number,
   cadence: MetricCadence,
   count: number,
   scope?: { metrics: MetricDefinition[]; until?: string }
 ): LoggedValues {
   const data = getData();
+  ck.need("getLoggedValues", clientId, "all");
   const defs = (scope ? scope.metrics : listAllMetrics(clientId)).filter((m) => m.frequency === cadence);
   const metrics: LoggedMetric[] = defs.map((m) => {
     const g = metricGroup(m.category);
@@ -14552,7 +14482,7 @@ export function getLoggedValues(
     const to = byName.get(m.name.trim().toLowerCase());
     if (to != null) target.set(m.id, to);
   }
-  for (const e of data.metric_entries) {
+  for (const e of ck.entries) {
     const to = target.get(e.metric_definition_id);
     if (to == null || e.value == null || !keys.has(e.period)) continue;
     const key = `${to}:${e.period}`;
@@ -14579,7 +14509,7 @@ export function getLoggedValues(
   }
 
   const notes: Record<string, string> = {};
-  for (const n of data.check_in_notes ?? []) {
+  for (const n of ck.notes) {
     if (n.client_id !== clientId || n.kind !== cadence || !keys.has(n.period)) continue;
     if (n.text.trim()) notes[n.period] = n.text.trim();
   }
@@ -14619,31 +14549,19 @@ export function setMetricSummary(id: number, summary: "change" | "average") {
   persist();
 }
 
-/**
- * Yesterday's evening and all-day questions still unanswered (an energy
- * level or a step count is only known at night, when it gets forgotten):
- * asked once more on Home's card the next day, once today's are all in.
- */
-export function yesterdaysOpenMetrics(clientId: number): { date: string; metrics: CheckInMetric[] } | null {
-  const d = new Date(`${localDateStr()}T00:00:00`);
-  d.setDate(d.getDate() - 1);
-  const date = localDateStr(d);
-  const section = checkInTrackerSection(clientId, "daily", date, "Daily", "");
-  const metrics = (section?.metrics ?? []).filter((m) => m.value === "" && (m.askAt === "evening" || m.askAt === "anytime"));
-  return metrics.length ? { date, metrics } : null;
-}
-
-export function getFoodDiary(clientId: number, date: string, chat: ChatThread): FoodDiaryView {
+export function getFoodDiary(food: FoodRows, clientId: number, date: string, chat: ChatThread): FoodDiaryView {
+  // Every day of the client (Recent reads them all), and the pictures' thumbs by file.
+  food.need("getFoodDiary", clientId, "all");
   const today = localDateStr();
-  const entries = listFoodEntries(clientId, date);
+  const entries = listFoodEntries(food, clientId, date);
   const sum = (k: "kcal" | "protein" | "carbs" | "fat") => r1(entries.reduce((s, e) => s + e[k], 0));
-  const meals = listFoodMeals(clientId, date);
-  const labelOf = new Map<string, string>([...FOOD_MEALS.map((m) => [m.id, m.label] as [string, string]), ...getData().food_meals.filter((m) => m.client_id === clientId).map((m) => [`m:${m.id}`, m.name] as [string, string])]);
+  const meals = listFoodMeals(food, clientId, date);
+  const labelOf = new Map<string, string>([...FOOD_MEALS.map((m) => [m.id, m.label] as [string, string]), ...food.meals.filter((m) => m.client_id === clientId).map((m) => [`m:${m.id}`, m.name] as [string, string])]);
   // The same foods in the same amounts as a saved meal: it is that meal.
-  const savedKeys = getData()
-    .saved_meals.filter((s) => s.client_id === clientId)
+  const savedKeys = food.savedMeals
+    .filter((s) => s.client_id === clientId)
     .map((s) => ({ name: s.name, key: foodsKey(s.items) }));
-  const savedMeals = getData().saved_meals.filter((s) => s.client_id === clientId);
+  const savedMeals = food.savedMeals.filter((s) => s.client_id === clientId);
   // The other days' meals, newest first, so a day can be built from one before it.
   const since = new Date(`${today}T00:00:00`);
   since.setDate(since.getDate() - 14);
@@ -14652,14 +14570,14 @@ export function getFoodDiary(clientId: number, date: string, chat: ChatThread): 
   month.setDate(month.getDate() - 31);
   const monthAgo = localDateStr(month);
   const previousMap = new Map<string, FoodDiaryView["previous"][number]>();
-  for (const e of getData().food_entries.filter((x) => x.client_id === clientId && x.date !== date && x.date >= sinceStr && x.date <= today)) {
+  for (const e of food.entries.filter((x) => x.client_id === clientId && x.date !== date && x.date >= sinceStr && x.date <= today)) {
     const key = `${e.date}|${e.meal}`;
     const row = previousMap.get(key) ?? { date: e.date, dateLabel: dayLabelFor(e.date, today), meal: e.meal, mealLabel: labelOf.get(e.meal) ?? "Meal", kcal: 0, names: [] };
     row.kcal += e.kcal;
     if (!row.names.includes(e.name)) row.names.push(e.name);
     previousMap.set(key, row);
   }
-  const photos = mealPhotosOn(clientId, date);
+  const photos = mealPhotosOn(food, clientId, date);
   const comments = mealCommentsOn(chat, clientId, date);
   const order = new Map(meals.map((m, i) => [m.id, i]));
   const previous = [...previousMap.values()]
@@ -14668,12 +14586,12 @@ export function getFoodDiary(clientId: number, date: string, chat: ChatThread): 
   return {
     date,
     dateLabel: dayLabelFor(date, today),
-    target: foodDiaryTargetOn(clientId, date),
+    target: foodDiaryTargetOn(food, clientId, date),
     targets: foodDiaryTargetsFor(clientId),
-    dayType: foodDayType(clientId, date),
-    loggedKcal: getCalorieLog(clientId, date)?.kcal ?? null,
+    dayType: foodDayType(food, clientId, date),
+    loggedKcal: getCalorieLog(food, clientId, date)?.kcal ?? null,
     // The phone's figure (17 Nov; lib/healthSync.ts): read-only in the diary, "From Apple Health".
-    loggedFromPhone: getCalorieLog(clientId, date)?.source === "health",
+    loggedFromPhone: getCalorieLog(food, clientId, date)?.source === "health",
     eaten: { kcal: sum("kcal"), protein: sum("protein"), carbs: sum("carbs"), fat: sum("fat") },
     meals: meals.map((m) => {
       const rows = entries.filter((e) => e.meal === m.id);
@@ -14682,23 +14600,23 @@ export function getFoodDiary(clientId: number, date: string, chat: ChatThread): 
       const linked = savedMealOfRows(rows, savedMeals);
       const savedAs = linked?.name ?? (rows.length ? savedKeys.find((s) => s.key === key)?.name ?? null : null);
       const photo = photos.get(m.id) ?? null;
-      return { ...m, kcal: Math.round(tot("kcal")), protein: tot("protein"), carbs: tot("carbs"), fat: tot("fat"), entries: rows, savedAs, savedMealId: linked?.id ?? null, savedDiffers: !!linked && slotAddsToSavedMeal(rows, linked), photo, picture: linked?.picture ?? photo, thumb: (linked?.picture ? linked.picture_thumb : null) ?? getData().meal_photos.find((p) => p.file_path === (linked?.picture ?? photo))?.thumb ?? null, comments: comments.get(m.id) ?? [] };
+      return { ...m, kcal: Math.round(tot("kcal")), protein: tot("protein"), carbs: tot("carbs"), fat: tot("fat"), entries: rows, savedAs, savedMealId: linked?.id ?? null, savedDiffers: !!linked && slotAddsToSavedMeal(rows, linked), photo, picture: linked?.picture ?? photo, thumb: (linked?.picture ? linked.picture_thumb : null) ?? food.photos.find((p) => p.file_path === (linked?.picture ?? photo))?.thumb ?? null, comments: comments.get(m.id) ?? [] };
     }),
-    recent: recentFoods(clientId),
-    saved: listSavedMeals(clientId),
-    savedDays: listSavedDays(clientId),
+    recent: recentFoods(food, clientId),
+    saved: listSavedMeals(food, clientId),
+    savedDays: listSavedDays(food, clientId),
     ...(() => {
       if (entries.length === 0) return { savedDayAs: null, savedDayId: null };
       // Meals by name, since a copied custom meal gets a new id on its day.
       const nameOf = (meal: string) => labelOf.get(meal)?.toLowerCase() ?? meal;
       const key = entries.map((e) => `${nameOf(e.meal)}@${e.food_id}@${e.grams}`).sort().join("|");
-      const hit = getData()
-        .saved_days.filter((d) => d.client_id === clientId)
+      const hit = food.savedDays
+        .filter((d) => d.client_id === clientId)
         .find((d) => d.items.map((i) => `${d.cards?.find((c) => c.key === i.meal)?.name.toLowerCase() ?? nameOf(i.meal)}@${i.food_id}@${i.grams}`).sort().join("|") === key);
       return { savedDayAs: hit?.name ?? null, savedDayId: hit?.id ?? null };
     })(),
     previous,
-    loggedDays: [...new Set(getData().food_entries.filter((e) => e.client_id === clientId && e.date >= monthAgo && e.date <= today).map((e) => e.date))],
+    loggedDays: [...new Set(food.entries.filter((e) => e.client_id === clientId && e.date >= monthAgo && e.date <= today).map((e) => e.date))],
   };
 }
 
@@ -15186,10 +15104,11 @@ export function applySignUpDetails(coachId: number, name: string, business: stri
  * back from today, or from yesterday while today is still open, so a streak
  * doesn't read 0 every morning before the first answer.
  */
-export function getCheckInStreak(clientId: number): number {
+export function getCheckInStreak(ck: CheckInRows, clientId: number): number {
   const data = getData();
+  ck.need("getCheckInStreak", clientId, "all", ["entries"]);
   const defs = new Set(data.metric_definitions.filter((d) => d.client_id === clientId && d.frequency === "daily").map((d) => d.id));
-  const days = new Set(data.metric_entries.filter((e) => defs.has(e.metric_definition_id) && e.value != null).map((e) => e.period));
+  const days = new Set(ck.entries.filter((e) => defs.has(e.metric_definition_id) && e.value != null).map((e) => e.period));
   let day = localDateStr();
   if (!days.has(day)) day = localDateStr(new Date(new Date(`${day}T12:00:00`).getTime() - 86400000));
   let n = 0;
@@ -15252,8 +15171,10 @@ export type ActivityDay = {
  * training, the food and the check-ins, each a third of the day's ring. A
  * record of what was done, not a score.
  */
-export function getActivityCalendar(clientId: number): ActivityDay[] {
+export function getActivityCalendar(food: FoodRows, clientId: number, ck: CheckInRows): ActivityDay[] {
   const data = getData();
+  food.need("getActivityCalendar", clientId, "all", ["entries", "calories"]);
+  ck.need("getActivityCalendar", clientId, "all", ["entries"]);
   const days = new Map<string, ActivityDay>();
   const day = (date: string) => {
     let d = days.get(date);
@@ -15271,7 +15192,7 @@ export function getActivityCalendar(clientId: number): ActivityDay[] {
 
   // Food: the diary's totals where there is a diary, else the typed calories.
   const totals = new Map<string, { kcal: number; protein: number; carbs: number; fat: number }>();
-  for (const e of data.food_entries) {
+  for (const e of food.entries) {
     if (e.client_id !== clientId) continue;
     const t = totals.get(e.date) ?? { kcal: 0, protein: 0, carbs: 0, fat: 0 };
     t.kcal += e.kcal;
@@ -15281,7 +15202,7 @@ export function getActivityCalendar(clientId: number): ActivityDay[] {
     totals.set(e.date, t);
   }
   for (const [date, t] of totals) day(date).food = { kcal: Math.round(t.kcal), protein: Math.round(t.protein), carbs: Math.round(t.carbs), fat: Math.round(t.fat) };
-  for (const c of data.calorie_logs) {
+  for (const c of food.calories) {
     if (c.client_id !== clientId || totals.has(c.date) || !(c.kcal > 0)) continue;
     day(c.date).food = { kcal: Math.round(c.kcal), protein: null, carbs: null, fat: null };
   }
@@ -15289,7 +15210,7 @@ export function getActivityCalendar(clientId: number): ActivityDay[] {
   // Check-ins: a daily reading on its day, a weekly one on the day it was sent, a measurement on its date.
   const defs = new Map(data.metric_definitions.filter((m) => m.client_id === clientId).map((m) => [m.id, m] as const));
   const auto = new Map<string, string[]>();
-  for (const e of data.metric_entries) {
+  for (const e of ck.entries) {
     const def = defs.get(e.metric_definition_id);
     if (!def || e.value == null) continue;
     const date = def.frequency === "daily" ? e.period : e.logged_at ? localDateStr(new Date(e.logged_at)) : null;
@@ -15324,13 +15245,14 @@ export function getActivityCalendar(clientId: number): ActivityDay[] {
  * (a metric has no date of its own, so one never filled is not counted, and a new one never makes older days look
  * short). Names, as the calendar's check-ins are.
  */
-export function dailyAskedOn(clientId: number): (date: string) => string[] {
+export function dailyAskedOn(ck: CheckInRows, clientId: number): (date: string) => string[] {
   const data = getData();
+  ck.need("dailyAskedOn", clientId, "all", ["entries"]);
   const phases = listClientPhases(clientId).filter((p) => p.track === "lifestyle" && !p.draft);
   const defs = data.metric_definitions.filter((m) => m.client_id === clientId && m.frequency === "daily");
   const first = new Map<number, string>();
   const ids = new Set(defs.map((m) => m.id));
-  for (const e of data.metric_entries) {
+  for (const e of ck.entries) {
     if (!ids.has(e.metric_definition_id) || e.value == null) continue;
     const had = first.get(e.metric_definition_id);
     if (!had || e.period < had) first.set(e.metric_definition_id, e.period);
@@ -15389,13 +15311,13 @@ export function keepSessions(dayIds: Iterable<number>) {
   for (const [clientId, days] of byClient) keep(clientId, sessionRecords(clientId, new Set(days)));
 }
 
-/** Before a metric goes: the days it was checked in. */
-function keepMetricReadings(metricId: number) {
+/** Before a metric goes: the days it was checked in (its figures as the removal read them: checkins/rows.ts). */
+function keepMetricReadings(box: CheckInRows, metricId: number) {
   const data = getData();
   const def = data.metric_definitions.find((m) => m.id === metricId);
   if (!def) return;
   const rows: KeptActivity[] = [];
-  for (const e of data.metric_entries) {
+  for (const e of box.entries) {
     if (e.metric_definition_id !== metricId || e.value == null) continue;
     const date = def.frequency === "daily" ? e.period : e.logged_at ? localDateStr(new Date(e.logged_at)) : null;
     if (date) rows.push({ kind: "checkin", date, name: def.name });

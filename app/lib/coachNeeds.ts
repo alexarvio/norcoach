@@ -9,6 +9,8 @@ import { cache } from "react";
 import { clientHomeRows, getActivityFeed, getClientHome, listClients, trainingIndex, type FeedEvent, type HomeAction } from "./queries";
 import { sub } from "./timing";
 import type { ChatCoachView } from "./chat/rows";
+import type { FoodRows } from "./food/rows";
+import type { CheckInRows } from "./checkins/rows";
 
 export type CoachNeeds = {
   /** Everything the coach's clients logged, newest first (getActivityFeed). */
@@ -23,8 +25,10 @@ export type CoachNeeds = {
  *  (`rail.feed`, `rail.needsYou`; `feedBoard.…` on the Feed, which reads before its rail). */
 // `chat`: the page's chat view (fetchCoachChat, at the page's top); cache() keys on it by identity, so a page hands the
 // one view it fetched to every reader in its render and they share this read.
-export const coachNeeds = cache((coachId: number, chat: ChatCoachView): CoachNeeds => {
-  const feed = sub("feed", () => getActivityFeed(coachId, chat));
+// `food`: the page's food view the same (fetchCoachFood, app/lib/food/rows.ts), fetched beside it.
+// `ck`: the page's check-in view the same (fetchCoachCheckIns, app/lib/checkins/rows.ts), fetched beside it.
+export const coachNeeds = cache((coachId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows): CoachNeeds => {
+  const feed = sub("feed", () => getActivityFeed(coachId, chat, food, ck));
   const byId = new Map(feed.map((e) => [e.id, e] as const));
   const homes = sub("needsYou", () => {
     const list = listClients(coachId);
@@ -45,7 +49,7 @@ export const coachNeeds = cache((coachId: number, chat: ChatCoachView): CoachNee
     const out: CoachNeeds["homes"] = new Map();
     for (const c of list) {
       try {
-        out.set(c.id, { actions: getClientHome(c.id, chat, feedOf.get(c.id) ?? [], ix, own).actions });
+        out.set(c.id, { actions: getClientHome(c.id, chat, food, ck, feedOf.get(c.id) ?? [], ix, own).actions });
       } catch (error) {
         out.set(c.id, { error });
       }
@@ -56,10 +60,10 @@ export const coachNeeds = cache((coachId: number, chat: ChatCoachView): CoachNee
 });
 
 /** One client's Needs-you items from the coach's read; a client outside it (not the coach's) read on its own, as before. */
-export function clientActions(coachId: number, clientId: number, chat: ChatCoachView): HomeAction[] {
-  const needs = coachNeeds(coachId, chat);
+export function clientActions(coachId: number, clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows): HomeAction[] {
+  const needs = coachNeeds(coachId, chat, food, ck);
   const home = needs.homes.get(clientId);
-  if (!home) return getClientHome(clientId, chat, needs.feed).actions;
+  if (!home) return getClientHome(clientId, chat, food, ck, needs.feed).actions;
   if ("error" in home) throw home.error;
   return home.actions;
 }

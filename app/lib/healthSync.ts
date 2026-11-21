@@ -8,6 +8,9 @@
 import { getData, MAX_DAY_STEPS, persist, allocId, type HealthWorkout } from "./db";
 import { checkInEditable, foodDayType, getMetricEntries, listMetricDefinitions, listMonthlyMetricsAsked, localDateStr, monthStart, setMetricEntry, weekStart, weightInUnit, type MetricCadence, type MetricDefinition } from "./queries";
 import { healthKindOf, type HealthKind } from "./healthKind";
+import { cleanText } from "./pg/store";
+import { writeFood, type FoodBox } from "./food/rows";
+import { writeCheckIns, type CheckInBox } from "./checkins/rows";
 
 export { healthKindOf, type HealthKind };
 
@@ -53,22 +56,52 @@ function editablePeriods(frequency: MetricCadence, today: string): Set<string> {
 }
 const periodOf = (frequency: MetricCadence, day: string) => (frequency === "weekly" ? weekStart(day) : frequency === "monthly" ? monthStart(day) : day);
 
-export function syncHealthForClient(clientId: number, input: HealthSyncInput): HealthSyncResult {
-  const today = localDateStr();
-  const now = new Date().toISOString();
-  // The metrics the client is asked: monthly ones only while monthly check-ins are on for them (listMonthlyMetricsAsked).
+/** The metrics the client is asked that the phone can fill: monthly ones only while monthly check-ins are on for them. */
+function healthMatched(clientId: number) {
   const defs = [...listMetricDefinitions(clientId, "daily"), ...listMetricDefinitions(clientId, "weekly"), ...listMonthlyMetricsAsked(clientId)];
-  const matched = defs.flatMap((def) => {
+  return defs.flatMap((def) => {
     const k = healthKindOf(def);
     return k ? [{ def, ...k }] : [];
   });
-  const tracked = [...new Set(matched.map((m) => m.kind))];
+}
+
+export async function syncHealthForClient(clientId: number, input: HealthSyncInput): Promise<HealthSyncResult> {
+  const today = localDateStr();
+  const now = new Date().toISOString();
+  const tracked = [...new Set(healthMatched(clientId).map((m) => m.kind))];
+  // Every period a check-in can still change (checkInEditable's seven days, and the weeks and months they fall in): what
+  // one sync reads and writes, one transaction with CHECKINS_STORE=pg (quest 9).
+  const span = (() => {
+    const d = new Date(`${today}T00:00:00`);
+    d.setDate(d.getDate() - 7);
+    const d7 = localDateStr(d);
+    const w = weekStart(d7);
+    const mo = monthStart(d7);
+    return { from: w < mo ? w : mo, to: today };
+  })();
+  // The figures in one write: "keep typed", the phone's figure sent back unchanged and the weigh-in's moment all decided
+  // on the rows read under the client's lock. The metrics found again in it (one taken off meanwhile is left out).
+  const saved = await writeCheckIns(
+    "w.entry.health",
+    clientId,
+    () => ({ defIds: healthMatched(clientId).map((m) => m.def.id), span }),
+    (box) => syncHealthFigures(box, clientId, input, today, now, span)
+  );
+
+  const w = syncWorkouts(clientId, input);
+  const c = await syncCalories(clientId, input, today);
+  return { tracked, saved: saved + c.saved, workouts: w.count, workoutsChanged: w.changed, calories: c.count };
+}
+
+/** One sync's figures, on the write's box (the store's own lists in memory mode): how many it saved. */
+function syncHealthFigures(box: CheckInBox, clientId: number, input: HealthSyncInput, today: string, now: string, span: { from: string; to: string }): number {
+  const matched = healthMatched(clientId);
   let saved = 0;
 
   // A day's figure for each daily kind. Steps replace a typed count, as they did; the rest never touch a day the client
   // typed in themselves (16 Nov: their own figure stays), only one the phone filled before.
   const daily = (def: MetricDefinition, days: { date: string; value: number }[], keepTyped: boolean) => {
-    const current = new Map(getMetricEntries([def.id]).map((e) => [e.period, e] as const));
+    const current = new Map(getMetricEntries(box, [def.id], span).map((e) => [e.period, e] as const));
     for (const day of days) {
       if (!checkInEditable(day.date, today)) continue;
       const was = current.get(day.date);
@@ -76,7 +109,7 @@ export function syncHealthForClient(clientId: number, input: HealthSyncInput): H
       if (keepTyped && was && was.source !== "health") continue;
       if (was?.value === day.value && was.source === "health") continue;
       // Flagged as the phone's, and an older day keeps its time (13 Nov, Alex: Activity showed 8 daily check-ins at 14:55).
-      if (setMetricEntry(def.id, day.date, day.value, now, "health")) saved++;
+      if (setMetricEntry(box, def.id, day.date, day.value, now, "health")) saved++;
     }
   };
   const inRange = (kind: Exclude<HealthKind, "steps">, v: number) => Number.isFinite(v) && v >= RANGE[kind][0] && v <= RANGE[kind][1];
@@ -121,20 +154,17 @@ export function syncHealthForClient(clientId: number, input: HealthSyncInput): H
         const was = latest.get(period);
         if (!was || ms > was.ms) latest.set(period, { kg, at: new Date(ms).toISOString(), ms });
       }
-      const current = new Map(getMetricEntries([m.def.id]).map((e) => [e.period, e] as const));
+      const current = new Map(getMetricEntries(box, [m.def.id], span).map((e) => [e.period, e] as const));
       for (const [period, r] of latest) {
         const was = current.get(period);
         if (was && was.source !== "health") continue;
         const value = Math.round(weightInUnit(r.kg, "kg", m.def.unit || "kg") * 10) / 10;
         if (was?.value === value && was.source === "health" && was.logged_at === r.at) continue;
-        if (setMetricEntry(m.def.id, period, value, r.at, "health", true)) saved++;
+        if (setMetricEntry(box, m.def.id, period, value, r.at, "health", true)) saved++;
       }
     }
   }
-
-  const w = syncWorkouts(clientId, input);
-  const c = syncCalories(clientId, input, today);
-  return { tracked, saved: saved + c.saved, workouts: w.count, workoutsChanged: w.changed, calories: c.count };
+  return saved;
 }
 
 /** A day's calories past this is a slip, never a day's eating. */
@@ -151,12 +181,19 @@ const shiftDay = (day: string, by: number) => {
  *  it is there (a typed figure emptied, or the day's food all taken out, leaves the day to the phone again on the next
  *  sync). A later sync updates the phone's figure, its day keeping its time; a day the phone
  *  no longer has calories for, within the window it read, loses the phone's figure. Never a check-in. */
-function syncCalories(clientId: number, input: HealthSyncInput, today: string): { saved: number; count: number } {
+async function syncCalories(clientId: number, input: HealthSyncInput, today: string): Promise<{ saved: number; count: number }> {
   if (!Array.isArray(input.calories)) return { saved: 0, count: 0 };
-  const data = getData();
   // The phone's days (its zone may be a day ahead of the server's), the last eight and no further back.
   const first = shiftDay(today, -9);
   const last = shiftDay(today, 1);
+  // Through the food diary's door (quest 8 part 1): its window of the client's food, one write.
+  const asked = { ...input, calories: input.calories };
+  return writeFood("w.calories.health", clientId, { span: { from: first, to: last } }, (box) => syncCaloriesOn(box, clientId, asked, first, last));
+}
+
+function syncCaloriesOn(box: FoodBox, clientId: number, input: HealthSyncInput & { calories: NonNullable<HealthSyncInput["calories"]> }, first: string, last: string): { saved: number; count: number } {
+  box.need("syncCalories", clientId, { from: first, to: last }, ["entries", "calories", "days"]);
+  const data = box;
   const days = new Map<string, number>();
   for (const d of input.calories.slice(0, 20)) {
     const date = String(d?.date);
@@ -164,32 +201,32 @@ function syncCalories(clientId: number, input: HealthSyncInput, today: string): 
     if (!DAY.test(date) || date < first || date > last || !Number.isFinite(kcal) || kcal <= 0 || kcal > MAX_DAY_KCAL) continue;
     days.set(date, kcal);
   }
-  const withFood = new Set((data.food_entries ?? []).filter((e) => e.client_id === clientId).map((e) => e.date));
+  const withFood = new Set(data.entries.filter((e) => e.client_id === clientId).map((e) => e.date));
   const now = new Date().toISOString();
   let saved = 0;
   for (const [date, kcal] of days) {
     if (withFood.has(date)) continue;
-    const was = data.calorie_logs.find((l) => l.client_id === clientId && l.date === date);
+    const was = data.calories.find((l) => l.client_id === clientId && l.date === date);
     if (was && was.source !== "health") continue;
     if (was) {
       if (was.kcal === kcal) continue;
       was.kcal = kcal;
       was.logged_at ??= now;
     } else {
-      data.calorie_logs.push({ id: allocId("calorie_logs"), client_id: clientId, date, kcal, logged_at: now, note: null, day_type: foodDayType(clientId, date), source: "health" });
+      data.calories.push({ id: box.alloc("calories"), client_id: clientId, date, kcal, logged_at: now, note: null, day_type: foodDayType(box, clientId, date), source: "health" });
     }
     saved++;
   }
   // Gone from the phone (deleted in the food app) within the days it read: the phone's figure goes.
   const from = String(input.caloriesFrom ?? "");
   if (DAY.test(from)) {
-    const keep = data.calorie_logs.filter((l) => !(l.client_id === clientId && l.source === "health" && l.date >= (from < first ? first : from) && l.date <= last && !days.has(l.date)));
-    if (keep.length !== data.calorie_logs.length) {
-      saved += data.calorie_logs.length - keep.length;
-      data.calorie_logs = keep;
+    const keep = data.calories.filter((l) => !(l.client_id === clientId && l.source === "health" && l.date >= (from < first ? first : from) && l.date <= last && !days.has(l.date)));
+    if (keep.length !== data.calories.length) {
+      saved += data.calories.length - keep.length;
+      data.calories = keep;
     }
   }
-  if (saved) persist();
+  if (saved) box.persist();
   return { saved, count: days.size };
 }
 
@@ -214,13 +251,17 @@ function syncWorkouts(clientId: number, input: HealthSyncInput): { count: number
     if (seconds < 60 || seconds > 24 * 3600) continue;
     const start = new Date(startMs).toISOString();
     const end = new Date(endMs).toISOString();
-    const id = String(w?.id ?? "").slice(0, 120) || `${type}|${start}`;
+    // The key as Postgres holds it (cleanText: no NUL, no half of an emoji cut by the slice), so two ids that differ
+    // only by those are one workout, never two rows the table can't tell apart (19 Nov, Step 6). A real phone's id
+    // never changes.
+    const id = cleanText(String(w?.id ?? "").slice(0, 120)) || `${type}|${start}`;
     seen.add(id);
     const kcalIn = num(w?.kcal);
     const metersIn = num(w?.meters);
     const kcal = Number.isFinite(kcalIn) && kcalIn > 0 && kcalIn < 20000 ? Math.round(kcalIn) : null;
     const meters = Number.isFinite(metersIn) && metersIn > 0 && metersIn < 1_000_000 ? Math.round(metersIn) : null;
-    const source = typeof w?.source === "string" && w.source.trim() ? w.source.trim().slice(0, 60) : null;
+    // Cleaned as Postgres holds it too, so memory and the saved row agree and a repeat sync is no change.
+    const source = typeof w?.source === "string" && w.source.trim() ? cleanText(w.source.trim().slice(0, 60)) : null;
     const was = rows.find((r) => r.client_id === clientId && r.store === store && r.platform_id === id);
     if (was) {
       if (was.type === type && was.start === start && was.end === end && was.seconds === seconds && was.kcal === kcal && was.meters === meters && was.source === source) continue;

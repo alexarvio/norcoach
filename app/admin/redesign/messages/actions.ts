@@ -5,6 +5,7 @@ import { chatCurrent, timedChatRead } from "../../../lib/chatBus";
 import { loadChatDock, loadMessages, type DockChat } from "../loaders";
 import type { DraftMessages } from "./MessagesDraft";
 import { fetchChatDock, fetchThread } from "../../../lib/chat/rows";
+import { fetchMessagesFood } from "../../../lib/food/rows";
 
 /**
  * The coach's chat with one client, as the chat draws it (2 Oct): what it
@@ -18,7 +19,8 @@ export async function chatDraftThreadAction(clientId: number, known?: string | n
   if (chatCurrent(Number(clientId), known)) return null;
   const t0 = performance.now();
   const thread = await fetchThread(Number(clientId), "action.chatDraftThread");
-  return timedChatRead("chat · laptop", () => loadMessages(Number(clientId), thread), t0);
+  const food = await fetchMessagesFood(Number(clientId), thread, "action.chatDraftThread");
+  return timedChatRead("chat · laptop", () => loadMessages(Number(clientId), thread, food), t0);
 }
 
 /**

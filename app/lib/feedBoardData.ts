@@ -7,6 +7,8 @@ import { ageOf, openJoinRequestsFor } from "./joinRequests";
 import { needCatOfHref } from "./needCats";
 import { getData, persist, type Data } from "./db";
 import type { ChatCoachView } from "./chat/rows";
+import type { FoodRows } from "./food/rows";
+import type { CheckInRows } from "./checkins/rows";
 import { FEED_KIND_ROWS } from "./chat/pick";
 import {
   activityWords,
@@ -101,9 +103,13 @@ type Ctx = {
   fedNames: Map<number, Set<string>>;
   /** The page's chat view of the coach's clients (fetchCoachChat). */
   chat: ChatCoachView;
+  /** The page's food view of the coach's clients (fetchCoachFood, app/lib/food/rows.ts). */
+  food: FoodRows;
+  /** The page's check-in view of the coach's clients (fetchCoachCheckIns, app/lib/checkins/rows.ts). */
+  ck: CheckInRows;
 };
 
-function context(coachId: number, today: string, chat: ChatCoachView): Ctx {
+function context(coachId: number, today: string, chat: ChatCoachView, food: FoodRows, ck: CheckInRows): Ctx {
   const data = getData();
   const now = Date.now();
   const coach = data.users.find((u) => u.id === coachId && u.role === "coach");
@@ -113,11 +119,11 @@ function context(coachId: number, today: string, chat: ChatCoachView): Ctx {
 
   // The coach's feed and each client's Needs you, the one read the rail shares this request (4 Nov, Alex: "just a tiny
   // bit slow"; coachNeeds.ts). A client whose Home fails still reads as empty here.
-  const { feed, byId: byEventId } = coachNeeds(coachId, chat);
+  const { feed, byId: byEventId } = coachNeeds(coachId, chat, food, ck);
   const actions = new Map<number, HomeAction[]>();
   for (const c of clients) {
     try {
-      actions.set(c.id, clientActions(coachId, c.id, chat));
+      actions.set(c.id, clientActions(coachId, c.id, chat, food, ck));
     } catch (e) {
       console.error(`[feedBoard] home ${c.id}:`, e);
       actions.set(c.id, []);
@@ -203,6 +209,8 @@ function context(coachId: number, today: string, chat: ChatCoachView): Ctx {
     fedIds,
     fedNames,
     chat,
+    food,
+    ck,
   };
 }
 
@@ -218,12 +226,12 @@ function safe<T>(part: string, fn: () => T, fallback: T): T {
 
 // ---- The board ------------------------------------------------------------------------
 
-export function getFeedBoard(coachId: number, chat: ChatCoachView): FeedBoard {
+export function getFeedBoard(coachId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows): FeedBoard {
   const today = localDateStr();
   const empty: FeedBoard = { today, since: null, needs: [], joins: [], activity: [], clients: [] };
   let ctx: Ctx;
   try {
-    ctx = context(coachId, today, chat);
+    ctx = context(coachId, today, chat, food, ck);
   } catch (e) {
     console.error("[feedBoard] read:", e);
     return empty;
@@ -258,7 +266,8 @@ function sinceOf(ctx: Ctx): FeedBoard["since"] {
   // was sent, a measurement on its date. What the workout answers is not a check-in.
   const checkIns = new Set<string>();
   const defs = new Map(data.metric_definitions.filter((m) => ids.has(m.client_id) && !ctx.fedIds.get(m.client_id)?.has(m.id)).map((m) => [m.id, m] as const));
-  for (const e of data.metric_entries) {
+  ctx.ck.need("feed.sinceOf", [...ids], "all", ["entries"]);
+  for (const e of ctx.ck.entries) {
     const def = defs.get(e.metric_definition_id);
     if (!def || e.value == null || e.source === "health") continue;
     if (def.frequency === "daily") {
@@ -275,8 +284,9 @@ function sinceOf(ctx: Ctx): FeedBoard["since"] {
 
   // Days with food logged since: a diary entry, or a typed day's calories.
   const food = new Set<string>();
-  for (const f of data.food_entries ?? []) if (ids.has(f.client_id) && f.date <= today && savedSince(f.logged_at, f.date)) food.add(`${f.client_id}:${f.date}`);
-  for (const c of data.calorie_logs) if (ids.has(c.client_id) && c.source !== "health" && c.kcal > 0 && c.date <= today && savedSince(c.logged_at, c.date)) food.add(`${c.client_id}:${c.date}`);
+  ctx.food.need("feed.sinceOf", [...ids], "all", ["entries", "calories"]);
+  for (const f of ctx.food.entries) if (ids.has(f.client_id) && f.date <= today && savedSince(f.logged_at, f.date)) food.add(`${f.client_id}:${f.date}`);
+  for (const c of ctx.food.calories) if (ids.has(c.client_id) && c.source !== "health" && c.kcal > 0 && c.date <= today && savedSince(c.logged_at, c.date)) food.add(`${c.client_id}:${c.date}`);
 
   // What came after the coach's last visit (the Feed's view holds it from that prev on, chat/paths.ts).
   const messages = ctx.chat.sinceRows(ids, prev).filter((m) => ids.has(m.client_id) && m.sender === "client" && (m.text?.trim() || m.media_path) && stampMs(m.created_at) > prev).length;

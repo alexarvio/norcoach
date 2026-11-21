@@ -5,6 +5,7 @@ import { chatThreadViews } from "../../../lib/queries";
 import { loadMessages } from "../../../admin/redesign/loaders";
 import { noteCoachReading } from "../../../lib/coachPush";
 import { fetchThread } from "../../../lib/chat/rows";
+import { fetchClientFood, fetchMessagesFood, foodLinkSpan } from "../../../lib/food/rows";
 
 // One chat's thread (17 Nov, Alex: the coach's phone chat "didn't load for a few seconds, maybe 10"): what every chat
 // asks for while it shows, as a plain GET, so it never waits behind the page's server actions (Next runs those one at
@@ -36,13 +37,16 @@ export async function GET(request: Request) {
     const phone = from === "phone" || from === "prefetch";
     const t0 = performance.now();
     const thread = await fetchThread(id, "api.thread.coach");
-    return NextResponse.json(timedChatRead(`chat · ${SCREENS.has(from) ? from : "coach"}`, () => loadMessages(id, thread, { targets: !phone }), t0), { headers: NO_STORE });
+    const food = await fetchMessagesFood(id, thread, "api.thread.coach", !phone);
+    return NextResponse.json(timedChatRead(`chat · ${SCREENS.has(from) ? from : "coach"}`, () => loadMessages(id, thread, food, { targets: !phone }), t0), { headers: NO_STORE });
   }
   const id = chatClientOf(user, asked);
   if (id == null) return NextResponse.json({ rev: "", messages: [] }, { headers: NO_STORE });
   if (chatCurrent(id, known)) return new Response(null, { status: 204, headers: NO_STORE });
   const t0 = performance.now();
   const thread = await fetchThread(id, "api.thread.app");
+  // The meals its links name (the food diary's door).
+  const food = await fetchClientFood(id, "api.thread.app", foodLinkSpan(thread, id));
   // The revision the rows were read under (the view's), never one read after them.
-  return NextResponse.json({ rev: thread.rev, messages: timedChatRead("chat · client", () => chatThreadViews(thread), t0) }, { headers: NO_STORE });
+  return NextResponse.json({ rev: thread.rev, messages: timedChatRead("chat · client", () => chatThreadViews(thread, food), t0) }, { headers: NO_STORE });
 }

@@ -2,9 +2,10 @@ import path from "path";
 import { eq, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import { installIdSource, installStore, prepareStore, readJsonFile, STORE_MODE, type Data } from "../db";
-import { errorReason, health, toSentry } from "./health";
+import { errorReason, health, reportSkipped, toSentry } from "./health";
 import { IdPools } from "./ids";
 import { onceKeysFromKvCopy } from "./onceKeys";
+import { healthWorkoutsFromKvCopy, healthWorkoutsKept } from "./healthWorkouts";
 import { COLLECTIONS, kv } from "./schema";
 import { derivedStale, insertRowsOnce, loadStore, PgStoreWriter } from "./store";
 import { startChatShadow } from "../chat/shadow";
@@ -15,6 +16,21 @@ import { takeLease } from "./lease";
 import { setPgStrays } from "../chat/strays";
 import { stampInstantMs } from "./stamps";
 import { stampMs } from "../targetRule";
+import { NOTES_OUTBOX, NOTES_PG, NOTES_STORE_ASKED } from "../notes/mode";
+import { importNotes, importNotesMemory, kvHoldsOutbox, notesBootMemory, notesBootPg, pruneOpTokens, reportNotesOrphans } from "../notes/boot";
+import { notesPreflight, notesProblems } from "../notes/preflight";
+import { startNotesPg } from "../notes/pg";
+import { freshBox, outbox, startDrainer } from "../notes/outbox";
+import { setNotesStrays } from "../notes/rows";
+import { startNotesShadow } from "../notes/shadow";
+import { FOOD_PG, FOOD_STORE_ASKED } from "../food/mode";
+import { checkFoodJson, foodBootMemory, foodBootPg, foodBootPgStore, foodMaxIds, foodProblems, importFood, kvHoldsFoodMark } from "../food/boot";
+import { startFoodPg } from "../food/pg";
+import { startFoodShadow } from "../food/shadow";
+import { CHECKINS_PG, CHECKINS_STORE_ASKED } from "../checkins/mode";
+import { checkCheckInsJson, checkInsBootMemory, checkInsBootPg, checkInsMaxIds, checkInsProblems, importCheckIns, kvHoldsCheckInsMark } from "../checkins/boot";
+import { startCheckInsPg } from "../checkins/pg";
+import { startCheckInsShadow } from "../checkins/shadow";
 
 // Starts the Postgres store (STORE=postgres). Called once from
 // instrumentation.ts, which Next awaits before the server takes requests:
@@ -40,6 +56,9 @@ import { stampMs } from "../targetRule";
 // copy (pg/onceKeys.ts); once loaded, rows whose instant columns don't hold what the writer would write are marked to
 // be written again (store.ts derivedStale); and before any id is handed out the id sequences are raised past every
 // id taken and a block drawn (pg/ids.ts), with allocId drawing from them from then on.
+//
+// Step 6 (19 Nov): the phone's workouts the same way as once_keys: before the store loads, the health_workouts table is
+// made its kv copy, and memory takes the copy itself, in its order (pg/healthWorkouts.ts).
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type AnyDb = PgDatabase<any, any, any>;
@@ -150,43 +169,150 @@ async function start() {
   const writer = new PgStoreWriter(db);
   // One instance on the database at a time (pg/lease.ts): with CHAT_STORE=pg the boot waits for the lease and refuses
   // without it; in memory mode it is taken in the background, never waited on, so a pg boot over this one waits.
-  await takeLease(process.env.DATABASE_URL!, { mustHold: CHAT_PG, name: `norcoach-lease-${BOOT_ID}` });
+  // The notifications (quest 7) the same with NOTES_STORE=pg; and a memory boot of this build waits too when kv holds an
+  // outbox a pg instance left (its last ops must be in it before this boot applies it, notes/boot.ts).
+  const notesLeftover = !NOTES_PG && (await kvHoldsOutbox(db));
+  // The food diary (quest 8 part 1) the same with FOOD_STORE=pg; and a memory boot of this build waits too when kv holds
+  // the mark a pg instance left (it may still commit a write; this boot drops the unique rule only once it is gone).
+  const foodLeftover = !FOOD_PG && (await kvHoldsFoodMark(db));
+  // The check-in figures (quest 9) the same with CHECKINS_STORE=pg; and a memory boot of this build waits too when kv holds
+  // the mark a pg instance left, or a unique rule is there without it (it may still commit a write; this boot drops the
+  // unique rules only once it is gone).
+  const checkinsLeftover = !CHECKINS_PG && (await kvHoldsCheckInsMark(db));
+  const why =
+    [
+      CHAT_PG && "CHAT_STORE=pg",
+      NOTES_PG && "NOTES_STORE=pg",
+      notesLeftover && "a notes outbox left in kv",
+      FOOD_PG && "FOOD_STORE=pg",
+      foodLeftover && "a Postgres food store left by the last boot",
+      CHECKINS_PG && "CHECKINS_STORE=pg",
+      checkinsLeftover && "Postgres check-in figures left by the last boot",
+    ]
+      .filter(Boolean)
+      .join(" and ") || undefined;
+  await takeLease(process.env.DATABASE_URL!, { mustHold: CHAT_PG || NOTES_PG || notesLeftover || FOOD_PG || foodLeftover || CHECKINS_PG || checkinsLeftover, name: `norcoach-lease-${BOOT_ID}`, why });
   // With the chat in Postgres alone (CHAT_STORE=pg, Step 5's cut-over): what its SQL leans on is there and runs, or the
   // boot stops here with nothing changed.
   if (CHAT_PG) await chatPreflight(db);
 
   // The id counters are always saved, so their absence means an empty database (or a damaged one: emptyStart).
   const hasData = (await db.select().from(kv).where(eq(kv.key, "_seq"))).length > 0;
+  // With the notifications in Postgres alone: what their SQL leans on is there, then the boot's own work on the table
+  // (twins out, the unique rule, stamps, links; notes/boot.ts), then every statement run (notes/preflight.ts). On an
+  // empty database that work waits for the JSON's rows to be in the table (below), so the import never meets the
+  // unique rule with a twin, and its stamps, strays and links are looked at too.
+  let notesBoot: Awaited<ReturnType<typeof notesBootPg>> | null = null;
+  if (NOTES_PG) {
+    const problems = await notesProblems(db, { unique: false });
+    if (problems.length) throw new Error(`[notes] Refusing to start with NOTES_STORE=pg: ${problems.join("; ")}`);
+    if (hasData) {
+      notesBoot = await notesBootPg(db);
+      await notesPreflight(db);
+    }
+  }
+  // The food diary the same with FOOD_STORE=pg (quest 8 part 1): migration 0021's objects there, then calorie_logs'
+  // twins out and the unique rule (food/boot.ts). On an empty database after the JSON's rows are in (below).
+  if (FOOD_PG) {
+    const problems = await foodProblems(db, { unique: false });
+    if (problems.length) throw new Error(`[food] Refusing to start with FOOD_STORE=pg: ${problems.join("; ")}`);
+    if (hasData) await foodBootPg(db);
+  }
+  // The check-in figures the same with CHECKINS_STORE=pg (quest 9): migration 0023's objects there; their boot work runs
+  // on the prepared store, below (checkins/boot.ts).
+  if (CHECKINS_PG) {
+    const problems = await checkInsProblems(db, { unique: false });
+    if (problems.length) throw new Error(`[checkins] Refusing to start with CHECKINS_STORE=pg: ${problems.join("; ")}`);
+  }
   let raw: Partial<Data>;
   // Lists still kept in kv under a collection's name while its table is empty: moved into the table by the first save.
   const moved: string[] = [];
   // Rows whose instant columns are to be written again (step 4C).
   let restamped = 0;
+  // The phone's workouts' kv copy to write again on the boot's save (cleaned, broken, or missing beside rows).
+  let healthDirty = false;
+  // The notifications' leftover outbox applied (a memory boot after pg mode): the boot's save writes it.
+  let notesChanged = false;
+  // The food diary's kv mark set or taken out (quest 8 part 1): the boot's save writes it.
+  let foodChanged = false;
+  // The check-in figures' mark, tombstones and merged metrics (quest 9): the boot's save writes them.
+  let checkinsChanged = false;
   if (hasData) {
     // The saves taken once, as the last build to save left them (step 4B: a build before it writes only the kv copy).
     const onceKeys = await onceKeysFromKvCopy(db);
     if (onceKeys != null) log(`once_keys: ${onceKeys} taken from kv's copy`);
+    // The phone's workouts, the same way (Step 6: a build before it writes only the kv copy).
+    const hw = await healthWorkoutsFromKvCopy(db);
+    if (hw?.broken) {
+      console.error(`[store] !!! kv's health_workouts is not a list: the table loads as it is, and the next save writes the copy again`);
+      reportSkipped("kv", "health_workouts, not a list: the table loaded as it is");
+    } else if (hw) {
+      log(
+        `health_workouts: ${hw.kept.length} rows (kv ${hw.kvRows}, ${hw.twins} twins, ${hw.unusable} unusable, ${hw.cleaned} keys cleaned), taken from kv's copy, ids ${hw.orderById ? "in order" : "out of order"}`
+      );
+      // Counts alone, never a value (health data).
+      if (hw.twins || hw.unusable || hw.cleaned) reportSkipped("health_workouts", `kv's copy: ${hw.twins} twins and ${hw.unusable} unusable rows left out, ${hw.cleaned} keys cleaned`);
+    }
     raw = (await loadStore(db, moved)) as Partial<Data>;
+    const loaded = raw as Row;
+    if (hw && !hw.broken) loaded.health_workouts = hw.kept;
+    // Never synced (no copy, an empty table): no list at all, as the build before loads it.
+    else if (!hw && Array.isArray(loaded.health_workouts) && loaded.health_workouts.length === 0) delete loaded.health_workouts;
     // What the database holds right now, before the load-time tidies touch it.
-    writer.prime(raw as Row, moved);
+    writer.prime(loaded, moved);
+    // A memory boot of this build: the notes' unique rule dropped, an outbox left by a pg instance applied (quest 7).
+    if (!NOTES_PG) notesChanged = await notesBootMemory(db, raw);
+    // The food diary the same (quest 8 part 1): a memory boot drops the unique rule and the pg boot's mark (the meal
+    // orders put back on the clients first); a pg boot sets it (food_meal_orders and the clients' orders agreed first).
+    foodChanged = FOOD_PG ? await foodBootPgStore(db, raw, { fresh: false }) : await foodBootMemory(db, raw);
+    // The check-in figures the same (quest 9): a memory boot drops the unique rules and the pg boot's mark, and finishes
+    // a removal a pg instance left (its tombstone).
+    if (!CHECKINS_PG) checkinsChanged = await checkInsBootMemory(db, raw, { marked: checkinsLeftover });
     const stale = await derivedStale(db, raw as Row);
     for (const [name, keys] of stale) {
       log(`${name}: ${keys.size} row${keys.size === 1 ? "" : "s"} with an instant column to write again`);
       restamped += keys.size;
     }
     writer.forget(stale);
+    // kv's copy not what memory holds (rows left out or cleaned, not a list, or gone while the table has rows): the
+    // boot's save writes it again, so a rollback reads every workout.
+    if (hw ? hw.broken || hw.twins || hw.unusable || hw.cleaned : Array.isArray(loaded.health_workouts)) {
+      writer.forgetKv("health_workouts");
+      healthDirty = true;
+    }
     log("loaded from Postgres");
   } else {
     raw = await emptyStart(db);
+    // A whole-store JSON's workouts as the table can hold them, so two keys that clean to one can't fail its first save.
+    const file = raw as Row;
+    if (Array.isArray(file.health_workouts)) file.health_workouts = healthWorkoutsKept(file.health_workouts).kept;
     // A whole-store JSON (local, or ALLOW_JSON_IMPORT=1) carries its chat; with CHAT_STORE=pg it goes into the table,
     // never into memory or kv (a file the shutdown wrote with the chat left out is refused: its chat is in Postgres).
     if (CHAT_PG) await importChat(db, raw);
+    // The notifications the same with NOTES_STORE=pg (quest 7), then the pg boot's work on the table they are in now.
+    if (NOTES_PG) {
+      await importNotes(db, raw);
+      notesBoot = await notesBootPg(db);
+      await notesPreflight(db);
+    } else notesChanged = await importNotesMemory(db, raw);
+    // The food diary the same with FOOD_STORE=pg (quest 8 part 1), then the pg boot's work on its tables.
+    if (FOOD_PG) {
+      await importFood(db, raw);
+      await foodBootPg(db);
+      foodChanged = await foodBootPgStore(db, raw, { fresh: true });
+    } else checkFoodJson(raw);
+    // The check-in figures the same with CHECKINS_STORE=pg (quest 9); their boot work on the prepared store, below.
+    if (CHECKINS_PG) await importCheckIns(db, raw);
+    else checkCheckInsJson(raw);
   }
   // The chat's own boot checks (CHAT_STORE=pg): its stamps' instants put right, its strays, its highest id.
   const chat = CHAT_PG ? await chatBoot(db) : null;
 
   const prepared = prepareStore(raw);
   const { data } = prepared;
+  // The check-in figures' pg boot (quest 9), under the lease, on the prepared store (after its one-time rename, as memory
+  // mode merges twin metrics), before the boot's save: tombstones, the merge, step counts, orphans, the unique rules.
+  if (CHECKINS_PG && (await checkInsBootPg(db, data))) checkinsChanged = true;
   // Always run, even when a tidy already changed something: a counter left behind its table hands out ids twice.
   const raised = raiseCounters(data);
   // The chat's counter at least its table's highest id (raiseCounters no longer sees chat rows, CHAT_STORE=pg).
@@ -196,11 +322,52 @@ async function start() {
     log(`raised the id counter of chat_messages from ${data._seq.chat_messages ?? "none"} to ${chat.maxId}, its highest id`);
     data._seq.chat_messages = chat.maxId;
   }
+  // The notifications' counter at least their table's highest id and any id an outbox left holds (NOTES_STORE=pg).
+  let notesRaised = false;
+  if (NOTES_PG) {
+    const box = (data as unknown as Record<string, unknown>).notes_outbox as { ops?: { op: { op: string; row?: { id?: number } } }[] } | undefined;
+    const queued = Math.max(0, ...(box?.ops ?? []).map((e) => (e.op.op === "insert" ? Number(e.op.row?.id) || 0 : 0)));
+    const top = Math.max(notesBoot?.maxId ?? 0, queued);
+    if (top > (data._seq.coach_activity ?? 0)) {
+      notesRaised = true;
+      log(`raised the id counter of coach_activity from ${data._seq.coach_activity ?? "none"} to ${top}, its highest id`);
+      data._seq.coach_activity = top;
+    }
+    // The outbox's key in kv from this boot's own save, so a memory boot started at any moment after it waits for the
+    // lease (and never drops the unique rule under this instance), quiet night or not.
+    const d = data as unknown as Record<string, unknown>;
+    if (!d[NOTES_OUTBOX] || typeof d[NOTES_OUTBOX] !== "object") {
+      d[NOTES_OUTBOX] = freshBox();
+      notesRaised = true;
+    }
+  }
+  // The food diary's counters at least their tables' highest ids (FOOD_STORE=pg: raiseCounters no longer sees the rows).
+  let foodRaised = false;
+  if (FOOD_PG) {
+    for (const [t, top] of Object.entries(await foodMaxIds(db))) {
+      if (top > (data._seq[t] ?? 0)) {
+        foodRaised = true;
+        log(`raised the id counter of ${t} from ${data._seq[t] ?? "none"} to ${top}, its highest id`);
+        data._seq[t] = top;
+      }
+    }
+  }
+  // The check-in figures' counters at least their tables' highest ids (CHECKINS_STORE=pg: raiseCounters no longer sees the rows).
+  let checkinsRaised = false;
+  if (CHECKINS_PG) {
+    for (const [t, top] of Object.entries(await checkInsMaxIds(db))) {
+      if (top > (data._seq[t] ?? 0)) {
+        checkinsRaised = true;
+        log(`raised the id counter of ${t} from ${data._seq[t] ?? "none"} to ${top}, its highest id`);
+        data._seq[t] = top;
+      }
+    }
+  }
   // Ids from Postgres for the tables that will move (step 4A), before anything can take one; the counters as raised.
   const ids = new IdPools(db, () => (data._seq ??= {}));
   await ids.start();
   (globalThis as unknown as { _pgIds?: IdPools })._pgIds = ids;
-  const changed = prepared.changed || raised > 0 || chatRaised || moved.length > 0 || restamped > 0;
+  const changed = prepared.changed || raised > 0 || chatRaised || moved.length > 0 || restamped > 0 || healthDirty || notesChanged || notesRaised || foodChanged || foodRaised || checkinsChanged || checkinsRaised;
   // The import, or a tidy's changes, are written before any request arrives,
   // so a failure stops the boot instead of surfacing later.
   if (!hasData || changed) await writer.save(() => data as unknown as Row);
@@ -209,6 +376,28 @@ async function start() {
   // to it, and in write mode its tables seeded, before any request. It catches everything itself; the boot never fails over it.
   (globalThis as unknown as { _pgWriter?: PgStoreWriter })._pgWriter = writer;
   await startChatShadow({ db, url: process.env.DATABASE_URL!, writer }).catch(() => {});
+  // The notifications' shadow (quest 7, app/lib/notes/shadow.ts; NOTES_SHADOW, off by default), the same way.
+  await startNotesShadow({ db, url: process.env.DATABASE_URL!, writer }).catch(() => {});
+  // The food diary's shadow (quest 8 part 1, app/lib/food/shadow.ts; FOOD_SHADOW, off by default), the same way.
+  await startFoodShadow({ db, url: process.env.DATABASE_URL!, writer }).catch(() => {});
+  // The check-in figures' shadow (quest 9, app/lib/checkins/shadow.ts; CHECKINS_SHADOW, off by default), the same way.
+  await startCheckInsShadow({ db, url: process.env.DATABASE_URL!, writer }).catch(() => {});
+  // The check-in figures' own connection (CHECKINS_STORE=pg), before any request.
+  if (CHECKINS_PG) {
+    await startCheckInsPg({ db, url: process.env.DATABASE_URL! });
+    console.log("[checkins] pg: the check-in figures are in Postgres alone");
+  }
+  // The food diary's own connection (FOOD_STORE=pg), before any request.
+  if (FOOD_PG) {
+    await startFoodPg({ db, url: process.env.DATABASE_URL! });
+    console.log("[food] pg: the food diary is in Postgres alone");
+  }
+  // The notifications' own connection (NOTES_STORE=pg), before any request, the stray clients known, the orphans said.
+  if (NOTES_PG) {
+    await startNotesPg({ db, url: process.env.DATABASE_URL! });
+    setNotesStrays(notesBoot?.strays ?? []);
+    await reportNotesOrphans(db, data);
+  }
   // Chat's own connection (CHAT_STORE=pg), before any request, and the orphans said (an erase whose chat stayed).
   if (CHAT_PG) {
     await startChatPg({ db, url: process.env.DATABASE_URL! });
@@ -292,6 +481,13 @@ async function start() {
     current = latest;
     return save("persist");
   });
+  // NOTES_STORE=pg: the outbox always in kv (a memory boot knows to wait for the lease), and its drainer started.
+  if (NOTES_PG) {
+    outbox();
+    startDrainer(writer);
+    // The op tokens past 30 days, after the boot (nothing waits on it).
+    void pruneOpTokens(db);
+  }
   log(`ready: ${data.users.length} users, ${data.clients.length} clients`);
 }
 
@@ -301,6 +497,21 @@ export function initStore(): Promise<void> {
   if (!["", "memory", "pg"].includes(CHAT_STORE_ASKED)) return Promise.reject(new Error(`[store] Refusing to start: CHAT_STORE=${CHAT_STORE_ASKED} is not memory or pg`));
   if (CHAT_STORE_ASKED === "pg" && STORE_MODE !== "postgres" && process.env.NEXT_PHASE !== "phase-production-build") {
     return Promise.reject(new Error("[store] Refusing to start: CHAT_STORE=pg needs the Postgres store (STORE=postgres and DATABASE_URL)"));
+  }
+  // NOTES_STORE (notes/mode.ts) the same (quest 7).
+  if (!["", "memory", "pg"].includes(NOTES_STORE_ASKED)) return Promise.reject(new Error(`[store] Refusing to start: NOTES_STORE=${NOTES_STORE_ASKED} is not memory or pg`));
+  if (NOTES_STORE_ASKED === "pg" && STORE_MODE !== "postgres" && process.env.NEXT_PHASE !== "phase-production-build") {
+    return Promise.reject(new Error("[store] Refusing to start: NOTES_STORE=pg needs the Postgres store (STORE=postgres and DATABASE_URL)"));
+  }
+  // FOOD_STORE (food/mode.ts) the same (quest 8 part 1).
+  if (!["", "memory", "pg"].includes(FOOD_STORE_ASKED)) return Promise.reject(new Error(`[store] Refusing to start: FOOD_STORE=${FOOD_STORE_ASKED} is not memory or pg`));
+  if (FOOD_STORE_ASKED === "pg" && STORE_MODE !== "postgres" && process.env.NEXT_PHASE !== "phase-production-build") {
+    return Promise.reject(new Error("[store] Refusing to start: FOOD_STORE=pg needs the Postgres store (STORE=postgres and DATABASE_URL)"));
+  }
+  // CHECKINS_STORE (checkins/mode.ts) the same (quest 9).
+  if (!["", "memory", "pg"].includes(CHECKINS_STORE_ASKED)) return Promise.reject(new Error(`[store] Refusing to start: CHECKINS_STORE=${CHECKINS_STORE_ASKED} is not memory or pg`));
+  if (CHECKINS_STORE_ASKED === "pg" && STORE_MODE !== "postgres" && process.env.NEXT_PHASE !== "phase-production-build") {
+    return Promise.reject(new Error("[store] Refusing to start: CHECKINS_STORE=pg needs the Postgres store (STORE=postgres and DATABASE_URL)"));
   }
   if (STORE_MODE !== "postgres") return Promise.resolve();
   const g = globalThis as unknown as { _pgInit?: Promise<void> };

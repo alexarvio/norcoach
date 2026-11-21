@@ -3,6 +3,8 @@ import { setsDue } from "../lib/setsDue";
 import { addSessionAction } from "../lib/actions";
 import OnceKeySubmit from "./OnceKeySubmit";
 import type { ChatCoachView } from "../lib/chat/rows";
+import type { FoodRows } from "../lib/food/rows";
+import type { CheckInRows } from "../lib/checkins/rows";
 import {
   getAssignmentsForDay,
   listClientPhases,
@@ -108,10 +110,16 @@ export default function ProgramBuilder({
   phaseParam,
   weekLinkBase = "/admin",
   chat,
+  food,
+  ck,
 }: {
+  /** The check-in figures the same (app/lib/checkins/rows.ts). */
+  ck: CheckInRows;
   clientId: number;
   /** The coach's chat view (fetchCoachChat, app/admin/page.tsx), for the sessions' news. */
   chat: ChatCoachView;
+  /** Its food diary the same (app/lib/food/rows.ts). */
+  food: FoodRows;
   clientName?: string;
   /** `?phase=` — which programme's band to open on. */
   phaseParam?: string;
@@ -170,7 +178,7 @@ export default function ProgramBuilder({
   const currentWeek = weekStart(localDateStr());
   // Sessions with news the coach has not opened yet (a finished workout, a
   // reason for missing one): the week and the session carry the dot.
-  const newDayIds = new Set(getClientHome(clientId, chat).unseenDayIds);
+  const newDayIds = new Set(getClientHome(clientId, chat, food, ck).unseenDayIds);
   const liveWeekNumber = deployedProgram ? deployedProgram.start_week + getProgramCurrentWeekIndex(deployedProgram) - 1 : null;
 
   function renderDays(days: ProgramDay[]) {
@@ -187,7 +195,7 @@ export default function ProgramBuilder({
       // A message can link a session or exercise the client can open: the
       // live programme's weeks up to this one. Elsewhere there is no link to
       // make, so no way in.
-      const sessionLink = describeMessageLink(clientId, { kind: "session", dayId: day.id });
+      const sessionLink = describeMessageLink(food, clientId, { kind: "session", dayId: day.id });
       const messageable = !sessionLink.gone;
       const cardioCount = listCardioForDay(day.id).length;
       const isEmpty = assignments.length === 0 && cardioCount === 0;

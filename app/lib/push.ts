@@ -2,6 +2,8 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import webpush from "web-push";
 import { pg } from "./pg/direct";
 import { push_subscriptions } from "./pg/schema";
+import { getData, persistNow } from "./db";
+import type { NotifGroup } from "./notifGroups";
 import { fcmConfigured, sendFcm } from "./fcm";
 import { apnsConfigured, sendApns } from "./apns";
 
@@ -32,6 +34,10 @@ export type PushMessage = {
   /** How long the push services may hold it for a phone that is off (19 Nov, Alex: a workout's "still going" is
       stale within half an hour). A day when absent. */
   ttlSeconds?: number;
+  /** A client's push by its Settings · Notifications group (19 Nov, Alex; app/lib/notifGroups.ts): dropped while that
+      group is switched off, held in their quiet hours. "always": neither (a workout left running, Your app is ready).
+      Absent: as "always". Never sent to the phone. */
+  group?: NotifGroup | "always";
 };
 
 const DAY_SECONDS = 24 * 60 * 60;
@@ -109,8 +115,23 @@ export async function hasSubscription(userId: number, endpoint: string): Promise
   return rows.length > 0;
 }
 
-/** Sends to every device the user has; returns how many took it. */
+/** Sends to every device the user has; returns how many took it. A client's push whose group is switched off goes
+ *  nowhere; one in their quiet hours is held and sent when they end (releaseHeldPushes). */
 export async function sendPush(userId: number, message: PushMessage): Promise<number> {
+  if (!vapid() && !fcmConfigured() && !apnsConfigured()) return 0;
+  const gate = await clientGate(userId, message);
+  if (gate === "drop") return 0;
+  if (gate === "hold") {
+    holdPush(userId, message);
+    // Saved before the answer, so a crash right after never loses it.
+    await persistNow().catch(() => {});
+    return 0;
+  }
+  return deliver(userId, message);
+}
+
+/** Sends to every device the user has, asking no switch or quiet hours; returns how many took it. */
+async function deliver(userId: number, message: PushMessage): Promise<number> {
   const keys = vapid();
   const db = await pg();
   if (!db || (!keys && !fcmConfigured() && !apnsConfigured())) return 0;
@@ -120,7 +141,7 @@ export async function sendPush(userId: number, message: PushMessage): Promise<nu
   const apns = apnsConfigured() ? devices.filter((d) => d.kind === "apns") : [];
   if (web.length === 0 && fcm.length === 0 && apns.length === 0) return 0;
 
-  const { ttlSeconds: _ttl, ...shown } = message;
+  const { ttlSeconds: _ttl, group: _group, ...shown } = message;
   const payload = JSON.stringify(shown);
   const ttl = pushTtlSeconds(message);
   const gone: number[] = [];
@@ -175,4 +196,104 @@ export function sendPushInBackground(userId: number, message: PushMessage) {
     console.error("[push] send failed:", error);
     import("@sentry/nextjs").then((Sentry) => Sentry.captureException(error)).catch(() => {});
   });
+}
+
+// ---- A client's switches and quiet hours (19 Nov, Alex: Settings · Notifications) -----------------------------------
+// A group switched off: the push goes nowhere (the bell keeps the notification). In quiet hours: held, the newest of each
+// tag kept, and sent at once when they end (releaseHeldPushes, from instrumentation.ts). Held in `kv` (notif_held), so a
+// deploy at night loses none. The coach's own pushes have their own rules (coachPush.ts).
+
+type Held = { m: PushMessage; at: number };
+type HeldBox = Record<string, Record<string, Held>>;
+const HELD_KEY = "notif_held";
+/** Nothing waits longer than its own life (ttlSeconds, a day when absent), nor two days in any case. */
+const HELD_MAX_MS = 2 * 24 * 60 * 60 * 1000;
+
+function heldBox(): HeldBox {
+  // chat-door: notes-door: food-door: its own key alone (notif_held); no chat, notifications or food.
+  const d = getData() as unknown as Record<string, unknown>;
+  const box = d[HELD_KEY];
+  if (box && typeof box === "object" && !Array.isArray(box)) return box as HeldBox;
+  const fresh: HeldBox = {};
+  d[HELD_KEY] = fresh;
+  return fresh;
+}
+
+async function clientGate(userId: number, message: PushMessage): Promise<"send" | "drop" | "hold"> {
+  const group = message.group;
+  if (!group || group === "always") return "send";
+  const user = getData().users.find((u) => u.id === userId);
+  if (!user || user.role !== "client" || user.client_id == null) return "send";
+  const { pushGroupOn, clientInQuiet } = await import("./notifPrefs");
+  if (!pushGroupOn(user.client_id, group)) return "drop";
+  // Held only where the release timer runs (19 Nov): elsewhere nothing would ever send it, so it goes now.
+  return clientInQuiet(user.client_id) && notifHoldOn() ? "hold" : "send";
+}
+
+const heldTag = (m: PushMessage) => m.tag || `url:${m.url}`;
+const stale = (h: Held, now: number) => now - h.at >= Math.min(pushTtlSeconds(h.m) * 1000, HELD_MAX_MS);
+
+function holdPush(userId: number, message: PushMessage) {
+  const box = heldBox();
+  const now = Date.now();
+  const mine = (box[String(userId)] ??= {});
+  for (const [tag, h] of Object.entries(mine)) if (stale(h, now)) delete mine[tag];
+  // The newest of each tag, as the lock screen would have shown it.
+  mine[heldTag(message)] = { m: message, at: now };
+}
+
+/** Whether held pushes are sent once quiet hours end: the live server only, as the reminders. NOTIF_HOLD=on forces it,
+ *  =off stops it; a non-production Railway environment (staging, on a copy of live's phones) stays quiet. */
+export function notifHoldOn(): boolean {
+  if (process.env.NOTIF_HOLD === "on") return true;
+  if (process.env.NOTIF_HOLD === "off" || process.env.NODE_ENV !== "production") return false;
+  return (process.env.RAILWAY_ENVIRONMENT_NAME ?? "production") === "production";
+}
+
+/** Sends what was held for every client whose quiet hours are over, at once: the newest of each tag, for what life it
+ *  has left; one gone stale, or whose group was switched off meanwhile, goes nowhere. Returns how many devices took one. */
+export async function releaseHeldPushes(now: number = Date.now()): Promise<number> {
+  const box = heldBox();
+  const users = Object.keys(box);
+  if (!users.length) return 0;
+  const { pushGroupOn, clientInQuiet } = await import("./notifPrefs");
+  const due: { userId: number; m: PushMessage; at: number }[] = [];
+  let changed = false;
+  const taken: HeldBox = {};
+  for (const key of users) {
+    const userId = Number(key);
+    const user = getData().users.find((u) => u.id === userId);
+    const clientId = user?.role === "client" ? user.client_id : null;
+    if (clientId != null && clientInQuiet(clientId, now)) continue;
+    for (const h of Object.values(box[key] ?? {})) {
+      if (clientId == null || stale(h, now)) continue;
+      const g = h.m.group;
+      if (g && g !== "always" && !pushGroupOn(clientId, g)) continue;
+      const left = Math.max(60, Math.round((Math.min(pushTtlSeconds(h.m) * 1000, HELD_MAX_MS) - (now - h.at)) / 1000));
+      due.push({ userId, m: { ...h.m, ttlSeconds: left }, at: h.at });
+    }
+    taken[key] = box[key];
+    delete box[key];
+    changed = true;
+  }
+  if (!changed) return 0;
+  // Out of the box and saved before anything is sent, so a restart mid-send never sends one twice; a save that fails
+  // puts them back for the next round (19 Nov).
+  try {
+    await persistNow();
+  } catch (error) {
+    for (const [key, held] of Object.entries(taken)) box[key] = { ...held, ...(box[key] ?? {}) };
+    console.error("[push] saving the held pushes failed, sent next round:", error instanceof Error ? error.message : error);
+    return 0;
+  }
+  let sent = 0;
+  // Oldest first, so the newest lands on top of the lock screen.
+  for (const d of due.sort((a, b) => a.at - b.at)) {
+    try {
+      sent += await deliver(d.userId, d.m);
+    } catch (error) {
+      console.error(`[push] a held push to user ${d.userId} failed:`, error instanceof Error ? error.message : error);
+    }
+  }
+  return sent;
 }

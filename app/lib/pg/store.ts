@@ -5,6 +5,9 @@ import { COLLECTIONS, DERIVED, kv, ROLLBACK_KV_COPIES, TABLE_NAMES_NOT_IN_KV } f
 import { msInstant, msInstantMs, stampInstant, stampInstantMs } from "./stamps";
 import { WRITER_COLLECTIONS } from "./writerTables";
 import { CHAT_PG } from "../chat/mode";
+import { NOTES_PG } from "../notes/mode";
+import { FOOD_PG, FOOD_TABLES } from "../food/mode";
+import { CHECKINS_PG, CHECKINS_TABLES } from "../checkins/mode";
 
 // Loads the whole store from Postgres and saves changes back (phase 1).
 //
@@ -194,7 +197,8 @@ export async function loadStore(db: AnyDb, moved: string[] = []): Promise<Row> {
     out[c.name] = records.map((r) => fromRecord(c.table, r));
   }
   for (const r of (await db.select().from(kv)) as { key: string; value: unknown }[]) {
-    // A collection's copy for a rollback: the table is what loads (pg/onceKeys.ts took it from this copy at boot).
+    // A collection's copy for a rollback (once_keys, health_workouts): the table is what loads (pg/onceKeys.ts and
+    // pg/healthWorkouts.ts took it from this copy at boot).
     if (ROLLBACK_COPIES.has(r.key)) continue;
     if (COLLECTION_NAMES.has(r.key) && Array.isArray(r.value) && (out[r.key] as unknown[]).length === 0) {
       console.log(`[store] ${r.key} is still in kv (${r.value.length} rows) and its table is empty: loaded from kv, moved into the table by the first save`);
@@ -340,13 +344,48 @@ function chatTripwire(next: Snapshot, last: Snapshot) {
   if (CHAT_PG && (next.rows.has("chat_messages") || last.rows.has("chat_messages"))) {
     throw new Error("[store] !!! chat_messages reached the store's writer with CHAT_STORE=pg: the save is refused");
   }
+  // The notifications the same with NOTES_STORE=pg (quest 7).
+  // The food diary's seven tables the same with FOOD_STORE=pg (quest 8 part 1).
+  if (FOOD_PG) {
+    for (const t of FOOD_TABLES) {
+      if (next.rows.has(t) || last.rows.has(t)) throw new Error(`[store] !!! ${t} reached the store's writer with FOOD_STORE=pg: the save is refused`);
+    }
+  }
+  if (NOTES_PG && (next.rows.has("coach_activity") || last.rows.has("coach_activity"))) {
+    throw new Error("[store] !!! coach_activity reached the store's writer with NOTES_STORE=pg: the save is refused");
+  }
+  // The check-in figures and notes the same with CHECKINS_STORE=pg (quest 9).
+  if (CHECKINS_PG) {
+    for (const t of CHECKINS_TABLES) {
+      if (next.rows.has(t) || last.rows.has(t)) throw new Error(`[store] !!! ${t} reached the store's writer with CHECKINS_STORE=pg: the save is refused`);
+    }
+  }
 }
 
 /**
  * Rows of one collection written into its table as the writer would write them (toRecord, cleanJson, its derived
  * columns), a row already there left as it is: for the boot's JSON import of chat rows with CHAT_STORE=pg (runtime.ts),
- * whose table the writer no longer fills. In one transaction, 500 rows a statement. How many were offered.
+ * whose table the writer no longer fills, and the boot's move of the phone's workouts (pg/healthWorkouts.ts). In one
+ * transaction (a savepoint inside the caller's), 500 rows a statement. How many were offered.
  */
+/**
+ * One row of a collection as the writer writes it (toRecord, cleanJson, its derived columns), or null when the writer
+ * would leave it out (no usable key, a value that can't be JSON): for a door that writes its rows itself (the food
+ * diary with FOOD_STORE=pg, app/lib/food/rows.ts), so the door and the writer can never encode a row two ways.
+ */
+export function recordForWrite(name: string, row: Row): Row | null {
+  const c = COLLECTIONS.find((x) => x.name === name);
+  if (!c) throw new Error(`recordForWrite: no collection named ${name}`);
+  if (!row || typeof row !== "object" || Array.isArray(row)) return null;
+  const record = toRecord(c.table, row);
+  if (c.key.some((k) => record[k] == null)) return null;
+  const json = cleanJson(record);
+  if (json == null) return null;
+  const parsed = JSON.parse(json) as Row;
+  for (const d of DERIVED_OF.get(c.table) ?? []) parsed[d.column] = derivedValue(d, parsed);
+  return parsed;
+}
+
 export async function insertRowsOnce(db: AnyDb, name: string, list: unknown[]): Promise<number> {
   const c = COLLECTIONS.find((x) => x.name === name);
   if (!c) throw new Error(`insertRowsOnce: no collection named ${name}`);
@@ -402,6 +441,31 @@ export class PgStoreWriter {
   committed(name: string): ReadonlyMap<string, string> | undefined {
     return this.last.rows.get(name);
   }
+  /**
+   * Whether the last save committed (or the boot's prime held) this row of a collection, by its id (quest 9: a check-in
+   * figure is written only for a metric definition, and a client, the database already holds). Read only.
+   */
+  committedHas(name: string, id: number | string): boolean {
+    return this.last.rows.get(name)?.has(String(id)) ?? false;
+  }
+  /** A kv value as the last save committed it (its JSON), for the notes' outbox drainer (quest 7). Read only. */
+  committedKv(key: string): string | undefined {
+    return this.last.kv.get(key);
+  }
+  private commitHooks: (() => void)[] = [];
+  /** Called after every save that committed and every prime (the notes' drainer wakes on it). Never throws into the save. */
+  onCommit(cb: () => void) {
+    this.commitHooks.push(cb);
+  }
+  private committedNow() {
+    for (const cb of this.commitHooks) {
+      try {
+        cb();
+      } catch {
+        /* a hook never fails a save */
+      }
+    }
+  }
 
   /**
    * The database already holds exactly this data (just loaded or imported), but for `moved` (loadStore): lists loaded
@@ -427,6 +491,12 @@ export class PgStoreWriter {
       const rows = this.last.rows.get(name);
       if (rows) for (const key of keys) if (rows.has(key)) rows.set(key, "");
     }
+  }
+
+  /** The next save writes this kv value again, as if the database held something else (a copy the boot cleaned or found broken). */
+  forgetKv(name: string) {
+    this.committedSaves++;
+    this.last.kv.set(name, "");
   }
 
   /** Writes the changes, one save at a time; a save requested mid-save runs after it. */
@@ -555,5 +625,6 @@ export class PgStoreWriter {
     this.last = next;
     this.committedSaves++;
     this.lastCommitAt = Date.now();
+    this.committedNow();
   }
 }

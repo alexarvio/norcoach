@@ -54,6 +54,9 @@ export async function runMeetingReminders(now: number = Date.now()): Promise<num
           // Tapped, it opens that call on Meetings (24 Oct, Alex: a push lands on its thing).
           url: `/client?meeting=${m.id}`,
           tag: `meeting-${m.id}`,
+          // Settings · Notifications' Calls (19 Nov, Alex); the hour's reminder is stale once the hour is up, held or not.
+          group: "calls",
+          ...(w.key === "hour" ? { ttlSeconds: 60 * 60 } : {}),
         });
       } catch (e) {
         console.error(`[reminders] meeting ${m.id} (${w.key}) failed:`, e instanceof Error ? e.message : e);

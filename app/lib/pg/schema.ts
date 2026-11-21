@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, doublePrecision, index, integer, jsonb, pgSequence, pgTable, primaryKey, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, doublePrecision, index, integer, jsonb, pgSequence, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 // The Postgres tables behind the store (phase 1 of moving off ironline.json).
 //
@@ -91,25 +91,39 @@ export const client_phases = pgTable("client_phases", {
   extra: extra(),
 });
 
-export const calorie_logs = pgTable("calorie_logs", {
-  id: id(),
-  client_id: fk("client_id"),
-  date: text("date"),
-  kcal: num("kcal"),
-  logged_at: text("logged_at"),
-  note: text("note"),
-  extra: extra(),
-});
+// The food diary's indexes (19 Nov, quest 8 part 1; app/lib/food/rows.ts reads a client's days, a meal's rows, a picture's
+// rows by file). The unique rule on calorie_logs (client_id, date) is NOT here: a FOOD_STORE=pg boot makes it under the
+// lease once its twins are moved out, and a memory boot drops it (app/lib/food/boot.ts), so a twin never blocks a save.
+export const calorie_logs = pgTable(
+  "calorie_logs",
+  {
+    id: id(),
+    client_id: fk("client_id"),
+    date: text("date"),
+    kcal: num("kcal"),
+    logged_at: text("logged_at"),
+    note: text("note"),
+    extra: extra(),
+  },
+  (t) => [index("calorie_logs_client_date_idx").on(t.client_id, t.date, t.id)]
+);
 
-export const check_in_notes = pgTable("check_in_notes", {
-  id: id(),
-  client_id: fk("client_id"),
-  kind: text("kind"),
-  period: text("period"),
-  text: text("text"),
-  created_at: text("created_at"),
-  extra: extra(),
-});
+// A client's notes by kind and period (20 Nov, quest 9; migration 0023): what the check-in door's queries need once the
+// notes leave memory with the figures (app/lib/checkins/). The unique rule on (client_id, kind, period) is NOT here: a
+// CHECKINS_STORE=pg boot makes it under the lease once its twins are moved out, and a memory boot drops it.
+export const check_in_notes = pgTable(
+  "check_in_notes",
+  {
+    id: id(),
+    client_id: fk("client_id"),
+    kind: text("kind"),
+    period: text("period"),
+    text: text("text"),
+    created_at: text("created_at"),
+    extra: extra(),
+  },
+  (t) => [index("check_in_notes_client_idx").on(t.client_id, t.kind, sql`(period COLLATE "C")`, t.id)]
+);
 
 export const client_exercise_notes = pgTable("client_exercise_notes", {
   id: id(),
@@ -290,15 +304,28 @@ export const metric_definitions = pgTable("metric_definitions", {
   extra: extra(),
 });
 
-export const metric_entries = pgTable("metric_entries", {
-  id: id(),
-  metric_definition_id: fk("metric_definition_id"),
-  period: text("period"),
-  value: num("value"),
-  logged_at: text("logged_at"),
-  extra: extra(),
-  logged_at_tz: instant("logged_at_tz"),
-});
+// A metric's figures by period, and its first figure the client typed (20 Nov, quest 9; migration 0023): what the
+// check-in door's queries need once the figures leave memory (app/lib/checkins/rows.ts). The unique rule on
+// (metric_definition_id, period) is NOT here: a CHECKINS_STORE=pg boot makes it under the lease once its twins are moved
+// out, and a memory boot drops it (app/lib/checkins/boot.ts), so a twin never blocks a memory-mode save.
+export const metric_entries = pgTable(
+  "metric_entries",
+  {
+    id: id(),
+    metric_definition_id: fk("metric_definition_id"),
+    period: text("period"),
+    value: num("value"),
+    logged_at: text("logged_at"),
+    extra: extra(),
+    logged_at_tz: instant("logged_at_tz"),
+  },
+  (t) => [
+    index("metric_entries_def_period_idx").on(t.metric_definition_id, sql`(period COLLATE "C")`, t.id),
+    index("metric_entries_logged_idx").on(t.metric_definition_id, t.id).where(sql`value IS NOT NULL AND (extra ->> 'source') IS DISTINCT FROM 'health'`),
+    // The few figures whose period is no day: the minute job reads them whole beside each metric's newest day.
+    index("metric_entries_odd_period_idx").on(t.metric_definition_id, t.id).where(sql`period IS NULL OR period !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'`),
+  ]
+);
 
 export const metric_template_categories = pgTable("metric_template_categories", {
   id: id(),
@@ -491,7 +518,7 @@ export const event_categories = pgTable("event_categories", {
   extra: extra(),
 });
 
-export const coach_activity = pgTable("coach_activity", {
+const noteColumns = () => ({
   id: id(),
   client_id: fk("client_id"),
   message: text("message"),
@@ -505,6 +532,47 @@ export const coach_activity = pgTable("coach_activity", {
   extra: extra(),
   created_at_tz: instant("created_at_tz"),
 });
+// The indexes the notifications' queries lean on (19 Nov, Step 6, quest 7; app/lib/notes/statements.ts): a client's
+// newest in the list's own order (the text stamp, then id), a client's notes by their dedupe key, the unread reminders
+// the minute job looks at, a coach message's note by the message's id, and the older notes with none (matched by words).
+// The unique rule on (client_id, dedupe_key) is NOT here: it is made only by a NOTES_STORE=pg boot, under the lease, and
+// dropped by a memory boot (app/lib/notes/boot.ts), so a twin can never block a memory-mode save.
+export const coach_activity = pgTable("coach_activity", noteColumns(), (t) => [
+  index("coach_activity_client_text_idx").on(t.client_id, sql`(created_at COLLATE "C") DESC`, t.id.desc().nullsFirst()),
+  // Keys and words by their md5: a key carries a goal's or an event's own words, and a btree row past ~2.7 kB would
+  // fail the store's save; each statement asks `md5(x) = md5($) AND x = $`.
+  index("coach_activity_client_key_idx").on(t.client_id, sql`md5(dedupe_key)`, t.id).where(sql`dedupe_key IS NOT NULL`),
+  index("coach_activity_unread_reminder_idx").on(t.client_id, t.id).where(sql`kind = 'reminder' AND read IS NOT TRUE`),
+  index("coach_activity_message_idx").on(t.client_id, sql`(extra ->> 'message_id')`).where(sql`kind = 'coach_note'`),
+  index("coach_activity_note_words_idx").on(t.client_id, sql`md5(message)`).where(sql`kind = 'coach_note'`),
+]);
+/**
+ * The notifications' shadow (19 Nov, quest 7; app/lib/notes/shadow.ts, NOTES_SHADOW=write on staging): coach_activity's
+ * shape with the unique dedupe rule the cut-over will have, written by the new statements beside the store's own saves.
+ * Not a collection: never loaded into memory, never written by the store's writer.
+ */
+export const coach_activity_shadow = pgTable("coach_activity_shadow", noteColumns(), (t) => [
+  uniqueIndex("coach_activity_shadow_dedupe_uq").on(t.client_id, sql`md5(dedupe_key)`).where(sql`dedupe_key IS NOT NULL`),
+  index("coach_activity_shadow_client_idx").on(t.client_id, t.id),
+]);
+/** Twins on (client_id, dedupe_key) the pg boot took out before making the unique rule, kept here, never deleted (notes/boot.ts). */
+export const coach_activity_twins = pgTable("coach_activity_twins", { ...noteColumns(), removed_at: timestamp("removed_at", { withTimezone: true, mode: "string" }).notNull().defaultNow() });
+/**
+ * The notifications' ops already written (NOTES_STORE=pg, quest 7; app/lib/notes/outbox.ts): each outbox op's own token,
+ * put in by the same transaction as the op's statement, so an op run again (a crash after its commit, a connection lost
+ * as it committed) is known and does nothing: no second row, no second buzz. Pruned after 30 days, after a pg boot
+ * (on `at`'s index).
+ */
+export const coach_activity_ops = pgTable(
+  "coach_activity_ops",
+  {
+    token: text("token").primaryKey(),
+    at: timestamp("at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+    /** What the op did when it ran ("inserted"…), so a retry in this process after a lost connection still buzzes once. */
+    outcome: text("outcome"),
+  },
+  (t) => [index("coach_activity_ops_at_idx").on(t.at)]
+);
 
 export const report_templates = pgTable("report_templates", {
   id: id(),
@@ -607,23 +675,31 @@ export const password_resets = pgTable(
  * Every collection, with the field(s) that identify a row. store.ts walks
  * this list to load and save; a collection missing here would not be saved.
  */
-export const food_entries = pgTable("food_entries", {
-  id: id(),
-  client_id: fk("client_id"),
-  date: text("date"),
-  meal: text("meal"),
-  food_id: text("food_id"),
-  name: text("name"),
-  grams: num("grams"),
-  serving: text("serving"),
-  kcal: num("kcal"),
-  protein: num("protein"),
-  carbs: num("carbs"),
-  fat: num("fat"),
-  logged_at: text("logged_at"),
-  extra: extra(),
-  logged_at_tz: instant("logged_at_tz"),
-});
+export const food_entries = pgTable(
+  "food_entries",
+  {
+    id: id(),
+    client_id: fk("client_id"),
+    date: text("date"),
+    meal: text("meal"),
+    food_id: text("food_id"),
+    name: text("name"),
+    grams: num("grams"),
+    serving: text("serving"),
+    kcal: num("kcal"),
+    protein: num("protein"),
+    carbs: num("carbs"),
+    fat: num("fat"),
+    logged_at: text("logged_at"),
+    extra: extra(),
+    logged_at_tz: instant("logged_at_tz"),
+  },
+  (t) => [
+    index("food_entries_client_date_idx").on(t.client_id, t.date, t.id),
+    // A meal of the client's own on every day it holds food (removeFoodMeal's reach).
+    index("food_entries_client_meal_idx").on(t.client_id, t.meal, t.id),
+  ]
+);
 
 export const custom_foods = pgTable("custom_foods", {
   id: id(),
@@ -639,30 +715,46 @@ export const custom_foods = pgTable("custom_foods", {
   extra: extra(),
 });
 
-export const food_meals = pgTable("food_meals", {
-  id: id(),
-  client_id: fk("client_id"),
-  name: text("name"),
-  created_at: text("created_at"),
-  extra: extra(),
-});
+export const food_meals = pgTable(
+  "food_meals",
+  {
+    id: id(),
+    client_id: fk("client_id"),
+    name: text("name"),
+    created_at: text("created_at"),
+    extra: extra(),
+  },
+  (t) => [index("food_meals_client_idx").on(t.client_id, t.id)]
+);
 
-export const food_days = pgTable("food_days", {
-  id: id(),
-  client_id: fk("client_id"),
-  date: text("date"),
-  day_type: text("day_type"),
-  extra: extra(),
-});
+export const food_days = pgTable(
+  "food_days",
+  {
+    id: id(),
+    client_id: fk("client_id"),
+    date: text("date"),
+    day_type: text("day_type"),
+    extra: extra(),
+  },
+  (t) => [index("food_days_client_date_idx").on(t.client_id, t.date, t.id)]
+);
 
-export const saved_meals = pgTable("saved_meals", {
-  id: id(),
-  client_id: fk("client_id"),
-  name: text("name"),
-  items: jsonb("items"),
-  created_at: text("created_at"),
-  extra: extra(),
-});
+export const saved_meals = pgTable(
+  "saved_meals",
+  {
+    id: id(),
+    client_id: fk("client_id"),
+    name: text("name"),
+    items: jsonb("items"),
+    created_at: text("created_at"),
+    extra: extra(),
+  },
+  (t) => [
+    index("saved_meals_client_idx").on(t.client_id, t.id),
+    // A picture's rows by file (the pictures' clean-up, the look).
+    index("saved_meals_picture_idx").on(sql`(extra ->> 'picture')`).where(sql`(extra ->> 'picture') IS NOT NULL`),
+  ]
+);
 
 export const off_foods = pgTable("off_foods", {
   id: id(),
@@ -680,23 +772,90 @@ export const off_foods = pgTable("off_foods", {
   extra: extra(),
 });
 
-export const saved_days = pgTable("saved_days", {
-  id: id(),
-  client_id: fk("client_id"),
-  name: text("name"),
-  items: jsonb("items"),
-  created_at: text("created_at"),
-  extra: extra(),
-});
+export const saved_days = pgTable(
+  "saved_days",
+  {
+    id: id(),
+    client_id: fk("client_id"),
+    name: text("name"),
+    items: jsonb("items"),
+    created_at: text("created_at"),
+    extra: extra(),
+  },
+  (t) => [index("saved_days_client_idx").on(t.client_id, t.id)]
+);
 
-export const meal_photos = pgTable("meal_photos", {
-  id: id(),
-  client_id: fk("client_id"),
-  date: text("date"),
-  meal: text("meal"),
-  file_path: text("file_path"),
-  uploaded_at: text("uploaded_at"),
-  extra: extra(),
+export const meal_photos = pgTable(
+  "meal_photos",
+  {
+    id: id(),
+    client_id: fk("client_id"),
+    date: text("date"),
+    meal: text("meal"),
+    file_path: text("file_path"),
+    uploaded_at: text("uploaded_at"),
+    extra: extra(),
+  },
+  (t) => [index("meal_photos_client_date_idx").on(t.client_id, t.date, t.meal, t.id), index("meal_photos_path_idx").on(t.file_path)]
+);
+
+/**
+ * The food diary's write tokens (19 Nov, quest 8 part 1; FOOD_STORE=pg): each write's own, in its transaction, so a write
+ * whose commit was lost to a dropped connection can be read back rather than run blind. Pruned after 30 days. Not a
+ * collection: never loaded into memory, never written by the store's writer.
+ */
+export const food_ops = pgTable(
+  "food_ops",
+  {
+    token: text("token").primaryKey(),
+    op: text("op").notNull(),
+    client_id: integer("client_id"),
+    at: timestamp("at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+    after: jsonb("after"),
+  },
+  (t) => [index("food_ops_at_idx").on(t.at)]
+);
+
+/** Twin rows a FOOD_STORE=pg boot moved out before making a unique rule (calorie_logs on client and day), kept whole. */
+export const food_twins = pgTable(
+  "food_twins",
+  {
+    tbl: text("tbl").notNull(),
+    id: integer("id").notNull(),
+    row: jsonb("row").notNull(),
+    removed_at: timestamp("removed_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.tbl, t.id] })]
+);
+
+/**
+ * Rows a CHECKINS_STORE=pg boot kept aside (20 Nov, quest 9; app/lib/checkins/boot.ts), whole: a twin moved out before a
+ * unique rule was made (`twin`), a twin metric's figures the merge left (`merge`), an impossible step count (`steps`).
+ * Not a collection: never loaded into memory, never written by the store's writer; empty in memory mode.
+ */
+export const checkin_twins = pgTable(
+  "checkin_twins",
+  {
+    tbl: text("tbl").notNull(),
+    id: integer("id").notNull(),
+    row: jsonb("row").notNull(),
+    reason: text("reason").notNull(),
+    moved_at: timestamp("moved_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.tbl, t.id] })]
+);
+
+/**
+ * A client's meal-card order with FOOD_STORE=pg (19 Nov, quest 8 part 1, the food item's question 3; app/lib/food/):
+ * written in the same transaction as the food it orders, so a crash after the commit never loses a card's place. The
+ * client row's meal_order in memory stays its mirror (put there after the commit), so a rollback still reads an order;
+ * which of the two a boot believes: app/lib/food/orders.ts. Not a collection: never loaded into memory, never written
+ * by the store's writer; empty in memory mode.
+ */
+export const food_meal_orders = pgTable("food_meal_orders", {
+  client_id: integer("client_id").primaryKey(),
+  meal_order: jsonb("meal_order").notNull(),
+  updated_at: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
 });
 
 export const video_requests = pgTable("video_requests", {
@@ -714,6 +873,36 @@ export const video_requests = pgTable("video_requests", {
   reply_seen_at: text("reply_seen_at"),
   extra: extra(),
 });
+
+/**
+ * The phone's workouts (lib/healthSync.ts; 19 Nov, Step 6 of docs/database-plan.md): until now one list in `kv`, now a
+ * table of its own, still in memory and written row by row by the store. Written only by syncWorkouts, from the
+ * phone's sync. Keyed as the sync matches a workout: the client, the store ("apple", "google") and the store's own id,
+ * which the sync cleans where it makes it (cleanText), so no two rows can differ only by what Postgres takes out.
+ * `id` is not a key (allocId keeps it unique: the Activity row's own id); its columns in the order the sync writes them.
+ *
+ * Kept in `kv` as well while a rollback to the builds before it is wanted (ROLLBACK_KV_COPIES): every boot makes the
+ * table that copy (pg/healthWorkouts.ts).
+ */
+export const health_workouts = pgTable(
+  "health_workouts",
+  {
+    id: integer("id"),
+    client_id: integer("client_id").notNull(),
+    store: text("store").notNull(),
+    platform_id: text("platform_id").notNull(),
+    type: text("type"),
+    start: text("start"),
+    end: text("end"),
+    seconds: num("seconds"),
+    kcal: num("kcal"),
+    meters: num("meters"),
+    source: text("source"),
+    synced_at: text("synced_at"),
+    extra: extra(),
+  },
+  (t) => [primaryKey({ columns: [t.client_id, t.store, t.platform_id] })]
+);
 
 /**
  * Saves taken once (lib/once.ts; 18 Nov, step 4B): until now a list in `kv`, now a table of its own, still in memory
@@ -792,6 +981,9 @@ export const COLLECTIONS = [
   { name: "client_preferences", table: client_preferences, key: ["client_id"] },
   // Loaded oldest first, as the list in kv kept them: once.ts keeps the newest MAX_KEPT.
   { name: "once_keys", table: once_keys, key: ["key"], order: ["at", "key"] },
+  // Loaded by id (the order they were added in) only once kv holds no copy: while it does, memory takes the copy's own
+  // order (pg/healthWorkouts.ts), which decides the coach's Activity where two workouts tie.
+  { name: "health_workouts", table: health_workouts, key: ["client_id", "store", "platform_id"], order: ["id"] },
 ] as const;
 
 /**
@@ -810,9 +1002,10 @@ export const DERIVED = [
 
 /**
  * Collections also kept whole in `kv` under their own name, for a rollback to a build that still reads them there
- * (18 Nov, step 4B): written beside the table in the same save, and never loaded from kv but by pg/onceKeys.ts.
+ * (18 Nov, step 4B; health_workouts 19 Nov, Step 6): written beside the table in the same save, and never loaded from
+ * kv by loadStore: the boot makes the table the copy first (pg/onceKeys.ts, pg/healthWorkouts.ts).
  */
-export const ROLLBACK_KV_COPIES = ["once_keys"] as const;
+export const ROLLBACK_KV_COPIES = ["once_keys", "health_workouts"] as const;
 
 /**
  * Where ids come from for the tables that will leave memory (18 Nov, step 4A; pg/ids.ts): one sequence each, int4 like
@@ -831,6 +1024,12 @@ export const metric_entries_id_seq = idSeq("metric_entries");
 export const set_logs_id_seq = idSeq("set_logs");
 export const workout_assignments_id_seq = idSeq("workout_assignments");
 export const program_days_id_seq = idSeq("program_days");
+export const health_workouts_id_seq = idSeq("health_workouts");
+// Saved days had none (quest 8 part 1): theirs, for FOOD_STORE=pg (pg/ids.ts takes it then; memory mode counts from _seq).
+export const saved_days_id_seq = idSeq("saved_days");
+// The check-in notes and the metric definitions had none (quest 9): theirs, for CHECKINS_STORE=pg (pg/ids.ts takes them then).
+export const check_in_notes_id_seq = idSeq("check_in_notes");
+export const metric_definitions_id_seq = idSeq("metric_definitions");
 
 /**
  * Names that are tables, never a key in `kv` (17 Nov): a kv row named like a collection would replace that collection
@@ -840,4 +1039,5 @@ export const program_days_id_seq = idSeq("program_days");
  */
 // chat_messages is here too (Step 5's cut-over): with CHAT_STORE=pg it leaves the writer's collections, and a stray
 // `chat_messages` in the store must never be written to kv. A no-op while it is a collection (store.ts adds those anyway).
-export const TABLE_NAMES_NOT_IN_KV = ["kv", "push_subscriptions", "password_resets", "chat_messages_shadow", "once_keys_shadow", "chat_messages"] as const;
+// coach_activity, its shadow, its twins and its ops' tokens the same (quest 7, NOTES_STORE=pg; app/lib/notes/).
+export const TABLE_NAMES_NOT_IN_KV = ["kv", "push_subscriptions", "password_resets", "chat_messages_shadow", "once_keys_shadow", "chat_messages", "coach_activity", "coach_activity_shadow", "coach_activity_twins", "coach_activity_ops", "food_ops", "food_twins", "food_meal_orders", "checkin_twins"] as const;
