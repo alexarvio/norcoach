@@ -21938,7 +21938,7 @@ html.zoomed .cki-live > i::after { animation: none; }
    figures stay on the form's edges. */
 .cki-auto { margin: 14px -6px 0; padding: 12px 8px 6px; border-radius: 16px; background: #F5F6F8; }
 .cki-auto-head { display: flex; align-items: center; gap: 7px; margin-bottom: 2px; font-size: 10px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #8b93a1; }
-.cki-auto-head svg { flex: none; width: 14px; height: 14px; color: #d6455d; translate: 0 -1px; } /* On the capitals' middle, not the line box's (21 Nov, Alex: "align the heart"; it sat 1px low on the phone). */
+.cki-auto-head svg { flex: none; width: 14px; height: 14px; color: #d6455d; translate: 0 -0.5px; } /* On the capitals' middle, not the line box's (21 Nov, Alex: "align the heart"): measured in Archivo 10px/600, 0.43px low unlifted, 0.07px off at half a pixel. */
 /* The live dot at the head's right, over the figures' edge, pulsing as every live thing (17 Nov, Alex). */
 .cki-auto-head .cki-auto-live { margin-left: auto; margin-right: 6px; }
 .cki-auto-row { display: flex; align-items: center; min-height: 38px; }
@@ -22261,3 +22261,10 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
 .cki-row.filled .cki-num input:focus { color: #141a24; text-shadow: none; }
 .cki-row.filled .cki-unit { color: rgba(47, 122, 63, 0.55); }
 .cki-row.filled .cki-scale button.in { color: #2f7a3f; font-weight: 600; text-shadow: 0 0 10px rgba(47, 122, 63, 0.35); }
+
+/* Training: the week card to the coach's note (21 Nov, Alex: "a decent amount of space… why is there so much space"):
+   measured, the ring's foot to the note's face was 50px (the card's 18px foot, the page's 16px gap and the note's own
+   16px top) against 20px from the note to Sessions. The card's foot 8px and the note's top none, so it is the gap
+   alone and 24px in all. */
+.tr-body .tr-days-top { padding-bottom: 8px; }
+.tr-body > .nd-card.flat .nd-coach { padding-top: 0; }
