@@ -716,10 +716,16 @@ function TrainingTab({
                   <span className="tr-days-num">{sessionsDone}</span>
                   <span className="tr-days-of">of {dayTarget} sessions</span>
                 </div>
-                {/* No "N sessions left" (17 Oct, Alex): the figure and the ring say it. Only a complete week or an unfinished session gets a line. */}
+                {/* No "N sessions left" (17 Oct, Alex): the figure and the ring say it. Only a complete week or an unfinished session gets a line.
+                    Its room is always kept (21 Nov, Alex: "one unfinished… makes everything jump"), so the label and the figure sit
+                    in one place on every week. */}
                 {(() => {
                   const line = [sessionsLeft <= 0 && !unfinished ? "Week complete" : null, unfinished ? `${unfinished} unfinished` : null].filter(Boolean);
-                  return line.length > 0 ? <div className={`tr-days-status${sessionsLeft <= 0 && !unfinished ? " done" : ""}`}><Bars parts={line} /></div> : null;
+                  return line.length > 0 ? (
+                    <div className={`tr-days-status${sessionsLeft <= 0 && !unfinished ? " done" : ""}`}><Bars parts={line} /></div>
+                  ) : (
+                    <div className="tr-days-status" aria-hidden="true">&nbsp;</div>
+                  );
                 })()}
               </div>
               {/* Green once the week is complete, like a finished session's pill. */}
