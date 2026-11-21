@@ -682,3 +682,7 @@ html:not(.js) .tt { position: static; opacity: 1; visibility: visible; grid-area
   .tt-label { display: flex; align-items: center; height: 18px; }
   .tt-col p:last-child { margin-top: calc(1.6px + 0.7 * clamp(19px, 1.6vw, 22px)); }
 }
+
+/* The coach's own words in bold (21 Nov, Alex: "retention, growth, business NEED to be in there, and BOLD"): white and
+   heavier inside the grey sentences on the dark, so they pop without shouting. */
+.sub strong, .lede strong, .tt-line strong { font-weight: 600; color: #fff; }
