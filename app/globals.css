@@ -22215,9 +22215,9 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
    website's dark (#1c1c1e, as the apply page and the sign-up), the logo's star in it, white and very faint, at the spot it
    always had; the paper rises over the dark's foot with 28px round top corners and holds the rest of Home from Today
    down, plain, with no star of its own. The star is the dark's own, so it scrolls away with it (21 Nov, Alex: "if I scroll
-   down I don't see it anymore"). The top bar is white over it (the tab's darkBanner) and the clock with it. */
+   down I don't see it anymore"). The top bar is white over it (the tab's darkBanner) and the clock with it. With a brand colour (docs/DESIGN-RULES.md §4) the dark is that colour, darkened as it always is until white reads on it (`brandColour`), the date a see-through white so it reads on any of them (21 Nov, Alex: "if I change the branding color… that black card… also changes"). */
 .app-content.app-content:has(> .hm) { background: #F5F5F5; }
-.hm > .hm-banner:not(.st-banner) { overflow: hidden; padding-bottom: 54px; background: #1c1c1e; color: #fff; }
+.hm > .hm-banner:not(.st-banner) { overflow: hidden; padding-bottom: 54px; background: var(--brand, #1c1c1e); color: #fff; }
 .hm > .hm-banner:not(.st-banner)::before {
   content: ""; position: absolute; inset: 0; z-index: 0; width: auto; height: auto; border: 0; border-radius: 0; pointer-events: none; background: #fff; opacity: 0.05;
   -webkit-mask: var(--bg-mark, url("/brand/mark.svg")) right -120px top var(--mark-y, 6px) / 448px 430px no-repeat;
@@ -22227,7 +22227,7 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
   content: ""; position: absolute; top: auto; left: 0; right: 0; bottom: 0; z-index: 1; width: auto; height: 28px; border: 0; border-radius: 28px 28px 0 0; background: #F5F5F5; -webkit-mask: none; mask: none; pointer-events: none;
 }
 .hm > .hm-banner:not(.st-banner) .hm-greeting { color: #fff; }
-.hm > .hm-banner:not(.st-banner) .hm-date { color: var(--site-bg-muted, #8e8e93); }
+.hm > .hm-banner:not(.st-banner) .hm-date { color: rgba(255, 255, 255, 0.62); }
 
 /* Training's banner as Nutrition's (21 Nov, Alex: "the chunk of the background picture… occupies a certain amount of
    space… if I go to nutrition, that expands quite a bit"; Training's was 260px with its picture fitted to that, Nutrition's
@@ -22238,3 +22238,18 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
 .tr .tr-banner:not(.ci-banner) > :not(.tr-banner-pic) { flex-shrink: 0; }
 .tr .tr-banner:not(.ci-banner) > .tr-weeks { margin-top: auto; }
 .tr .tr-banner.tr-banner:not(.ci-banner) > .tr-banner-pic { bottom: auto; height: 420px; }
+
+/* A coach's own logo is shown, never cut to a corner of it (21 Nov, Alex: "it shows like 25% of that… position it in a way
+   that we can see the totality of it"; A and D of docs/boards/coach-logo-whole-mockup.html). Only with a logo of the
+   coach's own (`coach-mark` on the body, app/layout.tsx); Norcoach's star keeps its crop.
+   - Home's dark: the logo whole on the right, from just under the clock down to the arc, white at 14%, behind the bar's
+     name and the bell; it scrolls away with the dark as the star does.
+   - Every chat (the client's, the coach's phone, the laptop's panel): the logo whole in the thread's top right, 200px wide,
+     as faint as the star, still while the messages scroll (and riding with the keyboard in the client's, as before). */
+.coach-mark .hm > .hm-banner:not(.st-banner)::before {
+  opacity: 0.14;
+  -webkit-mask: var(--bg-mark) right 14px top 22px / auto calc(100% - 52px) no-repeat;
+  mask: var(--bg-mark) right 14px top 22px / auto calc(100% - 52px) no-repeat;
+}
+.coach-mark .cm-body.cm-body { background-position: 0 0, right 16px top calc(14px + var(--mark-ride, 0px)); background-size: auto, 200px auto; }
+.coach-mark .cph-thread.cph-thread, .coach-mark .rm-thread.rm-thread { background-position: 0 0, right 16px top 14px; background-size: auto, 200px auto; }

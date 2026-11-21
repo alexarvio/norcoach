@@ -116,10 +116,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   // The palette is the design's (the tokens at the top of globals.css). A coach changes one thing in it (19 Nov, Alex):
   // their brand colour, `--brand`, which fills the main pills and nothing else, with today's ink when they have none.
+  // `coach-mark` when the coach has a logo of their own: it is drawn whole where the star is cropped (21 Nov, Alex).
+  const brandStyle = await bodyBrand();
   return (
     <html lang="en" className={`${libreBaskerville.variable} ${archivo.variable} ${kirana.variable} ${bricolage.variable}`}>
       {/* Sign-in through Clerk, when it is switched on (lib/clerk.ts). */}
-      <body style={await bodyBrand()}>
+      <body style={brandStyle} className={brandStyle && "--bg-mark" in brandStyle ? "coach-mark" : undefined}>
         {/* The phone app marks itself before anything draws (17 Nov): the server then sends a coach to /coach. */}
         <script dangerouslySetInnerHTML={{ __html: NATIVE_SCRIPT }} />
         {clerkOn() ? <ClerkProvider signInUrl="/login" signUpUrl="/signup" signInFallbackRedirectUrl="/auth/continue" signUpFallbackRedirectUrl="/auth/continue" afterSignOutUrl="/login">{children}</ClerkProvider> : children}
