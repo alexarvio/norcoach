@@ -89,35 +89,35 @@ const screens = {
     <div class="ws-scroll">
       <div class="ws-foldline"><span class="ws-done"><svg viewBox="0 0 24 24" width="12" height="12"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span class="ws-foldline-name">Bench press</span><i class="ws-chev"></i></div>
       <div class="ws-block">
-        <div class="ws-bh"><span class="ws-bn on">2</span><h3 class="ws-bname">Barbell row</h3><span class="ws-tools">
+        <div class="ws-bh"><span class="ws-bn on">2</span><h3 class="ws-bname">Incline DB press</h3><span class="ws-tools">
           <i><svg viewBox="0 0 24 24" width="17" height="17"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M8 5.5v13l10.5-6.5z"/></svg></i>
           <i><svg viewBox="0 0 24 24" width="17" height="17"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 5h16v11H9l-5 4z"/></svg></i>
           <i><svg viewBox="0 0 24 24" width="17" height="17"><g fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></g></svg></i>
         </span></div>
         <div class="ws-bbody">
           <div class="ws-ask"><i></i><b>Finlay asked for a video</b><span class="ws-ink-pill">Record</span></div>
-          <p class="ws-tgt"><b>Target</b><span>3 × 8–10<i class="bar"></i>60 kg<i class="bar"></i>Rest 2 min</span></p>
-          <div class="ws-note"><span class="wo-coach"></span><div><small>FINLAY</small><p>Pull to your belly button. Pause for a second at the top.</p></div></div>
+          <p class="ws-tgt"><b>Target</b><span>3 × 10–12<i class="bar"></i>24 kg<i class="bar"></i>RPE 8</span></p>
+          <div class="ws-note"><span class="wo-coach"></span><div><small>FINLAY</small><p>3 s down</p></div></div>
           <div class="ws-grid">
             <div class="ws-gh"><span>Set</span><span>Last</span><span class="c">kg</span><span class="c">Reps</span><span></span><span></span></div>
-            <div class="ws-gr done"><span class="ws-sn">1</span><span class="ws-last">57.5 × 10</span><span class="ws-cell"><b>60</b><em>+2.5</em></span><span class="ws-cell"><b>10</b></span><span class="ws-pbcell"><i class="ws-pb">PB</i></span><span class="ws-tick done"><svg viewBox="0 0 24 24" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></div>
-            <div class="ws-gr"><span class="ws-sn">2</span><span class="ws-last">57.5 × 9</span><span class="ws-cell line"><b>60</b><em>+2.5</em></span><span class="ws-cell line focus"><b>9</b></span><span></span><span class="ws-tick ready"><svg viewBox="0 0 24 24" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></div>
-            <div class="ws-gr"><span class="ws-sn">3</span><span class="ws-last">55 × 9</span><span class="ws-cell line"></span><span class="ws-cell line"></span><span></span><span class="ws-tick"></span></div>
+            <div class="ws-gr done"><span class="ws-sn">1</span><span class="ws-last">24 × 12</span><span class="ws-cell"><b>24</b></span><span class="ws-cell"><b>12</b></span><span></span><span class="ws-tick done"><svg viewBox="0 0 24 24" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></div>
+            <div class="ws-gr"><span class="ws-sn">2</span><span class="ws-last">24 × 11</span><span class="ws-cell line"><b>24</b></span><span class="ws-cell line focus"><b>12</b><em>+1</em></span><span></span><span class="ws-tick ready"><svg viewBox="0 0 24 24" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></div>
+            <div class="ws-gr"><span class="ws-sn">3</span><span class="ws-last">24 × 10</span><span class="ws-cell line"></span><span class="ws-cell line"></span><span></span><span class="ws-tick"></span></div>
           </div>
           <div class="ws-setacts"><span>− Remove a set</span><span>+ Add a set</span></div>
         </div>
       </div>
       <div class="ws-block">
-        <div class="ws-bh"><span class="ws-bn">3</span><h3 class="ws-bname">Lat pulldown</h3><span class="ws-tools">
+        <div class="ws-bh"><span class="ws-bn">3</span><h3 class="ws-bname">Cable pushdown</h3><span class="ws-tools">
           <i><svg viewBox="0 0 24 24" width="17" height="17"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M8 5.5v13l10.5-6.5z"/></svg></i>
           <i><svg viewBox="0 0 24 24" width="17" height="17"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 5h16v11H9l-5 4z"/></svg></i>
           <i><svg viewBox="0 0 24 24" width="17" height="17"><g fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></g></svg></i>
         </span></div>
         <div class="ws-bbody">
-          <p class="ws-tgt"><b>Target</b><span>3 × 10–12<i class="bar"></i>45 kg<i class="bar"></i>Rest 90 s</span></p>
+          <p class="ws-tgt"><b>Target</b><span>3 × 12<i class="bar"></i>30 kg<i class="bar"></i>RPE 9</span></p>
           <div class="ws-grid">
             <div class="ws-gh"><span>Set</span><span>Last</span><span class="c">kg</span><span class="c">Reps</span><span></span><span></span></div>
-            <div class="ws-gr"><span class="ws-sn">1</span><span class="ws-last">45 × 12</span><span class="ws-cell line"></span><span class="ws-cell line"></span><span></span><span class="ws-tick"></span></div>
+            <div class="ws-gr"><span class="ws-sn">1</span><span class="ws-last">30 × 12</span><span class="ws-cell line"></span><span class="ws-cell line"></span><span></span><span class="ws-tick"></span></div>
           </div>
         </div>
       </div>
@@ -301,11 +301,12 @@ body{font-family:Archivo,system-ui,sans-serif;font-weight:500;-webkit-font-smoot
   // The page colour between the Home cards, read off the drawing it sits on.
   const px = await sharp(path.join(KEEP, "phone-home.jpg")).extract({ left: 50, top: 760, width: 6, height: 6 }).raw().toBuffer();
   const bg = `rgb(${px[0]},${px[1]},${px[2]})`;
-  for (const k of Object.keys(screens)) {
+  const ONLY = process.env.ONLY ? process.env.ONLY.split(",") : null;
+  for (const k of Object.keys(screens).filter((k) => !ONLY || ONLY.includes(k))) {
     const html = `<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600&display=block"><style>${css}</style><svg width="0" height="0" style="position:absolute"><defs>${word}${mark}</defs></svg>${screens[k](bg)}`;
     fs.writeFileSync(path.join(SITE, `_phone-${k}.html`), html);
     const png = path.join(__dirname, `phone-${k}.png`);
-    execFileSync(CHROME, ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--window-size=390,844", "--force-device-scale-factor=2", "--virtual-time-budget=6000", `--screenshot=${png}`, `http://localhost:4322/_phone-${k}.html`], { stdio: "ignore" });
+    execFileSync(CHROME, ["--headless=new", "--disable-gpu", "--hide-scrollbars", "--window-size=390,844", "--force-device-scale-factor=2", "--virtual-time-budget=6000", `--screenshot=${png}`, `http://localhost:${process.env.PORT || 4321}/_phone-${k}.html`], { stdio: "ignore" });
     const meta = await sharp(png).metadata();
     await sharp(png).resize(780, 1688, { fit: "cover", position: "top" }).jpeg({ quality: 88 }).toFile(path.join(SNAPS, `phone-${k}.jpg`));
     console.log(k, meta.width, meta.height);
