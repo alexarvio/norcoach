@@ -655,3 +655,21 @@ html:not(.js) .tt { position: static; opacity: 1; visibility: visible; grid-area
 /* Today → Norcoach: the six rows one height (20 Nov, Alex: "the items on the right are not evenly spaced out"), so the
    right column runs on one even rhythm and each scrap sits in the middle of its row. Phones stack as before. */
 @media (min-width: 761px) { .swap { grid-template-rows: auto repeat(6, minmax(0, 1fr)); } }
+
+/* Scale the quality, its words and its picture on one row (21 Nov, Alex: "that text should be below the title, and then
+   we put the screen on the same row"): the label, title, line and link stacked on the left, the week on the right; and
+   the picture says which side is which, Before over the scattered apps and With Norcoach over Needs you. */
+.wk-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.wk-label { font-size: 10.5px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--faint); }
+.wk-label.now { color: var(--ink); }
+.quality-copy .lede { margin-top: 22px; }
+@media (min-width: 1100px) {
+  .quality-grid { display: grid; grid-template-columns: minmax(0, .3fr) minmax(0, .7fr); gap: clamp(36px, 3.6vw, 56px); align-items: center; }
+  .quality-grid .week { margin-top: 0; grid-template-columns: minmax(0, 1fr) 30px minmax(0, 1fr); gap: 18px; padding: clamp(20px, 2.2vw, 30px); }
+  .quality-grid .wk-arrow { width: 30px; }
+  .quality-grid .board { padding: 16px; }
+  /* Each task its person, what it is, the wait and its button; the words they wrote stay in the app. */
+  .quality-grid .nr { grid-template-columns: 22px minmax(0, 1fr) auto 30px 28px; gap: 6px; }
+  .quality-grid .nr .nm { min-width: 0; }
+  .quality-grid .nr q { display: none; }
+}
