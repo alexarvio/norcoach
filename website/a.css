@@ -703,3 +703,19 @@ html:not(.js) .tt { position: static; opacity: 1; visibility: visible; grid-area
   /* Side by side the cards come in together, not one by one as each scrolls into view. */
   html.js .seen .cardz.reveal { transition-delay: 0s; }
 }
+
+/* Scale the quality on a phone (21 Nov, Alex): the four apps of Before are one row to swipe sideways, as No AI's cards,
+   so Before, the arrow and With Norcoach fit about one screen. */
+@media (max-width: 600px) {
+  #quality .scraps {
+    display: flex; align-items: flex-start; gap: 12px; overflow-x: auto; overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory; scroll-padding-inline: 20px;
+    margin-inline: -20px; padding: 6px 20px 10px; scrollbar-width: none;
+  }
+  #quality .scraps::-webkit-scrollbar { display: none; }
+  #quality .scrap { flex: 0 0 82%; scroll-snap-align: start; transform: none; }
+}
+@media (max-width: 600px) {
+  #quality .nr { grid-template-columns: 22px minmax(0, 1fr) auto 28px; }
+  #quality .nr q { display: none; }
+}
