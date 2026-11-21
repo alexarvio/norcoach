@@ -22268,3 +22268,8 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
    alone and 24px in all. */
 .tr-body .tr-days-top { padding-bottom: 8px; }
 .tr-body > .nd-card.flat .nd-coach { padding-top: 0; }
+
+/* From Apple Health: each metric’s name starts where the label’s words do, not under the heart (21 Nov, Alex: "have them
+   aligned with the title instead of the icon"): indented by the heart’s 14px and its 7px gap. Measured on a 390px phone, the
+   label’s words and Steps start on the same pixel. */
+.cki-auto-row .cki-auto-name { padding-left: 21px; }
