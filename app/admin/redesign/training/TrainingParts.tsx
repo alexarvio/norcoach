@@ -472,6 +472,10 @@ export function AfterWorkoutCheck({ programId, firstName, questions, answers, hr
       <Dialog open={removing != null} onOpenChange={(o) => !o && setRemoving(null)}>
         {removing && (
           <ConfirmDialog
+            thing={(() => {
+              const said = answers.filter((a) => a.answers.some((x) => x.label === removing.label && (x.value != null || !!(x.text ?? "").trim()))).length;
+              return { name: removing.label, facts: [removing.kind === "number" ? removing.unit || "Value" : removing.kind === "text" ? "Text" : "1–10", `${said} ${said === 1 ? "answer" : "answers"}`] };
+            })()}
             title={`Remove “${removing.label}” from the after-workout check?`}
             description={`${firstName} isn’t asked it from their next workout. The answers they’ve given stay.`}
             confirm="Remove"

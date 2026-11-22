@@ -2,7 +2,8 @@
 
 import "./phase-dates.css";
 import { useState } from "react";
-import { DialogClose, DialogContent, DialogDescription, DialogTitle } from "../../components/ui/dialog";
+import { DialogClose, DialogContent, DialogDescription } from "../../components/ui/dialog";
+import { PopupTitle } from "./PopupWho";
 import DateText from "./DateText";
 import { MonthRange } from "./MonthRange";
 import { dayMonth } from "../../lib/dayMonth";
@@ -114,7 +115,7 @@ export default function PhaseDatesDialog({
       style={track ? ({ "--npd-c": TRACK_ACCENT[track], "--npd-rgb": rgbOf(TRACK_ACCENT[track]) } as React.CSSProperties) : undefined}
     >
       <div className="pdh-head">
-        <DialogTitle className="pdh-title">{title}</DialogTitle>
+        <PopupTitle className="pdh-title">{title}</PopupTitle>
       </div>
       {/* The one fact line: how long, from when to when (20 Oct: no explanations). */}
       <DialogDescription className="pdh-what">

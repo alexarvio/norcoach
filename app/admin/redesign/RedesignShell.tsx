@@ -25,6 +25,7 @@ import type { DraftInvoices, RailData } from "./loaders";
 import type { DotTab, DotTrail } from "./dots";
 import { TodoContext } from "./TodoStrip";
 import { useCloseOnEmptyClick } from "./useCloseOnEmptyClick";
+import { PopupTabZone, PopupWhoProvider } from "./PopupWho";
 import { SHOW_TAB_EVENT } from "./followLink";
 
 // The redesign drafts on one page: the rail on the left, and Training,
@@ -345,11 +346,12 @@ export default function RedesignShell({ clientId, clientName, firstName, rail, i
             </button>
           ))}
         </nav>
-        <div hidden={tab !== "home"}>
+        <PopupWhoProvider id={clientId} name={clientName} photo={rail.clients.find((c) => c.id === clientId)?.avatarPath ?? null}>
+        <PopupTabZone tab="home" hidden={tab !== "home"}>
           {/* Keyed per client: Home's own state (What counts, rows marked read, the filter) is one client's. */}
           <HomeTab key={clientId} clientId={clientId} firstName={firstName} home={home} onOpenTab={openTab} dueUnlock={dots.unlock} />
-        </div>
-        <div hidden={tab !== "training"}>
+        </PopupTabZone>
+        <PopupTabZone tab="training" hidden={tab !== "training"}>
           {training.draft ? (
             <TrainingTab key={training.draft.id} clientId={clientId} firstName={firstName} lbsFirst={rail.coach.units === "lbs"} program={training.draft} library={training.library} cardioMoves={training.cardioMoves} coachVideos={training.videos} dots={dots} />
           ) : hasPhase("training") ? (
@@ -357,25 +359,26 @@ export default function RedesignShell({ clientId, clientName, firstName, rail, i
           ) : (
             <NoPhase clientId={clientId} firstName={firstName} track="training" plan={plan} />
           )}
-        </div>
-        <div hidden={tab !== "nutrition"}>
+        </PopupTabZone>
+        <PopupTabZone tab="nutrition" hidden={tab !== "nutrition"}>
           {nutritionBlank ? <NoPhase clientId={clientId} firstName={firstName} track="nutrition" plan={plan} /> : <NutritionTab key={`${clientId}:${nutrition.id}`} clientId={clientId} firstName={firstName} plan={nutrition} dueFood={dots.food} />}
-        </div>
-        <div hidden={tab !== "measurements"}>
+        </PopupTabZone>
+        <PopupTabZone tab="measurements" hidden={tab !== "measurements"}>
           {measurementsBlank ? <NoPhase clientId={clientId} firstName={firstName} track="lifestyle" plan={plan} /> : <MeasurementsTab key={`${clientId}:${measurements.id}`} clientId={clientId} firstName={firstName} plan={measurements} />}
-        </div>
-        <div hidden={tab !== "pictures"}>
+        </PopupTabZone>
+        <PopupTabZone tab="pictures" hidden={tab !== "pictures"}>
           <PicturesTab clientId={clientId} firstName={firstName} plan={pictures} />
-        </div>
-        <div hidden={tab !== "meetings"}>
+        </PopupTabZone>
+        <PopupTabZone tab="meetings" hidden={tab !== "meetings"}>
           <MeetingsTab clientId={clientId} firstName={firstName} plan={meetings} />
-        </div>
-        <div hidden={tab !== "plan"}>
+        </PopupTabZone>
+        <PopupTabZone tab="plan" hidden={tab !== "plan"}>
           <PlanTab clientId={clientId} firstName={firstName} plan={plan} />
-        </div>
-        <div hidden={tab !== "invoices"}>
+        </PopupTabZone>
+        <PopupTabZone tab="invoices" hidden={tab !== "invoices"}>
           <InvoicesTab clientId={clientId} firstName={firstName} clientName={clientName} plan={invoices} />
-        </div>
+        </PopupTabZone>
+        </PopupWhoProvider>
       </div>
       {/* The chat's tab on the window's right edge, on every screen of a
           client: it slides the chat out. A dot while there is something from

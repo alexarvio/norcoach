@@ -12,7 +12,7 @@ import { newOnceKey } from "../../lib/onceKey";
 import { kgFrom, kgIn, VERDICT_TONE, VERDICT_WORD, type WeightGoalView } from "../../lib/weightGoal";
 import DatePick from "./DatePick";
 import { SepJoin } from "./Sep";
-import { ConfirmText } from "./ConfirmParts";
+import { ConfirmText, ConfirmThing } from "./ConfirmParts";
 import { PopupTitle } from "./PopupWho";
 
 // A weight goal's pop-up (2 Nov, Alex), the one way to set or change one: from Home's Weight card and from the Plan's
@@ -96,13 +96,12 @@ export default function WeightGoalDialog({
       // what stays, and Delete the red pill.
       <DialogContent className="dlh">
         <div className="dlh-head">
-          <PopupTitle>
-            Delete the weight goal {one(kgIn(goal.targetKg, unit))} {unit} by {dayMonth(goal.byDate)}?
-          </PopupTitle>
+          <PopupTitle>Delete the weight goal?</PopupTitle>
           <DialogClose className="dlh-x" aria-label="Close">
             ✕
           </DialogClose>
         </div>
+        <ConfirmThing name={`${one(kgIn(goal.targetKg, unit))} ${unit} by ${dayMonth(goal.byDate)}`} facts={[goal.verdict ? VERDICT_WORD[goal.verdict] : null]} />
         <ConfirmText>The weigh-ins stay on their charts. This can’t be undone.</ConfirmText>
         <div className="dlh-foot">
           <button type="button" className="dlh-cancel" onClick={() => setAsking(false)}>

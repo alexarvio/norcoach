@@ -2473,6 +2473,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
         )}
         {dlg?.kind === "copyWeek" && (
           <ConfirmDialog
+            thing={{ name: week.label, facts: [`${sessions.length} ${sessions.length === 1 ? "session" : "sessions"}`] }}
             title={`Copy Week ${dlg.from} to ${week.label}?`}
             description={`${week.label} becomes a copy of it, cardio included. Sessions ${firstName} has already logged stay as they are.`}
             confirm="Copy"

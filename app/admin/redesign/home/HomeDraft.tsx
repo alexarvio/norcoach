@@ -401,17 +401,10 @@ export default function HomeDraft({
             }}
           >
             {/* The face and the name (23 Oct, Alex: no fact line; gender, height and the plan's week didn't belong here). */}
+            {/* PopupTitle draws the face (22 Nov, C), so the head has no face of its own. */}
             <div className="dlh-head rh-details-head">
-              <span className="rh-details-face" aria-hidden="true">
-                {home.avatarPath ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- client-uploaded file
-                  <img src={pic(home.avatarPath, 96)} alt="" />
-                ) : (
-                  home.initial
-                )}
-              </span>
               <div className="rh-details-who">
-                <PopupTitle>{home.name}</PopupTitle>
+                <PopupTitle>Details</PopupTitle>
               </div>
               <DialogClose className="dlh-x" aria-label="Close">
                 ✕
