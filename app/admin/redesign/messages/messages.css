@@ -96,7 +96,8 @@ body:has(.rm-linkdlg) .rd-picker-menu [data-slot="dropdown-menu-item"].on { back
 .rm-box::placeholder { color: #98a2b3; }
 .rm-send { height: 40px; padding: 0 18px; border-radius: 20px; }
 /* Send is the one ink pill; + and the mic are quiet ghosts (doubled up so the shared navy .rd-btn.primary never wins, whatever loads last). */
-.rm .rm-bar .rd-btn.primary { border-color: var(--brand, #141a24); background: var(--brand, #141a24); color: #fff; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.rm .rm-bar .rd-btn.primary { border-color: var(--brand, #141a24); background: var(--brand, #141a24); color: var(--brand-ink, #fff); }
 .rm .rm-bar .rd-btn.primary:hover { border-color: #262e3b; background: #262e3b; }
 /* Send and the note's Save in the coach's brand (19 Nov, Alex: "the toggles, the pop-ups, everything should be in that color"). */
 body[style*="--brand"] .rm .rm-bar .rd-btn.primary:hover:not(:disabled) { border-color: color-mix(in srgb, var(--brand) 88%, #fff); background: color-mix(in srgb, var(--brand) 88%, #fff); }
@@ -127,7 +128,8 @@ body[style*="--brand"] .rm .rm-bar .rd-btn.primary:hover:not(:disabled) { border
 /* Cancel and Save as the note lines' (6 Nov, Alex: admin audit; Note to {client}'s trn-btn ghost / primary): 34px, 13px/600. */
 .rm-mini { height: 34px; padding: 0 14px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; cursor: pointer; }
 .rm-mini:hover { color: #141a24; }
-.rm-mini.primary { background: var(--brand, #141a24); color: #fff; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.rm-mini.primary { background: var(--brand, #141a24); color: var(--brand-ink, #fff); }
 .rm-mini:disabled { opacity: 0.45; cursor: default; }
 /* Pinned: one slim bar over the thread, one pin at a time (WhatsApp's). */
 .rm-pinbar { flex: none; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 8px 20px; border: 0; border-bottom: 1px solid #eef0f3; background: #fff; font: inherit; text-align: left; color: #3a4250; cursor: pointer; }
@@ -253,7 +255,8 @@ html:has(.rd-frame) { scrollbar-gutter: stable; }
 .rd-chattab:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; }
 /* The tab on screen in the coach's brand (19 Nov, Alex: "the toggles, the pop-ups, everything should be in that color"); over the
    hairline look's ink tab (look-hairline.css), the white one staying white. */
-body[style*="--brand"] .rd-chattab:not(.off):not(.rd-phonetab), body[style*="--brand"] .rd-chattab.rd-phonetab.on.on { background: var(--brand); }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+body[style*="--brand"] .rd-chattab:not(.off):not(.rd-phonetab), body[style*="--brand"] .rd-chattab.rd-phonetab.on.on { background: var(--brand); color: var(--brand-ink, #fff); }
 body[style*="--brand"] .rd-chattab:not(.off):not(.rd-phonetab):is(:hover, :focus-visible), body[style*="--brand"] .rd-chattab.rd-phonetab.on.on:is(:hover, :focus-visible) { background: color-mix(in srgb, var(--brand) 88%, #fff); }
 .rd-chattab svg { width: 18px; height: 18px; }
 .rd-chattab span { writing-mode: vertical-rl; transform: rotate(180deg); text-transform: uppercase; }
@@ -356,7 +359,8 @@ body[style*="--brand"] .rd-chattab:not(.off):not(.rd-phonetab):is(:hover, :focus
 .rm .cmg-tabs { --pill-bg: var(--brand, #141a24); background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; }
 /* 600 picked or not, so switching moves nothing (6 Nov, Alex: admin audit; rule §5). */
 .rm .cmg-tabs button { font-weight: 600; color: #5b6474; }
-.rm .cmg-tabs button.on { background: var(--brand, #141a24); color: #fff; font-weight: 600; box-shadow: none; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.rm .cmg-tabs button.on { background: var(--brand, #141a24); color: var(--brand-ink, #fff); font-weight: 600; box-shadow: none; }
 .rm .cmg-tabs small { font-weight: 500; color: inherit; opacity: 0.7; }
 .rm .cmg-empty, .rm .cmg-file-text small { color: #8b93a1; }
 .rm .cmg-open.static { background: #fff; box-shadow: inset 0 0 0 1px #e1e5eb; color: #141a24; }
@@ -407,12 +411,13 @@ html.look-hl .rd-chattab.rd-phonetab.on:hover, html.look-hl .rd-chattab.rd-phone
 /* The coach's own bubbles in their brand colour (22 Nov, Alex: "the chat text bubbles to be in the color we choose in
    branding"), as the client's own are in their app: white words, the time and the menu's mark soft white; a voice
    message white on it. Only with a colour set; none, the neutral tint as before. */
-body[style*="--brand"] .rm-bubble-row.mine .rm-bubble { border-color: var(--brand); background: var(--brand); color: #fff; }
-body[style*="--brand"] .rm-bubble-row.mine .rm-meta { color: rgba(255, 255, 255, 0.72); }
-body[style*="--brand"] .rm-bubble-row.mine .rm-chev { background: var(--brand); color: rgba(255, 255, 255, 0.85); }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+body[style*="--brand"] .rm-bubble-row.mine .rm-bubble { border-color: var(--brand); background: var(--brand); color: var(--brand-ink, #fff); }
+body[style*="--brand"] .rm-bubble-row.mine .rm-meta { color: color-mix(in srgb, var(--brand-ink, #fff) 72%, transparent); }
+body[style*="--brand"] .rm-bubble-row.mine .rm-chev { background: var(--brand); color: color-mix(in srgb, var(--brand-ink, #fff) 85%, transparent); }
 body[style*="--brand"] .rm-bubble-row.mine .rm-quote { background: rgba(255, 255, 255, 0.88); color: #141a24; }
-body[style*="--brand"] .rm-bubble-row.mine .vn-play { color: #fff; }
-body[style*="--brand"] .rm-bubble-row.mine .vn-wave i { background: rgba(255, 255, 255, 0.4); }
-body[style*="--brand"] .rm-bubble-row.mine .vn-wave i.on, body[style*="--brand"] .rm-bubble-row.mine .vn-knob { background: #fff; }
-body[style*="--brand"] .rm-bubble-row.mine .vn-time { color: rgba(255, 255, 255, 0.72); }
-body[style*="--brand"] .rm-bubble-row.mine .rm-bubble a:not(.rm-link) { color: #fff; }
+body[style*="--brand"] .rm-bubble-row.mine .vn-play { color: var(--brand-ink, #fff); }
+body[style*="--brand"] .rm-bubble-row.mine .vn-wave i { background: color-mix(in srgb, var(--brand-ink, #fff) 40%, transparent); }
+body[style*="--brand"] .rm-bubble-row.mine .vn-wave i.on, body[style*="--brand"] .rm-bubble-row.mine .vn-knob { background: var(--brand-ink, #fff); }
+body[style*="--brand"] .rm-bubble-row.mine .vn-time { color: color-mix(in srgb, var(--brand-ink, #fff) 72%, transparent); }
+body[style*="--brand"] .rm-bubble-row.mine .rm-bubble a:not(.rm-link) { color: var(--brand-ink, #fff); }

@@ -304,8 +304,9 @@
 .cc-hl .ad-card-form-foot { justify-content: flex-end; gap: 2px; margin-top: 18px; padding: 0; border: 0; }
 .cc-hl .ad-btn-secondary { height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: none; box-shadow: none; font-size: 13.5px; font-weight: 600; color: #5b6474; }
 .cc-hl .ad-btn-secondary:hover { color: #141a24; }
-.cc-hl .ad-btn-primary { height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--brand, #141a24); box-shadow: none; font-size: 13.5px; font-weight: 600; color: #fff; }
-.cc-hl .ad-btn-primary:disabled { background: #c9cfd8; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour; disabled keeps white on grey) */
+.cc-hl .ad-btn-primary { height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--brand, #141a24); box-shadow: none; font-size: 13.5px; font-weight: 600; color: var(--brand-ink, #fff); }
+.cc-hl .ad-btn-primary:disabled { background: #c9cfd8; color: #fff; }
 /* Save, the chosen gender and the plan panel's Add in the coach's brand (19 Nov, Alex: "the toggles, the pop-ups, everything should be in that color"). */
 body[style*="--brand"] .cc-hl .ad-btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--brand) 88%, #fff); }
 /* Its fields: clean lines, ink while typing; the labels small caps grey; the chosen gender ink, never navy; 500, not 700. */
@@ -321,7 +322,8 @@ body[style*="--brand"] .cc-hl .ad-btn-primary:hover:not(:disabled) { background:
 .cc-hl .nc-pills { --pill-bg: var(--brand, #141a24); display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 2px; height: 36px; padding: 4px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; box-sizing: border-box; }
 .cc-hl .nc-pills .pl-chip { height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: none; box-shadow: none; font-size: 13px; font-weight: 600; color: #5b6474; }
 .cc-hl .nc-pills .pl-chip:hover:not(.on) { color: #141a24; }
-.cc-hl .nc-pills .pl-chip.on { background: var(--brand, #141a24); font-weight: 600; color: #fff; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.cc-hl .nc-pills .pl-chip.on { background: var(--brand, #141a24); font-weight: 600; color: var(--brand-ink, #fff); }
 
 /* App access: the login's facts a row each, then the fields on clean lines. */
 .rh-facts { display: flex; flex-direction: column; margin: 2px 0 0; }
@@ -368,7 +370,8 @@ body[style*="--brand"] .cc-hl .ad-btn-primary:hover:not(:disabled) { background:
 .cc-plan-new input::placeholder { color: #98a2b3; }
 .cc-plan-new-foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .cc-plan-cancel { padding: 0; border: 0; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: #5b6474; cursor: pointer; }
-.cc-plan-add { height: 32px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--brand, #141a24); font: inherit; font-size: 13.5px; font-weight: 600; color: #fff; cursor: pointer; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.cc-plan-add { height: 32px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--brand, #141a24); font: inherit; font-size: 13.5px; font-weight: 600; color: var(--brand-ink, #fff); cursor: pointer; }
 .cc-plan-add:disabled { opacity: 0.4; cursor: default; }
 /* New plan: how often as the capsule across the panel; a price that will not read in rust. */
 .cc-plan-new input.bad { border-bottom-color: #b8471f; }

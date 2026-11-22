@@ -37,7 +37,8 @@
    the neutral grey behind it, never pink (29 Oct, Alex). */
 .rd.trn .trn-btn.trn-iconbtn { justify-content: center; width: 36px; padding: 0; border-radius: 999px; }
 .rd.trn .trn-btn.ghost.trn-iconbtn:hover { background: #f5f6f8; color: #b42318; }
-.rd.trn .trn-btn.primary { background: var(--brand, var(--trn-navy)); box-shadow: none; color: #fff; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.rd.trn .trn-btn.primary { background: var(--brand, var(--trn-navy)); box-shadow: none; color: var(--brand-ink, #fff); }
 .rd.trn .trn-btn.primary:disabled { opacity: 0.4; cursor: default; }
 .rd.trn .trn-chev { display: inline-flex; color: var(--trn-faint); transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
 .rd.trn .trn-chev svg { width: 16px; height: 16px; }
@@ -269,7 +270,8 @@
 .rd-addpop-foot { display: flex; justify-content: flex-end; gap: 2px; }
 .rd-addpop-cancel { height: 34px; padding: 0 14px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: #5b6474; cursor: pointer; }
 .rd-addpop-cancel:hover { color: #141a24; }
-.rd-addpop-go { height: 34px; padding: 0 18px; border: 0; border-radius: 999px; background: #141a24; font: inherit; font-size: 13.5px; font-weight: 600; color: #fff; cursor: pointer; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour; rail.css fills it with the brand) */
+.rd-addpop-go { height: 34px; padding: 0 18px; border: 0; border-radius: 999px; background: #141a24; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--brand-ink, #fff); cursor: pointer; }
 .rd-addpop-go:disabled { opacity: 0.4; cursor: default; }
 /* Its group picker's menu in the same ink, while a panel is open. */
 body:has(.rd-addpop) .rd-picker-menu [data-slot="dropdown-menu-item"].on { background: #f5f6f8; color: #141a24; }
@@ -292,7 +294,8 @@ body:has(.rd-addpop) .rd-picker-menu [data-slot="dropdown-menu-item"].on { backg
 .dlh-ack { display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 2px; padding: 4px 0; border: 0; background: none; font: inherit; font-size: 13.5px; font-weight: 500; color: #141a24; text-align: left; cursor: pointer; }
 .dlh-box { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px #c5ccd8; font-size: 11px; font-weight: 600; color: #fff; }
 .dlh-box.on { background: #b42318; box-shadow: none; }
-.dlh-box.ink.on { background: var(--brand, #141a24); }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.dlh-box.ink.on { background: var(--brand, #141a24); color: var(--brand-ink, #fff); }
 .dlh-ack:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; border-radius: 6px; }
 .dlh-error { margin: 0; font-size: 13px; font-weight: 600; color: #b42318; }
 .dlh-foot { display: flex; align-items: center; justify-content: flex-end; gap: 2px; margin-top: 10px; }
@@ -306,7 +309,8 @@ body:has(.rd-addpop) .rd-picker-menu [data-slot="dropdown-menu-item"].on { backg
 .dlh-seg { display: flex; gap: 2px; height: 36px; margin-top: 6px; padding: 4px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; box-sizing: border-box; }
 .dlh-seg > button { flex: 1; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; cursor: pointer; white-space: nowrap; }
 .dlh-seg > button small { font-size: 12px; font-weight: 500; opacity: 0.75; }
-.dlh-seg > button.on { background: #141a24; color: #fff; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour; rail.css fills it with the brand) */
+.dlh-seg > button.on { background: #141a24; color: var(--brand-ink, #fff); }
 .dlh-seg > button:disabled { opacity: 0.4; cursor: default; }
 /* A confirm pop-up (11 Nov, Alex: A of docs/boards/popup-anatomy-mockup.html; ConfirmParts.tsx): the title, one or two
    plain sentences, an optional choice in a soft grey well, Cancel in words and the verb alone as a pill, Delete and
@@ -322,9 +326,10 @@ body:has(.rd-addpop) .rd-picker-menu [data-slot="dropdown-menu-item"].on { backg
 .dlh-danger:hover { background: #9a1e14; }
 .dlh-danger:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.22); }
 .dlh-danger:disabled { background: rgba(180, 35, 24, 0.32); cursor: default; }
-.dlh-go { height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: #141a24; font: inherit; font-size: 13.5px; font-weight: 600; color: #fff; cursor: pointer; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour; rail.css fills it with the brand; disabled keeps white on grey) */
+.dlh-go { height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: #141a24; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--brand-ink, #fff); cursor: pointer; }
 .dlh-go:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(20, 26, 36, 0.18); }
-.dlh-go:disabled { background: #c9cfd8; cursor: default; }
+.dlh-go:disabled { background: #c9cfd8; color: #fff; cursor: default; }
 /* A field in the card is a clean line (design rules 4): no box, a hairline under it, ink while typing. */
 .dlh-label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #5b6474; }
 .dlh-line { display: block; width: 100%; margin: 0; padding: 8px 0 9px; border: 0; border-bottom: 1px solid #e1e5eb; border-radius: 0; background: transparent; box-shadow: none; outline: none; box-sizing: border-box; font: inherit; font-size: 15px; font-weight: 500; line-height: 1.45; color: #141a24; }
@@ -435,7 +440,8 @@ body:has(.dlh) .rd-picker-menu [data-slot="dropdown-menu-item"].on { background:
 .rd.trn .trn-q-add input:focus { outline: none; }
 .rd.trn .trn-q-add input::placeholder { color: var(--trn-faint); }
 .rd.trn .trn-q-addbtn { height: 30px; padding: 0 12px; border: 0; border-radius: 999px; background: var(--trn-div); font: inherit; font-size: 12.5px; font-weight: 600; color: var(--trn-faint); cursor: default; }
-.rd.trn .trn-q-addbtn.ready { background: var(--brand, var(--trn-navy)); color: #fff; cursor: pointer; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.rd.trn .trn-q-addbtn.ready { background: var(--brand, var(--trn-navy)); color: var(--brand-ink, #fff); cursor: pointer; }
 .rd.trn .trn-q-plus { height: 32px; padding: 0 12px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px var(--trn-btnline); font: inherit; font-size: 13px; font-weight: 600; color: var(--trn-ink); cursor: pointer; }
 .rd.trn .trn-q-plus:hover, .rd.trn .trn-q-plus[data-state="open"] { box-shadow: inset 0 0 0 1px var(--trn-ink); }
 .trn-q-menu.trn-q-menu { min-width: 200px; max-height: calc(6 * 36px + 12px); overflow-y: auto; scrollbar-width: thin; }
@@ -558,7 +564,8 @@ html .rd.trn .trn-rail .trn-week.on.on, html .rd.trn .trn-rail[role="tablist"] .
 .rd.trn .trn-tools-btn[aria-disabled="true"], .rd.trn .trn-tools-btn[aria-disabled="true"]:hover { background: none; color: #c9cfd8; cursor: default; }
 .rd.trn .trn-tools-sep { flex: none; width: 1px; height: 16px; margin: 0 2px; background: var(--trn-line); }
 /* Two figures' width always, its room kept with no count (`off`), so the capsule never changes width. */
-.rd.trn .trn-tools-n { display: inline-grid; place-items: center; min-width: 22px; height: 18px; padding: 0 4px; border-radius: 999px; background: var(--brand, var(--trn-ink)); font-size: 10.5px; font-weight: 600; font-variant-numeric: tabular-nums; color: #fff; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.rd.trn .trn-tools-n { display: inline-grid; place-items: center; min-width: 22px; height: 18px; padding: 0 4px; border-radius: 999px; background: var(--brand, var(--trn-ink)); font-size: 10.5px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--brand-ink, #fff); }
 .rd.trn .trn-tools-n.off { visibility: hidden; }
 /* Its list floats in the ⋯ look (portalled, so unscoped): small caps heads over each way to copy, a count grey on the right. */
 .trn-tools-menu .trn-menu-head { padding: 8px 10px 4px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #5b6474; }

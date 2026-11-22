@@ -39,7 +39,8 @@
 .npd.npd .npd-seg button svg { flex: none; }
 .npd.npd .npd-seg button:hover { color: #141a24; }
 .npd.npd .npd-seg button:focus-visible { outline: none; background: #f5f6f8; color: #141a24; }
-.npd.npd .npd-seg button.on { background: var(--brand, #141a24); color: #fff; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.npd.npd .npd-seg button.on { background: var(--brand, #141a24); color: var(--brand-ink, #fff); }
 .npd.npd .npd-seg button.on:focus-visible { background: #2a3242; }
 /* Its pill slides (28 Oct, Alex; SlidePills); keyboard focus on the picked one still lifts it. */
 .npd.npd .npd-seg:has(> button.on:focus-visible) { --pill-bg: #2a3242; }
@@ -78,9 +79,10 @@ body[style*="--brand"] .npd.npd .npd-seg:has(> button.on:focus-visible) { --pill
 body:has(.npd.npd) .rd-picker-menu.rd-picker-menu { padding: 5px; border: 0; border-radius: 10px; box-shadow: 0 12px 28px rgba(20, 30, 50, 0.16); font-family: var(--font-archivo), system-ui, sans-serif; }
 body:has(.npd.npd) .rd-picker-menu [data-slot="dropdown-menu-item"] { min-height: 34px; padding: 0 10px; border-radius: 7px; font-size: 13.5px; font-weight: 600; color: #141a24; }
 /* The picked one ink, as TimePick's in the same pop-up (16 Nov, Alex: the audit; Repeat's was grey beside Time's ink). */
-body:has(.npd.npd) .rd-picker-menu.rd-picker-menu [data-slot="dropdown-menu-item"].on, body:has(.npd.npd) .rd-picker-menu.rd-picker-menu [data-slot="dropdown-menu-item"].on[data-highlighted] { background: var(--brand, #141a24); color: #fff; }
-body:has(.npd.npd) .rd-picker-menu.rd-picker-menu [data-slot="dropdown-menu-item"].on small { color: rgba(255, 255, 255, 0.72); }
-body:has(.npd.npd) .rd-picker-menu.rd-picker-menu [data-slot="dropdown-menu-item"].on .rd-picker-tone { background: rgba(255, 255, 255, 0.14); color: #fff; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+body:has(.npd.npd) .rd-picker-menu.rd-picker-menu [data-slot="dropdown-menu-item"].on, body:has(.npd.npd) .rd-picker-menu.rd-picker-menu [data-slot="dropdown-menu-item"].on[data-highlighted] { background: var(--brand, #141a24); color: var(--brand-ink, #fff); }
+body:has(.npd.npd) .rd-picker-menu.rd-picker-menu [data-slot="dropdown-menu-item"].on small { color: color-mix(in srgb, var(--brand-ink, #fff) 72%, transparent); }
+body:has(.npd.npd) .rd-picker-menu.rd-picker-menu [data-slot="dropdown-menu-item"].on .rd-picker-tone { background: color-mix(in srgb, var(--brand-ink, #fff) 14%, transparent); color: var(--brand-ink, #fff); }
 body:has(.npd.npd) .rd-picker-menu [data-slot="dropdown-menu-item"] small { font-size: 12px; font-weight: 500; color: #98a2b3; }
 
 /* The note: a clash in red with its fix as a small hairline capsule; a moved day in grey. */
@@ -115,7 +117,8 @@ body:has(.npd.npd) .rd-picker-menu [data-slot="dropdown-menu-item"] small { font
 .npd.npd .rdd-cell.in { background: rgba(var(--npd-rgb), 0.1); color: #141a24; font-weight: 500; }
 .npd.npd .rdd-cell.in.past { color: #98a2b3; }
 .npd.npd .rdd-cell.in:hover, .npd.npd .rdd-cell.in:focus-visible { background: rgba(var(--npd-rgb), 0.16); }
-.npd.npd .rdd-cell.in.start, .npd.npd .rdd-cell.in.end { background: var(--npd-c); color: #fff; font-weight: 600; }
+/* (22 Nov: its words follow --npd-on, which a pop-up whose --npd-c is the brand sets to var(--brand-ink, #fff); a track or kind colour keeps white) */
+.npd.npd .rdd-cell.in.start, .npd.npd .rdd-cell.in.end { background: var(--npd-c); color: var(--npd-on, #fff); font-weight: 600; }
 .npd.npd .rdd-cell.in.start:hover, .npd.npd .rdd-cell.in.end:hover, .npd.npd .rdd-cell.in.start:focus-visible, .npd.npd .rdd-cell.in.end:focus-visible { background: var(--npd-c); filter: brightness(1.12); }
 /* The track and state as tags under the title, as the move pop-up has them. */
 .npd.npd .npd-tags { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; }
@@ -151,10 +154,11 @@ body:has(.npd.npd) .rd-picker-menu [data-slot="dropdown-menu-item"] small { font
 .npd.npd .npd-cancel { height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: #5b6474; cursor: pointer; }
 .npd.npd .npd-cancel:hover { color: #141a24; }
 .npd.npd .npd-cancel:focus-visible { outline: none; background: #f5f6f8; color: #141a24; }
-.npd.npd .npd-save { height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: #141a24; font: inherit; font-size: 13.5px; font-weight: 600; color: #fff; white-space: nowrap; cursor: pointer; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour; rail.css fills it with the brand; disabled keeps white on grey) */
+.npd.npd .npd-save { height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: #141a24; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--brand-ink, #fff); white-space: nowrap; cursor: pointer; }
 .npd.npd .npd-save:hover { background: #262e3b; }
 .npd.npd .npd-save:focus-visible { outline: none; background: #2f3846; }
-.npd.npd .npd-save:disabled { background: #c9cfd8; cursor: default; }
+.npd.npd .npd-save:disabled { background: #c9cfd8; color: #fff; cursor: default; }
 
 @media (max-width: 700px) {
   .npd.npd .npd-cols { grid-template-columns: minmax(0, 1fr); gap: 20px; }
@@ -215,8 +219,9 @@ body:has(.npd.npd) .rd-picker-menu [data-slot="dropdown-menu-item"] small { font
 .npd.npd .npd-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; height: 60px; padding: 0; border: 0; border-radius: 14px; background: #fff; box-shadow: inset 0 0 0 1px #e1e5eb; font: inherit; font-size: 12.5px; font-weight: 500; color: #141a24; cursor: pointer; }
 .npd.npd .npd-tile svg { color: var(--tc); }
 .npd.npd .npd-tile:hover { box-shadow: inset 0 0 0 1px #c5ccd8; }
-.npd.npd .npd-tile.on { background: var(--brand, #141a24); box-shadow: none; color: #fff; font-weight: 600; }
-.npd.npd .npd-tile.on svg { color: #fff; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.npd.npd .npd-tile.on { background: var(--brand, #141a24); box-shadow: none; color: var(--brand-ink, #fff); font-weight: 600; }
+.npd.npd .npd-tile.on svg { color: var(--brand-ink, #fff); }
 
 /* ---- The event pop-up on the same pattern (20 Oct): eight categories four across, the When capsule over the dates,
    the repeat's days and words in a room that is always kept, a quiet "From client" fact tag. */
@@ -253,7 +258,8 @@ body:has(.npd.npd) .rd-picker-menu [data-slot="dropdown-menu-item"] small { font
 .npd.npd .npd-switch { position: relative; flex: none; width: 34px; height: 20px; padding: 0; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; cursor: pointer; transition: background 0.2s ease, box-shadow 0.2s ease; }
 .npd.npd .npd-switch i { position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #98a2b3; transition: left 0.2s ease, background 0.2s ease; }
 .npd.npd .npd-switch.on { background: var(--brand, #141a24); box-shadow: none; }
-.npd.npd .npd-switch.on i { left: 17px; background: #fff; }
+/* (22 Nov: its knob follows --brand-ink, dark on a bright brand colour) */
+.npd.npd .npd-switch.on i { left: 17px; background: var(--brand-ink, #fff); }
 .npd.npd .npd-switch:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .npd.npd .npd-switch, .npd.npd .npd-switch i { transition: none; } }
 .npd.npd .npd-noend { display: block; width: 100%; padding: 0; border: 0; background: none; font: inherit; font-size: 15px; font-weight: 500; color: #98a2b3; text-align: left; cursor: pointer; }
@@ -262,6 +268,9 @@ body:has(.npd.npd) .rd-picker-menu [data-slot="dropdown-menu-item"] small { font
 /* A phase keeps its track's colour, never the coach's brand (22 Nov, Alex: "make the phase colors the exception though.
    those we always keep"): in the phase pop-up the picked track tile, the date box being set and the Indefinite switch are
    the track's; the action (Add, Save) stays the brand's, as every action. */
-.npd.npd.npd-phase .npd-tile.on { background: var(--npd-c); }
+/* (22 Nov: on the track's colour the words, icon and knob stay white, whatever --brand-ink says) */
+.npd.npd.npd-phase .npd-tile.on { background: var(--npd-c); color: #fff; }
+.npd.npd.npd-phase .npd-tile.on svg { color: #fff; }
 .npd.npd.npd-phase .npd-date.arm { box-shadow: inset 0 0 0 1.5px var(--npd-c); }
 .npd.npd.npd-phase .npd-switch.on { background: var(--npd-c); }
+.npd.npd.npd-phase .npd-switch.on i { background: #fff; }

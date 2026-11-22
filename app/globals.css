@@ -15570,7 +15570,8 @@ body:has(.hm), .app-screen:has(.hm), .app-content:has(> .hm) { background: #F5F5
 /* A capsule: 600 picked or not, and it slides (SLIDE_ROWS; 16 Nov, Alex: the audit). */
 .nc-hl .nc-step { display: inline-flex; align-items: center; height: 28px; margin: 0; padding: 0 12px; border: 0; border-radius: 999px; background: none; font-size: 13px; font-weight: 600; color: #5b6474; white-space: nowrap; }
 .nc-hl .nc-step:hover:not(.on):not(:disabled) { color: #141a24; }
-.nc-hl .nc-step.on { background: var(--brand, #141a24); font-weight: 600; color: #fff; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.nc-hl .nc-step.on { background: var(--brand, #141a24); font-weight: 600; color: var(--brand-ink, #fff); }
 /* The coach's brand on its picked pills and its one pill, the sliding pill too (19 Nov, Alex: "the toggles, the pop-ups,
    everything should be in that color"); none set, ink exactly as before. */
 .nc-hl :is(.nc-steps, .nc-pills) { --pill-bg: var(--brand, #141a24); }
@@ -15605,7 +15606,8 @@ body:has(.nc-scrim) [data-radix-popper-content-wrapper] { z-index: 110 !importan
 .nc-hl .nc-pills { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 2px; height: 36px; padding: 4px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; box-sizing: border-box; }
 .nc-hl .nc-pills .pl-chip { height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: none; box-shadow: none; font-size: 13px; font-weight: 600; color: #5b6474; }
 .nc-hl .nc-pills .pl-chip:hover:not(.on) { color: #141a24; }
-.nc-hl .nc-pills .pl-chip.on { background: var(--brand, #141a24); font-weight: 600; color: #fff; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.nc-hl .nc-pills .pl-chip.on { background: var(--brand, #141a24); font-weight: 600; color: var(--brand-ink, #fff); }
 .nc-hl .nc-access { gap: 0; padding-top: 4px; }
 .nc-hl .nc-foot { justify-content: flex-end; gap: 2px; margin-top: 14px; padding: 0 20px; border: 0; background: none; }
 .nc-hl .nc-status { font-size: 13px; font-weight: 500; color: #5b6474; }
@@ -15613,7 +15615,8 @@ body:has(.nc-scrim) [data-radix-popper-content-wrapper] { z-index: 110 !importan
 .nc-hl .nc-foot .nc-secondary { height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: none; font-size: 13.5px; font-weight: 600; color: #5b6474; }
 .nc-hl .nc-foot .nc-secondary:hover { color: #141a24; text-decoration: none; }
 .nc-hl .nc-foot .nc-secondary:disabled { opacity: 0.45; cursor: default; }
-.nc-hl .nc-foot .pl-primary { height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--brand, #141a24); font-size: 13.5px; font-weight: 600; color: #fff; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.nc-hl .nc-foot .pl-primary { height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--brand, #141a24); font-size: 13.5px; font-weight: 600; color: var(--brand-ink, #fff); }
 .nc-hl .nc-foot .pl-primary:hover:not(:disabled) { background: #262e3b; }
 body[style*="--brand"] .nc-hl .nc-foot .pl-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--brand) 88%, #fff); }
 body[style*="--brand"] .nc-hl .nc-foot .pl-primary:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent); }
@@ -18492,12 +18495,14 @@ button.ci-hint { cursor: pointer; }
 .mrv-acts { display: flex; align-items: center; gap: 8px; }
 .mrv-sp { flex: 1; }
 .mrv-tg { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; color: #141a24; cursor: pointer; transition: background 0.2s, color 0.2s; }
-.mrv-tg.on { background: var(--brand, #141a24); color: #fff; box-shadow: none; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.mrv-tg.on { background: var(--brand, #141a24); color: var(--brand-ink, #fff); box-shadow: none; }
 .mrv-pill { flex: none; display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; font: inherit; font-size: 13.5px; font-weight: 600; color: #141a24; cursor: pointer; }
 .mrv-pill svg { translate: 0 -0.5px; }
 /* The foot's on toggles and its one pill in the coach's brand (19 Nov, Alex: "the toggles, the pop-ups, everything
    should be in that color"); the dark stage stays dark. None set, ink. */
-.mrv-pill.ink { background: var(--brand, #141a24); color: #fff; box-shadow: none; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.mrv-pill.ink { background: var(--brand, #141a24); color: var(--brand-ink, #fff); box-shadow: none; }
 .mrv-pill:disabled { opacity: 0.45; cursor: default; }
 .mrv-dot { width: 9px; height: 9px; border-radius: 999px; background: #b8471f; }
 .mrv-clock { display: inline-flex; align-items: center; gap: 8px; margin-right: 4px; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -19088,7 +19093,7 @@ button.ts-circle:focus-visible { outline: 2px solid #00897B; outline-offset: 2px
 .sw-actions { display: flex; flex-direction: column; gap: 10px; padding-top: 2px; }
 .sw-primary { display: flex; align-items: center; justify-content: center; gap: 8px; height: 54px; border: 0; border-radius: 17px; background: #1d3466; color: #fff; font: inherit; font-size: 15.5px; font-weight: 800; box-shadow: 0 14px 24px -12px rgba(29, 52, 102, 0.95), inset 0 1px 0 rgba(255, 255, 255, 0.2); cursor: pointer; transition: background 0.2s; }
 .sw-primary.off { background: rgba(29, 52, 102, 0.32); box-shadow: none; cursor: default; }
-.sw-primary svg { flex: none; width: 16px; height: 16px; fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.sw-primary svg { flex: none; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 .sw-primary span { max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sw-photo { display: flex; align-items: center; justify-content: center; gap: 6px; height: 36px; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 800; color: var(--c); cursor: pointer; }
 .sw-photo svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; }
@@ -22147,6 +22152,7 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
    white or disabled look left alone. */
 /* The main pills: Today's Start, Resume and Join, the overview's Start, the pop-ups' Save, Join, Resume, Finish, Record,
    Mark as done, Send and Save changes; a saved day's Use, Calories eaten's Save, Reopen's confirm, Card pictures' Done. */
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
 .hm-td-act.hm-td-act.ink,
 .so-screen .so-start:not(:disabled),
 .evs-save:not(:disabled),
@@ -22171,30 +22177,33 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
 .pp-app-save-btn.pp-app-save-btn:not(.secondary):not(:disabled),
 .fdi-day-use.fdi-day-use:not(:disabled),
 .fdi-kcal-save.fdi-kcal-save:not(:disabled),
-.so-ask-go.so-ask-go:not(.ws-ask-rust):not(:disabled) { background-color: var(--brand, #141a24); }
+.so-ask-go.so-ask-go:not(.ws-ask-rust):not(:disabled) { background-color: var(--brand, #141a24); color: var(--brand-ink, #fff); }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
 /* Card pictures' Done, its edge in the colour too. */
-.cv-btn.primary.primary.primary:not(:disabled) { background-color: var(--brand, #141a24); border-color: var(--brand, #141a24); }
+.cv-btn.primary.primary.primary:not(:disabled) { background-color: var(--brand, #141a24); border-color: var(--brand, #141a24); color: var(--brand-ink, #fff); }
 /* The tab on screen, its icon and its word. */
-.app-bottom-nav.dark .app-tab-btn.active.active.active { color: var(--brand, #141a24); }
+.app-bottom-nav.dark .app-tab-btn.active.active.active { color: var(--brand-text, var(--brand, #141a24)); } /* (22 Nov: a bright colour as words on white is darkened until it reads, --brand-text) */
 /* Send in the client's chat. */
 .cm-compose .chat-send-btn.chat-send-btn.chat-send-btn.chat-send-btn,
-.cm-compose .chat-send-btn.chat-send-btn.chat-send-btn.chat-send-btn:hover { background: var(--brand, #141a24); border-color: var(--brand, #141a24); }
+.cm-compose .chat-send-btn.chat-send-btn.chat-send-btn.chat-send-btn:hover { background: var(--brand, #141a24); border-color: var(--brand, #141a24); color: var(--brand-ink, #fff); }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
 /* The client's own bubbles, only with a colour of the coach's own (`brand-on` on the phone frame, AppShell): white
    words on it, its parts in white as on the old navy bubble. Ink or none, the neutral tint above stays. */
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour; the edit's Save the --brand-pill on it) */
 .brand-on .cm-msg.mine.mine.mine { background: var(--brand, #141a24); }
-.brand-on .cm-msg.mine.mine.mine .cm-msg-text { color: #fff; }
-.brand-on .cm-msg.mine.mine.mine .cm-msg-time { color: rgba(255, 255, 255, 0.65); }
-.brand-on .cm-msg.mine.mine.mine .cm-chev { color: rgba(255, 255, 255, 0.7); }
-.brand-on .cm-msg.mine.mine.mine .cm-quote { background: rgba(255, 255, 255, 0.14); border-left-color: rgba(255, 255, 255, 0.7); }
-.brand-on .cm-msg.mine.mine.mine .cm-quote b { color: #fff; }
-.brand-on .cm-msg.mine.mine.mine .cm-quote span { color: rgba(255, 255, 255, 0.82); }
-.brand-on .cm-msg.mine.mine.mine .cm-msg-file { background: rgba(255, 255, 255, 0.14); border-color: rgba(255, 255, 255, 0.3); color: #fff; }
-.brand-on .cm-msg.mine.mine.mine .cm-edit-cancel { border-color: rgba(255, 255, 255, 0.4); color: #fff; }
-.brand-on .cm-msg.mine.mine.mine .cm-edit-save { background: #fff; color: var(--brand, #141a24); }
-.brand-on .cm-msg.mine.mine.mine .vn-play { color: #fff; }
-.brand-on .cm-msg.mine.mine.mine .vn-wave i { background: rgba(255, 255, 255, 0.4); }
-.brand-on .cm-msg.mine.mine.mine .vn-wave i.on, .brand-on .cm-msg.mine.mine.mine .vn-knob { background: #fff; }
-.brand-on .cm-msg.mine.mine.mine .vn-time { color: rgba(255, 255, 255, 0.7); }
+.brand-on .cm-msg.mine.mine.mine .cm-msg-text { color: var(--brand-ink, #fff); }
+.brand-on .cm-msg.mine.mine.mine .cm-msg-time { color: color-mix(in srgb, var(--brand-ink, #fff) 65%, transparent); }
+.brand-on .cm-msg.mine.mine.mine .cm-chev { color: color-mix(in srgb, var(--brand-ink, #fff) 70%, transparent); }
+.brand-on .cm-msg.mine.mine.mine .cm-quote { background: color-mix(in srgb, var(--brand-ink, #fff) 14%, transparent); border-left-color: color-mix(in srgb, var(--brand-ink, #fff) 70%, transparent); }
+.brand-on .cm-msg.mine.mine.mine .cm-quote b { color: var(--brand-ink, #fff); }
+.brand-on .cm-msg.mine.mine.mine .cm-quote span { color: color-mix(in srgb, var(--brand-ink, #fff) 82%, transparent); }
+.brand-on .cm-msg.mine.mine.mine .cm-msg-file { background: color-mix(in srgb, var(--brand-ink, #fff) 14%, transparent); border-color: color-mix(in srgb, var(--brand-ink, #fff) 30%, transparent); color: var(--brand-ink, #fff); }
+.brand-on .cm-msg.mine.mine.mine .cm-edit-cancel { border-color: color-mix(in srgb, var(--brand-ink, #fff) 40%, transparent); color: var(--brand-ink, #fff); }
+.brand-on .cm-msg.mine.mine.mine .cm-edit-save { background: var(--brand-pill, #fff); color: var(--brand-pill-ink, var(--brand, #141a24)); }
+.brand-on .cm-msg.mine.mine.mine .vn-play { color: var(--brand-ink, #fff); }
+.brand-on .cm-msg.mine.mine.mine .vn-wave i { background: color-mix(in srgb, var(--brand-ink, #fff) 40%, transparent); }
+.brand-on .cm-msg.mine.mine.mine .vn-wave i.on, .brand-on .cm-msg.mine.mine.mine .vn-knob { background: var(--brand-ink, #fff); }
+.brand-on .cm-msg.mine.mine.mine .vn-time { color: color-mix(in srgb, var(--brand-ink, #fff) 70%, transparent); }
 /* The faint mark behind Home and the client's chat in the colour, as faint as before: `--brand-mark` is the mark drawn
    in it (lib/brandMark.ts brandMarkInline), set only with a colour of the coach's own; else the mark as it was. */
 .app-content.app-content:has(> .hm) { background-image: linear-gradient(rgba(245, 245, 245, 0.955), rgba(245, 245, 245, 0.955)), var(--brand-mark, var(--bg-mark, url("/brand/mark.svg"))); }
@@ -22217,17 +22226,23 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
    down, plain, with no star of its own. The star is the dark's own, so it scrolls away with it (21 Nov, Alex: "if I scroll
    down I don't see it anymore"). The top bar is white over it (the tab's darkBanner) and the clock with it. With a brand colour (docs/DESIGN-RULES.md §4) the dark is that colour, darkened as it always is until white reads on it (`brandColour`), the date a see-through white so it reads on any of them (21 Nov, Alex: "if I change the branding color… that black card… also changes"). */
 .app-content.app-content:has(> .hm) { background: #F5F5F5; }
-.hm > .hm-banner:not(.st-banner) { overflow: hidden; padding-bottom: 54px; background: var(--brand, #1c1c1e); color: #fff; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour; the faint mark, the greeting, the date and the
+   top bar over it too) */
+.hm > .hm-banner:not(.st-banner) { overflow: hidden; padding-bottom: 54px; background: var(--brand, #1c1c1e); color: var(--brand-ink, #fff); }
 .hm > .hm-banner:not(.st-banner)::before {
-  content: ""; position: absolute; inset: 0; z-index: 0; width: auto; height: auto; border: 0; border-radius: 0; pointer-events: none; background: #fff; opacity: 0.05;
+  content: ""; position: absolute; inset: 0; z-index: 0; width: auto; height: auto; border: 0; border-radius: 0; pointer-events: none; background: var(--brand-ink, #fff); opacity: 0.05;
   -webkit-mask: var(--bg-mark, url("/brand/mark.svg")) right -120px top var(--mark-y, 6px) / 448px 430px no-repeat;
   mask: var(--bg-mark, url("/brand/mark.svg")) right -120px top var(--mark-y, 6px) / 448px 430px no-repeat;
 }
 .hm > .hm-banner:not(.st-banner)::after {
   content: ""; position: absolute; top: auto; left: 0; right: 0; bottom: 0; z-index: 1; width: auto; height: 28px; border: 0; border-radius: 28px 28px 0 0; background: #F5F5F5; -webkit-mask: none; mask: none; pointer-events: none;
 }
-.hm > .hm-banner:not(.st-banner) .hm-greeting { color: #fff; }
-.hm > .hm-banner:not(.st-banner) .hm-date { color: rgba(255, 255, 255, 0.62); }
+.hm > .hm-banner:not(.st-banner) .hm-greeting { color: var(--brand-ink, #fff); }
+.hm > .hm-banner:not(.st-banner) .hm-date { color: color-mix(in srgb, var(--brand-ink, #fff) 62%, transparent); }
+/* The top bar over Home's dark (the Home tab's darkBanner, `on-dark`), white until the page scrolls: the brand's ink on it.
+   Only while Home is the tab on screen (the other tabs are hidden with aria-hidden), so Training's and Nutrition's
+   photos keep their white bar. */
+.app-layer-main:has(> .app-content:not([aria-hidden]) > .hm) > .app-header.dark.clear.on-dark { color: var(--brand-ink, #fff); }
 
 /* Training's banner as Nutrition's (21 Nov, Alex: "the chunk of the background picture… occupies a certain amount of
    space… if I go to nutrition, that expands quite a bit"; Training's was 260px with its picture fitted to that, Nutrition's
@@ -22282,34 +22297,37 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
    #1c1c1e) to the card's edges, their logo faint in it (whole when it is their own), the title white; the paper rises
    over its foot with 20px corners and holds the rest as before. `.dlh-who` (PopupWho.tsx) puts the client's face and
    `{Name} | {what}` over the title where the pop-up is about one client. */
-.dlh.dlh > .dlh-head:first-child, .npd.npd > .npd-head:first-child, .pdh.pdh > .pdh-head:first-child, .avh.avh > .avh-head:first-child, .sbh.sbh > .sbh-head:first-child, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child { position: relative; flex: none; overflow: hidden; align-items: flex-start; margin: -20px -20px 0; padding: 18px 20px 38px; border-radius: 20px 20px 0 0; /* The dark stops 2px short of the foot, so no faint seam shows under the lip on a 1.25× or 1.5× screen. */ background: linear-gradient(var(--brand, #1c1c1e), var(--brand, #1c1c1e)) top / 100% calc(100% - 2px) no-repeat; color: #fff; }
+.dlh.dlh > .dlh-head:first-child, .npd.npd > .npd-head:first-child, .pdh.pdh > .pdh-head:first-child, .avh.avh > .avh-head:first-child, .sbh.sbh > .sbh-head:first-child, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child { position: relative; flex: none; overflow: hidden; align-items: flex-start; margin: -20px -20px 0; padding: 18px 20px 38px; border-radius: 20px 20px 0 0; /* The dark stops 2px short of the foot, so no faint seam shows under the lip on a 1.25× or 1.5× screen. */ background: linear-gradient(var(--brand, #1c1c1e), var(--brand, #1c1c1e)) top / 100% calc(100% - 2px) no-repeat; color: var(--brand-ink, #fff); }
+/* (22 Nov: the head's words, its mark, its ✕ and its fact lines follow --brand-ink, dark on a bright brand colour) */
 /* The mark in a pop-up's head (22 Nov, Alex: A of docs/boards/admin-popup-logo-mockup.html, "bigger and not fully
    visible, like 66% again"): 160px, level with the title, a third past the card's right edge, the ✕ over it; the
    coach's own logo there, else the star. */
-.dlh.dlh > .dlh-head:first-child::before, .npd.npd > .npd-head:first-child::before, .pdh.pdh > .pdh-head:first-child::before, .avh.avh > .avh-head:first-child::before, .sbh.sbh > .sbh-head:first-child::before, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child::before { content: ""; position: absolute; right: -53px; top: 50%; translate: 0 -58%; width: 160px; height: 160px; background: #fff; opacity: 0.07; pointer-events: none; -webkit-mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; }
+.dlh.dlh > .dlh-head:first-child::before, .npd.npd > .npd-head:first-child::before, .pdh.pdh > .pdh-head:first-child::before, .avh.avh > .avh-head:first-child::before, .sbh.sbh > .sbh-head:first-child::before, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child::before { content: ""; position: absolute; right: -53px; top: 50%; translate: 0 -58%; width: 160px; height: 160px; background: var(--brand-ink, #fff); opacity: 0.07; pointer-events: none; -webkit-mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; }
 .has-coach-logo .dlh.dlh > .dlh-head:first-child::before, .has-coach-logo .npd.npd > .npd-head:first-child::before, .has-coach-logo .pdh.pdh > .pdh-head:first-child::before, .has-coach-logo .avh.avh > .avh-head:first-child::before, .has-coach-logo .sbh.sbh > .sbh-head:first-child::before, .has-coach-logo .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child::before { opacity: 0.13; }
 /* No hairline ring round a card with the dark head (22 Nov, Alex: "i also do not want the white outline on the black part"): the shadow alone. */
 .dlh.dlh:has(> .dlh-head:first-child), .npd.npd:has(> .npd-head:first-child), .pdh.pdh:has(> .pdh-head:first-child), .avh.avh:has(> .avh-head:first-child), .sbh.sbh:has(> .sbh-head:first-child), .cgh.cgh:has(> .cgh-body:first-child > .cgh-head:first-child) { box-shadow: 0 30px 60px -24px rgba(16, 24, 40, 0.35); }
 .dlh.dlh > .dlh-head:first-child::after, .npd.npd > .npd-head:first-child::after, .pdh.pdh > .pdh-head:first-child::after, .avh.avh > .avh-head:first-child::after, .sbh.sbh > .sbh-head:first-child::after, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 20px; border-radius: 20px 20px 0 0; background: #fff; pointer-events: none; }
 .dlh.dlh > .dlh-head:first-child > *, .npd.npd > .npd-head:first-child > *, .pdh.pdh > .pdh-head:first-child > *, .avh.avh > .avh-head:first-child > *, .sbh.sbh > .sbh-head:first-child > *, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child > * { position: relative; z-index: 1; }
-.dlh.dlh > .dlh-head:first-child .dlh-title, .npd.npd > .npd-head:first-child .npd-title, .pdh.pdh > .pdh-head:first-child .pdh-title, .avh.avh > .avh-head:first-child .avh-title, .sbh.sbh > .sbh-head:first-child .sbh-title, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child .cgh-title { color: #fff; }
-.dlh.dlh > .dlh-head:first-child .dlh-x, .npd.npd > .npd-head:first-child .npd-x, .pdh.pdh > .pdh-head:first-child .pdh-x, .avh.avh > .avh-head:first-child .avh-x, .sbh.sbh > .sbh-head:first-child .sbh-x, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child .cgh-x { color: rgba(255, 255, 255, 0.72); }
-.dlh.dlh > .dlh-head:first-child .dlh-x:hover, .npd.npd > .npd-head:first-child .npd-x:hover, .pdh.pdh > .pdh-head:first-child .pdh-x:hover, .npd.npd > .npd-head:first-child .npd-x:focus-visible, .pdh.pdh > .pdh-head:first-child .pdh-x:focus-visible, .avh.avh > .avh-head:first-child .avh-x:hover, .avh.avh > .avh-head:first-child .avh-x:focus-visible, .sbh.sbh > .sbh-head:first-child .sbh-x:hover, .sbh.sbh > .sbh-head:first-child .sbh-x:focus-visible, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child .cgh-x:hover, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child .cgh-x:focus-visible { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.dlh.dlh > .dlh-head:first-child .dlh-title, .npd.npd > .npd-head:first-child .npd-title, .pdh.pdh > .pdh-head:first-child .pdh-title, .avh.avh > .avh-head:first-child .avh-title, .sbh.sbh > .sbh-head:first-child .sbh-title, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child .cgh-title { color: var(--brand-ink, #fff); }
+.dlh.dlh > .dlh-head:first-child .dlh-x, .npd.npd > .npd-head:first-child .npd-x, .pdh.pdh > .pdh-head:first-child .pdh-x, .avh.avh > .avh-head:first-child .avh-x, .sbh.sbh > .sbh-head:first-child .sbh-x, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child .cgh-x { color: color-mix(in srgb, var(--brand-ink, #fff) 72%, transparent); }
+.dlh.dlh > .dlh-head:first-child .dlh-x:hover, .npd.npd > .npd-head:first-child .npd-x:hover, .pdh.pdh > .pdh-head:first-child .pdh-x:hover, .npd.npd > .npd-head:first-child .npd-x:focus-visible, .pdh.pdh > .pdh-head:first-child .pdh-x:focus-visible, .avh.avh > .avh-head:first-child .avh-x:hover, .avh.avh > .avh-head:first-child .avh-x:focus-visible, .sbh.sbh > .sbh-head:first-child .sbh-x:hover, .sbh.sbh > .sbh-head:first-child .sbh-x:focus-visible, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child .cgh-x:hover, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child .cgh-x:focus-visible { background: color-mix(in srgb, var(--brand-ink, #fff) 12%, transparent); color: var(--brand-ink, #fff); }
 /* A fact line kept in the dark head (Schedule's `8 weeks | 30/11 – 24/1`, a big photo's day and weigh-in): soft white, its bar too, so it reads on a brand colour. */
-.npd.npd > .npd-head:first-child .npd-meta, .dlh.dlh > .dlh-head:first-child .rp-photodlg-fact { color: rgba(255, 255, 255, 0.6); }
-.npd.npd > .npd-head:first-child .npd-meta .rd-sep, .dlh.dlh > .dlh-head:first-child .rp-photodlg-fact .rd-sep { background: rgba(255, 255, 255, 0.35); }
+.npd.npd > .npd-head:first-child .npd-meta, .dlh.dlh > .dlh-head:first-child .rp-photodlg-fact { color: color-mix(in srgb, var(--brand-ink, #fff) 60%, transparent); }
+.npd.npd > .npd-head:first-child .npd-meta .rd-sep, .dlh.dlh > .dlh-head:first-child .rp-photodlg-fact .rd-sep { background: color-mix(in srgb, var(--brand-ink, #fff) 35%, transparent); }
 /* The fact line under these heads sits on the paper, the lip's room over it (as .pdh-what). */
 .avh.avh > .avh-head:first-child + .avh-what, .sbh.sbh > .sbh-head:first-child + .sbh-what { margin-top: 0; }
 /* A card that scrolls itself keeps no scrollbar's room (Windows' classic bar narrowed the box, so the dark stopped short of
    its right edge in a white strip): the bar hidden, the wheel and a finger still scrolling it. */
 .npd.npd.npd, .dlh.dlh.dlh.riv-new { scrollbar-width: none; }
 .npd.npd.npd::-webkit-scrollbar, .dlh.dlh.dlh.riv-new::-webkit-scrollbar { display: none; width: 0; height: 0; }
-.npd.npd > .npd-head:first-child .npd-open, .pdh.pdh > .pdh-head:first-child .pdh-open { color: rgba(255, 255, 255, 0.8); }
-.npd.npd > .npd-head:first-child .npd-open:hover, .pdh.pdh > .pdh-head:first-child .pdh-open:hover, .npd.npd > .npd-head:first-child .npd-open:focus-visible, .pdh.pdh > .pdh-head:first-child .pdh-open:focus-visible { background: rgba(255, 255, 255, 0.12); color: #fff; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.npd.npd > .npd-head:first-child .npd-open, .pdh.pdh > .pdh-head:first-child .pdh-open { color: color-mix(in srgb, var(--brand-ink, #fff) 80%, transparent); }
+.npd.npd > .npd-head:first-child .npd-open:hover, .pdh.pdh > .pdh-head:first-child .pdh-open:hover, .npd.npd > .npd-head:first-child .npd-open:focus-visible, .pdh.pdh > .pdh-head:first-child .pdh-open:focus-visible { background: color-mix(in srgb, var(--brand-ink, #fff) 12%, transparent); color: var(--brand-ink, #fff); }
 /* The phase Dates pop-up (PhaseDatesDialog, its own .pdh card): its ✕ sits outside the head, top right, so it is lightened there and the head keeps its room. */
 .pdh.pdh > .pdh-head:first-child { padding-right: 56px; }
-.pdh.pdh:has(> .pdh-head:first-child) > .pdh-x { z-index: 2; color: rgba(255, 255, 255, 0.72); }
-.pdh.pdh:has(> .pdh-head:first-child) > .pdh-x:hover, .pdh.pdh:has(> .pdh-head:first-child) > .pdh-x:focus-visible { background: rgba(255, 255, 255, 0.12); color: #fff; }
+/* (22 Nov: its ✕ follows --brand-ink, dark on a bright brand colour) */
+.pdh.pdh:has(> .pdh-head:first-child) > .pdh-x { z-index: 2; color: color-mix(in srgb, var(--brand-ink, #fff) 72%, transparent); }
+.pdh.pdh:has(> .pdh-head:first-child) > .pdh-x:hover, .pdh.pdh:has(> .pdh-head:first-child) > .pdh-x:focus-visible { background: color-mix(in srgb, var(--brand-ink, #fff) 12%, transparent); color: var(--brand-ink, #fff); }
 .pdh.pdh > .pdh-head:first-child + .pdh-what { margin-top: 0; }
 /* The client and what it is about, over the title (PopupWho.tsx). */
 .dlh-whohead { display: flex; align-items: center; gap: 12px; min-width: 0; }
@@ -22320,7 +22338,10 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
 .dlh-whoface:not(:has(img)) { box-shadow: inset 0 0 0 1px #e1e5eb; }
 /* Laid over the circle, never sized by the photo: a portrait picture in a grid row grew it into an oval (22 Nov). */
 .dlh-whoface img { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-.dlh-whoeye { display: block; overflow: hidden; margin-bottom: 3px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; text-overflow: ellipsis; white-space: nowrap; color: var(--who-c, rgba(255, 255, 255, 0.6)); }
+.dlh-whoeye { display: block; overflow: hidden; margin-bottom: 3px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; text-overflow: ellipsis; white-space: nowrap; color: var(--who-c, color-mix(in srgb, var(--brand-ink, #fff) 60%, transparent)); }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) The tab's lightened colour is for a dark head; on a bright one the eyebrow is the ink. */
+body[style*="--brand-ink"] .dlh-whoeye { color: color-mix(in srgb, var(--brand-ink) 72%, transparent); }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour; a tab's --who-c, set inline, still lightened for the dark) */
 /* The thing itself on the paper (ConfirmThing, ConfirmParts.tsx): its name, its facts grey, what goes with it in soft rust. */
 .dlh-thing { margin: 0 0 14px; }
 .dlh-thing-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
@@ -22335,16 +22356,17 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
    the client's (a person with a plus until a first name is typed, then its initial) and the name as it is typed over New
    client; the paper rising over its foot; no hairline ring. One step: the email typed is where the invite goes. */
 .nc-dialog.nc-hl { box-shadow: 0 30px 60px -24px rgba(16, 24, 40, 0.35); overflow: hidden; }
-.nc-dialog.nc-hl > .nc-head:first-child { position: relative; flex: none; overflow: hidden; align-items: flex-start; margin: -20px 0 0; padding: 18px 20px 38px; border-radius: 20px 20px 0 0; background: linear-gradient(var(--brand, #1c1c1e), var(--brand, #1c1c1e)) top / 100% calc(100% - 2px) no-repeat; color: #fff; }
-.nc-dialog.nc-hl > .nc-head:first-child::before { content: ""; position: absolute; right: -53px; top: 50%; translate: 0 -58%; width: 160px; height: 160px; background: #fff; opacity: 0.07; pointer-events: none; -webkit-mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; }
+.nc-dialog.nc-hl > .nc-head:first-child { position: relative; flex: none; overflow: hidden; align-items: flex-start; margin: -20px 0 0; padding: 18px 20px 38px; border-radius: 20px 20px 0 0; background: linear-gradient(var(--brand, #1c1c1e), var(--brand, #1c1c1e)) top / 100% calc(100% - 2px) no-repeat; color: var(--brand-ink, #fff); }
+/* (22 Nov: the head's words, its mark, its ✕ and the empty face follow --brand-ink, dark on a bright brand colour) */
+.nc-dialog.nc-hl > .nc-head:first-child::before { content: ""; position: absolute; right: -53px; top: 50%; translate: 0 -58%; width: 160px; height: 160px; background: var(--brand-ink, #fff); opacity: 0.07; pointer-events: none; -webkit-mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; }
 .has-coach-logo .nc-dialog.nc-hl > .nc-head:first-child::before { opacity: 0.13; }
 .nc-dialog.nc-hl > .nc-head:first-child::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 20px; border-radius: 20px 20px 0 0; background: #fff; pointer-events: none; }
 .nc-dialog.nc-hl > .nc-head:first-child > * { position: relative; z-index: 1; }
-.nc-dialog.nc-hl > .nc-head:first-child .nc-title { color: #fff; }
-.nc-dialog.nc-hl > .nc-head:first-child .cc-dialog-x { color: rgba(255, 255, 255, 0.72); }
-.nc-dialog.nc-hl > .nc-head:first-child .cc-dialog-x:hover, .nc-dialog.nc-hl > .nc-head:first-child .cc-dialog-x:focus-visible { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.nc-dialog.nc-hl > .nc-head:first-child .nc-title { color: var(--brand-ink, #fff); }
+.nc-dialog.nc-hl > .nc-head:first-child .cc-dialog-x { color: color-mix(in srgb, var(--brand-ink, #fff) 72%, transparent); }
+.nc-dialog.nc-hl > .nc-head:first-child .cc-dialog-x:hover, .nc-dialog.nc-hl > .nc-head:first-child .cc-dialog-x:focus-visible { background: color-mix(in srgb, var(--brand-ink, #fff) 12%, transparent); color: var(--brand-ink, #fff); }
 /* Nobody yet: the face a dashed white ring with a person and a plus in it. */
-.nc-hl .dlh-whoface.nc-face:not(:has(img)):has(svg) { background: none; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.55); color: rgba(255, 255, 255, 0.85); }
+.nc-hl .dlh-whoface.nc-face:not(:has(img)):has(svg) { background: none; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--brand-ink, #fff) 55%, transparent); color: color-mix(in srgb, var(--brand-ink, #fff) 85%, transparent); }
 /* The phone: the dial code its own width, the number taking the rest (the picker spread across the row and left the
    number no room). */
 .nc-hl .nc-phone .rd-picker.nc-dialpick { width: auto; flex: none; }

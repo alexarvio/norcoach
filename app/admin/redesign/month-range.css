@@ -5,9 +5,10 @@
    pop-up (pdh), every DatePick (rdp-pop) and the meeting scheduler (rt-dlg-cal). */
 
 /* The picked days' ends in the coach's brand (19 Nov, Alex: "the toggles, the pop-ups, everything should be in that color"); with none, ink. The coach's phone (EntrySheet, cph-) keeps ink. */
-.rdd-cal { --rdd-pick: var(--brand, #141a24); --rdd-pick-hover: #2f3846; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour, as --rdd-pick-ink; the phone's ink keeps white) */
+.rdd-cal { --rdd-pick: var(--brand, #141a24); --rdd-pick-hover: #2f3846; --rdd-pick-ink: var(--brand-ink, #fff); }
 body[style*="--brand"] .rdd-cal { --rdd-pick-hover: color-mix(in srgb, var(--brand) 88%, #fff); }
-[class*="cph-"] .rdd-cal.rdd-cal { --rdd-pick: #141a24; --rdd-pick-hover: #2f3846; }
+[class*="cph-"] .rdd-cal.rdd-cal { --rdd-pick: #141a24; --rdd-pick-hover: #2f3846; --rdd-pick-ink: #fff; }
 .rdd-cal { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 0; border-radius: 0; background: none; font-family: var(--font-archivo), system-ui, sans-serif; }
 .rdd-cal .rdd-cal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 0 4px; }
 .rdd-cal .rdd-cal-head b { font-size: 14px; font-weight: 600; color: #141a24; }
@@ -35,7 +36,7 @@ body[style*="--brand"] .rdd-cal { --rdd-pick-hover: color-mix(in srgb, var(--bra
 .rdd-cal .rdd-cell.in { background: #eef0f3; color: #141a24; }
 .rdd-cal .rdd-cell.in.past { color: #98a2b3; }
 .rdd-cal .rdd-cell.in:hover, .rdd-cal .rdd-cell.in:focus-visible { background: #e4e7ec; }
-.rdd-cal .rdd-cell.in.start, .rdd-cal .rdd-cell.in.end { background: var(--rdd-pick); color: #fff; font-weight: 600; }
+.rdd-cal .rdd-cell.in.start, .rdd-cal .rdd-cell.in.end { background: var(--rdd-pick); color: var(--rdd-pick-ink, #fff); font-weight: 600; }
 .rdd-cal .rdd-cell.in.start:hover, .rdd-cal .rdd-cell.in.end:hover, .rdd-cal .rdd-cell.in.start:focus-visible, .rdd-cal .rdd-cell.in.end:focus-visible { background: var(--rdd-pick-hover); }
 .rdd-cal .rdd-cell.in.past.start, .rdd-cal .rdd-cell.in.past.end { opacity: 0.6; }
 .rdd-cal .rdd-cell.today.in.start, .rdd-cal .rdd-cell.today.in.end { box-shadow: inset 0 0 0 2px var(--rdd-pick), inset 0 0 0 3px #fff; }

@@ -3,6 +3,7 @@
 import { ownTab } from "../lib/tabMemory";
 import { RESUME_KEY, TAB_COOKIE, TAB_KEY } from "../lib/appMemory";
 import { ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, useTransition, type CSSProperties, type SyntheticEvent } from "react";
+import { brandVars } from "../lib/brandColour";
 import { QUIET_COOKIE } from "../lib/quietLoad";
 import { pic } from "../lib/pic";
 import "./gyms.css";
@@ -810,7 +811,7 @@ export default function AppShell({
         className={`phone-frame${preview ? " previewing" : ""}${readOnly ? " phone-readonly" : ""}${brandOn ? " brand-on" : ""}`}
         // The coach's phone preview wears the client's coach's colour, not the viewer's (the owner looking at another
         // coach's client), and their faint mark with it; the client's own app has both on the page already (app/layout.tsx).
-        style={readOnly ? ({ "--brand": brand.color ?? "#141a24", "--brand-mark": brand.mark ? `url("${brand.mark}")` : "initial" } as CSSProperties) : undefined}
+        style={readOnly ? ({ "--brand": brand.color ?? "#141a24", ...brandVars(brand.color), "--brand-mark": brand.mark ? `url("${brand.mark}")` : "initial" } as CSSProperties) : undefined}
         {...(readOnly ? { onClickCapture: stopEvent, onPointerDownCapture: stopEvent, onMouseDownCapture: stopEvent, onKeyDownCapture: stopEvent, onSubmitCapture: stopEvent, onDragStartCapture: stopEvent, onContextMenuCapture: stopEvent } : {})}
       >
         {preview && <PreviewBar current={preview.current} clients={preview.clients} />}

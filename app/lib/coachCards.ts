@@ -25,9 +25,29 @@ export function coachCardPictures(coachId: number | null | undefined): TrackPict
   return out;
 }
 
-/** The client's coach's card pictures. */
+/** Default chosen over their own (22 Nov, Alex: "a toggle for card pics if we want default or not"): their clients see
+ *  Norcoach's pictures, the coach's own kept for when they switch back. */
+export function coachCardsDefault(coachId: number | null | undefined): boolean {
+  return coachId != null && !!coachRow(coachId)?.coach_settings?.brand?.cardsDefault;
+}
+
+/** Default or their own: kept on the brand; never deletes a picture. */
+export function setCoachCardsDefault(coachId: number, on: boolean) {
+  const user = coachRow(coachId);
+  if (!user) return;
+  const brand = { ...(user.coach_settings?.brand ?? {}) };
+  if (on) brand.cardsDefault = true;
+  else delete brand.cardsDefault;
+  const { brand: _gone, ...rest } = user.coach_settings ?? {};
+  void _gone;
+  user.coach_settings = Object.keys(brand).length ? { ...rest, brand } : rest;
+  persist();
+}
+
+/** The client's coach's card pictures: none while the coach has Default on, so the stock ones show. */
 export function coachCardsForClient(clientId: number): TrackPictures {
-  return coachCardPictures(getData().clients.find((c) => c.id === clientId)?.coach_id ?? null);
+  const coachId = getData().clients.find((c) => c.id === clientId)?.coach_id ?? null;
+  return coachCardsDefault(coachId) ? {} : coachCardPictures(coachId);
 }
 
 /** One of a coach's card pictures (any coach's): the client's own list may hold it, added with its +, and it is never

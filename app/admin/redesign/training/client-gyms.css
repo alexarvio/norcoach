@@ -67,7 +67,8 @@
 
 /* Footer: Done as a black pill. */
 .cgh-foot { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 2px; margin-top: 20px; }
-.cgh-done { height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--brand, #141a24); font: inherit; font-size: 13.5px; font-weight: 600; color: #fff; white-space: nowrap; cursor: pointer; transition: background 0.15s; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.cgh-done { height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--brand, #141a24); font: inherit; font-size: 13.5px; font-weight: 600; color: var(--brand-ink, #fff); white-space: nowrap; cursor: pointer; transition: background 0.15s; }
 .cgh-done:hover { background: #000; }
 /* In the coach's brand (19 Nov, Alex: "the toggles, the pop-ups, everything should be in that color"). */
 body[style*="--brand"] .cgh-done:hover:not(:disabled) { background: color-mix(in srgb, var(--brand) 88%, #fff); }
