@@ -19,6 +19,9 @@ if (foodDoor.status !== 0) process.exit(foodDoor.status ?? 1);
 // The check-in figures' door the same (20 Nov, quest 9).
 const checkInsDoor = spawnSync(process.execPath, [fileURLToPath(new URL("./check-checkins-door.mjs", import.meta.url))], { stdio: "inherit" });
 if (checkInsDoor.status !== 0) process.exit(checkInsDoor.status ?? 1);
+// The logged sets' door the same (22 Nov, quest 10).
+const setsDoor = spawnSync(process.execPath, [fileURLToPath(new URL("./check-sets-door.mjs", import.meta.url))], { stdio: "inherit" });
+if (setsDoor.status !== 0) process.exit(setsDoor.status ?? 1);
 const nextBin = require.resolve("next/dist/bin/next");
 const env = { ...process.env, NODE_OPTIONS: "--max-old-space-size=4096" };
 const result = spawnSync(process.execPath, [nextBin, "build"], { stdio: "inherit", env });

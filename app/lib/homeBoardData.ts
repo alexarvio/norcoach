@@ -7,6 +7,7 @@ import { getData, persist, type Data, type PhaseTrack } from "./db";
 import type { ChatThread } from "./chat/rows";
 import type { FoodRows } from "./food/rows";
 import type { CheckInRows } from "./checkins/rows";
+import type { SetLogRow as StoredSetLog, SetRows } from "./sets/rows";
 import {
   coachGroups,
   getActivityCalendar,
@@ -39,7 +40,7 @@ import { sub } from "./timing";
 
 type ProgramDayRow = Data["program_days"][number];
 type AssignmentRow = Data["workout_assignments"][number];
-type SetLogRow = Data["set_logs"][number];
+type SetLogRow = StoredSetLog;
 type ClientRow = Data["clients"][number];
 type PhaseRow = Data["client_phases"][number];
 
@@ -174,7 +175,8 @@ type Ctx = {
 };
 
 /** No food view (null): the activity calendar left empty, for a read that never looks at it (exerciseTrends; 23 Oct, speed). */
-function context(clientId: number, today: string, food: FoodRows | null, ck: CheckInRows): Ctx {
+function context(clientId: number, today: string, food: FoodRows | null, ck: CheckInRows, sr: SetRows): Ctx {
+  sr.need("homeBoard", clientId);
   const withCalendar = food != null;
   const data = getData();
   const client = data.clients.find((c) => c.id === clientId);
@@ -253,7 +255,7 @@ function context(clientId: number, today: string, food: FoodRows | null, ck: Che
   const perDay = new Map<string, { sets: PerGroup; volume: PerGroup }>();
   // An assisted set weighs the body weight of its own day less the help (23 Oct, Alex).
   const bodyOn = sub("bodyWeight", () => bodyWeightOn(ck, clientId));
-  for (const l of data.set_logs) {
+  for (const l of sr.logs) {
     const a = assignments.get(l.workout_assignment_id);
     if (!a) continue;
     const list = logsByAssignment.get(a.id);
@@ -291,7 +293,7 @@ function context(clientId: number, today: string, food: FoodRows | null, ck: Che
     today,
     client,
     phases,
-    calendar: withCalendar && food ? new Map(sub("calendar", () => getActivityCalendar(food, clientId, ck)).map((d) => [d.date, d] as const)) : new Map(),
+    calendar: withCalendar && food ? new Map(sub("calendar", () => getActivityCalendar(food, clientId, ck, sr)).map((d) => [d.date, d] as const)) : new Map(),
     days,
     byDay,
     logsByAssignment,
@@ -325,12 +327,12 @@ function safe<T>(part: string, fn: () => T, fallback: T): T {
 
 // ---- The board ------------------------------------------------------------------------
 
-export function getHomeBoard(clientId: number, thread: ChatThread, food: FoodRows, ck: CheckInRows): HomeBoard {
+export function getHomeBoard(clientId: number, thread: ChatThread, food: FoodRows, ck: CheckInRows, sr: SetRows): HomeBoard {
   const today = localDateStr();
   const empty = emptyBoard(today);
   let ctx: Ctx;
   try {
-    ctx = sub("read", () => context(clientId, today, food, ck));
+    ctx = sub("read", () => context(clientId, today, food, ck, sr));
   } catch (e) {
     console.error("[homeBoard] read:", e);
     return empty;
@@ -938,9 +940,9 @@ export type ExerciseSession = {
   bodyKg: number | null;
   sets: { weight: number; reps: number; rpe: number | null }[];
 };
-export function exerciseTrends(ck: CheckInRows, clientId: number, today: string = localDateStr()): Map<string, { d7: number | null; d30: number | null; d7Since: string | null; d30Since: string | null; sessions: ExerciseSession[] }> {
+export function exerciseTrends(ck: CheckInRows, sr: SetRows, clientId: number, today: string = localDateStr()): Map<string, { d7: number | null; d30: number | null; d7Since: string | null; d30Since: string | null; sessions: ExerciseSession[] }> {
   // The sets alone: the calendar is the board's, and the costliest part of the read.
-  const ctx = context(clientId, today, null, ck);
+  const ctx = context(clientId, today, null, ck, sr);
   const byKey = new Map<string, Map<string, number>>();
   const weekOfDay = new Map(ctx.days.map((d) => [d.id, d.week_number] as const));
   const dayOf = new Map<number, number>();
@@ -1028,8 +1030,8 @@ export { repTarget };
  * assisted lift's the help, so no "before" is given for it).
  */
 export type PersonalBest = { sets: number[]; kg: number; prevKg: number | null; assisted: boolean };
-export function personalBests(ck: CheckInRows, clientId: number, today: string = localDateStr()): Map<number, PersonalBest> {
-  return trainingBests(ck, clientId, today).bests;
+export function personalBests(ck: CheckInRows, sr: SetRows, clientId: number, today: string = localDateStr()): Map<number, PersonalBest> {
+  return trainingBests(ck, sr, clientId, today).bests;
 }
 
 /** Every row of the client's by id, and every weighed set (reps and a lifted weight) of each exercise, oldest first. */
@@ -1054,8 +1056,8 @@ function bestIndex(ctx: Ctx): { rowOf: Map<number, AssignmentRow>; byKey: Map<st
  * (every one when it hasn't begun), as lifted kg. Null when no best is possible: a rogue row, no rep target, a first
  * time (nothing to beat), an assisted lift with no body weight known. Worked out per row only when asked.
  */
-export function trainingBests(ck: CheckInRows, clientId: number, today: string = localDateStr()): { bests: Map<number, PersonalBest>; barOf: (assignmentId: number) => PbBar | null } {
-  const ctx = context(clientId, today, null, ck);
+export function trainingBests(ck: CheckInRows, sr: SetRows, clientId: number, today: string = localDateStr()): { bests: Map<number, PersonalBest>; barOf: (assignmentId: number) => PbBar | null } {
+  const ctx = context(clientId, today, null, ck, sr);
   const { rowOf, byKey } = bestIndex(ctx);
   const out = new Map<number, PersonalBest>();
   for (const list of byKey.values()) {

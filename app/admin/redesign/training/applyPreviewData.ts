@@ -1,4 +1,5 @@
 import { getData } from "../../../lib/db";
+import type { SetLogRow, SetRows } from "../../../lib/sets/rows";
 import { MAX_SESSIONS_PER_WEEK, assignmentsForDayIn, cardioForDayIn, getAssignmentsForDay, getWeek, homeGymId, listCardioForDay, listClientGyms, trainingIndex, weekIn } from "../../../lib/queries";
 import { assistedRow, beforeStop, coachKg, copiedWeights, laneKg, laneOfGym, laterSlot, liftOf, raisedTo, repWindow, setsSinceReset, stopAfter, writeLane, type Lane } from "../../../lib/targetRule";
 import { changeCount, changedWeeks, type ApplyFig, type ApplyItem, type ApplyPreview, type ApplySession, type ApplyWeek } from "./applyShape";
@@ -28,7 +29,8 @@ const restOf = (s: number | null) => (s == null ? null : s >= 60 && s % 60 === 0
 const nameOf = (d: { label: string | null }, position: number) => txt(d.label) ?? `Session ${position}`;
 
 /** `gone`: the sessions the copy replaces, their rows (and what was logged or asked on them) with them. */
-function compare(clientId: number, gone: Set<number>) {
+function compare(sr: SetRows, clientId: number, gone: Set<number>) {
+  sr.need("applyPreview", clientId);
   const data = getData();
   const exName = new Map(data.exercises.map((e) => [e.id, e.name] as const));
   const exById = new Map(data.exercises.map((e) => [e.id, e] as const));
@@ -47,8 +49,8 @@ function compare(clientId: number, gone: Set<number>) {
     else rowsOfDay.set(wa.program_day_id, [wa.id]);
   }
   const clientRows = new Set([...rowsOfDay.values()].flat());
-  const logsOf = new Map<number, (typeof data.set_logs)[number][]>();
-  for (const l of data.set_logs) {
+  const logsOf = new Map<number, SetLogRow[]>();
+  for (const l of sr.logs) {
     if (!clientRows.has(l.workout_assignment_id)) continue;
     const list = logsOf.get(l.workout_assignment_id);
     if (list) list.push(l);
@@ -68,7 +70,7 @@ function compare(clientId: number, gone: Set<number>) {
   for (const r of data.video_requests) if (!askOf.has(r.assignment_id)) askOf.set(r.assignment_id, r);
   const recurring = data.video_requests.filter((r) => r.recurring && r.client_id === clientId && !r.from_client);
   // The client's sessions, rows and cardio read once for every preview (23 Oct, speed), exactly as the plain reads give them.
-  const ix = trainingIndex(clientId);
+  const ix = trainingIndex(sr, clientId);
 
   // This client's rows of each exercise on planned days, where they sit: a copy reads the coach's resets off them.
   const rowsOfExercise = new Map<number, { slot: (typeof data.program_days)[number]; row: (typeof data.workout_assignments)[number] }[]>();
@@ -277,9 +279,9 @@ function compare(clientId: number, gone: Set<number>) {
 }
 
 /** One read of the client's plan for any number of previews (the page's read asks for the week's and each session's). */
-export function applyReader(clientId: number) {
+export function applyReader(sr: SetRows, clientId: number) {
   const gone = new Set<number>();
-  const c = compare(clientId, gone);
+  const c = compare(sr, clientId, gone);
 
   /** Apply to the rest: the week `fromWeek` copied onto each of `toWeeks` (copyProgramWeek). */
   const week = (program: Span, fromWeek: number, toWeeks: number[]): ApplyPreview => {
@@ -344,11 +346,11 @@ export function applyReader(clientId: number) {
  * confirm shows a weight. The same reads as the confirm's, so the button is there exactly while its list has something.
  * Null when no week comes after it.
  */
-export function applyReads(clientId: number, program: Span, weekNumber: number, open?: (index: number) => boolean) {
+export function applyReads(sr: SetRows, clientId: number, program: Span, weekNumber: number, open?: (index: number) => boolean) {
   const later: number[] = [];
   for (let w = weekNumber + 1; w < program.start_week + program.total_weeks; w++) later.push(w);
   if (!later.length) return null;
-  const read = applyReader(clientId);
+  const read = applyReader(sr, clientId);
   const rest = read.week(program, weekNumber, later);
   const sessions: Record<number, { kg: boolean; lbs: boolean }> = {};
   for (const d of getWeek(clientId, weekNumber)) {

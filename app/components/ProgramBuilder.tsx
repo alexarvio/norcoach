@@ -5,6 +5,7 @@ import OnceKeySubmit from "./OnceKeySubmit";
 import type { ChatCoachView } from "../lib/chat/rows";
 import type { FoodRows } from "../lib/food/rows";
 import type { CheckInRows } from "../lib/checkins/rows";
+import type { SetRows } from "../lib/sets/rows";
 import {
   getAssignmentsForDay,
   listClientPhases,
@@ -112,9 +113,12 @@ export default function ProgramBuilder({
   chat,
   food,
   ck,
+  sr,
 }: {
   /** The check-in figures the same (app/lib/checkins/rows.ts). */
   ck: CheckInRows;
+  /** The logged sets the same (app/lib/sets/rows.ts). */
+  sr: SetRows;
   clientId: number;
   /** The coach's chat view (fetchCoachChat, app/admin/page.tsx), for the sessions' news. */
   chat: ChatCoachView;
@@ -178,7 +182,7 @@ export default function ProgramBuilder({
   const currentWeek = weekStart(localDateStr());
   // Sessions with news the coach has not opened yet (a finished workout, a
   // reason for missing one): the week and the session carry the dot.
-  const newDayIds = new Set(getClientHomeActions(clientId, chat, food, ck).unseenDayIds);
+  const newDayIds = new Set(getClientHomeActions(clientId, chat, food, ck, sr).unseenDayIds);
   const liveWeekNumber = deployedProgram ? deployedProgram.start_week + getProgramCurrentWeekIndex(deployedProgram) - 1 : null;
 
   function renderDays(days: ProgramDay[]) {
@@ -214,19 +218,19 @@ export default function ProgramBuilder({
       const newVideos = [...videoRequests.values()].filter((r) => r.file_path && !r.seen_at).length;
       const videoWhere = `${sessionName}${day.label ? ` · ${day.label}` : ""}, ${dayProgram ? programWeekLabel(dayProgram, day.week_number) : `Week ${day.week_number}`}`;
       const setsLoggedThisWeek = assignments.reduce((sum, a) => {
-        const wg = getLogsForAssignmentByWeek(a.id).find((g) => g.weekStart === currentWeek);
+        const wg = getLogsForAssignmentByWeek(sr, a.id).find((g) => g.weekStart === currentWeek);
         return sum + (wg ? wg.logs.length : 0);
       }, 0);
       // Which gym the client picked for this session, read off the sets they
       // logged on it. Only worth saying when they have more than one gym.
-      const dayLog = allGyms.length > 1 ? assignments.flatMap((a) => getLogsForAssignment(a.id))[0] : undefined;
+      const dayLog = allGyms.length > 1 ? assignments.flatMap((a) => getLogsForAssignment(sr, a.id))[0] : undefined;
       const dayGymName = dayLog ? gymNameOf(dayLog.gym_id ?? home) : null;
       // Complete as the client's app counts it: every planned set logged and
       // every cardio ticked.
       const sessionDone =
         !isEmpty &&
         assignments.every((a) => {
-          const logged = new Set(getLogsForAssignment(a.id).map((l) => l.set_number));
+          const logged = new Set(getLogsForAssignment(sr, a.id).map((l) => l.set_number));
           return Array.from({ length: setsDue(a) }, (_, i) => i + 1).every((n) => logged.has(n));
         }) &&
         listCardioForDay(day.id).every((c) => isCardioDone(c.id));
@@ -431,12 +435,12 @@ export default function ProgramBuilder({
                   )
                 }
                 rows={assignments.map((a) => {
-                  const weekGroups = getLogsForAssignmentByWeek(a.id);
+                  const weekGroups = getLogsForAssignmentByWeek(sr, a.id);
                   // Two independent facts about this exercise, both shown when
                   // there's history for them: how the client is trending on it
                   // overall, and what last week actually asked for versus what
                   // they did. Neither depends on whether this day is published.
-                  const prevRef = getPreviousWeekAssignmentRef(clientId, day.week_number, day.day_of_week, a.exercise_id);
+                  const prevRef = getPreviousWeekAssignmentRef(sr, clientId, day.week_number, day.day_of_week, a.exercise_id);
 
                   // This week over last, each judged against the target that
                   // was live for ITS OWN week — see LoggedSetsGrid for why
@@ -457,17 +461,17 @@ export default function ProgramBuilder({
                   // visit to the same gym, since last week may have been the
                   // other one. A gym never trained at before has nothing to
                   // compare against, and no target of its own to be under.
-                  const ownLogs = multiGym ? getLogsForAssignment(a.id) : [];
+                  const ownLogs = multiGym ? getLogsForAssignment(sr, a.id) : [];
                   const loggedGym = ownLogs.length ? ownLogs[0].gym_id ?? home : null;
                   const visit =
                     loggedGym != null
-                      ? getLastVisitAtGym(clientId, a.exercise_id, loggedGym, { week: day.week_number, dayOfWeek: day.day_of_week })
+                      ? getLastVisitAtGym(sr, clientId, a.exercise_id, loggedGym, { week: day.week_number, dayOfWeek: day.day_of_week })
                       : null;
                   const firstVisit = loggedGym != null && loggedGym !== home && !visit && a.gym_targets?.[loggedGym]?.kg == null;
                   // The trend is one gym's too: where this week was trained,
                   // or the gym the client is using now.
                   const trendGym = multiGym ? loggedGym ?? currentGymId(clientId) : null;
-                  const weightTrendPct = getExerciseWeightTrendPct(clientId, a.exercise_id, day.week_number, multiGym ? trendGym : undefined);
+                  const weightTrendPct = getExerciseWeightTrendPct(sr, clientId, a.exercise_id, day.week_number, multiGym ? trendGym : undefined);
                   const trendDir = weightTrendPct == null ? null : weightTrendPct > 0 ? "up" : weightTrendPct < 0 ? "down" : null;
                   const previous: PreviousLane | null =
                     loggedGym != null && (visit || loggedGym !== home)
@@ -740,7 +744,7 @@ export default function ProgramBuilder({
       const trainingDays = perDay.filter((a) => a.length > 0).length;
       const setsLogged = perDay
         .flat()
-        .reduce((sum, a) => sum + (getLogsForAssignmentByWeek(a.id).find((g) => g.weekStart === currentWeek)?.logs.length ?? 0), 0);
+        .reduce((sum, a) => sum + (getLogsForAssignmentByWeek(sr, a.id).find((g) => g.weekStart === currentWeek)?.logs.length ?? 0), 0);
 
       weekContents[index] = (
         <div key={`w${index}`} className="program-sheet">
@@ -771,7 +775,7 @@ export default function ProgramBuilder({
         const assignments = perDay[di];
         if (assignments.length === 0) return [];
         const name = `Session ${d.day_of_week}${d.label ? ` · ${d.label}` : ""}`;
-        const trained = assignments.some((x) => getLogsForAssignment(x.id).length > 0);
+        const trained = assignments.some((x) => getLogsForAssignment(sr, x.id).length > 0);
         // Red once it can no longer be trained: the week has passed, the whole
         // programme has, or the client said they couldn't.
         const past = status === "past" || (liveWeekNumber != null && weekNumber < liveWeekNumber);
@@ -781,7 +785,7 @@ export default function ProgramBuilder({
       });
       // Sessions done, not days lit: a session logged across two days is
       // still one session, and the client's app counts the same way.
-      const trainedDays = perDay.filter((a) => a.length > 0 && a.some((x) => getLogsForAssignment(x.id).length > 0)).length;
+      const trainedDays = perDay.filter((a) => a.length > 0 && a.some((x) => getLogsForAssignment(sr, x.id).length > 0)).length;
       const isFuture = liveWeekNumber != null && weekNumber > liveWeekNumber;
 
       weekCards.push({
@@ -859,7 +863,7 @@ export default function ProgramBuilder({
             program: {
               status: status === "live" ? ("live" as const) : program.scheduled_at ? ("scheduled" as const) : ("draft" as const),
               totalWeeks: program.total_weeks,
-              loggedWeeks: programLoggedWeekIndexes(program.id),
+              loggedWeeks: programLoggedWeekIndexes(sr, program.id),
             },
           }
         : null,

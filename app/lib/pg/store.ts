@@ -8,6 +8,7 @@ import { CHAT_PG } from "../chat/mode";
 import { NOTES_PG } from "../notes/mode";
 import { FOOD_PG, FOOD_TABLES } from "../food/mode";
 import { CHECKINS_PG, CHECKINS_TABLES } from "../checkins/mode";
+import { SETS_PG, SETS_TABLES } from "../sets/mode";
 
 // Loads the whole store from Postgres and saves changes back (phase 1).
 //
@@ -83,11 +84,53 @@ function defClientOf(defId: unknown, defs?: ReadonlyMap<number, number>): number
   return defMap(true)?.get(defId) ?? null;
 }
 
+/**
+ * The client of a plan row (a workout assignment) as memory holds the rows and the days now (22 Nov, migration 0025:
+ * set_logs' client_id), its day's client, or null: the first row of an id and the first day of an id, as find reads
+ * them. The boot hands over where they are (setSetClientSource, pg/runtime.ts), as for the definitions above. Cached by
+ * the two lists, their lengths and their last ids, and built again once on a row id it doesn't know.
+ */
+type SetSrc = { rows: readonly { id: number; program_day_id: number }[] | undefined; days: readonly { id: number; client_id: number }[] | undefined } | undefined;
+let setSource: (() => SetSrc) | null = null;
+let setCache: { state: unknown[]; map: Map<number, number>; rechecked: boolean } | null = null;
+export function setSetClientSource(fn: () => SetSrc) {
+  setSource = fn;
+  setCache = null;
+}
+/** Each plan row's client from lists of rows and days (the first of each id). */
+export function setClientMapOf(rows: readonly { id: number; program_day_id: number }[] = [], days: readonly { id: number; client_id: number }[] = []): Map<number, number> {
+  const dayClient = new Map<number, number>();
+  for (const d of days) if (!dayClient.has(d.id)) dayClient.set(d.id, d.client_id);
+  const out = new Map<number, number>();
+  for (const r of rows) {
+    if (out.has(r.id)) continue;
+    const c = dayClient.get(r.program_day_id);
+    if (c !== undefined) out.set(r.id, c);
+  }
+  return out;
+}
+function setMap(fresh: boolean): Map<number, number> | null {
+  const src = setSource?.();
+  if (!src || !Array.isArray(src.rows) || !Array.isArray(src.days)) return null;
+  const state = [src.rows, src.rows.length, src.rows[src.rows.length - 1]?.id, src.days, src.days.length, src.days[src.days.length - 1]?.id];
+  if (fresh || !setCache || setCache.state.some((v, i) => v !== state[i])) setCache = { state, map: setClientMapOf(src.rows, src.days), rechecked: fresh };
+  return setCache.map;
+}
+function setClientOf(rowId: unknown, map?: ReadonlyMap<number, number>): number | null {
+  if (typeof rowId !== "number") return null;
+  if (map) return map.get(rowId) ?? null;
+  const got = setMap(false)?.get(rowId);
+  if (got !== undefined) return got;
+  if (setCache?.rechecked) return null;
+  return setMap(true)?.get(rowId) ?? null;
+}
+
 /** The value a derived column holds for this row (ISO text, or a client's id), or null. */
-const derivedValue = (d: Derived, row: Row) => (d.kind === "ms" ? msInstant(row[d.from]) : d.kind === "defClient" ? defClientOf(row[d.from]) : stampInstant(row[d.from]));
+const derivedValue = (d: Derived, row: Row) =>
+  d.kind === "ms" ? msInstant(row[d.from]) : d.kind === "defClient" ? defClientOf(row[d.from]) : d.kind === "setClient" ? setClientOf(row[d.from]) : stampInstant(row[d.from]);
 /** derivedValue as derivedStale compares it (ms, or the id). */
-const derivedWant = (d: Derived, row: Row, defs?: ReadonlyMap<number, number>) =>
-  d.kind === "ms" ? msInstantMs(row[d.from]) : d.kind === "defClient" ? defClientOf(row[d.from], defs) : stampInstantMs(row[d.from]);
+const derivedWant = (d: Derived, row: Row, defs?: ReadonlyMap<number, number>, sets?: ReadonlyMap<number, number>) =>
+  d.kind === "ms" ? msInstantMs(row[d.from]) : d.kind === "defClient" ? defClientOf(row[d.from], defs) : d.kind === "setClient" ? setClientOf(row[d.from], sets) : stampInstantMs(row[d.from]);
 
 const FIELDS = new WeakMap<PgTable, Record<string, Column>>();
 /** The columns that are fields of the row: every column but the derived ones. */
@@ -264,13 +307,15 @@ export async function derivedStale(db: AnyDb, data: Row): Promise<Map<string, Se
   // The figures' client from the definitions as loaded (def_client_id, 21 Nov), not the store (not installed yet).
   const defList = Array.isArray(data.metric_definitions) ? (data.metric_definitions as { id: number; client_id: number }[]) : [];
   const defs = new Map(defList.map((d) => [d.id, d.client_id] as const));
+  // The sets' client from the rows and days as loaded (client_id, 22 Nov), the same way.
+  const sets = setClientMapOf(Array.isArray(data.workout_assignments) ? (data.workout_assignments as { id: number; program_day_id: number }[]) : [], Array.isArray(data.program_days) ? (data.program_days as { id: number; client_id: number }[]) : []);
   for (const c of WRITER_COLLECTIONS) {
     const derived = DERIVED_OF.get(c.table);
     if (!derived || c.key.length !== 1) continue;
     const keyColumn = columnsOf(c.table)[c.key[0]].name;
     const columns = derived.map((d) => columnsOf(c.table)[d.column].name);
     const read = await db.execute(
-      sql.raw(`SELECT "${keyColumn}" AS k, ${columns.map((col, i) => (derived[i].kind === "defClient" ? `"${col}"::float8 AS d${i}` : `(EXTRACT(EPOCH FROM "${col}") * 1000)::float8 AS d${i}`)).join(", ")} FROM "${getTableName(c.table)}"`)
+      sql.raw(`SELECT "${keyColumn}" AS k, ${columns.map((col, i) => (derived[i].kind === "defClient" || derived[i].kind === "setClient" ? `"${col}"::float8 AS d${i}` : `(EXTRACT(EPOCH FROM "${col}") * 1000)::float8 AS d${i}`)).join(", ")} FROM "${getTableName(c.table)}"`)
     );
     const held = new Map<string, (number | null)[]>();
     for (const r of ((read as { rows?: Row[] }).rows ?? []) as Row[]) {
@@ -283,7 +328,7 @@ export async function derivedStale(db: AnyDb, data: Row): Promise<Map<string, Se
       const have = held.get(key);
       if (!have) continue; // not in the table: written by the next save anyway
       derived.forEach((d, i) => {
-        const want = derivedWant(d, row, defs);
+        const want = derivedWant(d, row, defs, sets);
         if (want !== have[i]) keys.add(key);
       });
     }
@@ -309,11 +354,12 @@ export async function derivedStale(db: AnyDb, data: Row): Promise<Map<string, Se
  * How many rows were written.
  */
 export async function repairDerivedPg(db: AnyDb, name: string, defs?: readonly { id: number; client_id: number }[]): Promise<number> {
+  // The sets' client (quest 10): `defs` is then each plan row's client (setClientMapOf: id = the row, client_id its day's).
   const c = COLLECTIONS.find((x) => x.name === name);
   const derived = c ? DERIVED_OF.get(c.table) : undefined;
   if (!c || !derived || c.key.length !== 1) return 0;
   // With no definitions every figure's client would read as none and be written so.
-  if (!defs && derived.some((d) => d.kind === "defClient")) throw new Error(`repairDerivedPg: ${name} needs the metric definitions`);
+  if (!defs && derived.some((d) => d.kind === "defClient" || d.kind === "setClient")) throw new Error(`repairDerivedPg: ${name} needs the metric definitions`);
   const cols = columnsOf(c.table);
   const T = sql.raw(`"${getTableName(c.table)}"`);
   const K = sql.raw(`"${cols[c.key[0]].name}"`);
@@ -322,7 +368,7 @@ export async function repairDerivedPg(db: AnyDb, name: string, defs?: readonly {
   for (const d of derived) {
     const col = sql.raw(`"${cols[d.column].name}"`);
     const from = sql.raw(`"${cols[d.from].name}"`);
-    if (d.kind === "defClient") {
+    if (d.kind === "defClient" || d.kind === "setClient") {
       const map = new Map((defs ?? []).map((x) => [x.id, x.client_id] as const));
       const ids = `{${[...map.keys()].join(",")}}`;
       const clients = `{${[...map.values()].map((v) => (Number.isInteger(v) ? String(v) : "NULL")).join(",")}}`;
@@ -474,6 +520,12 @@ function chatTripwire(next: Snapshot, last: Snapshot) {
   if (CHECKINS_PG) {
     for (const t of CHECKINS_TABLES) {
       if (next.rows.has(t) || last.rows.has(t)) throw new Error(`[store] !!! ${t} reached the store's writer with CHECKINS_STORE=pg: the save is refused`);
+    }
+  }
+  // The logged sets the same with SETS_STORE=pg (quest 10).
+  if (SETS_PG) {
+    for (const t of SETS_TABLES) {
+      if (next.rows.has(t) || last.rows.has(t)) throw new Error(`[store] !!! ${t} reached the store's writer with SETS_STORE=pg: the save is refused`);
     }
   }
 }

@@ -11,6 +11,7 @@
     "check:notes": "node scripts/check-notes-door.mjs",
     "check:food": "node scripts/check-food-door.mjs",
     "check:checkins": "node scripts/check-checkins-door.mjs",
+    "check:sets": "node scripts/check-sets-door.mjs",
     "audit:ui": "node scripts/ui-audit.mjs"
   },
   "dependencies": {

@@ -18,6 +18,8 @@ import fs from "fs";
 import path from "path";
 import { execFileSync } from "child_process";
 import { getData, persist, allocId, DATA_DIR } from "../app/lib/db";
+// sets-door: the seeds write the store's own sets list through the door's memory-mode box (scripts only).
+import { storeSetBox } from "../app/lib/sets/rows";
 import { seedChatRows } from "../app/lib/chat/rows";
 import { ensureMeasurementField } from "../app/lib/queries";
 import {
@@ -71,7 +73,7 @@ function logSetAt(
   daysBack: number
 ) {
   const data = getData();
-  data.set_logs.push({
+  storeSetBox("w.set.seed").logs.push({
     id: allocId("set_logs"),
     workout_assignment_id: assignmentId,
     set_number: setNumber,

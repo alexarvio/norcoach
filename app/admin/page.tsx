@@ -21,6 +21,7 @@ import { getActivityFeed, getClient, getClientEngagement, getClientHome, getOver
 import { fetchCoachChat, fetchThread, type ChatCoachView, type ChatThread } from "../lib/chat/rows";
 import { fetchCoachClientsFood, type FoodRows } from "../lib/food/rows";
 import { fetchCoachClientsCheckIns, type CheckInRows } from "../lib/checkins/rows";
+import { fetchEverySet, type SetRows } from "../lib/sets/rows";
 import { coachIdOfClient } from "../lib/tenancy";
 import { coachOwnsClient } from "../lib/tenancy";
 import CoachesPanel from "./CoachesPanel";
@@ -115,12 +116,14 @@ export default async function AdminPage({
   const food = await fetchCoachClientsFood(view === "coaches" ? listCoachEmails().map((c) => c.id) : [coach.id], "page.oldAdmin", client?.id ?? null);
   // The check-in figures the same (quest 9, app/lib/checkins/rows.ts).
   const ck = await fetchCoachClientsCheckIns(view === "coaches" ? listCoachEmails().map((c) => c.id) : [coach.id], "page.oldAdmin", client?.id ?? null);
+  // The logged sets (quest 10): everything, as the old admin has always read them (until it is retired).
+  const sr = await fetchEverySet("page.oldAdmin");
   // Read once: the right-hand panel and the client's Home show the same facts.
-  const overview = client ? getOverviewPanel(client.id, () => getActivityFeed(coachIdOfClient(client.id) ?? 0, chat, food, ck, { span: "all" }), ck) : null;
+  const overview = client ? getOverviewPanel(client.id, () => getActivityFeed(coachIdOfClient(client.id) ?? 0, chat, food, ck, sr, { span: "all" }), ck, sr) : null;
 
   return (
     <AdminShell
-      sidebar={<AdminSidebar coachId={coach.id} coachEmail={coach.email} selectedId={selectedId} view={view} isOwner={owner} chat={chat} food={food} ck={ck} />}
+      sidebar={<AdminSidebar coachId={coach.id} coachEmail={coach.email} selectedId={selectedId} view={view} isOwner={owner} chat={chat} food={food} ck={ck} sr={sr} />}
       panel={
         view === "calendar" ? (
           <CalendarDayPanel coachId={coach.id} day={params.day} month={params.month} />
@@ -137,7 +140,7 @@ export default async function AdminPage({
     >
       {view === "feed" ? (
         <div className="ad-pad">
-          <FeedPanel coachId={coach.id} coachEmail={coach.email} owner={owner} category={params.cat} page={params.page} chat={chat} food={food} ck={ck} />
+          <FeedPanel coachId={coach.id} coachEmail={coach.email} owner={owner} category={params.cat} page={params.page} chat={chat} food={food} ck={ck} sr={sr} />
         </div>
       ) : view === "phases" ? (
         <div className="ad-pad ad-stack">
@@ -153,7 +156,7 @@ export default async function AdminPage({
         </div>
       ) : view === "coaches" ? (
         <div className="ad-pad">
-          <CoachesPanel ownerId={coach.id} ok={params.coachOk} error={params.coachError} chat={chat} food={food} ck={ck} />
+          <CoachesPanel ownerId={coach.id} ok={params.coachOk} error={params.coachError} chat={chat} food={food} ck={ck} sr={sr} />
         </div>
       ) : view === "calendar" ? (
         <div className="ad-pad">
@@ -180,6 +183,7 @@ export default async function AdminPage({
           thread={thread}
           food={food}
           ck={ck}
+          sr={sr}
         />
       )}
     </AdminShell>
@@ -198,6 +202,7 @@ function ClientDashboard({
   thread,
   food,
   ck,
+  sr,
 }: {
   clientId: number;
   name: string;
@@ -210,6 +215,7 @@ function ClientDashboard({
   thread: ChatThread;
   food: FoodRows;
   ck: CheckInRows;
+  sr: SetRows;
 }) {
   // The core loop, nothing else: say who this client is, build their
   // training, set their nutrition, and define what they log daily and
@@ -217,7 +223,7 @@ function ClientDashboard({
   // Three tabs, per the workstation design. Start Page became the right-hand
   // panel, and Daily/Weekly Tracker collapsed into Measurements — a metric's
   // rhythm is a property of the metric, not a reason for its own screen.
-  const home = getClientHome(clientId, chat, food, ck);
+  const home = getClientHome(clientId, chat, food, ck, sr);
   const dot = (tab: string) => home.unseenTabs.includes(tab);
   const sections: TabSection[] = [
     {
@@ -232,7 +238,7 @@ function ClientDashboard({
           clientId={clientId}
           panel={overview}
           home={home}
-          engagement={getClientEngagement(food, ck, clientId)}
+          engagement={getClientEngagement(food, ck, sr, clientId)}
         />
       ),
     },
@@ -241,7 +247,7 @@ function ClientDashboard({
       // neither tab: it is the first thing the coach sees for a client.
       id: "plan",
       label: "Plan",
-      content: <PhaseTimeline clientId={clientId} food={food} ck={ck} />,
+      content: <PhaseTimeline clientId={clientId} food={food} ck={ck} sr={sr} />,
     },
     {
       id: "training",
@@ -256,15 +262,16 @@ function ClientDashboard({
           chat={chat}
           food={food}
           ck={ck}
+          sr={sr}
         />
       ),
     },
     // `?phase=` is only ever the tab-in-the-address's phase: each tab keeps its
     // own ids (Training: programmes; the others: phases), so another tab's id
     // would open the wrong one. Without it a tab opens on its live phase.
-    { id: "nutrition", label: "Nutrition", dot: dot("nutrition"), content: <NutritionPanel clientId={clientId} phaseParam={initialTab === "nutrition" ? phaseParam : undefined} chat={thread} food={food} ck={ck} /> },
+    { id: "nutrition", label: "Nutrition", dot: dot("nutrition"), content: <NutritionPanel clientId={clientId} phaseParam={initialTab === "nutrition" ? phaseParam : undefined} chat={thread} food={food} ck={ck} sr={sr} /> },
     { id: "measurements", label: "Lifestyle", dot: dot("measurements"), content: <MeasurementsPanel clientId={clientId} phaseParam={initialTab === "measurements" ? phaseParam : undefined} ck={ck} /> },
-    { id: "meetings", label: "Meetings", content: <MeetingsPanel clientId={clientId} food={food} ck={ck} /> },
+    { id: "meetings", label: "Meetings", content: <MeetingsPanel clientId={clientId} food={food} ck={ck} sr={sr} /> },
     { id: "photos", label: "Shape update", dot: dot("photos"), content: <ProgressPicturesPanel clientId={clientId} ck={ck} /> },
     // Messages is always the last tab. New sections go before it.
     { id: "messages", label: "Messages", content: <MessagesPanel clientId={clientId} chat={thread} food={food} /> },

@@ -5,6 +5,7 @@ import { clientAttention, getActivityFeed, getCoachProfile, listClients } from "
 import type { ChatCoachView } from "../lib/chat/rows";
 import type { FoodRows } from "../lib/food/rows";
 import type { CheckInRows } from "../lib/checkins/rows";
+import type { SetRows } from "../lib/sets/rows";
 import { AccountIcon, BusinessIcon, CalendarIcon, FeedIcon, PhasesIcon } from "../components/icons";
 import ClientRoster, { type RosterClient } from "./ClientRoster";
 import { mailConfigured } from "../lib/mail";
@@ -27,9 +28,12 @@ export default function AdminSidebar({
   chat,
   food,
   ck,
+  sr,
 }: {
   /** The check-in figures the same (app/lib/checkins/rows.ts). */
   ck: CheckInRows;
+  /** The logged sets the same (app/lib/sets/rows.ts). */
+  sr: SetRows;
   /** The page's chat view of the coach's clients (fetchCoachChat, app/admin/page.tsx). */
   chat: ChatCoachView;
   /** Its food diary the same (app/lib/food/rows.ts). */
@@ -42,14 +46,14 @@ export default function AdminSidebar({
   isOwner?: boolean;
 }) {
   // One walk of the store for every client on the rail.
-  const feed = getActivityFeed(coachId, chat, food, ck, { span: "all" });
+  const feed = getActivityFeed(coachId, chat, food, ck, sr, { span: "all" });
   const clients: RosterClient[] = listClients(coachId).map((c) => {
     const user = getUserForClient(c.id);
     return {
       id: c.id,
       name: c.name,
       avatarPath: c.avatar_path ?? null,
-      attention: clientAttention(c.id, chat, food, ck, feed),
+      attention: clientAttention(c.id, chat, food, ck, sr, feed),
       // No login yet, a temporary password never replaced, or an invite never
       // used (no password, no Clerk link): they have not signed in themselves.
       notSignedIn: !user || (!user.clerk_user_id && (user.must_change_password || !user.password_hash)),

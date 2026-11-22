@@ -5,6 +5,7 @@ import { ensureJoinCode } from "../../../lib/joinRequests";
 import { fetchCoachChat, fetchCoachPageChat } from "../../../lib/chat/rows";
 import { fetchCoachFood } from "../../../lib/food/rows";
 import { fetchCoachCheckIns, fetchEveryCheckIn } from "../../../lib/checkins/rows";
+import { fetchCoachSets, fetchEverySet } from "../../../lib/sets/rows";
 import { listSupportThreads } from "../../../lib/support";
 import { billingOn, billingView } from "../../../lib/billing";
 import { startTiming } from "../../../lib/timing";
@@ -41,9 +42,12 @@ export default async function CoachesPage() {
   const everyCoachFood = await t.time("foodAll", () => fetchCoachFood(listCoachEmails().map((c) => c.id), "page.coaches.accounts"));
   // The check-in figures the same (quest 9): the rail's coach, and every client for each coach's last activity.
   const ck = await t.time("checkins", () => fetchCoachCheckIns([coach.id], "page.coaches"));
+  // The logged sets (quest 10, app/lib/sets/rows.ts), fetched first as the check-ins are.
+  const sr = await t.time("sets", () => fetchCoachSets("page.coaches", [coach.id]));
   const everyCheckIn = await t.time("checkinsAll", () => fetchEveryCheckIn("page.coaches.accounts"));
+  const everySet = await t.time("setsAll", () => fetchEverySet("page.coaches.accounts"));
   const accounts: CoachRow[] = t.time("coachAccounts", () =>
-    listCoachAccounts(everyCoach, everyCoachFood, everyCheckIn)
+    listCoachAccounts(everyCoach, everyCoachFood, everyCheckIn, everySet)
       .map((c) => {
         const b = billingView(c.id, c.id === coach.id);
         const view = getCoachProfileView(c.id);
@@ -53,7 +57,7 @@ export default async function CoachesPage() {
   );
   return t.end(
     <div className="rd-frame">
-      <RedesignRail rail={t.time("rail", () => loadRail(coach, chat.coach, food, ck))} clientId={0} />
+      <RedesignRail rail={t.time("rail", () => loadRail(coach, chat.coach, food, ck, sr))} clientId={0} />
       <ChatDock chats={t.time("chatDock", () => loadChatDock(coach, chat.dock))} />
       <div className="rd-page">
         <CoachesDraft accounts={accounts} support={t.time("supportThreads", () => listSupportThreads())} billingOn={billingOn()} />

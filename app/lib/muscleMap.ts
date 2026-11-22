@@ -4,6 +4,7 @@
 // its sets to the muscles it works by weight (muscleWeights.json, an incline press mostly upper chest, some front delt and
 // triceps); one not in that table falls back on its library tags (chest, back, legs…) spread over their muscles.
 import { getData } from "./db";
+import type { SetRows } from "./sets/rows";
 import { getClientProfile, getCurrentPhase, getProgramCurrentWeekIndex, listClientPhases, localDateStr } from "./queries";
 import WEIGHTS from "./muscleWeights.json";
 
@@ -62,7 +63,8 @@ function tidy(into: Record<string, MuscleLoad>) {
 }
 
 /** The map for a client, the Split read off the programme on screen (`programId`), else their running one. */
-export function muscleMapFor(clientId: number, programId: number | null): MuscleMapData {
+export function muscleMapFor(sr: SetRows, clientId: number, programId: number | null): MuscleMapData {
+  sr.need("muscleMapFor", clientId);
   const data = getData();
   const today = localDateStr();
   const exercises = new Map(data.exercises.map((e) => [e.id, e]));
@@ -95,7 +97,7 @@ export function muscleMapFor(clientId: number, programId: number | null): Muscle
   const phaseLoad = empty();
   if (phase) {
     const counted = new Map<number, number>();
-    for (const l of data.set_logs) {
+    for (const l of sr.logs) {
       const day = (l.logged_at ?? "").slice(0, 10);
       if (day < phase.start_week || day > today) continue;
       if (!((l.reps ?? 0) > 0 || (l.weight_kg ?? 0) > 0)) continue;

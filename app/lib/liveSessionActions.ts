@@ -3,6 +3,8 @@
 import { canAccessClient } from "./auth";
 import { getData } from "./db";
 import { liveNowFor } from "./liveSessionNow";
+import { liveSessionFor } from "./queries";
+import { fetchDaySets } from "./sets/rows";
 import type { LiveNow } from "./liveActivity";
 
 /** What is going now, read again as the app opens and comes back to the front (19 Nov, Alex: the lock-screen pill), so a
@@ -10,7 +12,9 @@ import type { LiveNow } from "./liveActivity";
 export async function liveSessionNowAction(clientId: number): Promise<LiveNow | null> {
   const id = Number(clientId);
   if (!Number.isInteger(id) || !(await canAccessClient(id))) return null;
-  return liveNowFor(id);
+  // The live session's sets, fetched first (quest 10: sets/rows.ts).
+  const live = liveSessionFor(id);
+  return liveNowFor(await fetchDaySets("action.liveNow", live ? [live.id] : []), id);
 }
 
 /** The lock-screen pill tapped while the app is already open (21 Nov, Alex: "pressing on the pill… makes the whole app

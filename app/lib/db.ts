@@ -6,6 +6,7 @@ import { CHAT_PG } from "./chat/mode";
 import { NOTES_PG } from "./notes/mode";
 import { FOOD_PG } from "./food/mode";
 import { CHECKINS_PG } from "./checkins/mode";
+import { SETS_PG } from "./sets/mode";
 
 // Pure-JS JSON file store — no native module, no compiler, works identically
 // on any machine. Swap this file for a real database later without touching
@@ -1268,6 +1269,19 @@ declare const CHECKINS_DOOR: unique symbol;
 export type CheckInStoreRows = { readonly [CHECKINS_DOOR]: "app/lib/checkins/rows.ts" };
 /** A check-in figure as the door (app/lib/checkins/rows.ts) handles it. */
 export type CheckInEntry = MetricEntry;
+declare const SETS_DOOR: unique symbol;
+/** The store's logged sets, sealed (22 Nov, quest 10): only app/lib/sets/ opens them, so tsc refuses any other reach. */
+export type SetStoreRows = { readonly [SETS_DOOR]: "app/lib/sets/rows.ts" };
+/** A logged set as the door (app/lib/sets/rows.ts) handles it. */
+export type SetLogRow = SetLog;
+/**
+ * Of two twin sets (one assignment, one set number), whether `a` is the one kept: the newer stamp read as text (JS string
+ * compare, so on one day an ISO stamp reads newer than a local one), then the higher id. The memory boot's twin drop
+ * (prepareStore) and the pg boot's twin pass (sets/boot.ts) keep the same row by this alone.
+ */
+export function newerSetTwin(a: SetLog, b: SetLog): boolean {
+  return a.logged_at > b.logged_at || (a.logged_at === b.logged_at && a.id > b.id);
+}
 
 // Coach-level, reusable report templates (mirrors the metric_template_*
 // pattern) — a template is just an ordered set of sections; applying it to
@@ -1469,7 +1483,9 @@ export type Data = {
   exercises: Exercise[];
   program_days: ProgramDay[];
   workout_assignments: WorkoutAssignment[];
-  set_logs: SetLog[];
+  // The logged sets (quest 10): sealed, opened by the door alone (app/lib/sets/rows.ts); absent with SETS_STORE=pg, where
+  // they live in Postgres alone.
+  set_logs?: SetStoreRows;
   invoices: Invoice[];
   nutrition_plans: NutritionPlan[];
   measurement_fields: MeasurementFieldDef[];
@@ -1606,7 +1622,7 @@ function emptyData(): Data {
     exercises: [],
     program_days: [],
     workout_assignments: [],
-    set_logs: [],
+    ...(SETS_PG ? {} : { set_logs: [] as unknown as SetStoreRows }),
     invoices: [],
     nutrition_plans: [],
     measurement_fields: [],
@@ -1725,16 +1741,21 @@ export function prepareStore(parsed: Partial<Data>): { data: Data; changed: bool
     if (respelled) changed = true;
     // Twin set logs (same assignment, same set number) from double taps:
     // keep the most recent row for each set, drop the rest.
-    const latestBySet = new Map<string, (typeof data.set_logs)[number]>();
-    for (const sl of data.set_logs) {
-      const key = `${sl.workout_assignment_id}:${sl.set_number}`;
-      const cur = latestBySet.get(key);
-      if (!cur || sl.logged_at > cur.logged_at || (sl.logged_at === cur.logged_at && sl.id > cur.id)) latestBySet.set(key, sl);
-    }
-    if (latestBySet.size !== data.set_logs.length) {
-      const keep = new Set([...latestBySet.values()].map((sl) => sl.id));
-      data.set_logs = data.set_logs.filter((sl) => keep.has(sl.id));
-      changed = true;
+    // With SETS_STORE=pg the sets are in Postgres: the pg boot's twin pass keeps the same row (sets/boot.ts, newerSetTwin).
+    // chat-door: notes-door: food-door: checkins-door: sets-door: the sets' one list by its own name, never a walk.
+    const sets = data as unknown as { set_logs?: SetLog[] };
+    if (!SETS_PG && Array.isArray(sets.set_logs)) {
+      const latestBySet = new Map<string, SetLog>();
+      for (const sl of sets.set_logs) {
+        const key = `${sl.workout_assignment_id}:${sl.set_number}`;
+        const cur = latestBySet.get(key);
+        if (!cur || newerSetTwin(sl, cur)) latestBySet.set(key, sl);
+      }
+      if (latestBySet.size !== sets.set_logs.length) {
+        const keep = new Set([...latestBySet.values()].map((sl) => sl.id));
+        sets.set_logs = sets.set_logs.filter((sl) => keep.has(sl.id));
+        changed = true;
+      }
     }
     if (claimUnownedRows(data) > 0) changed = true;
     // With CHECKINS_STORE=pg the figures are in Postgres: the merge runs there, at the pg boot (checkins/boot.ts), on this

@@ -9,6 +9,7 @@ import { getData, persist, type Data } from "./db";
 import type { ChatCoachView } from "./chat/rows";
 import type { FoodRows } from "./food/rows";
 import type { CheckInRows } from "./checkins/rows";
+import type { SetRows } from "./sets/rows";
 import { FEED_KIND_ROWS } from "./chat/pick";
 import {
   activityWords,
@@ -90,14 +91,6 @@ type Ctx = {
   daysById: Map<number, ProgramDayRow>;
   programsByClient: Map<number, ProgramRow[]>;
   byDay: Map<number, AssignmentRow[]>;
-  /** Sets logged per assignment. */
-  logCount: Map<number, number>;
-  /** The newest set logged on a session (epoch ms). */
-  lastLogByDay: Map<number, number>;
-  /** Per client, the days with a counted set (reps or weight), as Home's Consistency counts a trained day. */
-  setDays: Map<number, Set<string>>;
-  /** Per client, the newest set they logged (epoch ms): activity the feed only carries once a session is done. */
-  lastSet: Map<number, number>;
   /** Per client, the metrics the workout answers (workoutFed): never a check-in. Ids and names. */
   fedIds: Map<number, Set<number>>;
   fedNames: Map<number, Set<string>>;
@@ -109,7 +102,7 @@ type Ctx = {
   ck: CheckInRows;
 };
 
-function context(coachId: number, today: string, chat: ChatCoachView, food: FoodRows, ck: CheckInRows): Ctx {
+function context(coachId: number, today: string, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, sr: SetRows): Ctx {
   const data = getData();
   const now = Date.now();
   const coach = data.users.find((u) => u.id === coachId && u.role === "coach");
@@ -119,11 +112,11 @@ function context(coachId: number, today: string, chat: ChatCoachView, food: Food
 
   // The coach's feed and each client's Needs you, the one read the rail shares this request (4 Nov, Alex: "just a tiny
   // bit slow"; coachNeeds.ts). A client whose Home fails still reads as empty here.
-  const { feed, byId: byEventId } = coachNeeds(coachId, chat, food, ck);
+  const { feed, byId: byEventId } = coachNeeds(coachId, chat, food, ck, sr);
   const actions = new Map<number, HomeAction[]>();
   for (const c of clients) {
     try {
-      actions.set(c.id, clientActions(coachId, c.id, chat, food, ck));
+      actions.set(c.id, clientActions(coachId, c.id, chat, food, ck, sr));
     } catch (e) {
       console.error(`[feedBoard] home ${c.id}:`, e);
       actions.set(c.id, []);
@@ -148,27 +141,8 @@ function context(coachId: number, today: string, chat: ChatCoachView, food: Food
     if (list) list.push(a);
     else byDay.set(a.program_day_id, [a]);
   }
-  const logCount = new Map<number, number>();
-  const lastLogByDay = new Map<number, number>();
-  const setDays = new Map<number, Set<string>>();
-  const lastSet = new Map<number, number>();
-  for (const l of data.set_logs) {
-    const a = assignments.get(l.workout_assignment_id);
-    if (!a) continue;
-    const day = daysById.get(a.program_day_id)!;
-    logCount.set(a.id, (logCount.get(a.id) ?? 0) + 1);
-    const ms = stampMs(l.logged_at);
-    if (Number.isFinite(ms)) {
-      if (ms > (lastLogByDay.get(day.id) ?? -Infinity)) lastLogByDay.set(day.id, ms);
-      if (ms > (lastSet.get(day.client_id) ?? -Infinity)) lastSet.set(day.client_id, ms);
-    }
-    const counts = (typeof l.reps === "number" && l.reps > 0) || (typeof l.weight_kg === "number" && l.weight_kg > 0);
-    if (counts && l.logged_at) {
-      let s = setDays.get(day.client_id);
-      if (!s) setDays.set(day.client_id, (s = new Set()));
-      s.add(stampDay(l.logged_at));
-    }
-  }
+  // (22 Nov, quest 10: the per-set counts read here were never used by the Feed; taken out, so the Feed reads no sets but
+  // through coachNeeds and activityFeeds' view.)
 
   const fedIds = new Map<number, Set<number>>();
   const fedNames = new Map<number, Set<string>>();
@@ -202,10 +176,6 @@ function context(coachId: number, today: string, chat: ChatCoachView, food: Food
     daysById,
     programsByClient,
     byDay,
-    logCount,
-    lastLogByDay,
-    setDays,
-    lastSet,
     fedIds,
     fedNames,
     chat,
@@ -226,12 +196,12 @@ function safe<T>(part: string, fn: () => T, fallback: T): T {
 
 // ---- The board ------------------------------------------------------------------------
 
-export function getFeedBoard(coachId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows): FeedBoard {
+export function getFeedBoard(coachId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, sr: SetRows): FeedBoard {
   const today = localDateStr();
   const empty: FeedBoard = { today, since: null, needs: [], joins: [], activity: [], clients: [] };
   let ctx: Ctx;
   try {
-    ctx = context(coachId, today, chat, food, ck);
+    ctx = context(coachId, today, chat, food, ck, sr);
   } catch (e) {
     console.error("[feedBoard] read:", e);
     return empty;

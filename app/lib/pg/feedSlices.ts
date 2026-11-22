@@ -79,6 +79,8 @@ export const SQL_ODD_FIGURE = (a = "") =>
   `((${a}value IS NOT NULL OR (${a}extra ? 'value')) AND ${SQL_NONHEALTH(a)} AND ((${a}extra ? 'value') OR ${notDay(`${a}period`)} OR (${a}extra ? 'logged_at') OR ${oddStamp(`${a}logged_at`, `${a}logged_at_tz`)}))`;
 /** A check-in note the slices keep whole: an odd period or stamp. */
 export const SQL_ODD_NOTE = (a = "") => `(${notDay(`${a}period`)} OR (${a}extra ? 'created_at') OR ${oddStamp(`${a}created_at`, `${a}created_at_tz`)})`;
+/** A logged set the slices keep whole wherever its client is read (quest 10): an odd stamp, or one the column couldn't hold. */
+export const SQL_ODD_SET = (a = "") => `((${a}extra ? 'logged_at') OR ${oddStamp(`${a}logged_at`, `${a}logged_at_tz`)})`;
 /** A day photo or saved meal that may still want its look (prepareAllChatMedia filters further, storage.ts). */
 export const SQL_NOLOOK_PHOTO = `(NOT COALESCE(jsonb_typeof(extra -> 'thumb') = 'string' AND (extra ->> 'thumb') <> '', false))`;
 export const SQL_NOLOOK_SAVED = `((extra -> 'picture') IS NOT NULL AND jsonb_typeof(extra -> 'picture') <> 'null' AND NOT COALESCE(jsonb_typeof(extra -> 'picture_thumb') = 'string' AND (extra ->> 'picture_thumb') <> '', false))`;
@@ -100,6 +102,8 @@ export const oddCalorie = (r: Any) => nonHealth(r) && (isNotDay(r.date) || isOdd
 export const typedFigure = (r: Any) => r.value != null && nonHealth(r);
 export const oddFigure = (r: Any) => r.value != null && nonHealth(r) && (typeof r.value !== "number" || isNotDay(r.period) || isOddStamp(r.logged_at));
 export const oddNote = (r: Any) => isNotDay(r.period) || isOddStamp(r.created_at);
+/** SQL_ODD_SET in JS (quest 10). */
+export const oddSet = (r: Any) => isOddStamp(r.logged_at);
 export const noLookPhoto = (r: Any) => !(typeof r.thumb === "string" && r.thumb !== "");
 export const noLookSaved = (r: Any) => r.picture != null && !(typeof r.picture_thumb === "string" && r.picture_thumb !== "");
 

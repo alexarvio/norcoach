@@ -6,6 +6,10 @@ import { fetchClientFood, fetchCoachFoodOfClient, foodLinkSpan, noFoodRows, writ
 import { FOOD_PG } from "./food/mode";
 import { CHECKINS_PG } from "./checkins/mode";
 import { checkInKey, fetchClientCheckIns, fetchCoachCheckInsOfClient, writeCheckIns } from "./checkins/rows";
+import { fetchClientSets, fetchDaySets, isSetsDoorFailure, withClientSetsLocked, type SetRows } from "./sets/rows";
+import { SETS_PG } from "./sets/mode";
+/** The client's sets fetched first for an action about them (quest 10, app/lib/sets/rows.ts): their whole history. */
+const setsOfClient = (clientId: number | null | undefined): Promise<SetRows> => fetchClientSets("action.training", clientId ?? 0);
 import { sendChatAs } from "./chatSend";
 import { CHAT_PG } from "./chat/mode";
 import { createHash } from "crypto";
@@ -484,7 +488,7 @@ export async function removeExerciseAction(formData: FormData) {
   if (!(await coachForClient(clientId))) return;
   const seen = clientSeesAssignment(assignmentId);
   const was = assignmentWords(assignmentId);
-  removeAssignment(assignmentId);
+  await withClientSetsLocked("action.training", clientId ?? 0, (sr) => removeAssignment(sr, assignmentId));
   if (seen) trainingChange(clientId, was.dayId, `Removed ${was.name} from ${was.dayId != null ? dayWords(was.dayId) : "a session"}`);
   revalidatePath("/client");
   revalidatePath("/admin");
@@ -497,7 +501,7 @@ export async function removeExerciseAction(formData: FormData) {
 export async function updateAssignmentAction(formData: FormData) {
   const assignmentId = Number(formData.get("assignmentId"));
   if (!(await coachForClient(getClientIdForAssignment(assignmentId)))) return;
-  const fields: Parameters<typeof updateAssignmentFields>[1] = {};
+  const fields: Parameters<typeof updateAssignmentFields>[2] = {};
   if (formData.has("sets")) fields.sets = Math.max(1, Number(formData.get("sets")) || 1);
   if (formData.has("reps")) fields.reps = String(formData.get("reps") || "");
   if (formData.has("targetWeight")) {
@@ -510,7 +514,7 @@ export async function updateAssignmentAction(formData: FormData) {
   }
   if (formData.has("tempo")) fields.tempo = String(formData.get("tempo") || "").trim() || null;
   if (formData.has("notes")) fields.notes = String(formData.get("notes") || "").trim() || null;
-  updateAssignmentFields(assignmentId, fields);
+  updateAssignmentFields(await setsOfClient(getClientIdForAssignment(assignmentId)), assignmentId, fields);
   if (formData.has("noteKind")) {
     const raw = String(formData.get("noteKind") || "");
     const kind = raw === "form" || raw === "load" || raw === "tempo" ? raw : null;
@@ -601,12 +605,15 @@ export async function copyProgramWeekAction(formData: FormData) {
   const fromWeek = Number(formData.get("fromWeek"));
   const toWeek = Number(formData.get("toWeek"));
   if (!clientId || !fromWeek || !toWeek) return;
-  // Taken once (6 Nov, one-time key): the copy replaces the week, so a second arrival only did the work again.
-  return once(`copyProgramWeekAction:${clientId}`, onceKeyOf(formData), () => {
-    copyProgramWeek(clientId, fromWeek, toWeek);
-    revalidatePath("/client");
-    revalidatePath("/admin");
-  });
+  // Taken once (6 Nov, one-time key): the copy replaces the week, so a second arrival only did the work again. The
+  // sessions already logged on are read and kept in one go (withClientSetsLocked).
+  return once(`copyProgramWeekAction:${clientId}`, onceKeyOf(formData), () =>
+    withClientSetsLocked("action.training", clientId, (sr) => {
+      copyProgramWeek(sr, clientId, fromWeek, toWeek);
+      revalidatePath("/client");
+      revalidatePath("/admin");
+    })
+  );
 }
 
 export async function setLabelAction(formData: FormData) {
@@ -650,17 +657,18 @@ export async function addProgramWeekAction(formData: FormData) {
 
   // Taken once (6 Nov, one-time key): sent again after a dropped signal, it adds no second week. The programme is read
   // inside, so the week counted is the one before the first arrival.
-  return once(`addProgramWeekAction:${clientId}`, onceKeyOf(formData), () => {
+  // The sets read and the week added in one go (withClientSetsLocked: a copy skips sessions already logged on).
+  return once(`addProgramWeekAction:${clientId}`, onceKeyOf(formData), () => withClientSetsLocked("action.training", clientId, (sr) => {
     const program = listPrograms(clientId).find((p) => p.id === programId);
     if (!program) return;
 
     const newTotal = program.total_weeks + 1;
     // "Blank week" means blank: the copy-from-week-1 seeding is only for
     // lengthening from the Plan tab. The copy option overwrites anyway.
-    updateProgramTotalWeeks(programId, newTotal, false);
+    updateProgramTotalWeeks(sr, programId, newTotal, false);
 
     const newWeekNumber = program.start_week + newTotal - 1;
-    if (copyFrom) copyProgramWeek(clientId, copyFrom, newWeekNumber);
+    if (copyFrom) copyProgramWeek(sr, clientId, copyFrom, newWeekNumber);
     // A week added to a programme the client already has must go out with
     // it: new days are created as drafts, and the client's Training tab shows
     // published days only, so without this the new week arrived empty.
@@ -669,7 +677,7 @@ export async function addProgramWeekAction(formData: FormData) {
     if (clientSeesTrainingWeek(clientId, newWeekNumber)) noteChange(clientId, `Added a week to your programme: Week ${newWeekNumber}${copyFrom ? `, a copy of week ${copyFrom}` : ""}`, { tab: "training", label: "See your training", key: "training-week", ref: program.id, detail: `Week ${newWeekNumber}${copyFrom ? `, a copy of week ${copyFrom}` : ""}` });
     revalidatePath("/admin");
     revalidatePath("/client");
-  });
+  }));
 }
 
 // NOTE: there is no updateProgramWeeksAction any more. A programme's length
@@ -681,7 +689,7 @@ export async function renameProgramAction(formData: FormData) {
   const programId = Number(formData.get("programId"));
   if (!(await coachForClient(getClientIdForProgram(programId)))) return;
   const name = String(formData.get("name") || "");
-  renameProgram(programId, name);
+  renameProgram(await setsOfClient(getClientIdForProgram(programId)), programId, name);
   revalidatePath("/admin");
 }
 
@@ -691,7 +699,7 @@ export async function deployProgramAction(formData: FormData) {
   // The name is what the client sees as their phase, so an unnamed
   // programme can't go out. The button is disabled too; this is the backstop.
   if (!programHasName(programId)) return;
-  deployProgram(programId);
+  deployProgram(await setsOfClient(getClientIdForProgram(programId)), programId);
   // A client still locked opens with their first phase live (19 Nov, Alex: "first phase"; app/lib/appLock.ts).
   await openAppIfPhaseLive(getClientIdForProgram(programId));
   revalidatePath("/client");
@@ -712,7 +720,7 @@ export async function scheduleProgramDeployAction(formData: FormData) {
   if (date && time) {
     const when = new Date(`${date}T${time}:00`);
     if (!Number.isNaN(when.getTime())) {
-      scheduleProgramDeploy(programId, when.toISOString());
+      scheduleProgramDeploy(await setsOfClient(getClientIdForProgram(programId)), programId, when.toISOString());
       // A schedule already due opens a client still locked (19 Nov, review; app/lib/appLock.ts).
       await openAppIfPhaseLive(getClientIdForProgram(programId));
     }
@@ -727,7 +735,7 @@ function programHasName(programId: number): boolean {
 export async function cancelProgramScheduleAction(formData: FormData) {
   const programId = Number(formData.get("programId"));
   if (!(await coachForClient(getClientIdForProgram(programId)))) return;
-  scheduleProgramDeploy(programId, null);
+  scheduleProgramDeploy(await setsOfClient(getClientIdForProgram(programId)), programId, null);
   revalidatePath("/admin");
 }
 
@@ -738,7 +746,9 @@ export async function removeProgramAction(formData: FormData) {
   const programId = Number(formData.get("programId"));
   if (!(await coachForClient(getClientIdForProgram(programId)))) return;
   const weekLinkBase = String(formData.get("weekLinkBase") || "/admin");
-  removeProgram(programId);
+  // Its sessions' history kept from the sets as they are (withClientSetsLocked: with SETS_STORE=pg read under the client's
+  // lock, so a set logged meanwhile is kept with the rest).
+  await withClientSetsLocked("action.training", getClientIdForProgram(programId) ?? 0, (sr) => removeProgram(sr, programId));
   revalidatePath("/admin");
   redirect(weekLinkBase || "/admin");
 }
@@ -776,7 +786,7 @@ export async function setExerciseUnitAction(assignmentId: number, unit: "kg" | "
   const owner = getClientIdForAssignment(Number(assignmentId));
   if (owner == null || !(await canAccessClient(owner))) return;
   if (unit !== "kg" && unit !== "lb") return;
-  setAssignmentUnit(Number(assignmentId), unit);
+  await setAssignmentUnit(Number(assignmentId), unit);
   revalidatePath("/client");
   revalidatePath("/admin");
 }
@@ -808,7 +818,7 @@ export async function logSetAction(formData: FormData) {
   const unitRaw = formData.get("unit");
   const unit = unitRaw === "lb" || unitRaw === "kg" ? unitRaw : null;
 
-  logSet(assignmentId, setNumber, weight, reps, rpe, gymId != null && getClientIdForGym(gymId) === owner ? gymId : null, unit);
+  await logSet(assignmentId, setNumber, weight, reps, rpe, gymId != null && getClientIdForGym(gymId) === owner ? gymId : null, unit);
   revalidatePath("/client");
   revalidatePath("/admin");
 }
@@ -818,7 +828,7 @@ export async function logSetAction(formData: FormData) {
 // the caller may write it.
 export async function updateSetAction(formData: FormData) {
   const setLogId = Number(formData.get("setLogId"));
-  const owner = getClientIdForSetLog(setLogId);
+  const owner = await getClientIdForSetLog(setLogId);
   if (owner == null || !(await canAccessClient(owner))) return;
 
   const num = (key: string) => {
@@ -827,7 +837,7 @@ export async function updateSetAction(formData: FormData) {
     const n = Number(raw);
     return Number.isFinite(n) ? n : null;
   };
-  updateSetLog(setLogId, num("weight"), num("reps"), num("rpe"));
+  await updateSetLog(setLogId, num("weight"), num("reps"), num("rpe"));
   revalidatePath("/client");
   revalidatePath("/admin");
 }
@@ -1774,7 +1784,7 @@ export async function markVideoReplySeenAction(id: number) {
 /** The coach opened the client's note on a programme (the Training tab). */
 export async function markProgramNoteSeenAction(programId: number) {
   if (!Number.isInteger(programId) || !(await coachForClient(getClientIdForProgram(programId)))) return;
-  markProgramNoteSeen(programId, await fetchCoachChatOfClient(getClientIdForProgram(programId) ?? 0, "action.markProgramNote"), await fetchCoachFoodOfClient(getClientIdForProgram(programId) ?? 0, "action.markProgramNote"), await fetchCoachCheckInsOfClient(getClientIdForProgram(programId) ?? 0, "action.markProgramNote"));
+  markProgramNoteSeen(programId, await fetchCoachChatOfClient(getClientIdForProgram(programId) ?? 0, "action.markProgramNote"), await fetchCoachFoodOfClient(getClientIdForProgram(programId) ?? 0, "action.markProgramNote"), await fetchCoachCheckInsOfClient(getClientIdForProgram(programId) ?? 0, "action.markProgramNote"), await setsOfClient(getClientIdForProgram(programId)));
   revalidatePath("/admin");
 }
 
@@ -2647,6 +2657,7 @@ export async function createProgramWithAction(clientId: number, name: string, we
   if (!(await coachForClient(Number(clientId)))) return null;
   const n = Math.max(1, Math.min(52, Math.round(Number(weeks) || 1)));
   // Taken once (6 Nov, one-time key): sent again after a dropped signal, it answers the programme the first made.
+  const sr = await setsOfClient(Number(clientId));
   return once(`createProgramWithAction:${Number(clientId)}`, onceKeyOf(onceKey), () => {
     const existingWeeks = listWeekNumbers(Number(clientId));
     const startWeek = (existingWeeks.length > 0 ? Math.max(...existingWeeks) : 0) + 1;
@@ -2654,7 +2665,7 @@ export async function createProgramWithAction(clientId: number, name: string, we
     if (startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
       const end = new Date(`${startDate}T00:00:00`);
       end.setDate(end.getDate() + (n - 1) * 7);
-      addClientPhase(Number(clientId), "training", String(name ?? "").trim() || "Programme", startDate, end.toISOString().slice(0, 10), program.id);
+      addClientPhase(sr, Number(clientId), "training", String(name ?? "").trim() || "Programme", startDate, end.toISOString().slice(0, 10), program.id);
     }
     revalidatePath("/admin");
     return program.id;
@@ -3130,7 +3141,7 @@ export async function deleteClientAction(formData: FormData) {
 export async function dismissHomeActionAction(clientId: number, actionId: string | string[]) {
   if (!(await coachForClient(Number(clientId)))) return;
   const chat = await fetchCoachChatOfClient(Number(clientId), "action.dismissHome");
-  dismissHomeAction(Number(clientId), Array.isArray(actionId) ? actionId.map(String) : String(actionId), chat, await fetchCoachFoodOfClient(Number(clientId), "action.dismissHome"), await fetchCoachCheckInsOfClient(Number(clientId), "action.dismissHome"));
+  dismissHomeAction(Number(clientId), Array.isArray(actionId) ? actionId.map(String) : String(actionId), chat, await fetchCoachFoodOfClient(Number(clientId), "action.dismissHome"), await fetchCoachCheckInsOfClient(Number(clientId), "action.dismissHome"), await setsOfClient(Number(clientId)));
   revalidatePath("/admin");
 }
 
@@ -3236,9 +3247,14 @@ export async function removeProgramWeekAction(formData: FormData) {
   const week = Number(formData.get("week"));
   const program = listPrograms(clientId).find((p) => p.id === programId);
   if (!program || !week) return;
-  // A week with logged sets is training history; it never goes from here.
-  if (programLoggedWeekIndexes(programId).includes(week)) return;
-  removeProgramWeek(programId, week);
+  // A week with logged sets is training history; it never goes from here. Read and removed in one go on the client's
+  // sets (with SETS_STORE=pg under their lock, so a set logged meanwhile is seen: withClientSetsLocked).
+  const gone = await withClientSetsLocked("action.training", clientId, (sr) => {
+    if (programLoggedWeekIndexes(sr, programId).includes(week)) return false;
+    removeProgramWeek(sr, programId, week);
+    return true;
+  });
+  if (!gone) return;
   revalidatePath("/admin");
   revalidatePath("/client");
 }
@@ -3391,11 +3407,11 @@ function readPhaseForm(formData: FormData) {
 }
 
 // No end, or back to its dates (26 Oct): only when the form says ("openEnded"), so other forms leave it be.
-function openEndedFrom(id: number, fields: { track: PhaseTrack; start: string }, formData: FormData) {
+async function openEndedFrom(id: number, fields: { track: PhaseTrack; start: string }, formData: FormData) {
   const open = formData.get("openEnded");
   if (open !== "1" && open !== "0") return;
-  if (open === "1") endOpenPhaseBefore(getClientIdForPhase(id) ?? 0, fields.track, fields.start, id);
-  setPhaseOpenEnded(id, open === "1");
+  if (open === "1") endOpenPhaseBefore(await setsOfClient(getClientIdForPhase(id)), getClientIdForPhase(id) ?? 0, fields.track, fields.start, id);
+  await setPhaseOpenEnded(id, open === "1");
 }
 
 // The phase dialog posts its objectives as repeated "objectives" fields, and
@@ -3414,12 +3430,14 @@ export async function addClientPhaseAction(formData: FormData): Promise<{ phaseI
   // Only one of this client's own programmes can be linked.
   const programId = /^\d+$/.test(rawProgram) && getClientIdForProgram(Number(rawProgram)) === clientId ? Number(rawProgram) : null;
   // Taken once (6 Nov, one-time key): sent again after a dropped signal, it answers the phase the first made.
-  const made = await once(`addClientPhaseAction:${clientId}`, onceKeyOf(formData), () => {
+  const sr = await setsOfClient(clientId);
+  const made = await once(`addClientPhaseAction:${clientId}`, onceKeyOf(formData), async () => {
     // A running phase with no end on this track ends the week before (26 Oct).
-    endOpenPhaseBefore(clientId, fields.track, fields.start);
-    const added = addClientPhase(clientId, fields.track, fields.name, fields.start, fields.end, programId);
+    endOpenPhaseBefore(sr, clientId, fields.track, fields.start);
+    const added = addClientPhase(sr, clientId, fields.track, fields.name, fields.start, fields.end, programId);
     saveObjectivesFrom(added.id, formData);
-    if (formData.get("openEnded") === "1") setPhaseOpenEnded(added.id, true);
+    // Its weeks filled in before the answer (and before the lock looks at it), as before the sets' door.
+    if (formData.get("openEnded") === "1") await setPhaseOpenEnded(added.id, true);
     revalidatePath("/admin");
     revalidatePath("/client");
     return { phaseId: added.id, programId: added.program_id ?? null };
@@ -3447,7 +3465,7 @@ export async function duplicateClientPhaseAction(phaseId: number, onceKey?: stri
     // Its last day, the same length on: the copy runs to the end of that week (whole weeks, 21 Oct).
     const last = new Date(nextMonday);
     last.setDate(last.getDate() + Math.max(0, days - 1));
-    const made = addClientPhase(src.client_id, src.track, `${src.name} (copy)`, start, localDateStr(last), null);
+    const made = addClientPhase(await setsOfClient(src.client_id), src.client_id, src.track, `${src.name} (copy)`, start, localDateStr(last), null);
     setPhaseObjectives(made.id, src.objectives ?? []);
     const row = getData().client_phases.find((p) => p.id === made.id);
     if (row) {
@@ -3473,7 +3491,7 @@ export async function schedulePhaseAction(formData: FormData) {
   if (phaseEmptyReason(id)) return;
   const fields = readPhaseForm(formData);
   if (!fields) return;
-  schedulePhase(id, fields.name, fields.start, fields.end);
+  schedulePhase(await setsOfClient(getClientIdForPhase(id)), id, fields.name, fields.start, fields.end);
   saveObjectivesFrom(id, formData);
   // Its first day come, a client still locked opens (19 Nov, Alex: "first phase"; app/lib/appLock.ts).
   await openAppIfPhaseLive(getClientIdForPhase(id));
@@ -3490,7 +3508,7 @@ export async function schedulePhaseOnItsDatesAction(id: number) {
   const phase = getPhaseById(phaseId);
   if (!phase) return;
   // Its stored dates, its last week the one its last day falls in.
-  schedulePhase(phaseId, phase.name, phase.start_week, phaseLastDay(phase.end_week));
+  schedulePhase(await setsOfClient(getClientIdForPhase(phaseId)), phaseId, phase.name, phase.start_week, phaseLastDay(phase.end_week));
   await openAppIfPhaseLive(phase.client_id);
   revalidatePath("/admin");
   revalidatePath("/client");
@@ -3503,7 +3521,7 @@ export async function deployPhaseNowAction(id: number): Promise<string | null> {
   // it used to return quietly, under a "… is live" toast).
   const empty = phaseEmptyReason(id);
   if (empty) return empty;
-  deployPhaseNow(id);
+  deployPhaseNow(await setsOfClient(getClientIdForPhase(id)), id);
   await openAppIfPhaseLive(getClientIdForPhase(id));
   revalidatePath("/admin");
   revalidatePath("/client");
@@ -3523,12 +3541,13 @@ export async function saveAndSchedulePhaseOrSayWhyAction(formData: FormData): Pr
   const id = Number(formData.get("id"));
   const fields = readPhaseForm(formData);
   if (!id || !fields || !(await coachForClient(getClientIdForPhase(id)))) return "That phase no longer exists.";
-  updateClientPhase(id, fields.track, fields.name, fields.start, fields.end, formData.get("adjustProgram") === "1");
+  // A shortened programme keeps every week with logged sets: read and trimmed in one go (withClientSetsLocked).
+  await withClientSetsLocked("action.training", getClientIdForPhase(id) ?? 0, (sr) => updateClientPhase(sr, id, fields.track, fields.name, fields.start, fields.end, formData.get("adjustProgram") === "1"));
   saveObjectivesFrom(id, formData);
-  openEndedFrom(id, fields, formData);
+  await openEndedFrom(id, fields, formData);
   // The edits are kept; an empty draft just doesn't go out, and says why (20 Oct: the toast said "scheduled" anyway).
   const empty = phaseEmptyReason(id);
-  if (!empty) schedulePhase(id, fields.name, fields.start, fields.end);
+  if (!empty) schedulePhase(await setsOfClient(getClientIdForPhase(id)), id, fields.name, fields.start, fields.end);
   if (!empty) await openAppIfPhaseLive(getClientIdForPhase(id));
   revalidatePath("/admin");
   revalidatePath("/client");
@@ -3539,12 +3558,13 @@ export async function saveAndDeployPhaseNowAction(formData: FormData): Promise<s
   const id = Number(formData.get("id"));
   const fields = readPhaseForm(formData);
   if (!id || !fields || !(await coachForClient(getClientIdForPhase(id)))) return "That phase no longer exists.";
-  updateClientPhase(id, fields.track, fields.name, fields.start, fields.end, formData.get("adjustProgram") === "1");
+  // A shortened programme keeps every week with logged sets: read and trimmed in one go (withClientSetsLocked).
+  await withClientSetsLocked("action.training", getClientIdForPhase(id) ?? 0, (sr) => updateClientPhase(sr, id, fields.track, fields.name, fields.start, fields.end, formData.get("adjustProgram") === "1"));
   saveObjectivesFrom(id, formData);
-  openEndedFrom(id, fields, formData);
+  await openEndedFrom(id, fields, formData);
   // Saved either way; live only with something in it, and if not, why not (5 Oct).
   const empty = phaseEmptyReason(id);
-  if (!empty) deployPhaseNow(id);
+  if (!empty) deployPhaseNow(await setsOfClient(getClientIdForPhase(id)), id);
   if (!empty) await openAppIfPhaseLive(getClientIdForPhase(id));
   revalidatePath("/admin");
   revalidatePath("/client");
@@ -3562,9 +3582,10 @@ export async function updateClientPhaseAction(formData: FormData) {
   const id = Number(formData.get("id"));
   const fields = readPhaseForm(formData);
   if (!id || !fields || !(await coachForClient(getClientIdForPhase(id)))) return;
-  updateClientPhase(id, fields.track, fields.name, fields.start, fields.end, formData.get("adjustProgram") === "1");
+  // A shortened programme keeps every week with logged sets: read and trimmed in one go (withClientSetsLocked).
+  await withClientSetsLocked("action.training", getClientIdForPhase(id) ?? 0, (sr) => updateClientPhase(sr, id, fields.track, fields.name, fields.start, fields.end, formData.get("adjustProgram") === "1"));
   saveObjectivesFrom(id, formData);
-  openEndedFrom(id, fields, formData);
+  await openEndedFrom(id, fields, formData);
   // A scheduled phase moved to start this week opens a client still locked (19 Nov, appLock.ts).
   await openAppIfPhaseLive(getClientIdForPhase(id));
   revalidatePath("/admin");
@@ -3627,8 +3648,11 @@ export async function deletePhaseAction(phaseId: number) {
   if (!Number.isInteger(id) || !(await coachForClient(getClientIdForPhase(id)))) return;
   const phase = getPhaseById(id);
   if (!phase) return;
-  if (phase.program_id) removeProgram(phase.program_id);
-  removeClientPhase(id);
+  // Read and removed in one go on the client's sets (withClientSetsLocked, as removeProgramAction).
+  await withClientSetsLocked("action.training", getClientIdForPhase(id) ?? 0, (sr) => {
+    if (phase.program_id) removeProgram(sr, phase.program_id);
+    removeClientPhase(sr, id);
+  });
   revalidatePath("/admin");
   revalidatePath("/client");
 }
@@ -3636,7 +3660,7 @@ export async function deletePhaseAction(phaseId: number) {
 export async function removeClientPhaseAction(formData: FormData) {
   const id = Number(formData.get("id"));
   if (!id || !(await coachForClient(getClientIdForPhase(id)))) return;
-  removeClientPhase(id);
+  await withClientSetsLocked("action.training", getClientIdForPhase(id) ?? 0, (sr) => removeClientPhase(sr, id));
   revalidatePath("/admin");
   revalidatePath("/client");
 }
@@ -3755,7 +3779,7 @@ export async function uploadExerciseVideoAction(formData: FormData): Promise<str
 export async function clearProgramDayAction(formData: FormData) {
   const programDayId = Number(formData.get("programDayId"));
   if (!programDayId || !(await coachForClient(clientIdForProgramDay(programDayId)))) return;
-  clearProgramDay(programDayId);
+  await withClientSetsLocked("action.training", clientIdForProgramDay(programDayId) ?? 0, (sr) => clearProgramDay(sr, programDayId));
   revalidatePath("/client");
   revalidatePath("/admin");
 }
@@ -3782,9 +3806,12 @@ export async function removeSessionAction(formData: FormData): Promise<number> {
   const seen = clientSeesProgramDay(programDayId);
   const was = dayWords(programDayId);
   // "Also from the weeks after" (20 Oct): found before anything moves up.
-  const later = formData.get("alsoLater") === "1" ? laterSameSlotSessions(programDayId) : [];
-  removeSession(programDayId);
-  for (const id of later) removeSession(id);
+  const later = await withClientSetsLocked("action.training", clientId ?? 0, (sr) => {
+    const after = formData.get("alsoLater") === "1" ? laterSameSlotSessions(sr, programDayId) : [];
+    removeSession(sr, programDayId);
+    for (const id of after) removeSession(sr, id);
+    return after;
+  });
   if (seen) trainingChange(clientId, null, `Removed ${was}${later.length ? " and the weeks after" : ""}`);
   revalidatePath("/client");
   revalidatePath("/admin");
@@ -3814,14 +3841,17 @@ export async function applyDayChangesAction(
   if ((payload.added ?? []).some((a) => !coachOwnsExercise(coach.id, a.exerciseId))) return { ok: false, error: "Unknown exercise" };
   if (Object.values(payload.swap ?? {}).some((id) => !Number.isInteger(id) || !coachOwnsExercise(coach.id, id))) return { ok: false, error: "Unknown exercise" };
   // A finished session takes no new exercises (the builder hides the row; this is the backstop).
-  if ((payload.added ?? []).length > 0 && isSessionComplete(payload.programDayId)) return { ok: false, error: "This session is completed" };
+  const sr = await setsOfClient(clientIdForProgramDay(payload.programDayId));
+  if ((payload.added ?? []).length > 0 && isSessionComplete(sr, payload.programDayId)) return { ok: false, error: "This session is completed" };
   try {
     // Taken once (6 Nov, one-time key): its exercises and cardio added, sent again after a dropped signal, are not
     // added twice. Inside the try, so a save that throws is not kept and goes again.
-    return await once(`applyDayChangesAction:${payload.programDayId}`, onceKeyOf(onceKey), (): { ok: true; skipped: string[] } => {
+    // The day's sets read again with the change (withClientSetsLocked: with SETS_STORE=pg under the client's lock, so the
+    // rows it drops and the weights it pins see every set committed before it).
+    return await once(`applyDayChangesAction:${payload.programDayId}`, onceKeyOf(onceKey), () => withClientSetsLocked("action.training", clientIdForProgramDay(payload.programDayId) ?? 0, (sr): { ok: true; skipped: string[] } => {
       // What changed, in words, before the rows go (for the client's note).
       const removedNames = (payload.removed ?? []).map((id) => assignmentWords(id).name);
-      const { skipped } = applyDayChanges({
+      const { skipped } = applyDayChanges(sr, {
         programDayId: payload.programDayId,
         alsoRemaining: !!payload.alsoRemaining,
         label: typeof payload.label === "string" ? payload.label.trim() : null,
@@ -3857,7 +3887,7 @@ export async function applyDayChangesAction(
       revalidatePath("/client");
       revalidatePath("/admin");
       return { ok: true, skipped };
-    });
+    }));
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Something went wrong" };
   }
@@ -3871,8 +3901,9 @@ export async function applyDayChangesAction(
 export async function addGymAction(clientId: number, name: string, onceKey?: string): Promise<{ id: number; name: string } | null> {
   if (!(await coachForClient(Number(clientId)))) return null;
   // Taken once (6 Nov, one-time key): a name already there is that gym, so this only answers as the first did.
+  const sr = await setsOfClient(Number(clientId));
   return once(`addGymAction:${Number(clientId)}`, onceKeyOf(onceKey), () => {
-    const gym = addClientGym(Number(clientId), String(name ?? ""));
+    const gym = addClientGym(sr, Number(clientId), String(name ?? ""));
     revalidatePath("/client");
     revalidatePath("/admin");
     return gym ? { id: gym.id, name: gym.name } : null;
@@ -3882,14 +3913,14 @@ export async function addGymAction(clientId: number, name: string, onceKey?: str
 /** The gym the client trains at most: its weights are the plain targets. */
 export async function setHomeGymAction(gymId: number) {
   if (!(await coachForClient(getClientIdForGym(Number(gymId))))) return;
-  setHomeGym(Number(gymId));
+  setHomeGym(await setsOfClient(getClientIdForGym(Number(gymId))), Number(gymId));
   revalidatePath("/admin");
   revalidatePath("/client");
 }
 
 export async function removeGymAction(gymId: number) {
   if (!(await coachForClient(getClientIdForGym(Number(gymId))))) return;
-  removeClientGym(Number(gymId));
+  removeClientGym(await setsOfClient(getClientIdForGym(Number(gymId))), Number(gymId));
   revalidatePath("/client");
   revalidatePath("/admin");
 }
@@ -3915,11 +3946,12 @@ async function addGymForClient(owner: number, name: string, color: string, kind:
   if (clean.length < 2) return { error: "Give the gym a name." };
   // Taken once (6 Nov, one-time key): sent again after a dropped signal, it answers the gym the first made, never
   // "You already have a gym called X". One key space for the picker and Settings.
+  const sr = await setsOfClient(owner);
   return once(`clientAddGymAction:${owner}`, onceKeyOf(onceKey), (): ClientAddedGym => {
     // Just this once (6 Nov, Alex): a name already used once is that gym again; a regular gym's name is that gym.
     const same = listClientGyms(owner).find((g) => g.name.toLowerCase() === clean.toLowerCase());
     if (same && !(justOnce || same.once)) return { error: `You already have a gym called ${clean}` };
-    const gym = same && justOnce ? same : addClientGym(owner, clean, isGymColor(color) ? color : "navy", isGymKind(kind) ? kind : "gym", justOnce);
+    const gym = same && justOnce ? same : addClientGym(sr, owner, clean, isGymColor(color) ? color : "navy", isGymKind(kind) ? kind : "gym", justOnce);
     if (!gym) return { error: "Couldn't add the gym." };
     revalidatePath("/client");
     revalidatePath("/admin");
@@ -3932,7 +3964,7 @@ async function addGymForClient(owner: number, name: string, color: string, kind:
 export async function clientRemoveGymAction(gymId: number): Promise<boolean> {
   const owner = getClientIdForGym(Number(gymId));
   if (owner == null || !(await canAccessClient(owner))) return false;
-  removeClientGym(Number(gymId));
+  removeClientGym(await setsOfClient(owner), Number(gymId));
   revalidatePath("/client");
   revalidatePath("/admin");
   return true;
@@ -3945,7 +3977,7 @@ export async function clientMakeHomeGymAction(gymId: number): Promise<boolean> {
   if (owner == null || !(await canAccessClient(owner))) return false;
   const gym = listClientGyms(owner).find((g) => g.id === id);
   if (!gym || gym.once) return false;
-  setHomeGym(id);
+  setHomeGym(await setsOfClient(owner), id);
   revalidatePath("/client");
   revalidatePath("/admin");
   return true;
@@ -3955,7 +3987,7 @@ export async function clientMakeHomeGymAction(gymId: number): Promise<boolean> {
 export async function clientRestoreGymAction(gymId: number): Promise<boolean> {
   const owner = getClientIdForGym(Number(gymId));
   if (owner == null || !(await canAccessClient(owner))) return false;
-  const ok = restoreClientGym(Number(gymId));
+  const ok = restoreClientGym(await setsOfClient(owner), Number(gymId));
   revalidatePath("/client");
   revalidatePath("/admin");
   return ok;
@@ -3965,7 +3997,7 @@ export async function clientRestoreGymAction(gymId: number): Promise<boolean> {
 export async function clientUpdateGymAction(gymId: number, name: string, color: string, kind: string): Promise<string | null> {
   const owner = getClientIdForGym(Number(gymId));
   if (owner == null || !(await canAccessClient(owner))) return "Not signed in.";
-  const why = updateClientGym(Number(gymId), String(name ?? ""), isGymColor(color) ? color : undefined, isGymKind(kind) ? kind : undefined);
+  const why = updateClientGym(await setsOfClient(owner), Number(gymId), String(name ?? ""), isGymColor(color) ? color : undefined, isGymKind(kind) ? kind : undefined);
   revalidatePath("/client");
   revalidatePath("/admin");
   return why;
@@ -3991,7 +4023,7 @@ export async function uploadGymLogoAction(formData: FormData): Promise<string | 
 export async function pickGymAction(programDayId: number, gymId: number) {
   const owner = clientIdForProgramDay(Number(programDayId));
   if (owner == null || getClientIdForGym(Number(gymId)) !== owner || !(await canAccessClient(owner))) return;
-  pickGymForDay(Number(programDayId), Number(gymId));
+  await pickGymForDay(Number(programDayId), Number(gymId));
   revalidatePath("/client");
   revalidatePath("/admin");
 }
@@ -4013,7 +4045,7 @@ export async function saveCoachNoteAction(clientId: number, text: string) {
 export async function markSeenAction(clientId: number, which: { all: true } | { dayId: number } | { ids: string[] } | { tab: string }) {
   // Read marks are no change to the plan: open while read-only (28 Oct, Alex).
   if (!(await coachForClientOpen(Number(clientId)))) return;
-  markClientEventsSeen(Number(clientId), which, await fetchCoachChatOfClient(Number(clientId), "action.markSeen"), await fetchCoachFoodOfClient(Number(clientId), "action.markSeen"), await fetchCoachCheckInsOfClient(Number(clientId), "action.markSeen"));
+  markClientEventsSeen(Number(clientId), which, await fetchCoachChatOfClient(Number(clientId), "action.markSeen"), await fetchCoachFoodOfClient(Number(clientId), "action.markSeen"), await fetchCoachCheckInsOfClient(Number(clientId), "action.markSeen"), await setsOfClient(Number(clientId)));
   // The chat read: its unread mark goes on every open screen of it (27 Oct).
   if ("tab" in which && which.tab === "messages") chatChanged(Number(clientId));
   revalidatePath("/admin");
@@ -4096,7 +4128,7 @@ export async function startSessionAction(programDayId: number, at?: string): Pro
 export async function endSessionAction(programDayId: number, opts?: { note?: string; at?: string; answers?: { id: string; value: number | string | null }[]; enjoyment?: number | null; adherence?: number | null }) {
   const owner = clientIdForProgramDay(Number(programDayId));
   if (owner == null || !(await canAccessClient(owner))) return;
-  await endSessionFor(owner, Number(programDayId), opts, (await getSessionUser())?.role === "client");
+  await endSessionFor(await fetchDaySets("action.training", [Number(programDayId)]), owner, Number(programDayId), opts, (await getSessionUser())?.role === "client");
   revalidatePath("/client");
   revalidatePath("/admin");
 }
@@ -4116,7 +4148,7 @@ function chatOnceKeyOf(name: "chatReplyMedia" | "chatFormReview", id: number, ke
  * Ending a session, its caller checked: the note to the chat once per wording, and never from a coach's preview. The
  * note's send is handed back (null when there is none), for the caller to await; the session's end is done either way.
  */
-function endSessionFor(owner: number, programDayId: number, opts: { note?: string; at?: string; answers?: { id: string; value: number | string | null }[]; enjoyment?: number | null; adherence?: number | null } | undefined, fromClient: boolean): Promise<void> | null {
+function endSessionFor(sr: SetRows, owner: number, programDayId: number, opts: { note?: string; at?: string; answers?: { id: string; value: number | string | null }[]; enjoyment?: number | null; adherence?: number | null } | undefined, fromClient: boolean): Promise<void> | null {
   const answers = Array.isArray(opts?.answers)
     ? opts.answers
     : [
@@ -4124,7 +4156,7 @@ function endSessionFor(owner: number, programDayId: number, opts: { note?: strin
         { id: "adherence", value: opts?.adherence ?? null },
       ];
   const before = getData().program_days.find((pd) => pd.id === Number(programDayId))?.session_note ?? "";
-  endSession(Number(programDayId), stampOrNow(opts?.at), String(opts?.note ?? ""), answers);
+  endSession(sr, Number(programDayId), stampOrNow(opts?.at), String(opts?.note ?? ""), answers);
   // The client's note on the workout lands in the chat too, as theirs and
   // pointing at the session (1 Oct): it used to stay on the Training tab,
   // easy to miss. Once per wording, and never from a coach's preview.
@@ -4208,7 +4240,7 @@ export async function reopenSessionAction(programDayId: number): Promise<{ ok: t
 export async function discardSessionAction(programDayId: number) {
   const owner = clientIdForProgramDay(Number(programDayId));
   if (owner == null || !(await canAccessClient(owner))) return;
-  discardSession(Number(programDayId));
+  await discardSession(Number(programDayId));
   revalidatePath("/client");
   revalidatePath("/admin");
 }
@@ -4266,7 +4298,7 @@ export async function setFreeCardioAction(cardioId: number, v: { time?: string; 
 export async function removeFreeSessionAction(programDayId: number) {
   const owner = clientIdForProgramDay(Number(programDayId));
   if (owner == null || !(await canAccessClient(owner))) return;
-  removeFreeSession(Number(programDayId));
+  await removeFreeSession(Number(programDayId));
   revalidatePath("/client");
 }
 
@@ -4408,7 +4440,26 @@ export async function saveWorkoutAction(clientId: number, entries: unknown): Pro
   /** The session notes' sends (endSessionFor), awaited once the batch is saved. */
   const notes: Promise<void>[] = [];
 
-  const applyOne = (e: Record<string, unknown>): WorkoutSaveResult => {
+  // Whether an entry changed memory beyond the sets (quest 10: with SETS_STORE=pg a batch of sets alone is in the
+  // database once each set's transaction commits; the weight rule's raise it made is the store's, derived, put back by
+  // the boot's full pass after a crash).
+  let memoryTouched = false;
+  // SETS_STORE=pg: memory changed by an earlier entry of this batch and not yet saved (a start, a swap). A set or a Remove
+  // a set commits at once, so the store is saved first: a crash never keeps a set while losing the start (or the swap)
+  // the phone sent before it; what survives is always the batch's first entries, in order.
+  let unsaved = false;
+  // Async for the sets' door (each set its own transaction in pg mode); in memory mode every line still runs at once.
+  const applyOne = async (e: Record<string, unknown>): Promise<WorkoutSaveResult> => {
+    if (SETS_PG && unsaved && (e?.kind === "set" || e?.kind === "rows")) {
+      try {
+        await persistNow();
+      } catch {
+        // As writeSets says it: the whole action throws (isSetsDoorFailure), the phone keeps the batch and sends it again.
+        throw Object.assign(new Error("[sets] the store (its save before a set) is not saved yet"), { name: "NotYetSaved" });
+      }
+      unsaved = false;
+    }
+    if (e?.kind !== "set" && e?.kind !== "unit") memoryTouched = unsaved = true;
     const kind = typeof e?.kind === "string" ? e.kind : "";
     const startedAt = stamp(e?.startedAt);
     // The day the change is about, from the thing itself (an exercise's row, a cardio), never from the phone's word.
@@ -4431,14 +4482,16 @@ export async function saveWorkoutAction(clientId: number, entries: unknown): Pro
         const setNumber = id(e.setNumber);
         if (!assignment || setNumber == null || setNumber > 100) return { refused: "gone" };
         const unit = e.unit === "lb" || e.unit === "kg" ? e.unit : null;
-        logSet(assignment.id, setNumber, num(e.weight), num(e.reps), num(e.rpe), gymOk(e.gymId), unit, clamped(e.at));
-        return "done";
+        // SETS_STORE=pg: the session looked at again under the client's lock, so a discard that commits while this set
+        // waits on the client's chain keeps it out (memory mode: the check above and the write run in one go).
+        const went = await logSet(assignment.id, setNumber, num(e.weight), num(e.reps), num(e.rpe), gymOk(e.gymId), unit, clamped(e.at), () => !stale(day, startedAt));
+        return went ? "done" : "stale";
       }
       case "rows": {
         const rows = id(e.rows);
         if (!assignment || rows == null || rows > 100) return { refused: "gone" };
-        setExerciseRows(assignment.id, rows);
-        return "done";
+        const went = await setExerciseRows(assignment.id, rows, () => !stale(day, startedAt));
+        return went ? "done" : "stale";
       }
       case "warmups":
         if (assignment && Array.isArray(e.sets)) setWarmupSets(assignment.id, (e.sets as { weight_kg?: unknown; reps?: unknown }[]).map((s) => ({ weight_kg: num(s?.weight_kg), reps: num(s?.reps) })));
@@ -4450,7 +4503,7 @@ export async function saveWorkoutAction(clientId: number, entries: unknown): Pro
         return "done";
       }
       case "unit":
-        if (assignment && (e.unit === "kg" || e.unit === "lb")) setAssignmentUnit(assignment.id, e.unit);
+        if (assignment && (e.unit === "kg" || e.unit === "lb")) await setAssignmentUnit(assignment.id, e.unit);
         return "done";
       case "swap": {
         if (!assignment) return { refused: "gone" };
@@ -4479,7 +4532,7 @@ export async function saveWorkoutAction(clientId: number, entries: unknown): Pro
       }
       case "gym": {
         const gymId = gymOk(e.gymId);
-        if (gymId != null) pickGymForDay(day.id, gymId);
+        if (gymId != null) await pickGymForDay(day.id, gymId);
         return "done";
       }
       case "start": {
@@ -4501,14 +4554,14 @@ export async function saveWorkoutAction(clientId: number, entries: unknown): Pro
           .map((a: { id?: unknown; value?: unknown }) => ({ id: str(a?.id, 40), value: typeof a?.value === "number" || typeof a?.value === "string" ? (a.value as number | string) : null }));
         // An edit keeps the end the session has; a live end is when it was swiped, on the phone.
         const at = e.edit === true && day.session_ended_at ? day.session_ended_at : clamped(e.endAt).toISOString();
-        const note = endSessionFor(owner, day.id, { note: str(e.note, 2000), at, answers }, fromClient);
+        const note = endSessionFor(await fetchDaySets("action.training", [day.id]), owner, day.id, { note: str(e.note, 2000), at, answers }, fromClient);
         if (note) notes.push(note);
         return "done";
       }
       case "discard":
         // Only a session the phone knew as begun; a second copy finds it begun no more (stale, above).
         if (startedAt == null) return "stale";
-        discardSession(day.id);
+        await discardSession(day.id);
         return "done";
       case "skip":
         setSessionSkipReason(day.id, str(e.text, 300), clamped(e.at));
@@ -4520,16 +4573,21 @@ export async function saveWorkoutAction(clientId: number, entries: unknown): Pro
 
   for (const e of list) {
     try {
-      results.push(applyOne(e));
+      results.push(await applyOne(e));
     } catch (err) {
       // One that cannot be done is answered, so it never holds up the rest of the session behind it.
       console.error("saveWorkoutAction", err);
+      // With SETS_STORE=pg a failure of the sets' own database (down, a full pool, a lost connection) throws the whole
+      // action instead: the phone keeps the batch and tries again ("Not sent yet"), as with no signal, never a rust "Not
+      // saved" on a set that was fine. Every entry already applied lands once when sent again (each is a value).
+      if (SETS_PG && isSetsDoorFailure(err)) throw err;
       results.push({ refused: "Couldn't save" });
     }
   }
   // Written, not only in memory, before the phone is told so. A failed write throws: the phone keeps the batch and
   // tries again (each change lands once, above), and the next save writes the store's whole difference anyway.
-  await persistNow();
+  if (SETS_PG && !memoryTouched) persist();
+  else await persistNow();
   // The session notes' sends, once the sessions themselves are saved: their failures are said (and, in Postgres, tried
   // again), never the workout's.
   await Promise.allSettled(notes);

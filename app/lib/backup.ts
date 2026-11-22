@@ -11,6 +11,8 @@ import { FOOD_PG } from "./food/mode";
 import { fetchFoodExport, withFoodKeys } from "./food/rows";
 import { CHECKINS_PG } from "./checkins/mode";
 import { fetchCheckInsExport, withCheckInKeys } from "./checkins/rows";
+import { SETS_PG } from "./sets/mode";
+import { fetchAllSets, withSetKeys } from "./sets/rows";
 
 // Nightly copy of everything on the volume to a bucket that is not the
 // volume: the JSON store as a dated snapshot, the uploads folder mirrored
@@ -112,7 +114,7 @@ export type BackupResult = {
  * goes gets that one's answer): each holds a chat connection for its whole read of the table.
  */
 export function runBackup(): Promise<BackupResult | null> {
-  if (!CHAT_PG && !NOTES_PG && !FOOD_PG && !CHECKINS_PG) return runBackupOnce();
+  if (!CHAT_PG && !NOTES_PG && !FOOD_PG && !CHECKINS_PG && !SETS_PG) return runBackupOnce();
   const g = globalThis as unknown as { __norcoachBackupRun?: Promise<BackupResult | null> | null };
   if (g.__norcoachBackupRun) return g.__norcoachBackupRun;
   const run = runBackupOnce().finally(() => {
@@ -191,6 +193,20 @@ async function runBackupOnce(): Promise<BackupResult | null> {
       console.error("[backup] the check-in figures could not be read from Postgres: today's JSON snapshot skipped, the rest goes on:", error instanceof Error ? error.message : error);
       import("@sentry/nextjs")
         .then((S) => S.captureMessage("Backup: the check-in figures could not be read; the JSON snapshot was skipped", { level: "error", tags: { alert: "backup-checkins-read" } }))
+        .catch(() => {});
+    }
+  }
+  // The logged sets the same with SETS_STORE=pg (quest 10): the table read whole in one snapshot, put in its key's place
+  // (withSetKeys), the sets of rows a coach's removal still has to delete left out. In memory mode nothing changes here.
+  if (SETS_PG && !chatReadFailed) {
+    try {
+      // sets-door: the store copied whole, the sets read from their table
+      store = withSetKeys((store ?? getData()) as unknown as Record<string, unknown>, await fetchAllSets("backup"));
+    } catch (error) {
+      chatReadFailed = true;
+      console.error("[backup] the logged sets could not be read from Postgres: today's JSON snapshot skipped, the rest goes on:", error instanceof Error ? error.message : error);
+      import("@sentry/nextjs")
+        .then((S) => S.captureMessage("Backup: the logged sets could not be read; the JSON snapshot was skipped", { level: "error", tags: { alert: "backup-sets-read" } }))
         .catch(() => {});
     }
   }

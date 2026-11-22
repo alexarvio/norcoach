@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { boolean, doublePrecision, index, integer, jsonb, pgSequence, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
-import { SQL_BLANK, SQL_NOLOOK_PHOTO, SQL_NOLOOK_SAVED, SQL_NONHEALTH, SQL_ODD_CALORIE, SQL_ODD_ENTRY, SQL_ODD_FIGURE, SQL_ODD_NOTE, SQL_TYPED } from "./feedSlices";
+import { SQL_BLANK, SQL_NOLOOK_PHOTO, SQL_NOLOOK_SAVED, SQL_NONHEALTH, SQL_ODD_CALORIE, SQL_ODD_ENTRY, SQL_ODD_FIGURE, SQL_ODD_NOTE, SQL_ODD_SET, SQL_TYPED } from "./feedSlices";
 
 // The Postgres tables behind the store (phase 1 of moving off ironline.json).
 //
@@ -237,17 +237,34 @@ export const workout_assignments = pgTable("workout_assignments", {
   extra: extra(),
 });
 
-export const set_logs = pgTable("set_logs", {
-  id: id(),
-  workout_assignment_id: fk("workout_assignment_id"),
-  set_number: num("set_number"),
-  weight_kg: num("weight_kg"),
-  reps: num("reps"),
-  rpe_actual: num("rpe_actual"),
-  logged_at: text("logged_at"),
-  extra: extra(),
-  logged_at_tz: instant("logged_at_tz"),
-});
+// The sets by their row and by their client, and the odd stamps (22 Nov, quest 10; migration 0025): what the sets door's
+// queries need once the sets leave memory (app/lib/sets/rows.ts). The unique rule on (workout_assignment_id, set_number)
+// is NOT here: a SETS_STORE=pg boot makes it under the lease once its twins are moved out, and a memory boot drops it
+// (app/lib/sets/boot.ts), so a twin never blocks a memory-mode save.
+export const set_logs = pgTable(
+  "set_logs",
+  {
+    id: id(),
+    workout_assignment_id: fk("workout_assignment_id"),
+    set_number: num("set_number"),
+    weight_kg: num("weight_kg"),
+    reps: num("reps"),
+    rpe_actual: num("rpe_actual"),
+    logged_at: text("logged_at"),
+    extra: extra(),
+    logged_at_tz: instant("logged_at_tz"),
+    // The client the set belongs to, through its row's day as memory holds them (migration 0025): not a field, filled by
+    // the writer (DERIVED below), so a slice reads a client's sets in one probe, not one per row.
+    client_id: integer("client_id"),
+  },
+  (t) => [
+    index("set_logs_assignment_idx").on(t.workout_assignment_id, t.set_number, t.id),
+    index("set_logs_client_idx").on(t.client_id, t.id),
+    index("set_logs_client_row_idx").on(t.client_id, t.workout_assignment_id),
+    index("set_logs_client_tz_idx").on(t.client_id, t.logged_at_tz, t.id).where(sql`logged_at_tz IS NOT NULL`),
+    index("set_logs_odd_idx").on(t.client_id, t.id).where(sql.raw(SQL_ODD_SET())),
+  ]
+);
 
 export const invoices = pgTable("invoices", {
   id: id(),
@@ -868,6 +885,23 @@ export const food_twins = pgTable(
  * unique rule was made (`twin`), a twin metric's figures the merge left (`merge`), an impossible step count (`steps`).
  * Not a collection: never loaded into memory, never written by the store's writer; empty in memory mode.
  */
+/**
+ * Rows a SETS_STORE=pg boot kept aside (22 Nov, quest 10; app/lib/sets/boot.ts), whole: a twin set moved out before the
+ * unique rule was made (`twin`). Not a collection: never loaded into memory, never written by the store's writer; empty in
+ * memory mode.
+ */
+export const set_twins = pgTable(
+  "set_twins",
+  {
+    tbl: text("tbl").notNull(),
+    id: integer("id").notNull(),
+    row: jsonb("row").notNull(),
+    reason: text("reason").notNull(),
+    moved_at: timestamp("moved_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.tbl, t.id] })]
+);
+
 export const checkin_twins = pgTable(
   "checkin_twins",
   {
@@ -1037,6 +1071,8 @@ export const DERIVED = [
   { table: check_in_notes, name: "check_in_notes", column: "created_at_tz", from: "created_at", kind: "stamp" },
   // Not a stamp: the figure's client, its metric's as memory holds the metric definitions (store.ts defClientOf).
   { table: metric_entries, name: "metric_entries", column: "def_client_id", from: "metric_definition_id", kind: "defClient" },
+  // Not a stamp: the set's client, its row's day's as memory holds them (22 Nov, migration 0025; store.ts setClientOf).
+  { table: set_logs, name: "set_logs", column: "client_id", from: "workout_assignment_id", kind: "setClient" },
   { table: once_keys, name: "once_keys", column: "created_at", from: "at", kind: "ms" },
 ] as const;
 
@@ -1080,4 +1116,4 @@ export const metric_definitions_id_seq = idSeq("metric_definitions");
 // chat_messages is here too (Step 5's cut-over): with CHAT_STORE=pg it leaves the writer's collections, and a stray
 // `chat_messages` in the store must never be written to kv. A no-op while it is a collection (store.ts adds those anyway).
 // coach_activity, its shadow, its twins and its ops' tokens the same (quest 7, NOTES_STORE=pg; app/lib/notes/).
-export const TABLE_NAMES_NOT_IN_KV = ["kv", "push_subscriptions", "password_resets", "chat_messages_shadow", "once_keys_shadow", "chat_messages", "coach_activity", "coach_activity_shadow", "coach_activity_twins", "coach_activity_ops", "food_ops", "food_twins", "food_meal_orders", "checkin_twins"] as const;
+export const TABLE_NAMES_NOT_IN_KV = ["kv", "push_subscriptions", "password_resets", "chat_messages_shadow", "once_keys_shadow", "chat_messages", "coach_activity", "coach_activity_shadow", "coach_activity_twins", "coach_activity_ops", "food_ops", "food_twins", "food_meal_orders", "checkin_twins", "set_twins"] as const;

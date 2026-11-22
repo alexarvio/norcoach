@@ -43,6 +43,8 @@ export async function GET(request: Request) {
   // With CHAT_STORE=pg the store has no chat key: withChatKey puts it where it would be, so the file reads as before.
   // food-door: the food diary's keys from fetchFoodExport (withFoodKeys; the store's own in memory mode).
   // checkins-door: the check-in keys from fetchCheckInsExport (withCheckInKeys; the store's own in memory mode).
+  // sets-door: the logged sets have no client_id or coach_id, so this filter leaves every one out in both modes, as it
+  // always has (a question for Alex: docs/database-plan.md); with SETS_STORE=pg the store holds no set_logs key at all.
   for (const [table, stored] of Object.entries(withCheckInKeys(withFoodKeys(withNotesKey(withChatKey(data, exported.rows), notes), food), checkIns))) {
     const rows = table === CHAT_TABLE ? exported.rows : table === NOTES_TABLE ? notes : stored;
     if (LEFT_OUT.has(table) || !Array.isArray(rows)) continue;

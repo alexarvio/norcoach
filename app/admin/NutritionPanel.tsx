@@ -13,6 +13,7 @@ import NutritionWorkspace, { type NwPhase } from "./NutritionWorkspace";
 import type { ChatThread } from "../lib/chat/rows";
 import type { FoodRows } from "../lib/food/rows";
 import type { CheckInRows } from "../lib/checkins/rows";
+import type { SetRows } from "../lib/sets/rows";
 
 const EMPTY_MACROS = { protein: null, carbs: null, fats: null };
 
@@ -23,7 +24,7 @@ const EMPTY_MACROS = { protein: null, carbs: null, fats: null };
 // than a tracker, and supplements are a reference list rather than a
 // checklist. Neither has any per-day state, and neither should grow a
 // tick box.
-export default function NutritionPanel({ clientId, phaseParam, chat, food, ck }: { clientId: number; phaseParam?: string; /** The client's thread, for the meal comments (fetchThread, app/admin/page.tsx). */ chat: ChatThread; /** Their food diary (app/lib/food/rows.ts). */ food: FoodRows; /** Their check-ins (app/lib/checkins/rows.ts). */ ck: CheckInRows }) {
+export default function NutritionPanel({ clientId, phaseParam, chat, food, ck, sr }: { clientId: number; phaseParam?: string; /** The client's thread, for the meal comments (fetchThread, app/admin/page.tsx). */ chat: ChatThread; /** Their food diary (app/lib/food/rows.ts). */ food: FoodRows; /** Their check-ins (app/lib/checkins/rows.ts). */ ck: CheckInRows; /** Their logged sets, the same. */ sr: SetRows }) {
   const today = localDateStr();
   const plan = getNutritionPlan(clientId);
   const stored = getStoredNutritionPlan(clientId);
@@ -78,7 +79,7 @@ export default function NutritionPanel({ clientId, phaseParam, chat, food, ck }:
   for (const ph of phases) {
     const end = ph.id === 0 ? today : endOfWeek(ph.phase.end_week);
     const start = ph.id === 0 ? today : ph.phase.start_week;
-    loggedByPhase[ph.id] = getLoggedDays(food, clientId, start, end > today ? today : end, chat);
+    loggedByPhase[ph.id] = getLoggedDays(food, clientId, start, end > today ? today : end, chat, sr);
   }
 
   return (
