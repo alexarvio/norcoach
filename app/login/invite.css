@@ -1,0 +1,8 @@
+/* The invite's Create your account (22 Nov, Alex; InviteScreen.tsx): the coach over the form as the join screens draw
+   one (.jn-found: the face at 40px, the words 15px/600 over 12.5px/500 grey), and the invited email fixed in its box. */
+.iv-coach { display: flex; align-items: center; gap: 12px; margin: 0 0 20px; }
+.iv-coach > span:last-child { min-width: 0; }
+.iv-coach b { display: block; font-size: 15px; font-weight: 600; color: #141a24; }
+.iv-coach small { display: block; margin-top: 2px; overflow: hidden; font-size: 12.5px; font-weight: 500; color: #8b93a1; text-overflow: ellipsis; white-space: nowrap; }
+.su-form .iv-email input[readonly] { color: #5b6474; }
+.su-form .iv-email input[readonly]:focus { box-shadow: inset 0 0 0 1px #E1E5EB; }

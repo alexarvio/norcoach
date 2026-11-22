@@ -5,8 +5,8 @@ import { cookies } from "next/headers";
 import { clerkClient } from "@clerk/nextjs/server";
 import { clerkIdentity, clerkOn } from "./clerk";
 import { createPasswordlessUser, findUserByEmail, getSessionUser, requireCoach } from "./auth";
-import { getData, persistNow } from "./db";
-import { createClient, patchClientProfile, removeClient } from "./queries";
+import { getData, persistNow, type JoinRequest } from "./db";
+import { createClient, getClientProfile, patchClientProfile, removeClient, renameClient } from "./queries";
 import { once } from "./once";
 import { pushCoachJoin } from "./coachPush";
 import { coachCard, coachCardByCode, createJoinRequest, declinedBy, forgetRequestsOf, joinRequestById, latestRequestFor, pushedToday, requestsToday, settleJoinRequest, tooManyTries, withdrawJoinRequest, type CoachCard } from "./joinRequests";
@@ -122,7 +122,17 @@ export async function acceptJoinRequestAction(id: number, onceKey?: string | nul
     if (!r || r.coach_id !== coach.id) return { ok: false as const, error: "No longer asking", gone: true };
     if (r.status === "accepted" && r.client_id != null) return { ok: true as const, clientId: r.client_id };
     if (r.status !== "open") return { ok: false as const, error: "No longer asking", gone: true };
-    if (findUserByEmail(r.email)) return { ok: false as const, error: "That email already has an account." };
+    const existing = findUserByEmail(r.email);
+    if (existing) {
+      // Invited, then joined by the code instead (22 Nov, Alex): the coach's own client whose invite nobody has claimed yet
+      // is that person; the account they made is linked to it, nothing made twice. Anyone else keeps the error.
+      const linked = linkInvitedClient(existing, r, coach.id);
+      if (!linked) return { ok: false as const, error: "That email already has an account." };
+      settleJoinRequest(r.id, "accepted", linked);
+      await persistNow().catch(() => {});
+      revalidatePath("/admin");
+      return { ok: true as const, clientId: linked };
+    }
     const client = createClient(`${r.first_name} ${r.last_name}`, coach.id);
     try {
       const made = createPasswordlessUser(r.email, "client", client.id);
@@ -142,6 +152,35 @@ export async function acceptJoinRequestAction(id: number, onceKey?: string | nul
     revalidatePath("/admin");
     return { ok: true as const, clientId: client.id };
   });
+}
+
+/**
+ * The invite this request answers, if any: the user row for the request's email is a client login of this coach's own
+ * client that no Clerk account has claimed yet (none linked, or linked under another Clerk instance, as clerkUserRow
+ * counts it), and the Clerk account that asked is linked to no other row. Then that row takes the Clerk account, the
+ * client's name, birthdate and email are filled from the request only where empty, and the client's id comes back.
+ * Anything else (another coach's client, a claimed account, a coach) is null, and nothing is touched.
+ */
+function linkInvitedClient(user: NonNullable<ReturnType<typeof findUserByEmail>>, r: JoinRequest, coachId: number): number | null {
+  const data = getData();
+  if (user.role !== "client" || user.client_id == null) return null;
+  const client = data.clients.find((c) => c.id === user.client_id);
+  if (!client || client.coach_id !== coachId) return null;
+  // Linked to this very person by their verified email already (the coach added their address while they waited).
+  if (user.clerk_user_id === r.clerk_user_id) return client.id;
+  const instance = (process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "").slice(-12);
+  const row = user as typeof user & { clerk_instance?: string };
+  if (row.clerk_user_id && row.clerk_instance === instance) return null;
+  if (data.users.some((u) => u !== user && u.clerk_user_id === r.clerk_user_id)) return null;
+  row.clerk_user_id = r.clerk_user_id;
+  row.clerk_instance = instance;
+  if (!client.name.trim()) renameClient(client.id, `${r.first_name} ${r.last_name}`.trim());
+  const profile = getClientProfile(client.id);
+  patchClientProfile(client.id, {
+    ...(!profile.birthdate ? { birthdate: r.birthdate } : {}),
+    ...(!profile.email ? { email: r.email } : {}),
+  });
+  return client.id;
 }
 
 /** Decline: the person is told on their screen and can send their code to another coach. Nothing else is kept. */

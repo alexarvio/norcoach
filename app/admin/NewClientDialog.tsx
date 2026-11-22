@@ -5,17 +5,14 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { checkLoginEmailAction, createClientWithLoginAction } from "../lib/actions";
 import { newOnceKey } from "../lib/onceKey";
-import { ageFrom, DEFAULT_DIAL, DIAL_CODES, GenderPills, InfoRow, PhoneInput, Suffixed } from "./InfoRow";
-import AddressFields from "./AddressFields";
+import { ageFrom, DEFAULT_DIAL, GenderPills, InfoRow, PhoneInput, Suffixed } from "./InfoRow";
 import DatePick from "./redesign/DatePick";
-import Picker from "./redesign/Picker";
-
-const DIALS = DIAL_CODES.map(([iso, c]) => ({ value: c, label: `${iso} ${c}` }));
 
 // New client: the Member info card, the same rows (InfoRow) the coach edits
 // later. No login yet: the coach builds the client's plan first, then gives
 // them access from their Home (App access) when it is ready for them.
-// With Clerk sign-in a second step still sends the invite link straight away.
+// With Clerk sign-in the redesign asks the name and email alone and sends the invite link at once; the old admin
+// keeps its second step.
 //
 // Nothing is written until the last button. Cancel, Escape or the × drop
 // the lot. On success the dialog closes onto the new client's Home.
@@ -100,9 +97,10 @@ export default function NewClientDialog({
   const router = useRouter();
   const form = useNewClientForm(preview?.draft, clerk);
   const { draft, set } = form;
-  // Something typed: only then is what is still missing a problem worth a line (hairline look).
-  const typed = (Object.keys(EMPTY) as (keyof Draft)[]).some((k) => draft[k] !== EMPTY[k]);
-  const [step, setStep] = useState<1 | 2>(clerk ? (preview?.step ?? 1) : 1);
+  // The email left (hairline look): only then is an address that doesn't look right a problem worth a line, never mid-typing.
+  const [emailLeft, setEmailLeft] = useState(false);
+  // The hairline look is one step (22 Nov, Alex): the name and the email, then Send invite. The old admin keeps its two.
+  const [step, setStep] = useState<1 | 2>(clerk && !hl ? (preview?.step ?? 1) : 1);
   const [error, setError] = useState<string | null>(null);
   // Made, but the invite did not go.
   const [made, setMade] = useState<number | null>(null);
@@ -143,7 +141,7 @@ export default function NewClientDialog({
     if (made != null) return { text: "Created, but the invite email didn't go out.", bad: true };
     if (error) return { text: error, bad: true };
     if (step === 1) {
-      if (form.missing.length) return { text: `Still needed: ${form.missing.join(", ")}`, bad: true };
+      if (form.missing.length && !hl) return { text: `Still needed: ${form.missing.join(", ")}`, bad: true };
       if (form.emailBad) return { text: "That email doesn't look right", bad: true };
       if (form.emailTaken) return { text: "That email already has an account", bad: true };
       if (clerk) return { text: "Ready for step 2", bad: false };
@@ -152,10 +150,11 @@ export default function NewClientDialog({
     if (saving) return { text: "Creating…", bad: false };
     return { text: clerk ? `${form.name} will appear in your client list straight away` : `${form.name} can't sign in yet: give them access from their Home when you're ready`, bad: false };
   })();
-  // The hairline look says only a real problem (design rules 1: no footer hints); what is
-  // missing once something is typed, so a fresh form opens quiet and Create stays held back.
-  const statusShown = !hl || (status.bad && (typed || made != null || !!error));
-  const createLabel = hl ? (saving ? "Creating…" : clerk ? "Create and invite" : "Create") : clerk ? "Create and invite" : "Create client";
+  // The hairline look says only a real problem (design rules 1: no footer hints): a failure, an email already taken, or
+  // one that doesn't look right once it is left. What is still missing just holds the button back.
+  const hlProblem = made != null || !!error || form.emailTaken || (form.emailBad && emailLeft);
+  const statusShown = !hl || hlProblem;
+  const createLabel = hl ? (clerk ? (saving ? "Sending…" : "Send invite") : saving ? "Creating…" : "Create") : clerk ? "Create and invite" : "Create client";
 
   return createPortal(
     <div className={`nc-scrim${hl ? " nc-hl-scrim" : ""}`} role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -163,10 +162,10 @@ export default function NewClientDialog({
         <header className="nc-head">
           {hl ? (
             // In C (22 Nov, Alex: "new client pop up still needs the rework"): the coach's dark, the face that will be theirs
-            // (their initial once a first name is typed, else a person with a plus), the name as it is typed over New client.
+            // (their initial once a first name is typed, else a person), the name as it is typed over New client.
             <div className="dlh-whohead">
               <span className="dlh-whoface nc-face" aria-hidden="true">
-                {draft.firstName.trim() ? draft.firstName.trim().charAt(0).toUpperCase() : <PersonPlusIcon />}
+                {draft.firstName.trim() ? draft.firstName.trim().charAt(0).toUpperCase() : <PersonIcon />}
               </span>
               <div>
                 <span className="dlh-whoeye">{form.name ? "New client" : "Clients"}</span>
@@ -220,7 +219,34 @@ export default function NewClientDialog({
         )}
 
         <div className="nc-body">
-          {step === 1 ? (
+          {hl ? (
+            // New client slimmed (22 Nov, Alex): the name and the email alone. The rest the coach fills in on Details, or the
+            // client brings with the account they make; the payload still carries those fields, empty.
+            <div className="nc-grid">
+              <InfoRow label="First name">
+                <input className="nc-input" value={draft.firstName} onChange={(e) => set("firstName", e.target.value)} placeholder="Alex" autoFocus autoComplete="off" maxLength={40} />
+              </InfoRow>
+              <InfoRow label="Last name">
+                <input className="nc-input" value={draft.lastName} onChange={(e) => set("lastName", e.target.value)} placeholder="Arvio" autoComplete="off" maxLength={40} />
+              </InfoRow>
+              <InfoRow label="Email" full bad={form.emailTaken || (form.emailBad && emailLeft)}>
+                <input
+                  className="nc-input"
+                  type="email"
+                  value={draft.email}
+                  onChange={(e) => set("email", e.target.value)}
+                  onFocus={() => setEmailLeft(false)}
+                  onBlur={() => {
+                    setEmailLeft(true);
+                    void form.checkEmail();
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && form.step1Ok && create()}
+                  placeholder="name@example.com"
+                  autoComplete="off"
+                />
+              </InfoRow>
+            </div>
+          ) : step === 1 ? (
             <div className="nc-grid">
               <InfoRow label="First name">
                 <input className="nc-input" value={draft.firstName} onChange={(e) => set("firstName", e.target.value)} placeholder="Alex" autoFocus autoComplete="off" maxLength={40} />
@@ -234,21 +260,16 @@ export default function NewClientDialog({
               <InfoRow label="Gender" as="div">
                 <GenderPills value={draft.gender} onChange={(v) => set("gender", v)} />
               </InfoRow>
-              {/* No height or weight in the redesign's New client (23 Oct, Alex): the client's weight is what they log. */}
-              {!hl && (
-                <>
-                  <InfoRow label="Height">
-                    <Suffixed unit="cm">
-                      <input className="nc-input" type="number" inputMode="decimal" min={0} value={draft.heightCm} onChange={(e) => set("heightCm", e.target.value)} placeholder="180" />
-                    </Suffixed>
-                  </InfoRow>
-                  <InfoRow label="Starting weight">
-                    <Suffixed unit="kg">
-                      <input className="nc-input" type="number" inputMode="decimal" min={0} step="0.1" value={draft.startingWeightKg} onChange={(e) => set("startingWeightKg", e.target.value)} placeholder="82.5" />
-                    </Suffixed>
-                  </InfoRow>
-                </>
-              )}
+              <InfoRow label="Height">
+                <Suffixed unit="cm">
+                  <input className="nc-input" type="number" inputMode="decimal" min={0} value={draft.heightCm} onChange={(e) => set("heightCm", e.target.value)} placeholder="180" />
+                </Suffixed>
+              </InfoRow>
+              <InfoRow label="Starting weight">
+                <Suffixed unit="kg">
+                  <input className="nc-input" type="number" inputMode="decimal" min={0} step="0.1" value={draft.startingWeightKg} onChange={(e) => set("startingWeightKg", e.target.value)} placeholder="82.5" />
+                </Suffixed>
+              </InfoRow>
               <InfoRow label="Email" full bad={form.emailTaken || (form.emailBad && !!draft.email)}>
                 <input
                   className="nc-input"
@@ -261,34 +282,10 @@ export default function NewClientDialog({
                 />
               </InfoRow>
               <InfoRow label="Phone" as="div">
-                {hl ? (
-                  // Never the browser's own list (rule 6): the floating Picker, as Profile's phone.
-                  <span className="nc-phone">
-                    <Picker value={draft.phoneCode} onChange={(v) => set("phoneCode", v)} label="Country dial code" className="nc-dialpick" options={DIALS} />
-                    <input className="nc-input" type="tel" inputMode="tel" value={draft.phone} onChange={(e) => set("phone", e.target.value)} placeholder="6 12345678" aria-label="Phone number" autoComplete="off" />
-                  </span>
-                ) : (
-                  <PhoneInput code={draft.phoneCode} number={draft.phone} onCode={(v) => set("phoneCode", v)} onNumber={(v) => set("phone", v)} />
-                )}
+                <PhoneInput code={draft.phoneCode} number={draft.phone} onCode={(v) => set("phoneCode", v)} onNumber={(v) => set("phone", v)} />
               </InfoRow>
-              {hl ? (
-                // The address in its parts (23 Oct, Alex: for invoicing), as Details has it.
-                <AddressFields
-                  value={{ address: draft.address, postcode: draft.postcode, city: draft.city, region: draft.region, country_code: draft.countryCode, country: draft.country }}
-                  onChange={(a) => form.patch({ address: a.address, postcode: a.postcode, city: a.city, region: a.region, countryCode: a.country_code, country: a.country })}
-                  samples
-                />
-              ) : (
-                <InfoRow label="Address">
-                  <input className="nc-input" value={draft.address} onChange={(e) => set("address", e.target.value)} placeholder="Street, city" autoComplete="off" />
-                </InfoRow>
-              )}
-            </div>
-          ) : hl ? (
-            // The fact alone, on a clean line as the rows of step 1; no explanation (design rules 1).
-            <div className="nc-access">
-              <InfoRow label="Invite goes to" as="div">
-                {draft.email.trim() ? <span className="nc-static">{draft.email.trim().toLowerCase()}</span> : <span className="nc-static none">Add an email on step 1</span>}
+              <InfoRow label="Address">
+                <input className="nc-input" value={draft.address} onChange={(e) => set("address", e.target.value)} placeholder="Street, city" autoComplete="off" />
               </InfoRow>
             </div>
           ) : (
@@ -343,7 +340,7 @@ export default function NewClientDialog({
 
 /** Nobody yet: a person, in the face's place in the head (22 Nov, Alex: "the icon only to be the person… without the plus
  *  sign"); centred in its box. */
-function PersonPlusIcon() {
+function PersonIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="8" r="3.5" />
