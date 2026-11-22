@@ -22315,6 +22315,9 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
 .dlh-whohead { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .dlh-whohead > div { min-width: 0; }
 .dlh-whoface { position: relative; flex: none; overflow: hidden; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: #fff; color: #141a24; font-size: 16px; font-weight: 600; }
+/* A client with no picture: their initial on white with the hairline, as every face with no picture (22 Nov, Alex: "when
+   the client has not set a pfp and it is just their initial letter"). */
+.dlh-whoface:not(:has(img)) { box-shadow: inset 0 0 0 1px #e1e5eb; }
 /* Laid over the circle, never sized by the photo: a portrait picture in a grid row grew it into an oval (22 Nov). */
 .dlh-whoface img { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .dlh-whoeye { display: block; overflow: hidden; margin-bottom: 3px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; text-overflow: ellipsis; white-space: nowrap; color: var(--who-c, rgba(255, 255, 255, 0.6)); }
