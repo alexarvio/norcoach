@@ -19,6 +19,7 @@ import { AccountSettings, BannerSettings, BrandColourSettings, BusinessSettings,
 import { coachBrandInline } from "../../../lib/brandMark";
 import { coachCardPictures } from "../../../lib/coachCards";
 import CardPicturesSettings from "./CardPicturesSettings";
+import { BRAND_SWATCHES } from "../../../lib/brandColour";
 import SupportSection from "./SupportSection";
 import BillingSettings from "./BillingSettings";
 import { billingView } from "../../../lib/billing";
@@ -129,6 +130,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const facts = {
     profile: profile ? (profile.published ? "Published" : "Not published") : null,
     business: join([business.business_name, land?.name ?? business.country]) ?? "Not set",
+    // Branding's fact: the colour by its name (or its hex), then what is uploaded.
+    branding: join([settings.brand?.color ? BRAND_SWATCHES.find((s) => s.hex === settings.brand?.color)?.name ?? settings.brand.color.toUpperCase() : null, settings.brand?.mark ? "Logo" : null, brandNow.banner ? "Banner" : null]) ?? "Not set",
     plans: livePlans === 0 ? "None yet" : `${livePlans} plan${livePlans === 1 ? "" : "s"}`,
     invoicing: join([invoicing.currency ?? land?.currency ?? "EUR", invoicing.vat_rate != null ? `${invoicing.vat_rate}% ${land?.tax ?? "tax"}` : null, payments.status === "active" ? "Stripe" : null]),
     privacy: `Policy updated ${legalDate(LEGAL.updated)}`,
@@ -154,15 +157,20 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     {
       key: "business",
       fact: facts.business,
+      body: <BusinessSettings key={JSON.stringify(business)} initial={business} />,
+    },
+    {
+      // Branding, a section of its own (22 Nov, Alex: "right now it lives inside of business but i want its own section"):
+      // the logo, the banner and the brand colour (19 Nov, Alex: docs/boards/coach-brand-mockup.html), and the card pictures.
+      key: "branding",
+      fact: facts.branding,
       body: (
         <>
           <LogoSettings mark={settings.brand?.mark ?? null} />
-          {/* Beside the logo, the banner and the brand colour (19 Nov, Alex: docs/boards/coach-brand-mockup.html). */}
           <BannerSettings banner={brandNow.banner ?? null} ratio={brandNow.bannerRatio ?? null} />
           <BrandColourSettings picked={settings.brand?.color ?? null} />
           {/* The coach's own card pictures, up to five a track, for all their clients (19 Nov, Alex). */}
           <CardPicturesSettings cards={coachCardPictures(coach.id)} />
-          <BusinessSettings key={JSON.stringify(business)} initial={business} />
         </>
       ),
     },
