@@ -23,12 +23,14 @@ import { BrandLogo } from "../../components/BrandLogo";
 // brings the list back. Only the client list scrolls.
 
 const VIEWS = [
+  // Two groups, parted by space (22 Nov, Alex: "feed, phases, calendar, library, business settings"): every day first,
+  // the two counts side by side; then what is opened now and then, Coaches (the owner's) and Settings last.
   { key: "feed", label: "Feed", Icon: FeedIcon },
-  { key: "calendar", label: "Calendar", Icon: CalendarIcon },
   { key: "phases", label: "Phases", Icon: PhasesIcon },
-  { key: "business", label: "Business", Icon: BusinessIcon },
+  { key: "calendar", label: "Calendar", Icon: CalendarIcon },
   // Exercises, their demos and default cues, and cardio movements (5 Oct).
   { key: "library", label: "Library", Icon: LibraryIcon },
+  { key: "business", label: "Business", Icon: BusinessIcon },
 ] as const;
 
 // The app's own dumbbell, square like its neighbours (16 Nov, Alex: the audit; the wide 24×16 one sat squashed in the
@@ -235,7 +237,7 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
           const href = REDRAWN[key] ?? `/admin?view=${key}`;
           const isHere = !!(REDRAWN[key] && path?.startsWith(REDRAWN[key]!));
           return (
-            <Link key={key} href={href} className={`rr-navrow${viewOn(href, isHere) ? " active" : ""}`} aria-current={isHere ? "page" : undefined} onClick={goView(href, isHere)}>
+            <Link key={key} href={href} className={`rr-navrow${key === "library" ? " rr-gap" : ""}${viewOn(href, isHere) ? " active" : ""}`} aria-current={isHere ? "page" : undefined} onClick={goView(href, isHere)}>
               <Icon />
               <span>{label}</span>
               {/* The Feed's own Needs you, counted as it lists them (22 Oct: it counted clients, a new one too, and read
