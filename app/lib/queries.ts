@@ -2221,6 +2221,10 @@ export function logSet(
       }
       // A discard (or a start again) that committed while this waited on the client's chain: the set stays out.
       if (stillOn && !stillOn()) return false;
+      // The coach took the row out while this waited on the client's chain (22 Nov, Alex: "Yes, fix it"): nothing to write,
+      // and done, as the cardio tick on a gone cardio (setCardioDone), never a SetViewMiss the phone would resend forever.
+      // Memory mode has no wait between the caller's look and this write, so it never meets a row gone in between.
+      if (getClientIdForAssignment(workoutAssignmentId) !== clientId) return true;
       logSetIn(box, workoutAssignmentId, setNumber, weightKg, reps, rpeActual, gymId, unit, at);
       return true;
     },
