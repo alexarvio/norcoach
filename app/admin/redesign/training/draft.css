@@ -1467,3 +1467,5 @@ span.rd-demo { cursor: default; }
    pill as before. The pill slides (SlidePills), so its colour is --pill-bg. */
 body[style*="--brand"] .rd-nav { --pill-bg: var(--brand); --pill-shadow: none; }
 body[style*="--brand"] .rd-nav button.on, body[style*="--brand"] .rd-nav button.on:hover { color: #fff; }
+/* The tabs' track in the coach's colour toned down, as the client row on the rail ("apply this to the nav bar also"). */
+body[style*="--brand"] .rd-nav { background: color-mix(in srgb, var(--brand) 9%, #fff); }
