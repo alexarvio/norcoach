@@ -22251,8 +22251,11 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
   -webkit-mask: var(--bg-mark) right 14px top 22px / auto calc(100% - 52px) no-repeat;
   mask: var(--bg-mark) right 14px top 22px / auto calc(100% - 52px) no-repeat;
 }
-.has-coach-logo .cm-body.cm-body { background-position: 0 0, right 16px top calc(14px + var(--mark-ride, 0px)); background-size: auto, 200px auto; }
-.has-coach-logo .cph-thread.cph-thread, .has-coach-logo .rm-thread.rm-thread { background-position: 0 0, right 16px top 14px; background-size: auto, 200px auto; }
+/* The coach's logo in every chat bigger, a third of it past the thread's right edge (22 Nov, Alex: "the chat background logo
+   needs to be bigger, same idea, 66%"), as in the rail and the pop-ups: 300px on a phone, 330px in the laptop's panel. */
+.has-coach-logo .cm-body.cm-body { background-position: 0 0, right -100px top calc(14px + var(--mark-ride, 0px)); background-size: auto, 300px auto; }
+.has-coach-logo .cph-thread.cph-thread { background-position: 0 0, right -100px top 14px; background-size: auto, 300px auto; }
+.has-coach-logo .rm-thread.rm-thread { background-position: 0 0, right -110px top 14px; background-size: auto, 330px auto; }
 
 /* The check-in pop-up: a filled row reads as logged (21 Nov, Alex: "make the numbers green and blur them a little bit, so
    it really gives the visual idea that it is logged in"; then "take that [glow] away, I just want the number green"): its figure in the done green at 600,

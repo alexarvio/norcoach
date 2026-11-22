@@ -1,4 +1,4 @@
-import { AccountIcon, BellIcon, BookmarkIcon, BuildingIcon, ChatIcon, GearIcon, LockIcon, ReceiptIcon, ReportIcon, ShieldIcon } from "../../components/icons";
+import { AccountIcon, BellIcon, BookmarkIcon, BuildingIcon, ChatIcon, GearIcon, LockIcon, PaletteIcon, ReceiptIcon, ReportIcon, ShieldIcon } from "../../components/icons";
 
 // Settings is one page of folding sections, one open at a time (23 Oct, Alex); these are the rail's rows to them, in
 // the page's order, each section's key its id and the address's #key (a row opens its section). A plain module, so
@@ -9,6 +9,8 @@ export const SETTINGS = [
   { key: "profile", label: "Profile", href: `${SETTINGS_PATH}#profile`, Icon: AccountIcon },
   { key: "account", label: "Account & security", href: `${SETTINGS_PATH}#account`, Icon: LockIcon },
   { key: "business", label: "Business details", href: `${SETTINGS_PATH}#business`, Icon: BuildingIcon },
+  // The logo, banner, brand colour and card pictures, a section of their own (22 Nov, Alex).
+  { key: "branding", label: "Branding", href: `${SETTINGS_PATH}#branding`, Icon: PaletteIcon },
   // The coaching plans the coach offers (28 Oct, Alex; PlansSettings.tsx).
   { key: "plans", label: "Plans", href: `${SETTINGS_PATH}#plans`, Icon: BookmarkIcon },
   { key: "invoicing", label: "Invoicing & payments", href: `${SETTINGS_PATH}#invoicing`, Icon: ReceiptIcon },
