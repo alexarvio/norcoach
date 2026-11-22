@@ -4,7 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth, useClerk } from "@clerk/nextjs";
 import { useSignIn, useSignUp } from "@clerk/nextjs/legacy";
 import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
-import { AuthShell, COACH_STEPS, CodeScreen, CoachSignUpScreen, InviteWelcomeScreen, ResetPasswordScreen, SignInScreen, type InApp } from "./SignInScreens";
+import { AuthShell, COACH_STEPS, CodeScreen, CoachSignUpScreen, ResetPasswordScreen, SignInScreen, type InApp } from "./SignInScreens";
+import { InviteOtherAccountScreen, InviteSignUpScreen, type InviteCoach } from "./InviteScreen";
+import { inviteCallbackHref, inviteHref } from "../invite/href";
+import { dropStrayInviteAccountAction } from "../invite/actions";
 import { callNative, nativePlatform } from "../lib/native";
 import { leaveWithDarkClock } from "../client/NativeStatusBar";
 import { usePasswordsOn } from "./usePasswordsOn";
@@ -56,20 +59,24 @@ const passwordOff = (error: unknown) =>
 const cancelled = (error: unknown) => (error as { code?: string } | null)?.code === "cancelled";
 
 /** After Clerk says yes: a full page load, so the server sees the new session. */
-// eslint-disable-next-line @next/next/no-location-assign-relative-destination -- a full load on purpose: the server must read the new session cookie
-const land = () => {
+// A full load on purpose: the server must read the new session cookie.
+const land = (to: string = continueUrl()) => {
   // The dark sign-in set the iPhone app's clock white (SiteShell, NativeStatusBar): the light screen it hands over to (the
   // coach app, the client app's loading paper, Subscribe) starts with a dark one again; a full load runs no cleanup.
   leaveWithDarkClock();
-  window.location.assign(continueUrl());
+  window.location.assign(to);
 };
+
+/** A password Clerk refused for itself (too short, found in a breach): said under the form, never a fallback. */
+const badPassword = (error: unknown) =>
+  isClerkAPIResponseError(error) && !passwordOff(error) && error.errors.some((e) => e.code.startsWith("form_password") || e.meta?.paramName === "password");
 
 /** The code screen's title for each step: a new account confirms its email; a new device after a password is one more
  *  check (Clerk's Client Trust), said by the title, not as an error. */
 const titleOf = (via: string) => (via === "up" ? "Confirm your email" : via === "in2" ? "One more check" : "Check your email");
 
 /** A step tapped before Clerk had loaded, sent once it has. */
-type Waiting = { kind: "code"; email: string; why: string | null } | { kind: "password" | "signup"; email: string; pw: string } | { kind: "forgot"; email: string };
+type Waiting = { kind: "code"; email: string; why: string | null } | { kind: "password" | "signup"; email: string; pw: string } | { kind: "forgot"; email: string } | { kind: "ticket"; ticket: string; email: string | null; pw: string };
 
 type SignInResource = Awaited<ReturnType<NonNullable<ReturnType<typeof useSignIn>["signIn"]>["create"]>>;
 type SignUpResource = Awaited<ReturnType<NonNullable<ReturnType<typeof useSignUp>["signUp"]>["create"]>>;
@@ -81,7 +88,16 @@ type SignUpResource = Awaited<ReturnType<NonNullable<ReturnType<typeof useSignUp
  * the code instead. `forgotFor` a code and a new password. `signUpWithPassword` is the coach's: email and password, the
  * address then confirmed by a code (17 Nov, Alex: "if they go with the email, I want them to be able to create a password").
  */
-function useEmailCode() {
+function useEmailCode({
+  landAt,
+  callback,
+}: {
+  /** Where a finished sign-in goes, else /auth/continue (the invite: back to itself, which checks the account is the invited one). */
+  landAt?: () => string;
+  /** Where Apple and Google come back to on the web, else /sso-callback. */
+  callback?: () => string;
+} = {}) {
+  const go = () => land(landAt?.());
   const { isLoaded: inLoaded, signIn, setActive } = useSignIn();
   const { isLoaded: upLoaded, signUp } = useSignUp();
   // "in": a code to sign in; "up": a code to confirm a new account's email; "in2": Clerk asked for a second code after
@@ -117,7 +133,7 @@ function useEmailCode() {
       saving.current = null;
       if (s) await offerToSavePassword(s.email, s.password, { always: s.always });
       await setActive?.({ session: done.createdSessionId });
-      land();
+      go();
       return true;
     }
     // One more check (a sign-in from a new device, Clerk's Client Trust): a second code to the same email.
@@ -160,7 +176,7 @@ function useEmailCode() {
       await codeFor(await signIn.create({ identifier: email }), email);
     } catch (e) {
       // A session from earlier is still open in this browser: on into the app.
-      if (signedIn(e)) return land();
+      if (signedIn(e)) return go();
       if (!notFound(e)) {
         setError(says(e));
         setBusy(false);
@@ -191,7 +207,7 @@ function useEmailCode() {
       const done = await signIn.create({ strategy: "password", identifier: email, password: pw });
       if (await finish(done, email)) return;
     } catch (e) {
-      if (signedIn(e)) return land();
+      if (signedIn(e)) return go();
       if (wrongPassword(e)) wrongFor.current.add(email.trim().toLowerCase());
       // Not in Clerk yet: the account is made with the password typed, its email then confirmed by a code.
       if (notFound(e)) {
@@ -217,7 +233,7 @@ function useEmailCode() {
       await signIn.create({ strategy: "reset_password_email_code", identifier: email });
       setStep({ email, via: "reset" });
     } catch (e) {
-      if (signedIn(e)) return land();
+      if (signedIn(e)) return go();
       setError(notFound(e) ? "No account with this email." : noPassword(e) ? "No password on this account yet. Email me a code instead." : says(e, "Couldn't send a reset code. Try again."));
     }
     setBusy(false);
@@ -252,7 +268,7 @@ function useEmailCode() {
       const done = await signIn.attemptFirstFactor({ strategy: "reset_password_email_code", code, password: pw });
       if (await finish(done, step.email)) return;
     } catch (e) {
-      if (signedIn(e)) return land();
+      if (signedIn(e)) return go();
       setError(says(e));
     }
     setBusy(false);
@@ -271,7 +287,7 @@ function useEmailCode() {
       await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
       setStep({ email, via: "up" });
     } catch (e) {
-      if (signedIn(e)) return land();
+      if (signedIn(e)) return go();
       // Clerk took no password after all (switched off since the page loaded): the code alone, as before.
       if (passwordOff(e)) {
         setBusy(false);
@@ -293,6 +309,93 @@ function useEmailCode() {
     setBusy(false);
   };
 
+  /**
+   * The invite (22 Nov, Alex: "they do the password… and then they connect it to the coach"): the invitation's ticket
+   * and the password they chose make the account. The ticket proves the address, so no code. An address Clerk has an
+   * account for already goes in with its own password when that is the one typed, else by the ticket. A used or expired
+   * ticket falls back to the address's own way in: the password, else a code, as before.
+   */
+  const withTicket = async (ticket: string, email: string | null, pw: string): Promise<void> => {
+    if (!ready) return hold({ kind: "ticket", ticket, email, pw });
+    setNote(null);
+    setBusy(true);
+    setError(null);
+    try {
+      saving.current = email && pw ? { email, password: pw, always: true } : null;
+      const done = await signUp.create({ strategy: "ticket", ticket, ...(pw ? { password: pw } : {}) });
+      if (await finish(done, email ?? "")) return;
+    } catch (e) {
+      if (signedIn(e)) return go();
+      saving.current = null;
+      // Clerk took no password after all (switched off since the page loaded): the ticket alone, as before passwords.
+      if (pw && passwordOff(e)) {
+        setBusy(false);
+        return withTicket(ticket, email, "");
+      }
+      // Too short, found in a breach: said, and the password typed again.
+      if (badPassword(e)) {
+        setError(says(e));
+        setBusy(false);
+        return;
+      }
+      if (exists(e)) {
+        if (email && pw) {
+          try {
+            saving.current = { email, password: pw, always: false };
+            const done = await signIn.create({ strategy: "password", identifier: email, password: pw });
+            await finish(done, email);
+            setBusy(false);
+            return;
+          } catch (e2) {
+            saving.current = null;
+            if (signedIn(e2)) return go();
+            // Not this account's password, or none yet: the ticket signs them in.
+          }
+        }
+        try {
+          const done = await signIn.create({ strategy: "ticket", ticket });
+          if (await finish(done, email ?? "")) return;
+        } catch (e3) {
+          if (signedIn(e3)) return go();
+          // Not this account's password and no ticket to take: the emailed code, never the same password again.
+          if (email) {
+            setBusy(false);
+            return sendCode(email);
+          }
+          setError(says(e3));
+        }
+        setBusy(false);
+        return;
+      }
+      // A used or expired ticket: the address's own way in. The password typed when it is the account's, an account
+      // made with it when the address has none, else the emailed code.
+      if (email) {
+        if (pw) {
+          try {
+            saving.current = { email, password: pw, always: false };
+            const done = await signIn.create({ strategy: "password", identifier: email, password: pw });
+            if (await finish(done, email)) return;
+            setBusy(false);
+            return;
+          } catch (e4) {
+            saving.current = null;
+            if (signedIn(e4)) return go();
+            if (notFound(e4)) {
+              setBusy(false);
+              return signUpWithPassword(email, pw);
+            }
+          }
+        }
+        setBusy(false);
+        return sendCode(email);
+      }
+      setBusy(false);
+      setError(says(e, "This invite link has expired. Ask your coach for a new one."));
+      return;
+    }
+    setBusy(false);
+  };
+
   const verify = async (code: string) => {
     if (!ready || !step) return;
     setBusy(true);
@@ -305,10 +408,10 @@ function useEmailCode() {
         const done = await signIn.create({ strategy: "ticket", ticket });
         if (done.status !== "complete" || !done.createdSessionId) throw new Error("Sign-in didn't finish. Try again.");
         await setActive({ session: done.createdSessionId });
-        land();
+        go();
         return;
       } catch (e) {
-        if (signedIn(e)) return land();
+        if (signedIn(e)) return go();
         setError(isClerkAPIResponseError(e) ? says(e) : e instanceof Error ? e.message : "Something went wrong. Try again.");
         setBusy(false);
         return;
@@ -335,7 +438,7 @@ function useEmailCode() {
     // own sheet; a web redirect would leave the app (Google refuses app web views).
     if (nativePlatform() === "ios") {
       (strategy === "oauth_google" ? googleInApp() : appleInApp()).catch((e) => {
-        if (signedIn(e)) return land();
+        if (signedIn(e)) return go();
         if (cancelled(e)) {
           setBusy(false);
           return;
@@ -347,8 +450,8 @@ function useEmailCode() {
       return;
     }
     // A Google or Apple account Clerk doesn't know yet is signed up on the way back.
-    signIn.authenticateWithRedirect({ strategy, redirectUrl: "/sso-callback", redirectUrlComplete: continueUrl() }).catch((e) => {
-      if (signedIn(e)) return land();
+    signIn.authenticateWithRedirect({ strategy, redirectUrl: callback?.() ?? "/sso-callback", redirectUrlComplete: landAt?.() ?? continueUrl() }).catch((e) => {
+      if (signedIn(e)) return go();
       setError(says(e));
       setBusy(false);
     });
@@ -372,7 +475,7 @@ function useEmailCode() {
     const done = await signIn.create({ strategy: "ticket", ticket });
     if (done.status !== "complete" || !done.createdSessionId) throw new Error("Sign-in didn't finish. Try again.");
     await setActive({ session: done.createdSessionId });
-    land();
+    go();
   };
 
   /** Sign in with Apple, natively: its identity token to Clerk, signing up an Apple account Clerk doesn't know yet. */
@@ -382,14 +485,14 @@ function useEmailCode() {
     const attempt = await signIn.create({ strategy: "oauth_token_apple", token: apple.token });
     if (attempt.status === "complete" && attempt.createdSessionId) {
       await setActive({ session: attempt.createdSessionId });
-      land();
+      go();
       return;
     }
     if (attempt.firstFactorVerification?.status === "transferable") {
       const made = await signUp.create({ transfer: true, ...(apple.firstName ? { firstName: apple.firstName } : {}), ...(apple.lastName ? { lastName: apple.lastName } : {}) });
       if (made.status === "complete" && made.createdSessionId) {
         await setActive({ session: made.createdSessionId });
-        land();
+        go();
         return;
       }
       const missing = made.missingFields?.length ? `: ${made.missingFields.join(", ")}` : ` (${made.status})`;
@@ -408,11 +511,12 @@ function useEmailCode() {
     if (w.kind === "code") void sendCode(w.email, w.why);
     else if (w.kind === "password") void signInWithPassword(w.email, w.pw);
     else if (w.kind === "forgot") void forgotFor(w.email);
+    else if (w.kind === "ticket") void withTicket(w.ticket, w.email, w.pw);
     else void signUpWithPassword(w.email, w.pw);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as Clerk comes in
   }, [ready]);
 
-  return { step, busy: busy || held, error, note, sendCode, signInWithPassword, forgotFor, resend, verify, reset, signUpWithPassword, oauth, back: () => ((saving.current = null), setStep(null), setError(null), setNote(null)) };
+  return { step, busy: busy || held, error, note, sendCode, signInWithPassword, forgotFor, resend, verify, reset, signUpWithPassword, withTicket, oauth, back: () => ((saving.current = null), setStep(null), setError(null), setNote(null)) };
 }
 
 /** /login: Apple, Google, or the email and its password together, or a code to the email (17 Nov, Alex), in the coach
@@ -491,70 +595,55 @@ export function ClientSignUpFlow({ passwordsHint = null, code = "" }: { password
 }
 
 /**
- * /invite: where a client's invite link lands. "Continue with email" uses the
- * ticket in the link, which already proves the address: no code to type.
- * Apple or Google work too, when that account has the same email.
+ * /invite: where a client's invite link lands (22 Nov, Alex: "that would lead them to creating an account with a
+ * password… and then because they clicked the link… we can already connect them automatically with the coach"): the
+ * client sign-up's Create your account, the coach over it and the invited email filled in. The password goes with the
+ * ticket in the link, which proves the address, so no code; a used or expired ticket falls back to the address's own way
+ * in (withTicket). Apple or Google with the same address work too. Every way ends back on /invite, which goes on into the
+ * app once the account is the invited one (lib/clerk.ts links it by its verified email) and says so when it isn't.
  */
-export function InviteFlow({ ticket, firstName, email, coachName, coachPhoto }: { ticket: string | null; firstName: string; email: string | null; coachName: string; coachPhoto: string | null }) {
-  const { isLoaded: inLoaded, signIn, setActive } = useSignIn();
-  const { isLoaded: upLoaded, signUp } = useSignUp();
-  const code = useEmailCode();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const ready = inLoaded && upLoaded;
-
-  const accept = async () => {
-    if (!ready) return;
-    // No ticket (an old link, or opened twice): the email code instead.
-    if (!ticket) {
-      if (email) code.sendCode(email);
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const done = await signUp.create({ strategy: "ticket", ticket });
-      if (done.status === "complete" && done.createdSessionId) {
-        await setActive({ session: done.createdSessionId });
-        return land();
-      }
-      setError("Almost: Clerk wants one more step we don't ask for yet. Tell your coach.");
-    } catch (e) {
-      // Already has a Clerk account: the ticket signs them in instead.
-      if (exists(e)) {
-        try {
-          const done = await signIn.create({ strategy: "ticket", ticket });
-          if (done.status === "complete" && done.createdSessionId) {
-            await setActive({ session: done.createdSessionId });
-            return land();
-          }
-        } catch (e2) {
-          setError(says(e2));
-        }
-      } else if (email) {
-        // A used or expired ticket: fall back to a code to the same address.
-        code.sendCode(email);
-      } else {
-        setError(says(e, "This invite link has expired. Ask your coach to send a new one."));
-      }
-    }
-    setBusy(false);
-  };
-
-  if (code.step) return <CodeScreen key={code.step.via} email={code.step.email} title={titleOf(code.step.via)} onVerify={code.verify} onResend={code.resend} onBack={code.back} busy={code.busy} error={code.error} />;
+export function InviteFlow({ token, ticket, email, coach, passwordsHint = null, app = null }: { token: string | null; ticket: string | null; email: string | null; coach: InviteCoach | null; passwordsHint?: boolean | null; /** The phone app the page is in, as the server tells it (InApp). */ app?: InApp }) {
+  const f = useEmailCode({ landAt: () => inviteHref(token, ticket), callback: () => inviteCallbackHref(token, ticket) });
+  const passwords = usePasswordsOn(passwordsHint);
+  if (f.step) return <CodeScreen key={f.step.via} email={f.step.email} title={titleOf(f.step.via)} note={f.note} look="site" onVerify={f.verify} onResend={f.resend} onBack={f.back} busy={f.busy} error={f.error} />;
   return (
-    <InviteWelcomeScreen
-      firstName={firstName}
+    <InviteSignUpScreen
+      coach={coach}
       email={email}
-      coachName={coachName}
-      coachPhoto={coachPhoto}
-      busy={busy || code.busy}
-      error={error ?? code.error}
-      onAccept={accept}
-      onApple={() => code.oauth("oauth_apple")}
-      onGoogle={() => code.oauth("oauth_google")}
+      app={app}
+      askPassword={passwords === true}
+      busy={f.busy}
+      error={f.error}
+      onEmail={(typed, pw) => {
+        // No ticket (an old link): the email's own way in, the password, else a code.
+        if (ticket) f.withTicket(ticket, email ?? typed, pw);
+        else if (pw) f.signInWithPassword(typed, pw);
+        else f.sendCode(typed);
+      }}
+      onApple={() => f.oauth("oauth_apple")}
+      onGoogle={() => f.oauth("oauth_google")}
     />
   );
+}
+
+/** Back on the invite signed in with another address (Apple or Google gave one that isn't the invited): `Use {email}`
+ *  takes away the account just made on the way when it holds nothing (dropStrayInviteAccountAction), signs out, and
+ *  shows the invite again. */
+export function InviteOtherAccount({ token, ticket, coach, email, signedInAs }: { token: string | null; ticket: string | null; coach: InviteCoach | null; email: string | null; signedInAs: string | null }) {
+  const { signOut } = useClerk();
+  const [busy, setBusy] = useState(false);
+  const use = async () => {
+    setBusy(true);
+    const back = inviteHref(token, ticket);
+    if (token) await dropStrayInviteAccountAction(token).catch(() => false);
+    try {
+      await signOut({ redirectUrl: back });
+    } catch {
+      // The account is gone already, its session with it: a full load reads it signed out.
+      window.location.assign(back);
+    }
+  };
+  return <InviteOtherAccountScreen coach={coach} email={email} signedInAs={signedInAs} onUse={use} busy={busy} />;
 }
 
 /** /auth/signout: Clerk signs out in the browser, then the sign-in screen. */
