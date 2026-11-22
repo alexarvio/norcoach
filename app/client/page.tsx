@@ -1623,7 +1623,7 @@ export default async function ClientPage({
       lock={lockView}
       // A push's notification as the pop-up (19 Nov, Alex: A of docs/boards/notification-popup-mockup.html): never in the
       // coach's phone preview, a coach looking, or while locked (the locked sheet stays).
-      popup={phone || !viewerIsClient || lockView ? null : popupNotesFor(CLIENT_ID, params.n, notes, phoneTz)}
+      popup={phone || !viewerIsClient || lockView ? null : popupNotesFor(CLIENT_ID, params.n, notes, phoneTz, ck)}
       // Their coach's banner or name where NORCOACH is, and colour (19 Nov, Alex); in the phone preview the client's coach's,
       // their faint mark with it, so the pills and the mark never wear two coaches.
       brand={phone ? { ...(await coachBrandInline(client?.coach_id)), mark: await coachMarkInline(client?.coach_id) } : await coachBrandInline(client?.coach_id)}
