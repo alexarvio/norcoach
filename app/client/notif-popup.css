@@ -2,7 +2,9 @@
    docs/boards/notification-popup-kinds-mockup.html; NotifPopup.tsx): a card in
    the middle over the dimmed app, in the pop-ups' voice (radius 24, no shadow but the dim), a stack edge behind for each
    more (two at most), swiped sideways or stepped with ‹ ›. */
-.nfp { --nfp-ease: cubic-bezier(.22, 1, .36, 1); position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; padding: 0 18px; background: rgba(20, 26, 36, 0.42); font-family: var(--font-archivo), "Archivo", -apple-system, BlinkMacSystemFont, sans-serif; color: #141a24; animation: nfp-fade 0.28s var(--nfp-ease); }
+/* The app behind darker and softly blurred (22 Nov, Alex: "I thought at first the black part above was part of what was behind";
+   was a 42% dim): the card stands apart from Home's own dark. A zoomed page drops the blur (html.zoomed). */
+.nfp { --nfp-ease: cubic-bezier(.22, 1, .36, 1); position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; padding: 0 18px; background: rgba(12, 16, 22, 0.62); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); font-family: var(--font-archivo), "Archivo", -apple-system, BlinkMacSystemFont, sans-serif; color: #141a24; animation: nfp-fade 0.28s var(--nfp-ease); }
 .nfp-stack { position: relative; width: 100%; max-width: 400px; animation: nfp-pop 0.32s var(--nfp-ease); }
 .nfp-stack.edges-1 { margin-bottom: 9px; }
 .nfp-stack.edges-2 { margin-bottom: 18px; }
