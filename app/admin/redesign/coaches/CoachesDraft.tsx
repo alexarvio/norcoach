@@ -5,7 +5,7 @@ import { newOnceKey } from "../../../lib/onceKey";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Toaster } from "../../../components/ui/toast";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription } from "../../../components/ui/dialog";
 import { PlusIcon, SearchIcon } from "../../../components/icons";
 import { norcode, typedNorcode } from "../../../lib/norcode";
 import { pic } from "../../../lib/pic";
@@ -15,6 +15,7 @@ import { addCoach, removeCoach, resetCoachPassword, type CoachOutcome } from "./
 import { setCoachPaysAction } from "../../../lib/billingActions";
 import type { SupportInboxRow } from "../../../lib/support";
 import SupportInbox from "./SupportInbox";
+import { PopupTitle } from "../PopupWho";
 
 // The owner's Coaches (22 Oct, Alex: the old /admin?view=coaches in the new style, root "rd trn rls rco"): Training's
 // bare header with Add coach as a white pill; the coaches' Support threads
@@ -267,7 +268,7 @@ function AddCoachDialog({ onDone }: { onDone: (email: string) => void }) {
     <DialogContent className="dlh rco-dlg" aria-describedby={undefined}>
       <form className="rco-form" onSubmit={submit}>
         <div className="dlh-head">
-          <DialogTitle className="dlh-title">Add a coach</DialogTitle>
+          <PopupTitle>Add a coach</PopupTitle>
           <DialogClose className="dlh-x" aria-label="Close">
             ✕
           </DialogClose>
@@ -327,7 +328,7 @@ function ResetPasswordDialog({ coach, onDone }: { coach: CoachRow; onDone: () =>
     <DialogContent className="dlh rco-dlg">
       <form className="rco-form" onSubmit={submit}>
         <div className="dlh-head">
-          <DialogTitle className="dlh-title">Reset password</DialogTitle>
+          <PopupTitle>Reset password</PopupTitle>
           <DialogClose className="dlh-x" aria-label="Close">
             ✕
           </DialogClose>

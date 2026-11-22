@@ -2,10 +2,11 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription } from "../../../components/ui/dialog";
 import { LockIcon } from "../../../components/icons";
 import { newTempPassword } from "../../NewClientDialog";
 import { clientAccessAction, setClientTempPasswordAction, type ClientAccess } from "../../../lib/access-actions";
+import { PopupTitle } from "../PopupWho";
 
 // App access, a button on the client's Home. A new client has no login: the
 // coach builds their plan first, then gives them access here when it is
@@ -95,7 +96,7 @@ export default function AppAccessButton({
             }}
           >
             <div className="dlh-head">
-              <DialogTitle className="dlh-title">App access</DialogTitle>
+              <PopupTitle>App access</PopupTitle>
               <DialogClose className="dlh-x" aria-label="Close">
                 ✕
               </DialogClose>

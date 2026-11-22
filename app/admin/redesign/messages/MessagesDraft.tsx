@@ -6,7 +6,7 @@ import { followLink, leaveToBrowser } from "../followLink";
 import { useChatStream, useChatTyping, useTypingSignal } from "../../../components/useChatStream";
 import { landed, useChatOutbox, useKeptDraft } from "../../../components/chatOutbox";
 import { toast } from "sonner";
-import { Dialog, DialogClose, DialogContent, DialogTitle } from "../../../components/ui/dialog";
+import { Dialog, DialogClose, DialogContent } from "../../../components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
 import { ChevronDownIcon } from "../../../components/icons";
 import { MEDIA_PATHS } from "../../../components/ChatLastLine";
@@ -26,6 +26,7 @@ import { newOnceKey } from "../../../lib/onceKey";
 import type { LinkTargets } from "../../../lib/queries";
 import { Sep, SepJoin } from "../Sep";
 import LastActive from "../../../components/LastActive";
+import { PopupTitle } from "../PopupWho";
 
 // The Messages tab in the redesign's sheet: one chat box, and unlike the
 // other drafts it is real. Everything here sends and saves through the same
@@ -799,7 +800,7 @@ function LinkDialog({ firstName, targets: t, onPick }: { firstName: string; targ
     // The admin's one pop-up (.dlh, 21 Oct): title and ✕, the areas as a capsule, no line explaining it.
     <DialogContent className="dlh rm-linkdlg" aria-describedby={undefined}>
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">Link to…</DialogTitle>
+        <PopupTitle>Link to…</PopupTitle>
         <DialogClose className="dlh-x" aria-label="Close">
           ✕
         </DialogClose>

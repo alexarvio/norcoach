@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
+import { DialogContent, DialogDescription } from "../../../components/ui/dialog";
 import { MonthRange } from "../MonthRange";
 import { addDays, mondayOf } from "../phases/timeline";
 import DateText from "../DateText";
 import { dayMonth } from "../../../lib/dayMonth";
 import { Sep } from "../Sep";
 import { TimePick } from "../TimePick";
+import { PopupTitle } from "../PopupWho";
 
 // Scheduling a built programme (20 Oct, Alex): not its dates, which it
 // already has, but when it goes live. The coach picks the week it starts
@@ -53,7 +54,7 @@ export default function ScheduleDialog({
     <DialogContent className="npd sch">
       <div className="npd-head">
         <div>
-          <DialogTitle className="npd-title">Schedule {name}</DialogTitle>
+          <PopupTitle className="npd-title">Schedule {name}</PopupTitle>
           <DialogDescription className="npd-meta">
             {weeks} {weeks === 1 ? "week" : "weeks"}
             <Sep />

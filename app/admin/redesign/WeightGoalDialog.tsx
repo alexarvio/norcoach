@@ -4,7 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import type React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { DialogClose, DialogContent, DialogTitle } from "../../components/ui/dialog";
+import { DialogClose, DialogContent } from "../../components/ui/dialog";
 import { WeightGoalIcon } from "../../components/icons";
 import { deleteWeightGoalAction, saveWeightGoalAction } from "../../lib/actions";
 import { dayMonth } from "../../lib/dayMonth";
@@ -13,6 +13,7 @@ import { kgFrom, kgIn, VERDICT_TONE, VERDICT_WORD, type WeightGoalView } from ".
 import DatePick from "./DatePick";
 import { SepJoin } from "./Sep";
 import { ConfirmText } from "./ConfirmParts";
+import { PopupTitle } from "./PopupWho";
 
 // A weight goal's pop-up (2 Nov, Alex), the one way to set or change one: from Home's Weight card and from the Plan's
 // Weight lane alike. The .dlh card: its title, the goal's tag and verdict, Goal and By on clean lines, one live fact.
@@ -95,9 +96,9 @@ export default function WeightGoalDialog({
       // what stays, and Delete the red pill.
       <DialogContent className="dlh">
         <div className="dlh-head">
-          <DialogTitle className="dlh-title">
+          <PopupTitle>
             Delete the weight goal {one(kgIn(goal.targetKg, unit))} {unit} by {dayMonth(goal.byDate)}?
-          </DialogTitle>
+          </PopupTitle>
           <DialogClose className="dlh-x" aria-label="Close">
             ✕
           </DialogClose>
@@ -119,7 +120,7 @@ export default function WeightGoalDialog({
     // the pill read as a bigger button than the capsule beside it). A new goal still opens on its weight.
     <DialogContent className="dlh wgd" aria-describedby={undefined} onOpenAutoFocus={(e) => goal && e.preventDefault()} onCloseAutoFocus={(e) => e.preventDefault()}>
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">{goal ? `${one(kgIn(goal.targetKg, unit))} ${unit} by ${dayMonth(goal.byDate)}` : "New weight goal"}</DialogTitle>
+        <PopupTitle>{goal ? `${one(kgIn(goal.targetKg, unit))} ${unit} by ${dayMonth(goal.byDate)}` : "New weight goal"}</PopupTitle>
         <DialogClose className="dlh-x" aria-label="Close">
           ✕
         </DialogClose>

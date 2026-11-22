@@ -1,6 +1,6 @@
 "use client";
 
-import { ConfirmChoice, ConfirmText } from "../ConfirmParts";
+import { ConfirmChoice, ConfirmText, ConfirmThing, type ConfirmThingProps } from "../ConfirmParts";
 import { useEffect, useRef, useState, useTransition } from "react";
 import type React from "react";
 import { useRouter } from "next/navigation";
@@ -11,7 +11,7 @@ import type { MessageLink } from "../../../lib/messageLinks";
 import { uploadFirst } from "../../../lib/uploadFirst";
 import { newOnceKey } from "../../../lib/onceKey";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription } from "../../../components/ui/dialog";
 import { Popover, PopoverAnchor, PopoverContent } from "../../../components/ui/popover";
 import { ApplyIcon, IntoIcon, CalendarIcon, ChatIcon, NoteIcon, ChevronDownIcon, ChevronRightIcon, ColumnsIcon, CompassIcon, CopyIcon, DumbbellIcon, MoreIcon, PlayIcon, PlusIcon, TrashIcon } from "../../../components/icons";
 import { PhotoIcon, VideoIcon } from "../../VideoRequestButton";
@@ -48,6 +48,7 @@ import { Sep, SepJoin } from "../Sep";
 import { SaveStatus } from "../SaveStatus";
 import { useHoldRefresh } from "../holdRefresh";
 import { weekDue, type DotTrail } from "../dots";
+import { PopupTitle } from "../PopupWho";
 
 // The calmer builder, as a draft on real data. Nothing here saves: every
 // action ends in a toast. What it settles, against the current builder:
@@ -851,12 +852,15 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
     setDlg(null);
     patch(sessionId, (q) => ({ ...q, removed: what.row != null ? [...q.removed, what.row] : q.removed, cardioRemoved: what.cardio != null ? [...q.cardioRemoved, what.cardio] : q.cardioRemoved }));
   };
+  // A programme on a pop-up's paper (22 Nov, C): its weeks and its dates.
+  const programFacts = [`${weeks.length} ${weeks.length === 1 ? "week" : "weeks"}`, program.startDate && program.endDate ? `${fmtDate(program.startDate)} – ${fmtDate(program.endDate)}` : program.startDate ? `from ${fmtDate(program.startDate)}` : null];
   const removeRowCopy = (r: DraftRow) => ({
     title: `Remove ${r.name}?`,
+    thing: { name: r.name, facts: [r.reps ? `${r.sets} × ${r.reps}` : `${r.sets} ${r.sets === 1 ? "set" : "sets"}`] },
     // Only what isn't obvious (11 Nov, Alex: A of docs/boards/popup-anatomy-mockup.html): the client's logged sets.
     text: r.logged.length ? `The ${r.logged.length} ${r.logged.length === 1 ? "set" : "sets"} ${firstName} logged on it ${r.logged.length === 1 ? "is" : "are"} deleted with it.` : null,
   });
-  const removeCardioCopy = (c: DraftCardio) => ({ title: `Remove ${c.name}?`, text: c.done ? `What ${firstName} logged on it is deleted with it.` : null });
+  const removeCardioCopy = (c: DraftCardio) => ({ title: `Remove ${c.name}?`, thing: { name: c.name, facts: [c.time, c.pace, c.distance] }, text: c.done ? `What ${firstName} logged on it is deleted with it.` : null });
   const sessionById = (id: number) => sessions.find((s) => s.id === id) ?? null;
 
   // Drag to reorder: exercises inside a session (queued on its bar), and
@@ -2516,6 +2520,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
 
         {dlg?.kind === "removeWeek" && (
           <ConfirmDialog
+            thing={{ name: week.label, facts: [`${sessions.length} ${sessions.length === 1 ? "session" : "sessions"}`] }}
             title={`Remove ${week.label}?`}
             description={`Its sessions are deleted with it, and the weeks after it move up one. This can’t be undone.`}
             confirm="Remove"
@@ -2540,6 +2545,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
             return (
               <DeletePhaseDialog
                 name={program.name}
+                facts={programFacts}
                 logged={logged}
                 firstName={firstName}
                 onDelete={() => {
@@ -2577,6 +2583,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
         )}
         {dlg?.kind === "deploy" && !(program.status === "draft" && !startHasCome) && (
           <ConfirmDialog
+            thing={{ name: program.name, facts: programFacts }}
             title={program.status === "scheduled" ? `Make “${program.name}” live now?` : startHasCome ? `Make “${program.name}” live?` : `Schedule “${program.name}”?`}
             description={
               program.status === "scheduled"
@@ -2597,6 +2604,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
         {/* A draft that starts later, out this week instead of on its start (20 Oct, Alex). */}
         {dlg?.kind === "liveNow" && program.status === "draft" && (
           <ConfirmDialog
+            thing={{ name: program.name, facts: programFacts }}
             title={`Make “${program.name}” live now?`}
             description={`${firstName} gets it this week instead of ${program.startDate ? `on ${fmtDate(program.startDate)}` : "on its start"}.`}
             confirm="Make it live"
@@ -2609,6 +2617,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
 
         {dlg?.kind === "backToDraft" && (
           <ConfirmDialog
+            thing={{ name: program.name, facts: programFacts }}
             title={`Move “${program.name}” back to draft?`}
             description={`It becomes a draft again, and ${firstName} won’t get it${program.startDate ? ` on ${fmtDate(program.startDate)}` : ""}.`}
             confirm="Back to draft"
@@ -2759,7 +2768,7 @@ function SessionName({ value, onChange }: { value: string; onChange: (v: string)
 }
 
 /** Deleting a phase and its programme: what goes, and a tick when the client's logged sessions go with it. */
-export function DeletePhaseDialog({ name, logged, firstName, onDelete, onClose }: { name: string; logged: number; firstName: string; onDelete: () => void; onClose: () => void }) {
+export function DeletePhaseDialog({ name, facts, logged, firstName, onDelete, onClose }: { name: string; /** Its weeks and dates, grey under its name (22 Nov, C). */ facts?: React.ReactNode[]; logged: number; firstName: string; onDelete: () => void; onClose: () => void }) {
   const [agreed, setAgreed] = useState(false);
   const cancel = useRef<HTMLButtonElement>(null);
   return (
@@ -2772,11 +2781,12 @@ export function DeletePhaseDialog({ name, logged, firstName, onDelete, onClose }
       }}
     >
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">Delete the phase &ldquo;{name}&rdquo;?</DialogTitle>
+        <PopupTitle>Delete the phase &ldquo;{name}&rdquo;?</PopupTitle>
         <button type="button" className="dlh-x" onClick={onClose} aria-label="Close">
           ✕
         </button>
       </div>
+      <ConfirmThing name={name} facts={facts} />
       {/* What goes with it, and that it is for good (11 Nov, Alex: A of docs/boards/popup-anatomy-mockup.html). */}
       <ConfirmText>Everything planned in it is deleted with it. This can&rsquo;t be undone.</ConfirmText>
       {/* A gate: Delete wakes once it is ticked. */}
@@ -2795,25 +2805,25 @@ export function DeletePhaseDialog({ name, logged, firstName, onDelete, onClose }
 
 /** Taking a row off a session, as every confirm (ConfirmParts.tsx): the title, a sentence only when the client's logged
  *  sets go with it, Cancel and the red Remove. Cancel holds the focus. */
-function RemoveDialog({ title, text, onRemove, onClose }: { title: string; text: string | null; onRemove: () => void; onClose: () => void }) {
+function RemoveDialog({ title, thing, text, onRemove, onClose }: { title: string; thing?: ConfirmThingProps; text: string | null; onRemove: () => void; onClose: () => void }) {
   const cancel = useRef<HTMLButtonElement>(null);
   return (
     <DialogContent
       className="dlh"
       role="alertdialog"
-      {...(text ? {} : { "aria-describedby": undefined })}
+      {...(text && !thing ? {} : { "aria-describedby": undefined })}
       onOpenAutoFocus={(ev) => {
         ev.preventDefault();
         setTimeout(() => cancel.current?.focus(), 60);
       }}
     >
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">{title}</DialogTitle>
+        <PopupTitle>{title}</PopupTitle>
         <button type="button" className="dlh-x" onClick={onClose} aria-label="Close">
           ✕
         </button>
       </div>
-      {text && <ConfirmText>{text}</ConfirmText>}
+      {thing ? <ConfirmThing {...thing} lose={text} /> : text && <ConfirmText>{text}</ConfirmText>}
       <div className="dlh-foot">
         <button ref={cancel} type="button" className="dlh-cancel" onClick={onClose}>
           Cancel
@@ -3139,7 +3149,7 @@ function EditExerciseDialog({ row, current, library, onSave }: { row: DraftRow; 
   return (
     <DialogContent className="dlh dlh-wide">
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">Edit {row.name}</DialogTitle>
+        <PopupTitle>Edit {row.name}</PopupTitle>
         <DialogClose className="dlh-x" aria-label="Close">
           ✕
         </DialogClose>
@@ -3197,7 +3207,7 @@ function CardioAlternativesDialog({ cardio, firstName, onSave }: { cardio: Draft
   return (
     <DialogContent className="dlh dlh-alts">
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">Alternatives for {cardio.name}</DialogTitle>
+        <PopupTitle>Alternatives for {cardio.name}</PopupTitle>
         <DialogClose className="dlh-x" aria-label="Close">
           ✕
         </DialogClose>
@@ -3259,7 +3269,7 @@ function EditCardioDialog({ cardio, onSave }: { cardio: DraftCardio; onSave: (v:
   return (
     <DialogContent className="dlh">
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">Rename {cardio.name}</DialogTitle>
+        <PopupTitle>Rename {cardio.name}</PopupTitle>
         <DialogClose className="dlh-x" aria-label="Close">
           ✕
         </DialogClose>
@@ -3429,7 +3439,7 @@ function VideoDialog({ row, video, firstName, where, onAsk, onCancel, onReply }:
     <DialogContent className="dlh dlh-video">
       <div className="dlh-head">
         {/* A swap's media names the swap (3 Nov, Alex: "Paula's photo of Hack Squat", not "of the substitute"). */}
-        <DialogTitle className="dlh-title">{!video ? "Ask for a video" : video.state === "asked" ? "Video asked for" : `${firstName}'s ${video.media}${video.about === "swap" && (row.swap ?? row.swapInfo?.name) ? ` of ${row.swap ?? row.swapInfo?.name}` : ""}`}</DialogTitle>
+        <PopupTitle>{!video ? "Ask for a video" : video.state === "asked" ? "Video asked for" : `${firstName}'s ${video.media}${video.about === "swap" && (row.swap ?? row.swapInfo?.name) ? ` of ${row.swap ?? row.swapInfo?.name}` : ""}`}</PopupTitle>
         <DialogClose className="dlh-x" aria-label="Close">
           ✕
         </DialogClose>
@@ -3514,7 +3524,7 @@ export function MessageDialog({ firstName, label, onSend }: { firstName: string;
   return (
     <DialogContent className="dlh dlh-wide">
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">Message {firstName}</DialogTitle>
+        <PopupTitle>Message {firstName}</PopupTitle>
         <DialogClose className="dlh-x" aria-label="Close">
           ✕
         </DialogClose>
@@ -3550,7 +3560,7 @@ function CopySessionDialog({ source, others, canAdd, nextNumber, laterLabel, onC
   return (
     <DialogContent className="dlh">
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">Copy {source.name}</DialogTitle>
+        <PopupTitle>Copy {source.name}</PopupTitle>
         <DialogClose className="dlh-x" aria-label="Close">
           ✕
         </DialogClose>
@@ -3583,16 +3593,17 @@ function CopySessionDialog({ source, others, canAdd, nextNumber, laterLabel, onC
 /** A yes-or-no (11 Nov, Alex: A of docs/boards/popup-anatomy-mockup.html; ConfirmParts.tsx): the title, one or two plain
  *  sentences, an optional choice in its grey well with its facts under it, Cancel and the verb alone as a pill (red when it
  *  takes something away, else ink). */
-export function ConfirmDialog({ title, description, confirm, danger, tick, tickSub, onConfirm }: { title: string; description?: React.ReactNode; confirm: string; danger?: boolean; tick?: React.ReactNode | null; /** The choice's facts, grey under it. */ tickSub?: React.ReactNode; onConfirm: (also: boolean) => void }) {
+export function ConfirmDialog({ title, thing, description, confirm, danger, tick, tickSub, onConfirm }: { title: string; /** The thing itself, on the paper under the dark (22 Nov, C). */ thing?: ConfirmThingProps; description?: React.ReactNode; confirm: string; danger?: boolean; tick?: React.ReactNode | null; /** The choice's facts, grey under it. */ tickSub?: React.ReactNode; onConfirm: (also: boolean) => void }) {
   const [also, setAlso] = useState(false);
   return (
     <DialogContent className="dlh" {...(description ? {} : { "aria-describedby": undefined })}>
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">{title}</DialogTitle>
+        <PopupTitle>{title}</PopupTitle>
         <DialogClose className="dlh-x" aria-label="Close">
           ✕
         </DialogClose>
       </div>
+      {thing && <ConfirmThing {...thing} />}
       {description && <ConfirmText>{description}</ConfirmText>}
       {tick && <ConfirmChoice checked={also} onChange={setAlso} title={tick} sub={tickSub} />}
       <div className="dlh-foot">
@@ -3616,7 +3627,7 @@ export function NewProgramDialog({ onCreate }: { onCreate: (v: { name: string; w
   return (
     <DialogContent className="dlh" aria-describedby={undefined}>
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">New programme</DialogTitle>
+        <PopupTitle>New programme</PopupTitle>
         <DialogClose className="dlh-x" aria-label="Close">
           ✕
         </DialogClose>
@@ -3654,7 +3665,7 @@ function NoteDialog({ firstName, note, onSeen }: { firstName: string; note: { te
   return (
     <DialogContent className="dlh dlh-wide">
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">Note from {firstName}</DialogTitle>
+        <PopupTitle>Note from {firstName}</PopupTitle>
         <DialogClose className="dlh-x" aria-label="Close">
           ✕
         </DialogClose>

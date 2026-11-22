@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { addClientPhaseAction, applyMetricChangesAction, deletePhaseAction, deployPhaseNowAction, dismissHomeActionAction, markSeenAction, saveAndSchedulePhaseOrSayWhyAction, sendChatMessageAction, setCheckInDayAction, setMetricSummaryAction, setMonthlyCheckInDayAction, unschedulePhaseAction, updateClientPhaseAction } from "../../../lib/actions";
 import type { MessageLink } from "../../../lib/messageLinks";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
-import { Dialog, DialogContent, DialogTitle } from "../../../components/ui/dialog";
+import { Dialog, DialogContent } from "../../../components/ui/dialog";
 import { ConfirmChoice, ConfirmText } from "../ConfirmParts";
 import { CalendarIcon, ChartIcon, ChatIcon, NoteIcon,ChevronDownIcon, MoreIcon, PlusIcon, TrashIcon } from "../../../components/icons";
 import type { LoggedMetric, LoggedValues } from "../../../lib/queries";
@@ -33,6 +33,7 @@ import { useHoldWhile } from "../useSaveQueue";
 import { SaveStatus } from "../SaveStatus";
 import { landOn } from "../../../lib/landOn";
 import { monotoneSegments } from "../../../lib/monotoneCurve";
+import { PopupTitle } from "../PopupWho";
 
 // The Lifestyle tab, built as Training is (21 Oct, Alex): the phase's name
 // to click and type, its state tag as the menu of what can be done with it,
@@ -169,6 +170,8 @@ export default function MeasurementsDraft({ clientId, firstName, plan }: { clien
   const lastDay = plan.endDate ? addDays(plan.endDate, 6) : null;
   const today = plan.planCtx.today;
   const startHasCome = !!plan.startDate && plan.startDate <= today;
+  // The phase on a pop-up's paper (22 Nov, C): what it holds and its dates; read when a pop-up opens, after lastDay.
+  const phaseFactsOf = () => [`${rows.length} ${rows.length === 1 ? "metric" : "metrics"}`, plan.startDate && lastDay ? `${fmtDate(plan.startDate)} – ${fmtDate(lastDay)}` : null];
   // An ended phase is look-only (6 Nov, Alex: an ended phase look-only), as Training's done weeks: no banner and nothing
   // faded; what would change it is not drawn, what is for reading stays. The header's Ended tag says it is over.
   const past = plan.status === "past";
@@ -880,6 +883,7 @@ export default function MeasurementsDraft({ clientId, firstName, plan }: { clien
         )}
         {dlg?.kind === "deploy" && startHasCome && (
           <ConfirmDialog
+            thing={{ name: plan.name, facts: phaseFactsOf() }}
             title={`Make “${plan.name}” live?`}
             description={`${firstName}’s check-in asks for its metrics from today.`}
             confirm="Make it live"
@@ -892,6 +896,7 @@ export default function MeasurementsDraft({ clientId, firstName, plan }: { clien
         {/* Now, whatever its dates say (21 Oct, as Training): it starts today. */}
         {dlg?.kind === "liveNow" && (
           <ConfirmDialog
+            thing={{ name: plan.name, facts: phaseFactsOf() }}
             title={`Make “${plan.name}” live now?`}
             description={`Its start moves to this week, and ${firstName}’s check-in asks for its metrics from today.`}
             confirm="Make it live"
@@ -903,6 +908,7 @@ export default function MeasurementsDraft({ clientId, firstName, plan }: { clien
         )}
         {dlg?.kind === "backToDraft" && (
           <ConfirmDialog
+            thing={{ name: plan.name, facts: phaseFactsOf() }}
             title={`Move “${plan.name}” back to draft?`}
             description={`It comes off ${firstName}’s schedule.`}
             confirm="Back to draft"
@@ -916,6 +922,7 @@ export default function MeasurementsDraft({ clientId, firstName, plan }: { clien
         {dlg?.kind === "deletePhase" && phaseId != null && (
           <DeletePhaseDialog
             name={plan.name}
+            facts={phaseFactsOf()}
             logged={0}
             firstName={firstName}
             onDelete={() => {
@@ -952,7 +959,7 @@ function RemoveMetricDialog({ metric: m, firstName, onRemove, onClose }: { metri
       }}
     >
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">Remove {m.name} from the check-in?</DialogTitle>
+        <PopupTitle>Remove {m.name} from the check-in?</PopupTitle>
         <button type="button" className="dlh-x" onClick={onClose} aria-label="Close">
           ✕
         </button>

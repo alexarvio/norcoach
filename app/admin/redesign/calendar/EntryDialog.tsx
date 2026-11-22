@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { Popover as PopoverPrimitive } from "radix-ui";
 import { runCalendarSave } from "./CalendarSaveStatus";
 import { addCalendarEntryAction, removeCalendarEntryAction, updateCalendarEntryAction } from "../../../lib/actions";
-import { DialogContent, DialogTitle } from "../../../components/ui/dialog";
+import { DialogContent } from "../../../components/ui/dialog";
 import { SearchIcon } from "../../../components/icons";
 import DateText from "../DateText";
 import { ConfirmText } from "../ConfirmParts";
@@ -19,6 +19,7 @@ import { TRAINING_ICON } from "../../../lib/eventTypes";
 import { isClientCall, takesClient } from "../../../lib/calendarKinds";
 import { pic } from "../../../lib/pic";
 import { newOnceKey } from "../../../lib/onceKey";
+import { PopupTitle } from "../PopupWho";
 
 // The Calendar's entry pop-up, built as the meeting scheduler (22 Oct, the
 // .npd pattern): the title and the category as its tinted tag; the
@@ -251,7 +252,7 @@ export default function EntryDialog({ open, cats, clients, dayEntries, onDone }:
     return (
       <DialogContent className="dlh" role="alertdialog" {...(callWith ? {} : { "aria-describedby": undefined })} {...outside}>
         <div className="dlh-head">
-          <DialogTitle className="dlh-title">{callWith ? (e.topic.trim() ? `Delete the call “${e.topic.trim()}”?` : "Delete this call?") : e.topic.trim() ? `Remove “${e.topic.trim()}” from the calendar?` : "Remove this entry?"}</DialogTitle>
+          <PopupTitle>{callWith ? (e.topic.trim() ? `Delete the call “${e.topic.trim()}”?` : "Delete this call?") : e.topic.trim() ? `Remove “${e.topic.trim()}” from the calendar?` : "Remove this entry?"}</PopupTitle>
           <button type="button" className="dlh-x" onClick={tryClose} aria-label="Close">
             ✕
           </button>
@@ -280,7 +281,7 @@ export default function EntryDialog({ open, cats, clients, dayEntries, onDone }:
   return (
     <DialogContent className="npd cal-npd" style={{ "--npd-c": ink, "--npd-rgb": rgb } as React.CSSProperties} aria-describedby={undefined} {...outside}>
       <div className="npd-head">
-        <DialogTitle className="npd-title">{e ? e.topic || "Edit entry" : "New entry"}</DialogTitle>
+        <PopupTitle className="npd-title">{e ? e.topic || "Edit entry" : "New entry"}</PopupTitle>
         <span className="npd-tools">
           {/* Their Meetings hold their calls alone (23 Oct, Alex), so Open is a call's. */}
           {client && isClientCall(cat) && (

@@ -150,10 +150,11 @@ export function TodoStrip({ tab, onAct }: { tab: DotTab; onAct?: (item: TodoItem
       <Dialog open={asking != null} onOpenChange={(o) => !o && setAsking(null)}>
         {asking && (
           <ConfirmDialog
+            thing={{ name: asking.what, facts: [asking.words ? `“${asking.words}”` : null] }}
             title="Mark as done?"
             // A confirm pop-up's words (11 Nov, Alex: A of docs/boards/popup-anatomy-mockup.html): who does what, the choice
             // starting with its verb, the verb alone on the pill.
-            description={`This takes “${asking.what}” off the list without sending anything.`}
+            description="Nothing is sent."
             confirm="Done"
             // Several waiting on this tab: all of them at once, ticked first.
             tick={items.filter(canDone).length > 1 ? (items.filter(canDone).length === 2 ? "Also mark the other one as done" : `Also mark the other ${items.filter(canDone).length - 1} as done`) : null}

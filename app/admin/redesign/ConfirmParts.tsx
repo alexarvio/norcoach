@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { DialogDescription } from "../../components/ui/dialog";
+import { SepJoin } from "./Sep";
 
 // A confirm pop-up's parts (11 Nov, Alex: A of docs/boards/popup-anatomy-mockup.html). Four parts, top to bottom: the
 // title (the action and the thing, as a question), one or two plain sentences saying only what isn't obvious (what goes
@@ -29,5 +30,28 @@ export function ConfirmChoice({ checked, onChange, title, sub, id }: { checked: 
         {sub && <span className="dlh-choice-s">{sub}</span>}
       </span>
     </button>
+  );
+}
+
+/** The thing itself on the paper (22 Nov, Alex: C of docs/boards/admin-popups-c-mockup.html): its name, its facts grey
+ * parted by the drawn bar, and what goes with it in a soft rust box when something the client logged goes too. */
+export type ConfirmThingProps = { name: ReactNode; facts?: ReactNode[]; lose?: ReactNode; aside?: ReactNode };
+export function ConfirmThing({ name, facts, lose, aside }: ConfirmThingProps) {
+  const shown = (facts ?? []).filter((p) => p != null && p !== false && p !== "");
+  return (
+    <div className="dlh-thing">
+      <div className="dlh-thing-row">
+        <div className="dlh-thing-words">
+          <span className="dlh-thing-name">{name}</span>
+          {shown.length > 0 && (
+            <span className="dlh-thing-facts">
+              <SepJoin parts={shown} />
+            </span>
+          )}
+        </div>
+        {aside != null && <span className="dlh-thing-aside">{aside}</span>}
+      </div>
+      {lose && <p className="dlh-thing-lose">{lose}</p>}
+    </div>
   );
 }
