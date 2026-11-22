@@ -64,7 +64,7 @@
 .riv-new .riv-amount { font-size: 14px; font-weight: 600; color: #141a24; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .riv-new .riv-x { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 999px; background: none; font-size: 11px; color: #8b93a1; cursor: pointer; opacity: 0; transition: opacity 0.12s; }
 .riv-new .riv-line:hover .riv-x, .riv-new .riv-line:focus-within .riv-x, .riv-new .riv-x:focus-visible { opacity: 1; }
-@media (hover: none) { .riv-new .riv-x { opacity: 1; } }
+@media (any-hover: none) { .riv-new .riv-x { opacity: 1; } }
 .riv-new .riv-x:hover { background: #f5f6f8; color: #141a24; }
 .riv-new .riv-addline { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; height: 32px; margin: 6px 0 0 -10px; padding: 0 10px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; cursor: pointer; }
 .riv-new .riv-addline:hover { background: #f5f6f8; }
@@ -99,7 +99,7 @@
 .riv-tpl-pick:focus-visible { outline: 2px solid #141a24; outline-offset: -2px; border-radius: 10px; }
 .riv-tpl-x { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; margin-right: 4px; padding: 0; border: 0; border-radius: 999px; background: none; font-size: 11px; color: #8b93a1; cursor: pointer; opacity: 0; transition: opacity 0.12s; }
 .riv-tpl-row:hover .riv-tpl-x, .riv-tpl-row:focus-within .riv-tpl-x { opacity: 1; }
-@media (hover: none) { .riv-tpl-x { opacity: 1; } }
+@media (any-hover: none) { .riv-tpl-x { opacity: 1; } }
 .riv-tpl-x:hover { background: #eef0f3; color: #141a24; }
 .riv-tpl-row.ask { gap: 2px; padding: 4px 4px 4px 10px; background: #f5f6f8; }
 .riv-tpl-row.ask span { flex: 1; min-width: 0; overflow: hidden; font-size: 13px; font-weight: 600; color: #141a24; text-overflow: ellipsis; white-space: nowrap; }
