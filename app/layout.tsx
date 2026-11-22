@@ -117,9 +117,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // The palette is the design's (the tokens at the top of globals.css). A coach changes one thing in it (19 Nov, Alex):
   // their brand colour, `--brand`, which fills the main pills and nothing else, with today's ink when they have none.
   // `has-coach-logo` when the coach has a logo of their own (never `coach-mark`: that is the coach face badge's class, and on the body it drew the page as one round navy disc, 22 Nov): it is drawn whole where the star is cropped (21 Nov, Alex).
+  // suppressHydrationWarning on <html>: the admin marks it data-mouse before React draws (app/admin/layout.tsx).
   const brandStyle = await bodyBrand();
   return (
-    <html lang="en" className={`${libreBaskerville.variable} ${archivo.variable} ${kirana.variable} ${bricolage.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${libreBaskerville.variable} ${archivo.variable} ${kirana.variable} ${bricolage.variable}`}>
       {/* Sign-in through Clerk, when it is switched on (lib/clerk.ts). */}
       <body style={brandStyle} className={brandStyle && "--bg-mark" in brandStyle ? "has-coach-logo" : undefined}>
         {/* The phone app marks itself before anything draws (17 Nov): the server then sends a coach to /coach. */}
