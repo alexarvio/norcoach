@@ -5,7 +5,6 @@ import { createPortal } from "react-dom";
 import { notificationTypeOf, type NotificationCategory } from "../lib/notificationTypes";
 import type { EventTypeId } from "../lib/eventTypes";
 import type { LinkView } from "../lib/messageLinks";
-import { dayLabel, localDayKey, timeLabel } from "../lib/notificationDates";
 import { pic } from "../lib/pic";
 import { TypeIcon } from "./events/AddEventSheet";
 import { Bars } from "./Bars";
@@ -137,15 +136,11 @@ export default function NotifPopup({ notes, coachName, coachPhoto, onView, onClo
 
   const t = notificationTypeOf(n.category, n.eventType);
   const system = n.category === "system";
-  const today = localDayKey(new Date().toISOString());
-  const day = localDayKey(n.createdAt);
-  const when = day === today ? timeLabel(n.createdAt) : `${dayLabel(day, today)} ${timeLabel(n.createdAt)}`;
-  // The coach's own words grey under the title; facts (more than one, " · " apart as written) on the drawn bar, with when
-  // after them while the corner says 1 of 3.
+  // No time on it (22 Nov, Alex: "take out the time"): the push just came. The coach's own words grey under the title;
+  // facts (more than one, " · " apart as written) on the drawn bar.
   const parts = n.body ? n.body.split(" · ").map((p) => p.trim()).filter(Boolean) : [];
   const words = parts.length === 1 ? parts[0] : null;
   const facts = parts.length > 1 ? parts : [];
-  if (several) facts.push(when);
   const edges = Math.min(list.length - 1, 2);
 
   return createPortal(
@@ -167,7 +162,7 @@ export default function NotifPopup({ notes, coachName, coachPhoto, onView, onClo
         >
           <div className="nfp-top">
             <span className="nfp-kind">{t.label}</span>
-            <span className="nfp-when">{several ? `${index + 1} of ${list.length}` : when}</span>
+            {several && <span className="nfp-when">{`${index + 1} of ${list.length}`}</span>}
           </div>
           <div className="nfp-who">
             <span className="ntf-avatar nfp-face" aria-hidden="true">
