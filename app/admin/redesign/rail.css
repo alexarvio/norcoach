@@ -286,3 +286,9 @@ body[style*="--brand"] .cc-hl.cc-hl .ad-btn-primary:not(:disabled):focus-visible
 .rr-paper > .rr-clients-head { cursor: default; }
 /* The coach row is a link to their Profile now: no underline. */
 .rr-coach, .rr-coach:hover { text-decoration: none; }
+/* The coach's logo behind the page stays in sight with the chat open (22 Nov, Alex: "have the logo in the background of
+   the admin panel"; the panel, 460px, covered most of it): it moves left of the panel and a touch smaller, on the fold's
+   curve, and back as the chat closes. */
+.rd-frame > .rd-page::before { transition: right 0.34s cubic-bezier(0.22, 1, 0.36, 1), width 0.34s cubic-bezier(0.22, 1, 0.36, 1); }
+.rd-frame[data-chat="open"] > .rd-page::before { right: calc(460px + 3vw); width: min(620px, 40vw); }
+@media (prefers-reduced-motion: reduce) { .rd-frame > .rd-page::before { transition: none; } }

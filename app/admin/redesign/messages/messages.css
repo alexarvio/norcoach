@@ -403,3 +403,16 @@ html.look-hl .rd-chattab.rd-phonetab.on:hover, html.look-hl .rd-chattab.rd-phone
 /* The file picked, waiting for Send (4 Nov, Alex; ChatAttachment.tsx, the chat-att block at the end of globals.css):
    the bar's gap is its air, and it starts where the box does, past the 40px + and the row's 8px gap. */
 .rm .rm-bar .chat-att { --chat-att-inset: 48px; margin: 0; }
+
+/* The coach's own bubbles in their brand colour (22 Nov, Alex: "the chat text bubbles to be in the color we choose in
+   branding"), as the client's own are in their app: white words, the time and the menu's mark soft white; a voice
+   message white on it. Only with a colour set; none, the neutral tint as before. */
+body[style*="--brand"] .rm-bubble-row.mine .rm-bubble { border-color: var(--brand); background: var(--brand); color: #fff; }
+body[style*="--brand"] .rm-bubble-row.mine .rm-meta { color: rgba(255, 255, 255, 0.72); }
+body[style*="--brand"] .rm-bubble-row.mine .rm-chev { background: var(--brand); color: rgba(255, 255, 255, 0.85); }
+body[style*="--brand"] .rm-bubble-row.mine .rm-quote { background: rgba(255, 255, 255, 0.88); color: #141a24; }
+body[style*="--brand"] .rm-bubble-row.mine .vn-play { color: #fff; }
+body[style*="--brand"] .rm-bubble-row.mine .vn-wave i { background: rgba(255, 255, 255, 0.4); }
+body[style*="--brand"] .rm-bubble-row.mine .vn-wave i.on, body[style*="--brand"] .rm-bubble-row.mine .vn-knob { background: #fff; }
+body[style*="--brand"] .rm-bubble-row.mine .vn-time { color: rgba(255, 255, 255, 0.72); }
+body[style*="--brand"] .rm-bubble-row.mine .rm-bubble a:not(.rm-link) { color: #fff; }
