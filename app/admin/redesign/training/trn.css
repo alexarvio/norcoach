@@ -345,7 +345,7 @@ textarea.dlh-line { resize: none; }
 .dlh-alt-x { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 999px; background: none; font-size: 11px; color: #8b93a1; cursor: pointer; opacity: 0; transition: opacity 0.12s; }
 .dlh-alt-row:hover .dlh-alt-x, .dlh-alt-row:focus-within .dlh-alt-x, .dlh-alt-x:focus-visible { opacity: 1; }
 .dlh-alt-x:hover { background: #f5f6f8; color: #141a24; }
-@media (any-hover: none) { .dlh-alt-x { opacity: 1; } }
+@media (any-hover: none) { html:not([data-mouse]) { .dlh-alt-x { opacity: 1; } } }
 .dlh-alt-add { display: flex; align-items: flex-end; gap: 12px; margin-top: 4px; }
 .dlh-alt-add .dlh-line { flex: 1; min-width: 0; }
 .dlh-alt-addbtn { display: inline-flex; flex: none; align-items: center; gap: 5px; height: 36px; padding: 0 4px; border: 0; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: #141a24; cursor: pointer; }
@@ -572,7 +572,7 @@ html .rd.trn .trn-rail .trn-week.on.on, html .rd.trn .trn-rail[role="tablist"] .
 .rd.trn .rd-row-more > .trn-rowtools { margin-right: 2px; }
 .rd.trn .rd-session-head:hover > .trn-rowtools, .rd.trn .rd-session-head:focus-within > .trn-rowtools,
 .rd.trn .rd-row-main:hover .trn-rowtools, .rd.trn .rd-row-main:focus-within .trn-rowtools { opacity: 1; }
-@media (any-hover: none) { .rd.trn .trn-rowtools { opacity: 1; } }
+@media (any-hover: none) { html:not([data-mouse]) { .rd.trn .trn-rowtools { opacity: 1; } } }
 .rd.trn .trn-rowtool { display: inline-grid; flex: none; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 999px; background: none; color: var(--trn-sec); cursor: pointer; }
 .rd.trn .trn-rowtool svg { width: 16px; height: 16px; stroke-width: 1.6; }
 /* An 18-grid icon (the chat) sets its stroke on its path: 1.2 there is 1.6 on the 24 grid, so every tool draws at one weight. */

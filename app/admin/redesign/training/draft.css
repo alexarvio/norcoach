@@ -898,7 +898,7 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
 .rd-session-head:hover [data-slot="dropdown-menu-trigger"], .rd-session-head:focus-within [data-slot="dropdown-menu-trigger"],
 .rd-alt-row:hover .rd-btn.ghost.sm, .rd-alt-row:focus-within .rd-btn.ghost.sm, .rd-gymrow:hover .rd-btn.ghost.sm, .rd-gymrow:focus-within .rd-btn.ghost.sm,
 .rd-row-more > [data-state="open"], .rd-session-head [data-state="open"], .rd-row-more > .rd-btn:focus-visible, .rd-row-more > .rd-cardio-alt:has(b) { opacity: 1; }
-@media (any-hover: none) { .rd-row-more > [data-slot="dropdown-menu-trigger"], .rd-row-more > .rd-btn, .rd-session-head [data-slot="dropdown-menu-trigger"], .rd-alt-row .rd-btn.ghost.sm, .rd-gymrow .rd-btn.ghost.sm { opacity: 1; } }
+@media (any-hover: none) { html:not([data-mouse]) { .rd-row-more > [data-slot="dropdown-menu-trigger"], .rd-row-more > .rd-btn, .rd-session-head [data-slot="dropdown-menu-trigger"], .rd-alt-row .rd-btn.ghost.sm, .rd-gymrow .rd-btn.ghost.sm { opacity: 1; } } }
 /* One ⋯ for every row and card (25 Oct, Alex): Lifestyle's round one. 30px, nothing behind it at rest, the page grey
    while the pointer is on it or its menu is open, the icon 16px in the secondary grey. Unscoped (this file is on every
    coach screen, and a pop-up's rows sit outside .rd) and doubled so a tab's own button rules don't tie with it.
@@ -909,10 +909,10 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
 /* On a touch screen every row's ⋯ is there in full, wherever its tab hides it until hover (16 Nov, Alex: the audit;
    Lifestyle, supplements and Invoices, Settings' Plans and the Library's cards never showed one on an iPad).
    Each selector one class past its tab's own hiding rule, so file order never decides it. */
-@media (any-hover: none) {
+@media (any-hover: none) { html:not([data-mouse]) {
   .rd.rls .rls-row .trn-row-more.trn-row-more, .rd.rst .rst-plan .trn-row-more.trn-row-more,
   .rd.lbx .lbx-tile-more.lbx-tile-more, .rd.rnt .rn-day .rd-row-more > .trn-row-more.trn-row-more { opacity: 1; }
-}
+} }
 
 /* A demo hidden from this client (6 Oct): the dot stays, greyed, so the demo is known to be there. */
 .rd-demo.off { background: none; box-shadow: inset 0 0 0 1px #E1E5EB; color: #c3c9d2; }
@@ -1445,7 +1445,7 @@ span.rd-demo { cursor: default; }
    can't be clicked. Always there on a touch screen. */
 .rd-todo-done { opacity: 0; }
 .rd-todo-row:hover .rd-todo-done, .rd-todo-row:focus-within .rd-todo-done { opacity: 1; }
-@media (any-hover: none) { .rd-todo-done { opacity: 1; } }
+@media (any-hover: none) { html:not([data-mouse]) { .rd-todo-done { opacity: 1; } } }
 /* The progress pop-up keeps one height across its windows (4 Nov, Alex): the room of a log row or the fold
    kept empty where this window has none and another offered one does. */
 
