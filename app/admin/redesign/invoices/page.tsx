@@ -34,8 +34,10 @@ export default async function InvoicesRedesignPage({ searchParams }: { searchPar
   const params = await searchParams;
   const { client, firstName } = t.time("pickClient", () => pickClient(coach.id, params.client));
   t.client(client?.id);
-  t.time("presence", () => touchPresence(coach, client ? `${firstName} · Invoices` : "Clients"));
+  // Where the coach is (the presence board) and Home's look are the visit's, written once the page is on screen
+  // (visitClient from RedesignShell, 22 Nov): a rail hover prefetches this page, a render no visit can be told from.
   if (!client) {
+    t.time("presence", () => touchPresence(coach, "Clients"));
     return t.end(<NoClients />);
   }
   // The chat first (Step 5, app/lib/chat/rows.ts): the coach's view for the rail and the dots, the client's thread.
@@ -61,6 +63,7 @@ export default async function InvoicesRedesignPage({ searchParams }: { searchPar
       clientPhoto={bits.photo}
       dots={t.time("dots", () => loadDots(client.id, chat.coach, food, ck, sr))}
       initialTab={tabFromParams(params.tab, "invoices")}
+      visitRoute="invoices"
       home={t.time("home", () => loadHome(client.id, chat, food, ck, sr))}
       training={t.time("training", () => loadTraining(coach.id, client.id, params, chat.thread, ck, sr))}
       nutrition={t.time("nutrition", () => loadNutrition(client.id, params, chat.thread, food, sr))}

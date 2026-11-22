@@ -27,6 +27,8 @@ import { TodoContext } from "./TodoStrip";
 import { useCloseOnEmptyClick } from "./useCloseOnEmptyClick";
 import { PopupTabZone, PopupWhoProvider } from "./PopupWho";
 import { SHOW_TAB_EVENT } from "./followLink";
+import { visitClient, type VisitRoute } from "./visit";
+import { forgetPrefetches } from "./RedesignRail";
 
 // The redesign drafts on one page: Training, Nutrition and Measurements all
 // loaded, one shown at a time, beside the rail (drawn by the layout since
@@ -56,6 +58,9 @@ type ChatView = "own" | "list" | "other";
 const CHAT_KEPT_KEY = "norcoach:chat-dock";
 const CHAT_LIST_POLL_MS = 15000;
 const firstOf = (name: string) => name.split(" ")[0];
+/** A re-read of the same page (a save's refresh) sends the visit again at most this often: the look moves on a minute at
+ *  a time anyway (noteHomeLooked), and the presence board's place is the same. */
+const VISIT_AGAIN_MS = 60_000;
 
 // Every tab stays mounted (what was typed on one survives a switch), so a
 // page read used to redraw all eight, hidden ones too, after any save: a
@@ -85,6 +90,9 @@ export type RedesignShellProps = {
   /** The client's face, for the pop-ups' head (PopupWho). The rail carried it before 22 Nov (railBits). */
   clientPhoto: string | null;
   initialTab: RedesignTab;
+  /** The route this page is (home/page.tsx, training/page.tsx…), whatever ?tab= shows: the visit's name on the presence
+   *  board, as each page's own render said it before 22 Nov (visitClient). */
+  visitRoute: VisitRoute;
   home: DraftHome;
   training: { draft: DraftProgram | null; library: Library; cardioMoves?: CardioMove[]; videos?: { id: number; path: string; name: string; at: string; bytes: number | null }[] };
   nutrition: DraftNutrition;
@@ -98,11 +106,32 @@ export type RedesignShellProps = {
   dots: DotTrail;
 };
 
-export default function RedesignShell({ clientId, clientName, firstName, units, clientPhoto, initialTab, home, training, nutrition, measurements, pictures, meetings, plan, messages, invoices, dots }: RedesignShellProps) {
+export default function RedesignShell({ clientId, clientName, firstName, units, clientPhoto, initialTab, visitRoute, home, training, nutrition, measurements, pictures, meetings, plan, messages, invoices, dots }: RedesignShellProps) {
   const pageTab = (t: RedesignTab): PageTab => (t === "messages" ? "home" : t);
   const [tab, setTab] = useState<PageTab>(pageTab(initialTab));
   // The client this page shows, for the rail to mark (a client picked by default has no ?client= to read; RailFrame).
   useReportHere(clientId);
+  // The visit (22 Nov): where the coach is (the presence board) and the look Home's Since counts from, written once the
+  // page is really on screen, since a rail hover now prefetches it (a render no visit can be told from). Again for another
+  // client or route, and on a read of the page from the server (a new `home`, as a save's refresh brings) once a minute
+  // has gone (VISIT_AGAIN_MS); a tab switched by the address alone (show) is the same page, as it always was. A plain
+  // POST (visit.ts), outside the router's queue of actions and refreshes, so it never holds a save. The ref outlives
+  // strict mode's second run of the effect, so that is one visit.
+  const sent = useRef<{ key: string; at: number; home: DraftHome } | null>(null);
+  useEffect(() => {
+    const key = `${clientId}:${visitRoute}`;
+    const now = Date.now();
+    const was = sent.current;
+    // The same page read again (a refresh or a revalidating save): the cache the rail's prefetch times speak of was
+    // emptied, so they are forgotten and the next hover records a real fetch (ViewLink's read on landing). Never on mount.
+    if (was && was.key === key && was.home !== home) forgetPrefetches();
+    if (was && was.key === key && now - was.at < VISIT_AGAIN_MS) {
+      sent.current = { ...was, home };
+      return;
+    }
+    sent.current = { key, at: now, home };
+    visitClient(clientId, visitRoute);
+  }, [clientId, visitRoute, home]);
   // The chat sliding in from the right (ChatPanel.tsx): mounted on first
   // use, then kept, so it slides both ways; `opened` counts the openings,
   // so each one sets what the reply is about (and the message to land on).

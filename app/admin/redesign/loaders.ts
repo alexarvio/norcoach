@@ -17,7 +17,7 @@ import { getUserForClient, isOwner } from "../../lib/auth";
 import { mailConfigured } from "../../lib/mail";
 import { clerkOn } from "../../lib/clerk";
 import { getCoachSettings, getInvoiceView, listInvoices, listInvoiceTemplates, invoiceRepeatViews, runRecurringInvoices, type FeedEvent, type HomeAction, type InvoiceView, listCoachVideos, exerciseClientCounts, listMeetings, activityWords, callThing, callOver, callToComplete } from "../../lib/queries";
-import { getHomeBoard, noteHomeLooked, type HomeBoard } from "../../lib/homeBoard";
+import { getHomeBoard, type HomeBoard } from "../../lib/homeBoard";
 import { activityMarkOf } from "../../lib/activityMark";
 import { SERVER_TZ, zonedToUtc } from "../../lib/timezones";
 import { hasBankDetails, invoicingFor } from "../../lib/countries";
@@ -1246,9 +1246,9 @@ const HOME_KINDS: ((e: { category: string; tab: string }) => boolean)[] = [
 ];
 
 export function loadHome(clientId: number, chat: { coach: ChatCoachView; thread: ChatThread }, food: FoodRows, ck: CheckInRows, sr: SetRows): DraftHome {
-  // The look is noted first: a new visit moves the last look into prev, so "Since" counts from the coach's previous visit
-  // on this first render too, and stays put on every re-read within the visit.
-  sub("look", () => noteHomeLooked(clientId));
+  // The look is no longer noted here (22 Nov): a rail hover prefetches this page in full, a render no visit can be told
+  // from, so the look is written once the page is on screen (visitClient, RedesignShell). The board's Since reads
+  // the look this showing would make (sinceOf), so it counts from the coach's previous visit as before.
   const board = sub("board", () => getHomeBoard(clientId, chat.thread, food, ck, sr));
   // The coach's feed, built once for the panel and Activity (23 Oct, speed: it was built twice), when the panel asks
   // for it, as it did.
