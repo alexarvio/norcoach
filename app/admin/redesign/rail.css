@@ -266,6 +266,16 @@ body[style*="--brand"] .cc-hl.cc-hl .ad-btn-primary:not(:disabled):focus-visible
 .rr .rr-dark .rr-navrow.active .rr-badge { color: #b8471f; }
 .rr .rr-dark .rd-due { background: #f2a888; }
 .rr-dark .rr-nav { padding-bottom: 0; }
-/* Settings opens from the coach at the top now, so its list starts under Clients, not at the foot. */
-.rr-paper > .rr-settings { justify-content: flex-start; }
-.rr-paper > .rr-settings.open { padding-top: 4px; }
+/* Settings folds open on the dark right under the coach, and the views fold away while it is open (22 Nov, Alex: "sure
+   lets try"): the shared fold, rows 0fr to 1fr over 340ms on cubic-bezier(.22, 1, .36, 1), what is in it fading in. */
+.rr-fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.34s cubic-bezier(0.22, 1, 0.36, 1); }
+.rr-fold.open { grid-template-rows: 1fr; }
+.rr-fold-in { min-height: 0; overflow: hidden; opacity: 0; transition: opacity 0.22s ease; }
+.rr-fold.open > .rr-fold-in { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .rr-fold, .rr-fold-in { transition: none; } }
+.rr-dark .rr-settings { flex: none; display: flex; flex-direction: column; justify-content: flex-start; gap: 2px; padding: 0 10px; overflow: visible; opacity: 1; }
+.rr-dark .rr-settings > .rr-label { margin: 2px 12px 4px; color: rgba(255, 255, 255, 0.55); }
+.rr .rr-dark .rr-navrow.rr-signout { margin-top: 6px; color: #f4a49a; }
+.rr .rr-dark .rr-navrow.rr-signout:hover { color: #ffb8ae; }
+/* The clients no longer fold: their head is a plain head. */
+.rr-paper > .rr-clients-head { cursor: default; }

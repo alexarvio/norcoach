@@ -225,6 +225,39 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
           </small>
         </span>
       </button>
+      {/* Settings folds open right under the coach, on the dark, and the views fold away meanwhile, so the dark keeps its
+          height and the clients never move (22 Nov, Alex: "settings appear where they use to so not from the chevron";
+          "sure lets try"). The shared fold: rows 0fr to 1fr over 340ms on the fold's curve. */}
+      <div className={`rr-fold${settingsOpen ? " open" : ""}`} aria-hidden={!settingsOpen} inert={!settingsOpen}>
+        <div className="rr-fold-in">
+          <div className="rr-settings">
+            <span className="rr-label">Settings</span>
+            <nav className="rr-settings-list" aria-label="Settings">
+              {settingsFor(rail.isOwner, rail.billingOn).map(({ key, label, href, Icon }) => (
+                <Link
+                  key={key}
+                  href={href}
+                  className={`rr-navrow${openSetting === key ? " active" : ""}`}
+                  aria-current={openSetting === key ? "location" : undefined}
+                  onClick={(e) => {
+                    // On the page already: the section opens there (the open one folds); a new tab or window goes the usual way.
+                    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                    if (goToSetting(key)) e.preventDefault();
+                  }}
+                >
+                  <Icon />
+                  <span>{label}</span>
+                  {/* The company's line the coach hasn't read: a rust dot. */}
+                  {key === "support" && rail.supportUnread > 0 && <i className="rd-due" role="img" aria-label="Unread" title="Unread" />}
+                </Link>
+              ))}
+            </nav>
+            <button type="button" className="rr-navrow rr-signout" onClick={() => logoutAction()}>
+              <span>Sign out</span>
+            </button>
+          </div>
+        </div>
+      </div>
       {/* What they pay Norcoach (28 Oct, Alex; lib/billing.ts): a payment that failed, then read-only, as a fact and its
           way to the fix (Settings, Billing). Nothing while it is paid. */}
       {(rail.billing.state === "grace" || rail.billing.state === "readonly") && (
@@ -234,6 +267,8 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
         </Link>
       )}
 
+      <div className={`rr-fold${settingsOpen ? "" : " open"}`} aria-hidden={settingsOpen} inert={settingsOpen}>
+      <div className="rr-fold-in">
       <nav className="rr-nav" aria-label="Views">
         {/* The cross-client views are not redrawn yet: they open where they always were. */}
         {VIEWS.map(({ key, label, Icon }) => {
@@ -269,14 +304,15 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
         )}
       </nav>
       </div>
+      </div>
+      </div>
 
       <div className="rr-paper">
-      <button type="button" className={`rr-clients-head${settingsOpen ? " folded" : ""}`} onClick={() => setSettingsOpen(false)} aria-expanded={!settingsOpen} disabled={!settingsOpen}>
+      <div className="rr-clients-head">
         <span className="rr-label">Clients</span>
         <span className="rr-count">{q || filter === "needs" ? `${shown.length} of ${rail.clients.length}` : rail.clients.length}</span>
-        {settingsOpen && <Fold open={false} />}
-      </button>
-      <div className={`rr-clients${settingsOpen ? " folded" : ""}`} aria-hidden={settingsOpen} inert={settingsOpen}>
+      </div>
+      <div className="rr-clients">
         <label className="rr-search">
           <SearchIcon />
           <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search clients" aria-label="Search clients" autoComplete="off" />
@@ -348,32 +384,6 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
         </button>
       </div>
 
-      <div className={`rr-settings${settingsOpen ? " open" : ""}`} aria-hidden={!settingsOpen} inert={!settingsOpen}>
-        <span className="rr-label">Settings</span>
-        <nav className="rr-settings-list" aria-label="Settings">
-          {settingsFor(rail.isOwner, rail.billingOn).map(({ key, label, href, Icon }) => (
-            <Link
-              key={key}
-              href={href}
-              className={`rr-navrow${openSetting === key ? " active" : ""}`}
-              aria-current={openSetting === key ? "location" : undefined}
-              onClick={(e) => {
-                // On the page already: the section opens there (the open one folds); a new tab or window goes the usual way.
-                if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-                if (goToSetting(key)) e.preventDefault();
-              }}
-            >
-              <Icon />
-              <span>{label}</span>
-              {/* The company's line the coach hasn't read: a rust dot. */}
-              {key === "support" && rail.supportUnread > 0 && <i className="rd-due" role="img" aria-label="Unread" title="Unread" />}
-            </Link>
-          ))}
-        </nav>
-        <button type="button" className="rr-navrow rr-signout" onClick={() => logoutAction()}>
-          <span>Sign out</span>
-        </button>
-      </div>
       </div>
 
       {touring && <RailTour />}
