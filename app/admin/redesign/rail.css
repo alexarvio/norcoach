@@ -286,12 +286,9 @@ body[style*="--brand"] .cc-hl.cc-hl .ad-btn-primary:not(:disabled):focus-visible
 .rr-paper > .rr-clients-head { cursor: default; }
 /* The coach row is a link to their Profile now: no underline. */
 .rr-coach, .rr-coach:hover { text-decoration: none; }
-/* The coach's logo behind the page stays in sight with the chat open (22 Nov, Alex: "have the logo in the background of
-   the admin panel"; the panel, 460px, covered most of it): it moves left of the panel and a touch smaller, on the fold's
-   curve, and back as the chat closes. */
-.rd-frame > .rd-page::before { transition: right 0.34s cubic-bezier(0.22, 1, 0.36, 1), width 0.34s cubic-bezier(0.22, 1, 0.36, 1); }
-.rd-frame[data-chat="open"] > .rd-page::before { right: calc(460px + 3vw); width: min(620px, 40vw); }
-@media (prefers-reduced-motion: reduce) { .rd-frame > .rd-page::before { transition: none; } }
 /* The coach's own logo behind the page a touch stronger than the star (22 Nov, Alex: "can i have the color intensity of
    this logo a bit higher"). */
 .has-coach-logo .rd-frame > .rd-page::before { opacity: 0.075; }
+/* Where grey marked the client you are on, the coach's colour toned down to the same quietness (22 Nov, Alex: "have the
+   greyed out also in the same color but tone it down so it stays greyed out"); none set, the grey as before. */
+body[style*="--brand"] .rr-row.active, body[style*="--brand"] .rr-row.active:hover { background: color-mix(in srgb, var(--brand) 9%, #fff); }
