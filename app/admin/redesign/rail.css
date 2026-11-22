@@ -292,3 +292,6 @@ body[style*="--brand"] .cc-hl.cc-hl .ad-btn-primary:not(:disabled):focus-visible
 .rd-frame > .rd-page::before { transition: right 0.34s cubic-bezier(0.22, 1, 0.36, 1), width 0.34s cubic-bezier(0.22, 1, 0.36, 1); }
 .rd-frame[data-chat="open"] > .rd-page::before { right: calc(460px + 3vw); width: min(620px, 40vw); }
 @media (prefers-reduced-motion: reduce) { .rd-frame > .rd-page::before { transition: none; } }
+/* The coach's own logo behind the page a touch stronger than the star (22 Nov, Alex: "can i have the color intensity of
+   this logo a bit higher"). */
+.has-coach-logo .rd-frame > .rd-page::before { opacity: 0.075; }
