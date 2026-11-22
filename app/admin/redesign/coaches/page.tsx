@@ -2,15 +2,14 @@ import { notFound } from "next/navigation";
 import { isOwner, requireCoach } from "../../../lib/auth";
 import { getCoachProfileView, getCoachSettings, listCoachAccounts, listCoachEmails } from "../../../lib/queries";
 import { ensureJoinCode } from "../../../lib/joinRequests";
-import { fetchCoachChat, fetchCoachPageChat } from "../../../lib/chat/rows";
+import { fetchChatDock, fetchCoachChat } from "../../../lib/chat/rows";
 import { fetchCoachFood } from "../../../lib/food/rows";
-import { fetchCoachCheckIns, fetchEveryCheckIn } from "../../../lib/checkins/rows";
-import { fetchCoachSets, fetchEverySet } from "../../../lib/sets/rows";
+import { fetchEveryCheckIn } from "../../../lib/checkins/rows";
+import { fetchEverySet } from "../../../lib/sets/rows";
 import { listSupportThreads } from "../../../lib/support";
 import { billingOn, billingView } from "../../../lib/billing";
 import { startTiming } from "../../../lib/timing";
-import { loadChatDock, loadRail } from "../loaders";
-import RedesignRail from "../RedesignRail";
+import { loadChatDock } from "../loaders";
 import ChatDock from "../ChatDock";
 import CoachesDraft, { type CoachRow } from "./CoachesDraft";
 import "../messages/messages.css";
@@ -34,16 +33,13 @@ export default async function CoachesPage() {
   const t = startTiming("coaches");
   const coach = await t.time("auth", () => requireCoach());
   if (!isOwner(coach)) notFound();
-  // The chat first (Step 5, app/lib/chat/rows.ts): the rail's view and the chat list's, and every coach's for their last activity.
-  const chat = await t.time("chat", () => fetchCoachPageChat(coach.id, "page.coaches"));
+  // The chat first (Step 5, app/lib/chat/rows.ts): the chat list's, and every coach's for their last activity (the rail
+  // reads its own, in the layout).
+  const chat = { dock: await t.time("chat", () => fetchChatDock(coach.id, "page.coaches")) };
   const everyCoach = await t.time("chatAll", () => fetchCoachChat(listCoachEmails().map((c) => c.id), "page.coaches.accounts"));
-  // The food diary the same (quest 8 part 1): the rail's coach, and every coach's for their last activity.
-  const food = await t.time("food", () => fetchCoachFood([coach.id], "page.coaches"));
+  // The food diary the same (quest 8 part 1): every coach's for their last activity.
   const everyCoachFood = await t.time("foodAll", () => fetchCoachFood(listCoachEmails().map((c) => c.id), "page.coaches.accounts"));
-  // The check-in figures the same (quest 9): the rail's coach, and every client for each coach's last activity.
-  const ck = await t.time("checkins", () => fetchCoachCheckIns([coach.id], "page.coaches"));
-  // The logged sets (quest 10, app/lib/sets/rows.ts), fetched first as the check-ins are.
-  const sr = await t.time("sets", () => fetchCoachSets("page.coaches", [coach.id]));
+  // The check-in figures and the logged sets (quests 9 and 10): every client for each coach's last activity.
   const everyCheckIn = await t.time("checkinsAll", () => fetchEveryCheckIn("page.coaches.accounts"));
   const everySet = await t.time("setsAll", () => fetchEverySet("page.coaches.accounts"));
   const accounts: CoachRow[] = t.time("coachAccounts", () =>
@@ -56,12 +52,11 @@ export default async function CoachesPage() {
       }),
   );
   return t.end(
-    <div className="rd-frame">
-      <RedesignRail rail={t.time("rail", () => loadRail(coach, chat.coach, food, ck, sr))} clientId={0} />
+    <>
       <ChatDock chats={t.time("chatDock", () => loadChatDock(coach, chat.dock))} />
       <div className="rd-page">
         <CoachesDraft accounts={accounts} support={t.time("supportThreads", () => listSupportThreads())} billingOn={billingOn()} />
       </div>
-    </div>
+    </>
   );
 }

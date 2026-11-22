@@ -2,12 +2,11 @@ import { requireCoach } from "../../../lib/auth";
 import { getFeedBoard, noteFeedLooked } from "../../../lib/feedBoard";
 import { headers } from "next/headers";
 import { startTiming } from "../../../lib/timing";
-import { loadChatDock, loadRail } from "../loaders";
+import { loadChatDock } from "../loaders";
 import { fetchCoachPageChat } from "../../../lib/chat/rows";
 import { fetchCoachFood } from "../../../lib/food/rows";
 import { fetchCoachCheckIns } from "../../../lib/checkins/rows";
 import { fetchCoachSets } from "../../../lib/sets/rows";
-import RedesignRail from "../RedesignRail";
 import ChatDock from "../ChatDock";
 import FeedDraft from "./FeedDraft";
 import "../messages/messages.css";
@@ -48,12 +47,11 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
   // eslint-disable-next-line react-hooks/purity -- a server render reads the clock once, on purpose: the waits in Needs you count from it, the same on the server and in the browser
   const now = Date.now();
   return t.end(
-    <div className="rd-frame">
-      <RedesignRail rail={t.time("rail", () => loadRail(coach, chat.coach, food, ck, sr))} clientId={0} />
+    <>
       <ChatDock chats={t.time("chatDock", () => loadChatDock(coach, chat.dock))} />
       <div className="rd-page">
         <FeedDraft board={board} now={now} kind={params.cat ?? null} />
       </div>
-    </div>
+    </>
   );
 }

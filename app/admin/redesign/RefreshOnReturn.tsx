@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { onRefreshFree, refreshHeld } from "./holdRefresh";
 
 // The coach coming back to the window (23 Oct, Alex): the page is read again, so a weight or a session the client
@@ -33,8 +33,15 @@ export function calm(): boolean {
 
 export default function RefreshOnReturn() {
   const router = useRouter();
+  // The 15s gap counts from the page's last arrival too (22 Nov): mounted once with the rail now (RailFrame), so a page
+  // just read on a move is never read again by a return within the gap, as when each page mounted its own.
+  const last = useRef(Date.now());
+  const path = usePathname();
+  const search = useSearchParams().toString();
   useEffect(() => {
-    let last = Date.now();
+    last.current = Date.now();
+  }, [path, search]);
+  useEffect(() => {
     let owed = false;
     let poll: ReturnType<typeof setInterval> | null = null;
     let soon: ReturnType<typeof setTimeout> | null = null;
@@ -50,7 +57,7 @@ export default function RefreshOnReturn() {
       }
       owed = false;
       stopPoll();
-      last = Date.now();
+      last.current = Date.now();
       void readAgain();
     };
     // Never across a deploy (16 Nov, Alex: "the admin reloads itself a lot"): a read from a newer build makes Next load
@@ -72,7 +79,7 @@ export default function RefreshOnReturn() {
       soon = setTimeout(attempt, 250);
     };
     const back = () => {
-      if (document.visibilityState !== "visible" || Date.now() - last < GAP_MS) return;
+      if (document.visibilityState !== "visible" || Date.now() - last.current < GAP_MS) return;
       owed = true;
       attempt();
     };

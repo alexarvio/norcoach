@@ -1,12 +1,12 @@
 import { requireCoach } from "../../../lib/auth";
 import { touchPresence } from "../../../lib/presence";
 import { startTiming } from "../../../lib/timing";
-import { fetchClientTabChat, fetchCoachChat } from "../../../lib/chat/rows";
-import { fetchClientTabFood, fetchCoachFood } from "../../../lib/food/rows";
-import { fetchClientTabCheckIns, fetchCoachCheckIns } from "../../../lib/checkins/rows";
-import { fetchClientTabSets, fetchCoachSets } from "../../../lib/sets/rows";
+import { fetchClientTabChat } from "../../../lib/chat/rows";
+import { fetchClientTabFood } from "../../../lib/food/rows";
+import { fetchClientTabCheckIns } from "../../../lib/checkins/rows";
+import { fetchClientTabSets } from "../../../lib/sets/rows";
 import { dropUnusedAutoWeightPg } from "../../../lib/queries";
-import { loadHome, loadMeasurements, loadMeetings, loadMessages, loadNutrition, loadPictures, fetchPictureNotes, loadPlan, loadRail, loadTraining, pickClient, loadInvoices, loadDots } from "../loaders";
+import { loadHome, loadMeasurements, loadMeetings, loadMessages, loadNutrition, loadPictures, fetchPictureNotes, loadPlan, railBits, loadTraining, pickClient, loadInvoices, loadDots } from "../loaders";
 import RedesignShell from "../RedesignShell";
 import { tabFromParams } from "../tabs";
 import NoClients from "../NoClients";
@@ -37,11 +37,7 @@ export default async function TrainingRedesignPage({ searchParams }: { searchPar
   t.client(client?.id);
   t.time("presence", () => touchPresence(coach, client ? `${firstName} · Training` : "Clients"));
   if (!client) {
-    const noClientsChat = await t.time("chat", () => fetchCoachChat([coach.id], "page.noClients.training"));
-    const noClientsFood = await t.time("food", () => fetchCoachFood([coach.id], "page.noClients.training"));
-    const noClientsCheckIns = await t.time("checkins", () => fetchCoachCheckIns([coach.id], "page.noClients.training"));
-    const noClientsSets = await t.time("sets", () => fetchCoachSets("page.noClients.training", [coach.id]));
-    return t.end(<NoClients rail={t.time("rail", () => loadRail(coach, noClientsChat, noClientsFood, noClientsCheckIns, noClientsSets))} />);
+    return t.end(<NoClients />);
   }
   // The chat first (Step 5, app/lib/chat/rows.ts): the coach's view for the rail and the dots, the client's thread.
   const chat = await t.time("chat", () => fetchClientTabChat(coach.id, client.id, "page.tab.training"));
@@ -55,12 +51,15 @@ export default async function TrainingRedesignPage({ searchParams }: { searchPar
   const ck = await t.time("checkins", () => fetchClientTabCheckIns(coach.id, client.id, "page.tab.training"));
   // The logged sets (quest 10, app/lib/sets/rows.ts), fetched first as the check-ins are.
   const sr = await t.time("sets", () => fetchClientTabSets("page.tab.training", coach.id, client.id));
+  // What the shell drew from the rail (22 Nov, the rail drawn once by the layout): the coach's unit and the client's face.
+  const bits = t.time("railBits", () => railBits(coach.id, client.id));
   return t.end(
     <RedesignShell
       clientId={client.id}
       clientName={client.name ?? "Client"}
       firstName={firstName}
-      rail={t.time("rail", () => loadRail(coach, chat.coach, food, ck, sr))}
+      units={bits.units}
+      clientPhoto={bits.photo}
       dots={t.time("dots", () => loadDots(client.id, chat.coach, food, ck, sr))}
       initialTab={tabFromParams(params.tab, "training")}
       home={t.time("home", () => loadHome(client.id, chat, food, ck, sr))}

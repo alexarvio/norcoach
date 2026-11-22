@@ -49,8 +49,8 @@ const COACHES = "/admin/redesign/coaches";
 const SETTINGS_HREF = "/admin/redesign/settings";
 
 // A view as near instant as Next allows (22 Nov, Alex: "I go to feed, I go to phases, and then maybe I go to settings, it
-// takes maybe 0.5 seconds… as instant as possible"). The views are dynamic pages with no loading.js (the rail is drawn by
-// each page, so a loading boundary would blank it), and Next prefetches nothing of such a page by default
+// takes maybe 0.5 seconds… as instant as possible"). The views are dynamic pages; since 22 Nov the rail is the layout's
+// (RailFrame) and each view's loading.js draws its outline at once, and Next prefetches little of such a page by default
 // (node_modules/next/dist/docs/01-app/02-guides/prefetching.md). A view row the mouse rests on for a moment is
 // prefetched in full (`prefetch={true}`, the docs' "Hover-triggered prefetch"), so the click shows a page already in
 // the browser. Never on viewport entry: that would draw all seven heavy pages on the server for every page, again after
@@ -134,7 +134,7 @@ let keptListTop = 0;
 let keptFilter: "all" | "needs" = "all";
 
 
-export default function RedesignRail({ rail, clientId, settings = false }: { rail: RailData; clientId: number; /** On the Settings page: the rail opens on Settings and marks the section open. */ settings?: boolean }) {
+export default function RedesignRail({ rail, clientId, settings = false, onArrivalRead }: { rail: RailData; clientId: number; /** On the Settings page: the rail opens on Settings and marks the section open. */ settings?: boolean; /** Told when the read on landing (below) will read the page and the layout again, so the frame leaves its own read of this move out (RailFrame). */ onArrivalRead?: () => void }) {
   // This browser's timezone, for the server: meetings read in it (lib/viewZone.ts).
   // New or changed (a trip): the page is drawn again in it.
   const router = useRouter();
@@ -156,6 +156,8 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
     const due = readOnArrival;
     readOnArrival = null;
     if (!due || path !== due) return;
+    // The refresh reads the layout's rail again too: the frame's own read of this move would be a second one.
+    onArrivalRead?.();
     let done = false;
     let unsubscribe: (() => void) | null = null;
     const read = async () => {
@@ -208,9 +210,9 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
       done = true;
       quiet();
     };
-    // On mount alone: the rail is drawn afresh by each page, so this runs once a view lands.
+    // Once a view lands: the rail is drawn once by the layout now (22 Nov, RailFrame) and stays, so each new address.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [path]);
   // Settings is a view of its own now, a row under the views (22 Nov, Alex): nothing folds in the rail.
   const settingsOpen = false;
   const onSettings = settings || !!path?.startsWith(SETTINGS_HREF);
@@ -257,6 +259,18 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
       window.removeEventListener("popstate", stop);
     };
   }, [goingTo]);
+  // A new address lets go of both (22 Nov): the rail stays mounted from page to page now (RailFrame), so what an
+  // unmount used to clear is cleared here, and coming back to the page a click left never marks that click again.
+  const [seenAddress, setSeenAddress] = useState(here);
+  if (seenAddress !== here) {
+    setSeenAddress(here);
+    setGoingTo(null);
+    setPending(null);
+    // The search and a client's dropped-open screens start afresh on the new page, as a new rail did; All | Needs you
+    // is kept (keptFilter), as it always was.
+    setQuery("");
+    setOpenId(null);
+  }
   // The row marked: the one clicked while it loads, else the page you are on.
   const viewOn = (href: string, isHere: boolean) => (pendingView ? pendingView === href : isHere);
   const goView = (href: string, isHere: boolean) => (e: MouseEvent) => {
@@ -269,10 +283,14 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
   // top first. The client you are on is kept in view, brought just inside the list's edge when it would be hidden (a
   // client opened from a link, the Feed, the chat); nothing moves when it shows already.
   const listRef = useRef<HTMLDivElement>(null);
+  const placed = useRef(false);
   useLayoutEffect(() => {
     const el = listRef.current;
     if (!el || el.clientHeight === 0) return; // folded under Settings: the top it is kept at waits for it to unfold
-    el.scrollTop = keptListTop;
+    // The kept top once, as the rail mounts; after that the list stays where it is (the rail is no longer drawn again
+    // by each page, 22 Nov) and only the new client is brought into view.
+    if (!placed.current) el.scrollTop = keptListTop;
+    placed.current = true;
     const row = el.querySelector<HTMLElement>(".rr-row.active");
     if (!row) return;
     const box = el.getBoundingClientRect();
@@ -280,8 +298,8 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
     if (at.top < box.top) el.scrollTop += at.top - box.top;
     else if (at.bottom > box.bottom) el.scrollTop += at.bottom - box.bottom;
     keptListTop = el.scrollTop;
-    // On mount alone: within a page the list scrolls only under the coach's hand.
-  }, []);
+    // On mount and when the page's client changes: within a page the list scrolls only under the coach's hand.
+  }, [clientId]);
   // Settings folded back to Clients: the list grows out of nothing over .32s, so its top is held to the one kept, frame
   // by frame, until it has its room (at once with reduced motion, where it doesn't ease).
   const wasSettings = useRef(settingsOpen);
