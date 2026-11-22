@@ -22279,21 +22279,38 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
    #1c1c1e) to the card's edges, their logo faint in it (whole when it is their own), the title white; the paper rises
    over its foot with 20px corners and holds the rest as before. `.dlh-who` (PopupWho.tsx) puts the client's face and
    `{Name} | {what}` over the title where the pop-up is about one client. */
-.dlh.dlh > .dlh-head:first-child, .npd.npd > .npd-head:first-child { position: relative; flex: none; overflow: hidden; align-items: flex-start; margin: -20px -20px 0; padding: 18px 20px 38px; border-radius: 20px 20px 0 0; background: var(--brand, #1c1c1e); color: #fff; }
-.dlh.dlh > .dlh-head:first-child::before, .npd.npd > .npd-head:first-child::before { content: ""; position: absolute; right: -40px; top: -34px; width: 170px; height: 164px; background: #fff; opacity: 0.06; pointer-events: none; -webkit-mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; }
-.has-coach-logo .dlh.dlh > .dlh-head:first-child::before, .has-coach-logo .npd.npd > .npd-head:first-child::before { right: 54px; top: 10px; width: 76px; height: calc(100% - 44px); opacity: 0.12; }
-.dlh.dlh > .dlh-head:first-child::after, .npd.npd > .npd-head:first-child::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 20px; border-radius: 20px 20px 0 0; background: #fff; pointer-events: none; }
-.dlh.dlh > .dlh-head:first-child > *, .npd.npd > .npd-head:first-child > * { position: relative; z-index: 1; }
-.dlh.dlh > .dlh-head:first-child .dlh-title, .npd.npd > .npd-head:first-child .npd-title { color: #fff; }
-.dlh.dlh > .dlh-head:first-child .dlh-x, .npd.npd > .npd-head:first-child .npd-x { color: rgba(255, 255, 255, 0.72); }
-.dlh.dlh > .dlh-head:first-child .dlh-x:hover, .npd.npd > .npd-head:first-child .npd-x:hover, .npd.npd > .npd-head:first-child .npd-x:focus-visible { background: rgba(255, 255, 255, 0.12); color: #fff; }
-.npd.npd > .npd-head:first-child .npd-open { color: rgba(255, 255, 255, 0.8); }
-.npd.npd > .npd-head:first-child .npd-open:hover, .npd.npd > .npd-head:first-child .npd-open:focus-visible { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.dlh.dlh > .dlh-head:first-child, .npd.npd > .npd-head:first-child, .pdh.pdh > .pdh-head:first-child, .avh.avh > .avh-head:first-child, .sbh.sbh > .sbh-head:first-child, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child { position: relative; flex: none; overflow: hidden; align-items: flex-start; margin: -20px -20px 0; padding: 18px 20px 38px; border-radius: 20px 20px 0 0; /* The dark stops 2px short of the foot, so no faint seam shows under the lip on a 1.25× or 1.5× screen. */ background: linear-gradient(var(--brand, #1c1c1e), var(--brand, #1c1c1e)) top / 100% calc(100% - 2px) no-repeat; color: #fff; }
+.dlh.dlh > .dlh-head:first-child::before, .npd.npd > .npd-head:first-child::before, .pdh.pdh > .pdh-head:first-child::before, .avh.avh > .avh-head:first-child::before, .sbh.sbh > .sbh-head:first-child::before, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child::before { content: ""; position: absolute; right: -40px; top: -34px; width: 170px; height: 164px; background: #fff; opacity: 0.06; pointer-events: none; -webkit-mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; }
+.has-coach-logo .dlh.dlh > .dlh-head:first-child::before, .has-coach-logo .npd.npd > .npd-head:first-child::before, .has-coach-logo .pdh.pdh > .pdh-head:first-child::before, .has-coach-logo .avh.avh > .avh-head:first-child::before, .has-coach-logo .sbh.sbh > .sbh-head:first-child::before, .has-coach-logo .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child::before { right: 54px; top: 10px; width: 76px; height: calc(100% - 44px); opacity: 0.12; }
+/* No hairline ring round a card with the dark head (22 Nov, Alex: "i also do not want the white outline on the black part"): the shadow alone. */
+.dlh.dlh:has(> .dlh-head:first-child), .npd.npd:has(> .npd-head:first-child), .pdh.pdh:has(> .pdh-head:first-child), .avh.avh:has(> .avh-head:first-child), .sbh.sbh:has(> .sbh-head:first-child), .cgh.cgh:has(> .cgh-body:first-child > .cgh-head:first-child) { box-shadow: 0 30px 60px -24px rgba(16, 24, 40, 0.35); }
+.dlh.dlh > .dlh-head:first-child::after, .npd.npd > .npd-head:first-child::after, .pdh.pdh > .pdh-head:first-child::after, .avh.avh > .avh-head:first-child::after, .sbh.sbh > .sbh-head:first-child::after, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 20px; border-radius: 20px 20px 0 0; background: #fff; pointer-events: none; }
+.dlh.dlh > .dlh-head:first-child > *, .npd.npd > .npd-head:first-child > *, .pdh.pdh > .pdh-head:first-child > *, .avh.avh > .avh-head:first-child > *, .sbh.sbh > .sbh-head:first-child > *, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child > * { position: relative; z-index: 1; }
+.dlh.dlh > .dlh-head:first-child .dlh-title, .npd.npd > .npd-head:first-child .npd-title, .pdh.pdh > .pdh-head:first-child .pdh-title, .avh.avh > .avh-head:first-child .avh-title, .sbh.sbh > .sbh-head:first-child .sbh-title, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child .cgh-title { color: #fff; }
+.dlh.dlh > .dlh-head:first-child .dlh-x, .npd.npd > .npd-head:first-child .npd-x, .pdh.pdh > .pdh-head:first-child .pdh-x, .avh.avh > .avh-head:first-child .avh-x, .sbh.sbh > .sbh-head:first-child .sbh-x, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child .cgh-x { color: rgba(255, 255, 255, 0.72); }
+.dlh.dlh > .dlh-head:first-child .dlh-x:hover, .npd.npd > .npd-head:first-child .npd-x:hover, .pdh.pdh > .pdh-head:first-child .pdh-x:hover, .npd.npd > .npd-head:first-child .npd-x:focus-visible, .pdh.pdh > .pdh-head:first-child .pdh-x:focus-visible, .avh.avh > .avh-head:first-child .avh-x:hover, .avh.avh > .avh-head:first-child .avh-x:focus-visible, .sbh.sbh > .sbh-head:first-child .sbh-x:hover, .sbh.sbh > .sbh-head:first-child .sbh-x:focus-visible, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child .cgh-x:hover, .cgh.cgh > .cgh-body:first-child > .cgh-head:first-child .cgh-x:focus-visible { background: rgba(255, 255, 255, 0.12); color: #fff; }
+/* A fact line kept in the dark head (Schedule's `8 weeks | 30/11 – 24/1`, a big photo's day and weigh-in): soft white, its bar too, so it reads on a brand colour. */
+.npd.npd > .npd-head:first-child .npd-meta, .dlh.dlh > .dlh-head:first-child .rp-photodlg-fact { color: rgba(255, 255, 255, 0.6); }
+.npd.npd > .npd-head:first-child .npd-meta .rd-sep, .dlh.dlh > .dlh-head:first-child .rp-photodlg-fact .rd-sep { background: rgba(255, 255, 255, 0.35); }
+/* The fact line under these heads sits on the paper, the lip's room over it (as .pdh-what). */
+.avh.avh > .avh-head:first-child + .avh-what, .sbh.sbh > .sbh-head:first-child + .sbh-what { margin-top: 0; }
+/* A card that scrolls itself keeps no scrollbar's room (Windows' classic bar narrowed the box, so the dark stopped short of
+   its right edge in a white strip): the bar hidden, the wheel and a finger still scrolling it. */
+.npd.npd.npd, .dlh.dlh.dlh.riv-new { scrollbar-width: none; }
+.npd.npd.npd::-webkit-scrollbar, .dlh.dlh.dlh.riv-new::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.npd.npd > .npd-head:first-child .npd-open, .pdh.pdh > .pdh-head:first-child .pdh-open { color: rgba(255, 255, 255, 0.8); }
+.npd.npd > .npd-head:first-child .npd-open:hover, .pdh.pdh > .pdh-head:first-child .pdh-open:hover, .npd.npd > .npd-head:first-child .npd-open:focus-visible, .pdh.pdh > .pdh-head:first-child .pdh-open:focus-visible { background: rgba(255, 255, 255, 0.12); color: #fff; }
+/* The phase Dates pop-up (PhaseDatesDialog, its own .pdh card): its ✕ sits outside the head, top right, so it is lightened there and the head keeps its room. */
+.pdh.pdh > .pdh-head:first-child { padding-right: 56px; }
+.pdh.pdh:has(> .pdh-head:first-child) > .pdh-x { z-index: 2; color: rgba(255, 255, 255, 0.72); }
+.pdh.pdh:has(> .pdh-head:first-child) > .pdh-x:hover, .pdh.pdh:has(> .pdh-head:first-child) > .pdh-x:focus-visible { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.pdh.pdh > .pdh-head:first-child + .pdh-what { margin-top: 0; }
 /* The client and what it is about, over the title (PopupWho.tsx). */
 .dlh-whohead { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .dlh-whohead > div { min-width: 0; }
-.dlh-whoface { position: relative; flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: #fff; color: #141a24; font-size: 16px; font-weight: 600; }
-.dlh-whoface img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.dlh-whoface { position: relative; flex: none; overflow: hidden; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: #fff; color: #141a24; font-size: 16px; font-weight: 600; }
+/* Laid over the circle, never sized by the photo: a portrait picture in a grid row grew it into an oval (22 Nov). */
+.dlh-whoface img { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .dlh-whoeye { display: block; overflow: hidden; margin-bottom: 3px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; text-overflow: ellipsis; white-space: nowrap; color: var(--who-c, rgba(255, 255, 255, 0.6)); }
 /* The thing itself on the paper (ConfirmThing, ConfirmParts.tsx): its name, its facts grey, what goes with it in soft rust. */
 .dlh-thing { margin: 0 0 14px; }

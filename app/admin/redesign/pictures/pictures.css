@@ -211,7 +211,7 @@ body[style*="--brand"] .rd.rp .rp-save:hover:not(:disabled) { background: color-
 
 /* ---- One photo big (portalled: not under .rd.rp): the .dlh card (head 18px/600, round ghost ✕), wider.
    Doubled classes out-rank the dialog's own utility classes. */
-.rp-photodlg.rp-photodlg { width: min(720px, 100vw - 32px); max-width: none; display: flex; flex-direction: column; gap: 12px; padding: 20px 20px 16px; border: 0; border-radius: 20px; background: #fff; box-shadow: 0 30px 60px -24px rgba(16, 24, 40, 0.35), 0 0 0 1px #e1e5eb; color: #141a24; font-family: var(--font-archivo), system-ui, sans-serif; }
+.dlh.dlh.rp-photodlg { width: min(720px, 100vw - 32px); max-width: none; display: flex; flex-direction: column; gap: 12px; padding: 20px 20px 16px; border: 0; border-radius: 20px; background: #fff; box-shadow: 0 30px 60px -24px rgba(16, 24, 40, 0.35), 0 0 0 1px #e1e5eb; color: #141a24; font-family: var(--font-archivo), system-ui, sans-serif; }
 .rp-photodlg-titles { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .rp-photodlg-fact.rp-photodlg-fact { margin: 0; font-size: 13px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; }
 .rp-photodlg .rp-label { padding-top: 4px; }

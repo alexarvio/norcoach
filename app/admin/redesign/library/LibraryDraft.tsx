@@ -476,6 +476,7 @@ export default function LibraryDraft({ data }: { data: LibraryData }) {
         {dlg?.kind === "remove" && dlgItem && (
           <ConfirmDialog
             title={`Remove the demo from ${dlgItem.name}?`}
+            thing={{ name: dlgItem.name, facts: ["Demo video", data.groups.find((g) => g.slug === dlgItem.group)?.label ?? null] }}
             description="Every client with this exercise stops seeing it."
             confirm="Remove"
             danger
@@ -489,6 +490,7 @@ export default function LibraryDraft({ data }: { data: LibraryData }) {
         {dlg?.kind === "takeout" && dlgItem && (
           <ConfirmDialog
             title={`Delete ${dlgItem.name} from the library?`}
+            thing={{ name: dlgItem.name, facts: [data.groups.find((g) => g.slug === dlgItem.group)?.label ?? "Other", dlgItem.clients ? `${dlgItem.clients} ${dlgItem.clients === 1 ? "client" : "clients"}` : null] }}
             description="Programmes that already have it keep it."
             confirm="Delete"
             danger

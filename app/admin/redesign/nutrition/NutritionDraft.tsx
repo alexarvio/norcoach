@@ -962,6 +962,7 @@ export default function NutritionDraft({
         )}
         {dlg?.kind === "removeSupp" && (
           <ConfirmDialog
+            thing={{ name: dlg.supp.name || "Supplement", facts: [dlg.supp.quantity.trim() || null, dlg.supp.timing.trim() || null] }}
             title={`Remove ${dlg.supp.name || "this supplement"} from the supplements?`}
             description={`${firstName} won’t be asked to tick it off any more.`}
             confirm="Remove"

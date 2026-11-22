@@ -145,6 +145,7 @@ export default function PlansSettings({ plans, currency, vatFact }: { plans: Pla
         {deleting && (
           <ConfirmDialog
             title={`Delete the plan “${deleting.name}”?`}
+            thing={{ name: deleting.name, facts: planFacts(deleting, currency) }}
             description="This can’t be undone."
             confirm="Delete"
             danger

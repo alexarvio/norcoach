@@ -224,6 +224,7 @@ export default function CoachesDraft({ accounts, support, billingOn = false }: {
         {removing && (
           <ConfirmDialog
             title={`Remove ${removing.name}?`}
+            thing={{ name: removing.name, facts: [removing.business || null, removing.email !== removing.name && removing.email] }}
             description="Their Norcoach account is deleted. This can’t be undone."
             confirm="Remove"
             danger
@@ -266,13 +267,13 @@ function AddCoachDialog({ onDone }: { onDone: (email: string) => void }) {
   };
   return (
     <DialogContent className="dlh rco-dlg" aria-describedby={undefined}>
+      <div className="dlh-head">
+        <PopupTitle>Add a coach</PopupTitle>
+        <DialogClose className="dlh-x" aria-label="Close">
+          ✕
+        </DialogClose>
+      </div>
       <form className="rco-form" onSubmit={submit}>
-        <div className="dlh-head">
-          <PopupTitle>Add a coach</PopupTitle>
-          <DialogClose className="dlh-x" aria-label="Close">
-            ✕
-          </DialogClose>
-        </div>
         <label className="rco-field">
           <span className="dlh-label">Email</span>
           <input
@@ -326,13 +327,13 @@ function ResetPasswordDialog({ coach, onDone }: { coach: CoachRow; onDone: () =>
   };
   return (
     <DialogContent className="dlh rco-dlg">
+      <div className="dlh-head">
+        <PopupTitle>Reset password</PopupTitle>
+        <DialogClose className="dlh-x" aria-label="Close">
+          ✕
+        </DialogClose>
+      </div>
       <form className="rco-form" onSubmit={submit}>
-        <div className="dlh-head">
-          <PopupTitle>Reset password</PopupTitle>
-          <DialogClose className="dlh-x" aria-label="Close">
-            ✕
-          </DialogClose>
-        </div>
         <DialogDescription className="dlh-what">{coach.email}</DialogDescription>
         <label className="rco-field">
           <span className="dlh-label">Temporary password</span>

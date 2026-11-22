@@ -379,7 +379,12 @@ export default function InvoicesDraft({ clientId, firstName, clientName, plan }:
       <Dialog open={stopping != null} onOpenChange={(o) => !o && setStopping(null)}>
         {stopping && (
           <ConfirmDialog
-            title={`Stop the recurring invoice “${fill(stopping.lines[0]?.description ?? "Invoice", stopping.next)}”?`}
+            thing={{
+              name: fill(stopping.lines[0]?.description ?? "Invoice", stopping.next),
+              facts: [EVERY.find((x) => x.value === stopping.every)?.long, stopping.paused ? "Paused" : `Next ${dayMonth(stopping.next)}`],
+              aside: money(stopping.total, stopping.currency),
+            }}
+            title="Stop the recurring invoice?"
             description={`${firstName} isn’t billed by it again. The invoices it already made stay.`}
             confirm="Stop"
             danger

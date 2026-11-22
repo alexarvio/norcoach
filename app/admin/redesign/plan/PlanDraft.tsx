@@ -18,7 +18,7 @@ import type { GoalTracking } from "../../../lib/goalView";
 import type { PhaseTrack } from "../../../lib/db";
 import { phaseChrome, phaseStateOf, STATE_LABEL, stateTagStyle, TRACK_ACCENT, TRACK_LABEL } from "../../phaseChrome";
 import { ConfirmDialog, DeletePhaseDialog } from "../training/TrainingDraft";
-import { ConfirmText } from "../ConfirmParts";
+import { ConfirmText, ConfirmThing } from "../ConfirmParts";
 import Picker from "../Picker";
 import DateText from "../DateText";
 import DatePick from "../DatePick";
@@ -639,6 +639,7 @@ export default function PlanDraft({ clientId, firstName, plan }: { clientId: num
         {dlg?.kind === "deletePhase" && phases.find((p) => p.id === dlg.id) && (
           <DeletePhaseDialog
             name={phases.find((p) => p.id === dlg.id)!.name}
+            facts={((p) => [TRACK_LABEL[p.track], p.openEnded ? "Indefinite" : phaseLengthLabel(p.start_week, p.end_week), p.openEnded ? `From ${fmtDay(p.start_week)}` : `${fmtDay(p.start_week)} – ${fmtDay(addDays(p.end_week, 6))}`])(phases.find((p) => p.id === dlg.id)!)}
             logged={phases.find((p) => p.id === dlg.id)!.program?.loggedWeeks.length ?? 0}
             firstName={firstName}
             onClose={close}
@@ -832,7 +833,7 @@ export function PhaseDialog({ clientId, firstName, today, thisWeek, phase, track
       going === "live"
         ? { title: `Make “${called}” live?`, what: `${firstName} sees it from today.${running ? ` “${running.name}” ends ${endsOn}.` : ""}`, go: "Make it live" }
         : going === "schedule"
-          ? { title: `Schedule “${called}”?`, what: `${firstName} sees it from ${shortDate(startWeek)}.`, go: "Schedule it" }
+          ? { title: `Schedule “${called}”?`, what: `${firstName} sees it from its first day.`, go: "Schedule it" }
           : { title: `Move “${called}” back to draft?`, what: `It becomes a draft again, and ${firstName} won’t get it.`, go: "Back to draft" };
     return (
       <DialogContent className="dlh">
@@ -842,6 +843,7 @@ export function PhaseDialog({ clientId, firstName, today, thisWeek, phase, track
             ✕
           </DialogClose>
         </div>
+        <ConfirmThing name={called} facts={[TRACK_LABEL[track], openEnded ? "Indefinite" : phaseLengthLabel(startWeek, endWeek), going === "live" ? null : openEnded ? `From ${fmtDay(startWeek)}` : `${fmtDay(startWeek)} – ${fmtDay(addDays(endWeek, 6))}`]} />
         <ConfirmText>{t.what}</ConfirmText>
         <div className="dlh-foot">
           <button type="button" className="dlh-cancel" onClick={() => setGoing(null)}>

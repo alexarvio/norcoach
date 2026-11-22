@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { dismissHomeActionAction } from "../../../lib/actions";
 import { acceptJoinRequestAction, declineJoinRequestAction } from "../../../lib/joinActions";
 import { Dialog, DialogClose, DialogContent } from "../../../components/ui/dialog";
-import { ConfirmText } from "../ConfirmParts";
+import { ConfirmText, ConfirmThing } from "../ConfirmParts";
 import { SepJoin } from "../Sep";
 import { Toaster } from "../../../components/ui/toast";
 import { CalendarIcon, ChatIcon, CheckIcon, EyeIcon, LockIcon, PencilIcon, PhaseFlagIcon, PlayIcon, PlusIcon } from "../../../components/icons";
@@ -286,6 +286,7 @@ export function NeedsYou({ needs, now, joins = [] }: { needs: NeedRow[]; now: nu
                 ✕
               </DialogClose>
             </div>
+            <ConfirmThing name={declining.name} facts={["Wants to join", declining.age != null ? String(declining.age) : null, declining.email]} />
             <ConfirmText id="decline-join-text">They can send their request to another coach.</ConfirmText>
             <div className="dlh-foot">
               <DialogClose className="dlh-cancel">Cancel</DialogClose>

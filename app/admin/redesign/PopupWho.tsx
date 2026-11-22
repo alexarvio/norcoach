@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { DialogTitle } from "../../components/ui/dialog";
 import { pic } from "../../lib/pic";
@@ -29,17 +29,39 @@ const TAB_COLOUR: Record<string, string> = {
   pictures: "#f2a888",
 };
 
+/** The client tab a pop-up was opened on: the shell keeps every tab mounted and switches them in place, the address
+ *  path staying the one it loaded on, so each tab says its own name to the pop-ups inside it (22 Nov). */
+const PopupTabContext = createContext<string | null>(null);
+export function PopupTabZone({ tab, hidden, children }: { tab: string; hidden: boolean; children: ReactNode }) {
+  return (
+    <PopupTabContext.Provider value={tab}>
+      <div hidden={hidden}>{children}</div>
+    </PopupTabContext.Provider>
+  );
+}
+
 type Who = { name: string; photo: string | null };
+/** The client the screens are about, handed down by the page that already has them (the client shell), so a pop-up
+ *  opens with its face and name drawn at once, never fetched as it opens (22 Nov, Alex: "a bit slow to open"). */
+const PopupWhoContext = createContext<(Who & { id: number }) | null>(null);
+export function PopupWhoProvider({ id, name, photo, children }: { id: number; name: string; photo: string | null; children: ReactNode }) {
+  const value = useMemo(() => ({ id, name, photo }), [id, name, photo]);
+  return <PopupWhoContext.Provider value={value}>{children}</PopupWhoContext.Provider>;
+}
 const known = new Map<number, Who | null>();
 
 function useWho(): { who: Who; tab: string | null } | null {
   const params = useSearchParams();
   const path = usePathname();
+  const zone = useContext(PopupTabContext);
+  const given = useContext(PopupWhoContext);
   const id = Number(params?.get("client"));
   const [, bump] = useState(0);
   const has = Number.isInteger(id) && id > 0;
+  const handed = given && (!has || given.id === id) ? given : null;
   useEffect(() => {
-    if (!has || known.has(id)) return;
+    // Fetched only where no page handed the client down (a screen outside the client shell).
+    if (handed || !has || known.has(id)) return;
     let alive = true;
     popupClientAction(id)
       .then((w) => {
@@ -50,11 +72,11 @@ function useWho(): { who: Who; tab: string | null } | null {
     return () => {
       alive = false;
     };
-  }, [has, id]);
-  const who = has ? known.get(id) : null;
+  }, [handed, has, id]);
+  const who = handed ?? (has ? known.get(id) : null);
   if (!who) return null;
   const seg = path?.match(/\/admin\/redesign\/([a-z]+)/)?.[1] ?? null;
-  const tab = seg === "home" ? params?.get("tab") ?? "home" : seg;
+  const tab = zone ?? params?.get("tab") ?? seg;
   return { who, tab };
 }
 

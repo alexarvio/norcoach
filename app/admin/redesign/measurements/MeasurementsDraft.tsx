@@ -8,7 +8,7 @@ import { addClientPhaseAction, applyMetricChangesAction, deletePhaseAction, depl
 import type { MessageLink } from "../../../lib/messageLinks";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
 import { Dialog, DialogContent } from "../../../components/ui/dialog";
-import { ConfirmChoice, ConfirmText } from "../ConfirmParts";
+import { ConfirmChoice, ConfirmText, ConfirmThing } from "../ConfirmParts";
 import { CalendarIcon, ChartIcon, ChatIcon, NoteIcon,ChevronDownIcon, MoreIcon, PlusIcon, TrashIcon } from "../../../components/icons";
 import type { LoggedMetric, LoggedValues } from "../../../lib/queries";
 import { ConfirmDialog, DeletePhaseDialog, MessageDialog, fmtDate, stateLabel, useClickAway } from "../training/TrainingDraft";
@@ -964,6 +964,7 @@ function RemoveMetricDialog({ metric: m, firstName, onRemove, onClose }: { metri
           ✕
         </button>
       </div>
+      <ConfirmThing name={m.name} facts={[m.last ? `Last logged ${withUnit(m.last.value, m.unit)}` : null, m.last?.when]} />
       <ConfirmText>
         {firstName} won&rsquo;t be asked for it any more.
         {logged && (agreed ? ` Their logged ${low} is deleted too. This can’t be undone.` : ` What they logged is kept.`)}
@@ -977,7 +978,6 @@ function RemoveMetricDialog({ metric: m, firstName, onRemove, onClose }: { metri
               Also delete {firstName}&rsquo;s logged {low}
             </>
           }
-          sub={<SepJoin parts={[`Last logged ${withUnit(m.last.value, m.unit)}`, m.last.when]} />}
         />
       )}
       <div className="dlh-foot">

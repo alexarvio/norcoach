@@ -11,7 +11,7 @@ import { Dialog, DialogClose, DialogContent, DialogDescription } from "../../../
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, WeightGoalIcon } from "../../../components/icons";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
 import { MonthRange } from "../MonthRange";
-import { ConfirmText } from "../ConfirmParts";
+import { ConfirmText, ConfirmThing } from "../ConfirmParts";
 import { AddCells, chromeOf, dayPercent, EmptyLane, eventIsPast, eventLanes, EventMark, eventPlace, eventState, gridFor, LANE, LaneRow, rgbOf, standingParts, Timeline, WeightGoalMark, type Category, type PlanEvent } from "./timelineParts";
 import { GOAL_COLOR, type WeightGoalView } from "../../../lib/weightGoal";
 import WeightGoalDialog from "../WeightGoalDialog";
@@ -597,6 +597,10 @@ export function EventDialog({ today, event, cats, firstName, faces, initialStart
             ✕
           </DialogClose>
         </div>
+        <ConfirmThing
+          name={named || (chromeOf(cats, event.kind).label === "Event" ? "Event" : `${chromeOf(cats, event.kind).label} event`)}
+          facts={[named ? chromeOf(cats, event.kind).label : null, event.repeat && !event.repeat.until ? `From ${dayMonth(event.start)}` : event.start === event.end ? dayMonth(event.start) : `${dayMonth(event.start)} – ${dayMonth(event.end)}`, event.repeat ? repeatWords(event.repeat, { until: false }) : null]}
+        />
         <ConfirmText>{event.repeat ? `Every day it repeats on is deleted, and ${firstName || "the client"} won’t see it on their Events any more. This can’t be undone.` : `${who} won’t see it on their Events any more. This can’t be undone.`}</ConfirmText>
         <div className="dlh-foot">
           <button type="button" className="dlh-cancel" onClick={() => setConfirming(false)} autoFocus>

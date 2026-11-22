@@ -10,7 +10,8 @@ import { addCalendarEntryAction, removeCalendarEntryAction, updateCalendarEntryA
 import { DialogContent } from "../../../components/ui/dialog";
 import { SearchIcon } from "../../../components/icons";
 import DateText from "../DateText";
-import { ConfirmText } from "../ConfirmParts";
+import { ConfirmText, ConfirmThing } from "../ConfirmParts";
+import { dayMonth } from "../../../lib/dayMonth";
 import { MonthRange } from "../MonthRange";
 import { TimePick, TIME_SLOTS } from "../TimePick";
 import { paletteOf, type Category } from "../palette";
@@ -257,6 +258,15 @@ export default function EntryDialog({ open, cats, clients, dayEntries, onDone }:
             ✕
           </button>
         </div>
+        <ConfirmThing
+          name={e.topic.trim() || cats.find((c) => c.id === (e.category ?? (e.clientId != null ? "call" : null)))?.label || "Entry"}
+          facts={[
+            e.clientId != null && e.clientName.trim() ? e.clientName.trim() : null,
+            dayMonth(open.date),
+            e.allDay ? "All day" : e.time || null,
+            e.allDay ? null : e.durationMinutes < 60 ? `${e.durationMinutes} min` : e.durationMinutes % 60 ? `${Math.floor(e.durationMinutes / 60)} h ${e.durationMinutes % 60} min` : `${e.durationMinutes / 60} h`,
+          ]}
+        />
         {callWith && <ConfirmText>{callWith} is told it’s cancelled. This can’t be undone.</ConfirmText>}
         <div className="dlh-foot">
           <button

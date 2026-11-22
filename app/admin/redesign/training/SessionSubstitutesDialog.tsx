@@ -2,7 +2,8 @@
 
 import "./substitutes.css";
 import { useMemo, useRef, useState } from "react";
-import { DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
+import { DialogContent, DialogDescription } from "../../../components/ui/dialog";
+import { PopupTitle } from "../PopupWho";
 import { createLibraryExerciseAction } from "../library/actions";
 import { newOnceKey } from "../../../lib/onceKey";
 import type { Library } from "./TrainingDraft";
@@ -125,7 +126,7 @@ export default function SessionSubstitutesDialog({
   return (
     <DialogContent className="sbh" aria-label={`Substitutes, ${row.name}`} onOpenAutoFocus={(ev) => ev.preventDefault()}>
       <div className="sbh-head">
-        <DialogTitle className="sbh-title">Substitutes</DialogTitle>
+        <PopupTitle className="sbh-title">Substitutes</PopupTitle>
         <button type="button" className="sbh-x" onClick={onClose} aria-label="Close">
           ✕
         </button>

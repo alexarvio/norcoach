@@ -4,7 +4,8 @@ import "./client-gyms.css";
 import { useEffect, useRef, useState } from "react";
 import { landOnSoon } from "../../../lib/landOn";
 import type React from "react";
-import { DialogContent, DialogTitle } from "../../../components/ui/dialog";
+import { DialogContent } from "../../../components/ui/dialog";
+import { PopupTitle } from "../PopupWho";
 import { dayMonth } from "../../../lib/dayMonth";
 import { pic } from "../../../lib/pic";
 import { SepJoin } from "../Sep";
@@ -126,7 +127,7 @@ export default function ClientGymsDialog({
     <DialogContent className="cgh" aria-describedby={undefined} aria-label={`${firstName}’s gyms`} onOpenAutoFocus={(ev) => ev.preventDefault()} onKeyDown={(ev) => ev.key === "Escape" && confirm != null && (ev.stopPropagation(), setConfirm(null))}>
       <div className="cgh-body" onClick={(ev) => !(ev.target as HTMLElement).closest(".cgh-confirm, .cgh-remove") && setConfirm(null)}>
         <div className="cgh-head">
-          <DialogTitle className="cgh-title">{firstName}’s gyms</DialogTitle>
+          <PopupTitle className="cgh-title">{firstName}’s gyms</PopupTitle>
           <button type="button" className="cgh-x" onClick={onClose} aria-label="Close">
             ✕
           </button>

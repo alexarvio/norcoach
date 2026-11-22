@@ -2,7 +2,8 @@
 
 import "./ask-video.css";
 import { useEffect, useRef, useState } from "react";
-import { DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
+import { DialogContent, DialogDescription } from "../../../components/ui/dialog";
+import { PopupTitle } from "../PopupWho";
 
 // Asking the client for a video of one exercise, in the admin hairline style
 // (20 Oct, Alex): the title, the exercise's name under it and nothing else
@@ -72,7 +73,7 @@ export default function AskVideoDialog({
       }}
     >
       <div className="avh-head">
-        <DialogTitle className="avh-title">{editing ? "Video ask" : "Ask for a video"}</DialogTitle>
+        <PopupTitle className="avh-title">{editing ? "Video ask" : "Ask for a video"}</PopupTitle>
         <button type="button" className="avh-x" onClick={onClose} aria-label="Close">
           ✕
         </button>

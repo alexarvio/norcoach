@@ -483,6 +483,10 @@ function Pictures({ clientId, firstName, plan }: Props) {
         {dlg?.kind === "drop" && (
           <ConfirmDialog
             title={`Remove ${dlg.label} from the shape update?`}
+            thing={(() => {
+              const s = plan.slots.find((x) => x.id === dlg.slotId);
+              return { name: dlg.label, facts: [s?.hint.trim() || null, s?.count ? `${s.count} ${s.count === 1 ? "photo" : "photos"}` : null] };
+            })()}
             description={`${firstName} won’t be asked for it any more. The photos already sent of it stay.`}
             confirm="Remove"
             danger
@@ -1001,7 +1005,7 @@ function PhotoDialog({ sheet, sheets, slotId, onMove }: { sheet: Sheet; sheets: 
   }, [index, sheet.period, cells.length]);
   if (!cell) return null;
   return (
-    <DialogContent className="rp-photodlg">
+    <DialogContent className="dlh rp-photodlg">
       <div className="dlh-head">
         <div className="rp-photodlg-titles">
           <PopupTitle>
