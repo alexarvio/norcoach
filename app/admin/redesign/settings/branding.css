@@ -104,39 +104,12 @@
 .rbr.rbr button.rbr-pic.open:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; }
 .rbr.rbr .rbr-pic-open:focus-visible { outline: 2px solid #141a24; outline-offset: -2px; }
 
-/* ---- the viewer (PictureViewer; a pop-up in a portal, so outside .rbr): the head dark with white words (a dark media
-   stage never takes the brand, DESIGN-RULES-ADMIN §2), the picture whole on a dark stage, ‹ › round on it */
-.rbv.rbv { display: flex; flex-direction: column; gap: 0; width: min(640px, 100vw - 32px); max-width: none; padding: 0; overflow: hidden; border: 0; border-radius: 20px; background: #0e1117; box-shadow: 0 30px 60px -24px rgba(16, 24, 40, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.06); color: #fff; font-family: var(--font-archivo), system-ui, sans-serif; outline: none; }
-.rbv.rbv .rbv-head { display: flex; flex: none; align-items: center; height: 60px; padding: 0 12px 0 20px; background: #1c1c1e; color: #fff; }
-.rbv.rbv .rbv-title { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 10.5px; font-weight: 600; line-height: 16px; letter-spacing: 0.16em; text-transform: uppercase; color: inherit; }
-.rbv.rbv .rbv-title svg { flex: none; translate: 0 -0.5px; }
-.rbv.rbv .rd-sep { background: color-mix(in srgb, #fff 45%, transparent); }
-.rbv.rbv .rbv-count { font-size: 12.5px; font-weight: 500; line-height: 16px; color: color-mix(in srgb, #fff 72%, transparent); font-variant-numeric: tabular-nums; }
-.rbv.rbv .rbv-x { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 36px; height: 36px; margin-left: auto; padding: 0; border: 0; border-radius: 50%; background: transparent; box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff 35%, transparent); color: #fff; cursor: pointer; transition: box-shadow 0.15s, background-color 0.15s; }
-@media (hover: hover) { .rbv.rbv .rbv-x:hover { background: color-mix(in srgb, #fff 8%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff 70%, transparent); } }
-.rbv.rbv .rbv-x:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-
-/* one height whatever the picture, so a step never moves the pop-up */
-.rbv.rbv .rbv-stage { position: relative; flex: none; height: min(640px, 100dvh - 140px); overflow: hidden; background: #0e1117; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
-.rbv.rbv .rbv-frame { position: absolute; inset: 0; }
-.rbv.rbv .rbv-frame img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; -webkit-user-drag: none; }
-.rbv.rbv .rbv-big { opacity: 0; transition: opacity 0.2s ease; }
-.rbv.rbv .rbv-big[data-in] { opacity: 1; }
-.rbv.rbv .rbv-frame.in-r { animation: rbv-in-r 0.26s cubic-bezier(0.22, 1, 0.36, 1); }
-.rbv.rbv .rbv-frame.in-l { animation: rbv-in-l 0.26s cubic-bezier(0.22, 1, 0.36, 1); }
-@keyframes rbv-in-r { from { opacity: 0; transform: translateX(24px); } }
-@keyframes rbv-in-l { from { opacity: 0; transform: translateX(-24px); } }
-.rbv.rbv .rbv-nav { position: absolute; top: 50%; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; margin-top: -18px; padding: 0; border: 0; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; color: #141a24; cursor: pointer; transition: background-color 0.15s; }
-.rbv.rbv .rbv-nav.l { left: 12px; }
-.rbv.rbv .rbv-nav.r { right: 12px; }
-@media (hover: hover) { .rbv.rbv .rbv-nav:hover { background: #F5F6F8; } }
-.rbv.rbv .rbv-nav:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-
 @media (prefers-reduced-motion: reduce) {
   .rbr.rbr .rbr-band { transition: none; }
   .rbr.rbr .rbr-pic.up img { animation: none; opacity: 0.6; }
   .rbv.rbv .rbv-frame.in-r, .rbv.rbv .rbv-frame.in-l { animation: none; }
   .rbv.rbv .rbv-big { transition: none; }
+  [data-slot="dialog-overlay"]:has(+ .rbv) { animation: none; }
 }
 
 /* a narrow page: the logo under the banner, the swatches under the colour's name */
@@ -146,5 +119,26 @@
   .rbr.rbr .rbr-band-grid > .rbr-slot.r { grid-row: 4; justify-content: flex-end; flex-direction: row-reverse; } /* reversed, flex-end is the left */
   .rbr.rbr .rbr-track-row { flex-wrap: wrap; }
 }
-/* The small copy (cropped 3:4) goes once the full picture is in, so it never peeks round a wide one. */
+
+/* The viewer (22 Nov, Alex: "only the picture… arrows… outside of the picture… the background… blurred"): the picture
+   alone, its own shape (--r, width over height), as large as the window allows with room for the arrows beside it and
+   the ✕ over it; the page behind darkened and blurred as the client's notification pop-up (62%). */
+[data-slot="dialog-overlay"]:has(+ .rbv) { background: rgba(14, 17, 23, 0.62); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); animation: rbv-dim 0.2s ease; }
+@keyframes rbv-dim { from { opacity: 0; } }
+.rbv.rbv { --nav: 40px; --gap: 20px; display: flex; align-items: center; gap: var(--gap); width: auto; max-width: none; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: #fff; outline: none; }
+.rbv.rbv .rbv-stage { position: relative; flex: none; aspect-ratio: var(--r); width: min(1080px, 100vw - 2 * (var(--nav) + var(--gap)) - 32px, (100dvh - 120px) * var(--r)); touch-action: pan-y; user-select: none; -webkit-user-select: none; transition: width 0.26s cubic-bezier(0.22, 1, 0.36, 1); }
+.rbv.rbv .rbv-frame { position: absolute; inset: 0; overflow: hidden; border-radius: 16px; background: rgba(255, 255, 255, 0.06); }
+.rbv.rbv .rbv-frame img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; -webkit-user-drag: none; }
+.rbv.rbv .rbv-big { opacity: 0; transition: opacity 0.2s ease; }
+.rbv.rbv .rbv-big[data-in] { opacity: 1; }
 .rbv.rbv .rbv-frame:has(> .rbv-big[data-in]) > img:not(.rbv-big) { visibility: hidden; }
+.rbv.rbv .rbv-frame.in-r { animation: rbv-in-r 0.26s cubic-bezier(0.22, 1, 0.36, 1); }
+.rbv.rbv .rbv-frame.in-l { animation: rbv-in-l 0.26s cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes rbv-in-r { from { opacity: 0; transform: translateX(24px); } }
+@keyframes rbv-in-l { from { opacity: 0; transform: translateX(-24px); } }
+.rbv.rbv .rbv-nav, .rbv.rbv .rbv-x { display: inline-flex; flex: none; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; color: #141a24; cursor: pointer; transition: background-color 0.15s; }
+.rbv.rbv .rbv-nav { width: var(--nav); height: var(--nav); }
+.rbv.rbv .rbv-x { position: absolute; right: 0; bottom: calc(100% + 12px); width: 36px; height: 36px; }
+@media (hover: hover) { .rbv.rbv .rbv-nav:hover, .rbv.rbv .rbv-x:hover { background: #F5F6F8; } }
+.rbv.rbv .rbv-nav:focus-visible, .rbv.rbv .rbv-x:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+@media (max-width: 560px) { .rbv.rbv { --nav: 36px; --gap: 8px; } }

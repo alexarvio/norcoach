@@ -308,28 +308,39 @@ function Thumb({ src }: { src: string }) {
 const big = (src: string) => (src.startsWith("/uploads/") ? pic(src, 1080) : src);
 
 // ---- The viewer (22 Nov, Alex: "since they're quite small… clicking on them and being able to like see them expanded…
-// an arrow or something that I can go to the next one"): the dark head (never the coach's colour: a dark media stage, DESIGN-RULES-ADMIN §2), the track and `2 of 5`,
-// the picture whole on a dark stage, ‹ › stepping through the track's pictures (round), ← → and a sideways swipe, Esc
-// and the ✕. Nothing to change in it: a tile's × removes.
+// an arrow or something that I can go to the next one"; then "the picture in the middle… no black background… only the
+// picture… the arrows on the sides of the picture, but outside… the background… blurred"): the picture alone in the
+// middle of the window, its own shape with rounded corners, no head, stage or title (the track was the row clicked);
+// ‹ › round white buttons outside its sides, the ✕ outside its top right; the page behind darkened and blurred, as the
+// client's notification pop-up. ← → and a sideways swipe step, Esc or a click beside it closes. Nothing to change in it:
+// a tile's × removes.
 function PictureViewer({ track, pictures, start }: { track: PhaseTrack; pictures: string[]; start: number }) {
   const n = pictures.length;
   const [at, setAt] = useState(Math.min(Math.max(0, start), Math.max(0, n - 1)));
   const [dir, setDir] = useState<"l" | "r" | "">("");
+  // Each picture's width over its height once known, so the frame is the picture's own shape (3:4 until then: the
+  // tiles' crop, the small copy shown in it meanwhile).
+  const [ratio, setRatio] = useState<Record<string, number>>({});
   const press = useRef<{ x: number; y: number } | null>(null);
   const step = (by: number) => {
     if (n < 2) return;
     setDir(by > 0 ? "r" : "l");
     setAt((i) => (i + by + n) % n);
   };
+  const known = useCallback((p: string, w: number, h: number) => {
+    if (w && h) setRatio((r) => (r[p] ? r : { ...r, [p]: w / h }));
+  }, []);
 
   // Every picture of the track fetched as the viewer opens (five at most), so a step never waits.
   useEffect(() => {
     for (const p of pictures) {
       const img = new window.Image();
       img.decoding = "async";
+      img.onload = () => known(p, img.naturalWidth, img.naturalHeight);
       img.src = big(p);
+      if (img.complete) known(p, img.naturalWidth, img.naturalHeight);
     }
-  }, [pictures]);
+  }, [pictures, known]);
 
   // The full picture shows once in; a stable ref, so it runs only as each picture's img mounts.
   const bigIn = useCallback((el: HTMLImageElement | null) => {
@@ -337,6 +348,7 @@ function PictureViewer({ track, pictures, start }: { track: PhaseTrack; pictures
   }, []);
 
   const src = pictures[at];
+  const r = (src && ratio[src]) || 3 / 4;
   return (
     <DialogContent
       className="rbv"
@@ -347,31 +359,23 @@ function PictureViewer({ track, pictures, start }: { track: PhaseTrack; pictures
         step(e.key === "ArrowRight" ? 1 : -1);
       }}
     >
-      <div className="rbv-head">
-        <DialogTitle className="rbv-title">
-          <TrackIcon track={track} size={14} />
-          {TRACK_LABEL[track]}
-        </DialogTitle>
-        {n > 1 && (
-          <>
-            <Sep />
-            <span className="rbv-count">
-              {at + 1} of {n}
-            </span>
-          </>
-        )}
-        <DialogClose className="rbv-x" aria-label="Close">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-            <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <DialogTitle className="sr-only">
+        {TRACK_LABEL[track]} picture {at + 1} of {n}
+      </DialogTitle>
+      {n > 1 && (
+        <button type="button" className="rbv-nav l" onClick={() => step(-1)} aria-label="Previous picture" title="Previous">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-        </DialogClose>
-      </div>
+        </button>
+      )}
       <div
         className="rbv-stage"
+        style={{ "--r": r } as CSSProperties}
         onPointerDown={(e) => {
           if ((e.target as Element).closest("button")) return;
           press.current = { x: e.clientX, y: e.clientY };
-          // A mouse swipe let go outside the stage still steps (a touch is captured already).
+          // A mouse swipe let go outside the picture still steps (a touch is captured already).
           e.currentTarget.setPointerCapture(e.pointerId);
         }}
         onPointerUp={(e) => {
@@ -394,25 +398,26 @@ function PictureViewer({ track, pictures, start }: { track: PhaseTrack; pictures
               alt={`${TRACK_LABEL[track]} picture ${at + 1}`}
               draggable={false}
               ref={bigIn}
-              onLoad={(e) => (e.currentTarget.dataset.in = "1")}
+              onLoad={(e) => {
+                e.currentTarget.dataset.in = "1";
+                known(src, e.currentTarget.naturalWidth, e.currentTarget.naturalHeight);
+              }}
             />
           </div>
         )}
-        {n > 1 && (
-          <>
-            <button type="button" className="rbv-nav l" onClick={() => step(-1)} aria-label="Previous picture" title="Previous">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-            <button type="button" className="rbv-nav r" onClick={() => step(1)} aria-label="Next picture" title="Next">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <path d="M6 3.5 10.5 8 6 12.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          </>
-        )}
+        <DialogClose className="rbv-x" aria-label="Close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+            <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
+        </DialogClose>
       </div>
+      {n > 1 && (
+        <button type="button" className="rbv-nav r" onClick={() => step(1)} aria-label="Next picture" title="Next">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M6 3.5 10.5 8 6 12.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
     </DialogContent>
   );
 }
