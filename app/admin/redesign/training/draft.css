@@ -1461,3 +1461,9 @@ span.rd-demo { cursor: default; }
 .rd-trendhead { justify-self: center; white-space: nowrap; }
 /* + Week lists every week with something in it: six rows, then it scrolls inside. */
 .trn-addweek-menu.trn-addweek-menu { max-height: 226px; overflow-y: auto; }
+
+/* The client tab you are on in the coach's brand colour with white words (22 Nov, Alex: "a touch of the color here on the
+   nav bar", option 1 of docs/boards/admin-popup-logo-mockup.html), as every capsule's picked option; none set, the white
+   pill as before. The pill slides (SlidePills), so its colour is --pill-bg. */
+body[style*="--brand"] .rd-nav { --pill-bg: var(--brand); --pill-shadow: none; }
+body[style*="--brand"] .rd-nav button.on, body[style*="--brand"] .rd-nav button.on:hover { color: #fff; }
