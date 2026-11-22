@@ -20,16 +20,17 @@ import { chatListAction } from "./messages/actions";
 import { readChatThread } from "../../components/chatFetch";
 import ChatList, { ChatsBack, type DockChat } from "./ChatList";
 import InvoicesDraft from "./invoices/InvoicesDraft";
-import RedesignRail from "./RedesignRail";
-import type { DraftInvoices, RailData } from "./loaders";
+import { useReportHere } from "./RailFrame";
+import type { DraftInvoices } from "./loaders";
 import type { DotTab, DotTrail } from "./dots";
 import { TodoContext } from "./TodoStrip";
 import { useCloseOnEmptyClick } from "./useCloseOnEmptyClick";
 import { PopupTabZone, PopupWhoProvider } from "./PopupWho";
 import { SHOW_TAB_EVENT } from "./followLink";
 
-// The redesign drafts on one page: the rail on the left, and Training,
-// Nutrition and Measurements all loaded on the right, one shown at a time.
+// The redesign drafts on one page: Training, Nutrition and Measurements all
+// loaded, one shown at a time, beside the rail (drawn by the layout since
+// 22 Nov, RailFrame: this is the page alone, under its `.rd-frame`).
 // A switch is instant and keeps what was typed on the other tab; the
 // address follows, so a refresh or a link lands on the tab it names.
 
@@ -79,7 +80,10 @@ export type RedesignShellProps = {
   clientId: number;
   clientName: string;
   firstName: string;
-  rail: RailData;
+  /** The coach's weight unit (Settings, Preferences): Training opens in it. The rail carried it before 22 Nov (railBits). */
+  units: "kg" | "lbs";
+  /** The client's face, for the pop-ups' head (PopupWho). The rail carried it before 22 Nov (railBits). */
+  clientPhoto: string | null;
   initialTab: RedesignTab;
   home: DraftHome;
   training: { draft: DraftProgram | null; library: Library; cardioMoves?: CardioMove[]; videos?: { id: number; path: string; name: string; at: string; bytes: number | null }[] };
@@ -94,9 +98,11 @@ export type RedesignShellProps = {
   dots: DotTrail;
 };
 
-export default function RedesignShell({ clientId, clientName, firstName, rail, initialTab, home, training, nutrition, measurements, pictures, meetings, plan, messages, invoices, dots }: RedesignShellProps) {
+export default function RedesignShell({ clientId, clientName, firstName, units, clientPhoto, initialTab, home, training, nutrition, measurements, pictures, meetings, plan, messages, invoices, dots }: RedesignShellProps) {
   const pageTab = (t: RedesignTab): PageTab => (t === "messages" ? "home" : t);
   const [tab, setTab] = useState<PageTab>(pageTab(initialTab));
+  // The client this page shows, for the rail to mark (a client picked by default has no ?client= to read; RailFrame).
+  useReportHere(clientId);
   // The chat sliding in from the right (ChatPanel.tsx): mounted on first
   // use, then kept, so it slides both ways; `opened` counts the openings,
   // so each one sets what the reply is about (and the message to land on).
@@ -130,6 +136,8 @@ export default function RedesignShell({ clientId, clientName, firstName, rail, i
     return () => {
       clearTimeout(t);
       clearTimeout(t2);
+      // The frame is the layout's and outlives this page (22 Nov, RailFrame): never leave it still for the pages after.
+      frame?.removeAttribute("data-chat-still");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arriving
   }, []);
@@ -234,6 +242,15 @@ export default function RedesignShell({ clientId, clientName, firstName, rail, i
     // A new thread lands on its newest message with the box ready.
     setOtherOpened((n) => n + 1);
   };
+  // The page makes room beside the open chat (messages.css, `.rd-frame[data-chat="open"]`): the frame is the layout's
+  // now (22 Nov, RailFrame), so the page sets it there, as the chat dock does (ChatDock.tsx). Left as it is on leaving:
+  // the next page's shell or dock sets it again as it arrives, putting a chat kept open back in place.
+  useEffect(() => {
+    const frame = document.querySelector(".rd-frame");
+    if (!frame) return;
+    if (chat.open) frame.setAttribute("data-chat", "open");
+    else frame.removeAttribute("data-chat");
+  }, [chat.open]);
   // Open, it stays open (9 Oct): across tabs, through clicks on the page.
   // Only Escape and its own X close it. The page makes room beside it (the
   // rd-frame attribute below), so nothing sits behind it.
@@ -334,8 +351,7 @@ export default function RedesignShell({ clientId, clientName, firstName, rail, i
   return (
     <OpenChatContext.Provider value={openChat}>
     <TodoContext.Provider value={todoValue}>
-    <div className="rd-frame" data-chat={chat.open ? "open" : undefined}>
-      <RedesignRail rail={rail} clientId={clientId} />
+    <>
       <div className="rd-page">
         <nav className="rd-nav" aria-label="Redesign drafts">
           {TABS.map((t) => (
@@ -346,14 +362,14 @@ export default function RedesignShell({ clientId, clientName, firstName, rail, i
             </button>
           ))}
         </nav>
-        <PopupWhoProvider id={clientId} name={clientName} photo={rail.clients.find((c) => c.id === clientId)?.avatarPath ?? null}>
+        <PopupWhoProvider id={clientId} name={clientName} photo={clientPhoto}>
         <PopupTabZone tab="home" hidden={tab !== "home"}>
           {/* Keyed per client: Home's own state (What counts, rows marked read, the filter) is one client's. */}
           <HomeTab key={clientId} clientId={clientId} firstName={firstName} home={home} onOpenTab={openTab} dueUnlock={dots.unlock} />
         </PopupTabZone>
         <PopupTabZone tab="training" hidden={tab !== "training"}>
           {training.draft ? (
-            <TrainingTab key={training.draft.id} clientId={clientId} firstName={firstName} lbsFirst={rail.coach.units === "lbs"} program={training.draft} library={training.library} cardioMoves={training.cardioMoves} coachVideos={training.videos} dots={dots} />
+            <TrainingTab key={training.draft.id} clientId={clientId} firstName={firstName} lbsFirst={units === "lbs"} program={training.draft} library={training.library} cardioMoves={training.cardioMoves} coachVideos={training.videos} dots={dots} />
           ) : hasPhase("training") ? (
             <NoProgramme clientId={clientId} firstName={firstName} />
           ) : (
@@ -418,7 +434,7 @@ export default function RedesignShell({ clientId, clientName, firstName, rail, i
         </aside>
       )}
       <Toaster />
-    </div>
+    </>
     </TodoContext.Provider>
     </OpenChatContext.Provider>
   );

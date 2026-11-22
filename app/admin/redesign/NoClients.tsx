@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import NewClientDialog from "../NewClientDialog";
-import RedesignRail from "./RedesignRail";
-import type { RailData } from "./loaders";
+import { useRail } from "./RailFrame";
 import "./training/draft.css";
 import "./training/trn.css";
 import "./measurements/measurements.css";
@@ -13,12 +12,18 @@ import "./measurements/measurements.css";
 // the first client. Every client tab lands here while the list is empty. In the admin's voice (26 Oct, Alex: the old
 // welcome with its sentence and navy button was left over): `Clients` as Training's bare header, then one hairline
 // card, `No clients yet` and New client, as NoPhase says it.
-export default function NoClients({ rail }: { rail: RailData }) {
+// The page alone since 22 Nov: the rail is the layout's (RailFrame), and New client reads what it needs from the rail's
+// own read (useRail), the dialog opening once that is in.
+export default function NoClients() {
   // From the welcome steps' "Add your first client" (?add=1): the dialog opens straight away.
   const [adding, setAdding] = useState(useSearchParams().get("add") === "1");
+  const { rail } = useRail();
+  // No chat beside this page (no client, no dock): a chat kept open on the page before makes no room here.
+  useEffect(() => {
+    document.querySelector(".rd-frame")?.removeAttribute("data-chat");
+  }, []);
   return (
-    <div className="rd-frame">
-      <RedesignRail rail={rail} clientId={0} />
+    <>
       <div className="rd-page">
         <div className="rd trn rls">
           <header className="trn-head bare">
@@ -40,7 +45,7 @@ export default function NoClients({ rail }: { rail: RailData }) {
           </section>
         </div>
       </div>
-      {adding && <NewClientDialog look="hairline" inviteReady={rail.inviteReady} clerk={rail.clerk} onClose={() => setAdding(false)} />}
-    </div>
+      {adding && rail && <NewClientDialog look="hairline" inviteReady={rail.inviteReady} clerk={rail.clerk} onClose={() => setAdding(false)} />}
+    </>
   );
 }

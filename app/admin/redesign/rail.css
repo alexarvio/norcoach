@@ -315,3 +315,17 @@ body[style*="--brand"] .rr-row.active, body[style*="--brand"] .rr-row.active:hov
    from the head's foot, so nothing moves. */
 .rr-paper > .rr-clients-head { padding-bottom: 6px; }
 .rr-paper > .rr-clients { padding-top: 2px; }
+
+/* The rail and a view before their data is in (22 Nov, docs/rail-layout-plan.md; RailFrame, PageSkeleton): outlines
+   only, still, no shimmer (only live things pulse). The rail's dark top at about the height it has once drawn (the brand,
+   the coach and the views), the paper rising over its foot with nothing on it. */
+.rr.rr-skel .rr-dark { height: 392px; padding: 0; box-sizing: border-box; }
+/* A view's outline: the tab bar's grey track with its tabs' room and no words; a client's header with no name yet. */
+.rd-skel .rd-skel-nav button { color: transparent; cursor: default; }
+.rd-skel .rd-skel-nav button:hover { color: transparent; }
+.rd-skel .rd-skel-title { display: block; width: 220px; height: 31px; }
+/* Home's head: the 56px face beside the eyebrow and the name (home.css), so its cards sit where Home's will. */
+.rd-skel .rd-skel-title.home { height: 56px; }
+/* The chat's tab in the outline is a picture of it (PageSkeletonChat): nothing to press. */
+.rd-chattab.still[aria-hidden="true"] { cursor: default; pointer-events: none; }
+.rd.rls .rls-card.rd-skel-card { padding: 0; box-sizing: border-box; }

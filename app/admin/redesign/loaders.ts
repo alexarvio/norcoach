@@ -22,10 +22,10 @@ import { activityMarkOf } from "../../lib/activityMark";
 import { SERVER_TZ, zonedToUtc } from "../../lib/timezones";
 import { hasBankDetails, invoicingFor } from "../../lib/countries";
 import { clientActions, coachNeeds } from "../../lib/coachNeeds";
-import type { ChatCoachView, ChatDockView, ChatThread } from "../../lib/chat/rows";
-import { noFoodRows, type FoodRows } from "../../lib/food/rows";
-import type { CheckInRows } from "../../lib/checkins/rows";
-import type { SetRows } from "../../lib/sets/rows";
+import { fetchCoachChat, type ChatCoachView, type ChatDockView, type ChatThread } from "../../lib/chat/rows";
+import { fetchCoachFood, noFoodRows, type FoodRows } from "../../lib/food/rows";
+import { fetchCoachCheckIns, type CheckInRows } from "../../lib/checkins/rows";
+import { fetchCoachSets, type SetRows } from "../../lib/sets/rows";
 import { fetchNoteKeys, type NoteKeys } from "../../lib/notes/rows";
 import type { NoteTab } from "../../lib/notes/paths";
 import { HOME_KIND_ROWS as HOME_KIND_ROWS_CHAT } from "../../lib/chat/pick";
@@ -128,7 +128,7 @@ import { supportUnreadForCoach, supportUnreadForOwner } from "../../lib/support"
 import { exerciseTrends, personalBests } from "../../lib/homeBoardData";
 import { applyReader, applyReads } from "./training/applyPreviewData";
 import { changedWeeks } from "./training/applyShape";
-import { sub } from "../../lib/timing";
+import { sub, type Timer } from "../../lib/timing";
 import { coachBrand } from "../../lib/brandMark";
 
 // What the redesign drafts read, gathered on the server for the shell that
@@ -819,6 +819,34 @@ export function loadRail(coach: { id: number; email: string; role: "coach" | "cl
     const owner = isOwner(coach);
     return { clients, coach: { name: profile?.display_name?.trim() || nameFromEmail(coach.email), photoPath: profile?.avatar_path ?? null, units: getData().users.find((u) => u.id === coach.id)?.coach_settings?.units === "lbs" ? "lbs" : "kg", business: getCoachSettings(coach.id).business?.business_name?.trim() ?? "", ...railBanner(coach.id) }, isOwner: owner, inviteReady: mailConfigured(), clerk: clerkOn(), supportUnread: owner ? supportUnreadForOwner() : supportUnreadForCoach(coach.id), billing: billingAccess(coach.id, owner), billingOn: billingOn(), joinRequests: openJoinRequestsFor(coach.id).length };
   });
+}
+
+/** The rail with when its read began (22 Nov, the rail drawn once by the layout): RailFrame keeps the newest of the
+ *  layout's and /api/admin/rail's, so a read that started earlier never shows over one that started later.
+ *  `defaultClient`: the client a client's screen shows when the address names none (pickClient's pick), so the rail
+ *  marks them from the first paint, as each page did when it drew the rail itself. */
+export type StampedRail = { rail: RailData; at: number; defaultClient: number };
+
+/**
+ * The rail read on its own (22 Nov, docs/rail-layout-plan.md): app/admin/redesign/layout.tsx and /api/admin/rail. The
+ * coach-wide door fetches the rail needs, one after the other as the pages fetch them, then loadRail. Read as
+ * "page.library" in each door: the rail's own shape there ("rail" in every one), and a path of its own is the doors'
+ * to add to their lists.
+ */
+export async function readRail(coach: { id: number; email: string; role: "coach" | "client" }, t?: Pick<Timer, "time">): Promise<StampedRail> {
+  const at = Date.now();
+  const time = <T>(label: string, fn: () => T): T => (t ? t.time(label, fn) : fn());
+  const chat = await time("chat", () => fetchCoachChat([coach.id], "page.library"));
+  const food = await time("food", () => fetchCoachFood([coach.id], "page.library"));
+  const ck = await time("checkins", () => fetchCoachCheckIns([coach.id], "page.library"));
+  const sr = await time("sets", () => fetchCoachSets("page.library", [coach.id]));
+  return { rail: time("rail", () => loadRail(coach, chat, food, ck, sr)), at, defaultClient: pickClient(coach.id, undefined).client?.id ?? 0 };
+}
+
+/** What a client's screens read that the rail used to carry them (22 Nov: RedesignShell's `units` and `clientPhoto`):
+ *  the coach's weight unit (Settings, Preferences) and the client's face. Cheap: no door, no Needs you. */
+export function railBits(coachId: number, clientId: number): { units: "kg" | "lbs"; photo: string | null } {
+  return { units: getData().users.find((u) => u.id === coachId)?.coach_settings?.units === "lbs" ? "lbs" : "kg", photo: getClient(clientId)?.avatar_path ?? null };
 }
 
 /** The coach's banner for the rail (19 Nov, Alex), inside the page once read (the root layout reads it first); none, nothing. */

@@ -124,6 +124,8 @@ export default function ChatDock({ chats: fromPage }: { chats: DockChat[] }) {
     return () => {
       clearTimeout(t);
       clearTimeout(t2);
+      // The frame is the layout's and outlives this page (22 Nov, RailFrame): never leave it still for the pages after.
+      frame?.removeAttribute("data-chat-still");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
   }, []);
