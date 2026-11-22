@@ -1,5 +1,6 @@
 import { requireCoach } from "../../../lib/auth";
 import { getBusinessBoard, noteBusinessLooked } from "../../../lib/businessBoard";
+import { headers } from "next/headers";
 import { startTiming } from "../../../lib/timing";
 import { loadChatDock, loadRail } from "../loaders";
 import { fetchCoachPageChat } from "../../../lib/chat/rows";
@@ -34,7 +35,9 @@ export default async function BusinessPage() {
   // The check-in figures the rail's feed reads (quest 9, app/lib/checkins/rows.ts), fetched first as the food is.
   const ck = await t.time("checkins", () => fetchCoachCheckIns([coach.id], "page.business"));
   // The visit is noted first, so Since reads from the visit before this one.
-  t.time("noteBusinessLooked", () => noteBusinessLooked(coach.id));
+  // A hover-prefetch from the rail is not a visit (22 Nov): only a real navigation notes the look.
+  const prefetching = (await headers()).has("next-router-prefetch");
+  if (!prefetching) t.time("noteBusinessLooked", () => noteBusinessLooked(coach.id));
   const board = t.time("businessBoard", () => getBusinessBoard(coach.id));
   return t.end(
     <div className="rd-frame">

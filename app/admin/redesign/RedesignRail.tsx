@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type MouseEvent } from "react";
 import Link from "next/link";
 import { dayMonth } from "../../lib/dayMonth";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -12,7 +12,8 @@ import NewClientDialog from "../NewClientDialog";
 import type { RailClient, RailData } from "./loaders";
 import { Sep } from "./Sep";
 import NativeCoachRedirect from "../../coach/NativeCoachRedirect";
-import RefreshOnReturn from "./RefreshOnReturn";
+import RefreshOnReturn, { calm } from "./RefreshOnReturn";
+import { onRefreshFree } from "./holdRefresh";
 import { pic } from "../../lib/pic";
 import { BrandLogo } from "../../components/BrandLogo";
 
@@ -47,6 +48,84 @@ const REDRAWN: Partial<Record<string, string>> = { feed: "/admin/redesign/feed",
 const COACHES = "/admin/redesign/coaches";
 const SETTINGS_HREF = "/admin/redesign/settings";
 
+// A view as near instant as Next allows (22 Nov, Alex: "I go to feed, I go to phases, and then maybe I go to settings, it
+// takes maybe 0.5 seconds… as instant as possible"). The views are dynamic pages with no loading.js (the rail is drawn by
+// each page, so a loading boundary would blank it), and Next prefetches nothing of such a page by default
+// (node_modules/next/dist/docs/01-app/02-guides/prefetching.md). A view row the mouse rests on for a moment is
+// prefetched in full (`prefetch={true}`, the docs' "Hover-triggered prefetch"), so the click shows a page already in
+// the browser. Never on viewport entry: that would draw all seven heavy pages on the server for every page, again after
+// every save (a revalidation re-prefetches every armed visible link), and note a Feed or Business visit the coach never
+// made. The row lets go as the pointer leaves (a prefetch under way still lands), so a save re-prefetches only the row
+// under the pointer. A full prefetch is kept 5 minutes (staleTimes.static,
+// 03-api-reference/05-config/01-next-config-js/staleTimes.md): a page shown from one older than FRESH_MS reads itself
+// again in the background as it lands, so the coach sees it at once and the newest a moment later. Production only:
+// Next never prefetches in `next dev`.
+const ARM_MS = 70; // a pointer passing over the rail doesn't prefetch every row it crosses
+const FRESH_MS = 15_000; // as RefreshOnReturn's gap
+const KEPT_MS = 5 * 60_000; // staleTimes.static's default
+/** When each view was last prefetched by a row (its path; at most once in KEPT_MS, as the cache keeps it). */
+const prefetchedAt = new Map<string, number>();
+/** The view a click is going to whose prefetch may be old: it reads itself again once its rail is drawn. */
+let readOnArrival: string | null = null;
+const pathOf = (href: string) => href.split(/[?#]/)[0];
+
+/** A view row of the rail: a Link prefetched in full while the mouse (or the keyboard's focus) rests on it. */
+function ViewLink({ href, onClick, onPointerDown, children, ...rest }: Omit<ComponentProps<typeof Link>, "href" | "prefetch" | "onPointerEnter" | "onPointerLeave" | "onFocus" | "onBlur"> & { href: string }) {
+  const [armed, setArmed] = useState(false);
+  const timer = useRef<number | null>(null);
+  const stop = () => {
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = null;
+  };
+  useEffect(() => stop, []);
+  const arm = () => {
+    stop();
+    const key = pathOf(href);
+    const now = Date.now();
+    const at = prefetchedAt.get(key);
+    if (at === undefined || now - at > KEPT_MS) prefetchedAt.set(key, now);
+    setArmed(true);
+  };
+  const letGo = () => {
+    stop();
+    setArmed(false);
+  };
+  return (
+    <Link
+      {...rest}
+      href={href}
+      prefetch={armed}
+      // A mouse or pen alone: a tap's own pointer events come with its click, too late to gain anything.
+      onPointerEnter={(e) => {
+        if (e.pointerType === "touch" || armed) return;
+        stop();
+        timer.current = window.setTimeout(arm, ARM_MS);
+      }}
+      onPointerLeave={letGo}
+      // A tap: the prefetch starts as the finger lands, ahead of the click (about 100ms gained).
+      onPointerDown={(e) => {
+        onPointerDown?.(e);
+        if (e.pointerType === "touch" && !armed) arm();
+      }}
+      // The keyboard's focus, not the one a mouse press gives (that comes with the click).
+      onFocus={(e) => {
+        if (!armed && e.currentTarget.matches(":focus-visible")) arm();
+      }}
+      onBlur={letGo}
+      onClick={(e) => {
+        onClick?.(e);
+        // Next prefetches nothing in `next dev`: there is nothing old to read again there.
+        if (process.env.NODE_ENV !== "production" || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        const key = pathOf(href);
+        const at = prefetchedAt.get(key);
+        if (at !== undefined && Date.now() - at > FRESH_MS && window.location.pathname !== key) readOnArrival = key;
+      }}
+    >
+      {children}
+    </Link>
+  );
+}
+
 // Where the client list was left, kept from page to page (4 Nov, Alex: "whenever I switch a page, it kind of like pulls
 // the page up. So I have to scroll back down"). Every coach page draws its own rail, so each switch drew a new one at
 // the list's top with All picked: the list's scroll and its All | Needs you come back as they were, before the first
@@ -71,6 +150,67 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
   }, [router]);
   // The view you are on (Feed, Calendar…) is marked, as the client you are on is.
   const path = usePathname();
+  // Landed on a view shown from a prefetch older than FRESH_MS (ViewLink): read it again in the background, once nothing
+  // holds the page, and never across a deploy (a read from a newer build loads the whole page again; RefreshOnReturn).
+  useEffect(() => {
+    const due = readOnArrival;
+    readOnArrival = null;
+    if (!due || path !== due) return;
+    let done = false;
+    let unsubscribe: (() => void) | null = null;
+    const read = async () => {
+      if (done) return;
+      done = true;
+      unsubscribe?.();
+      const page = document.documentElement.dataset.build;
+      try {
+        const now = page ? (await (await fetch("/api/version", { cache: "no-store" })).json())?.build : null;
+        if (page && typeof now === "string" && now !== "unknown" && now !== page) return;
+      } catch {
+        return;
+      }
+      router.refresh();
+    };
+    // The same calm as RefreshOnReturn's: no field with the keyboard, nothing open, no press held, nothing holding
+    // refreshes. Not calm yet, it tries again soon after a hold lets go, a field is left or a press ends, and every 2s.
+    let poll: ReturnType<typeof setInterval> | null = null;
+    let soon: ReturnType<typeof setTimeout> | null = null;
+    const quiet = () => {
+      if (poll) clearInterval(poll);
+      if (soon) clearTimeout(soon);
+      poll = null;
+      soon = null;
+      unsubscribe?.();
+      unsubscribe = null;
+      document.removeEventListener("focusout", later, true);
+      window.removeEventListener("pointerup", later, true);
+      window.removeEventListener("pointercancel", later, true);
+    };
+    const attempt = () => {
+      if (done) return;
+      if (document.visibilityState !== "visible" || !calm()) return;
+      quiet();
+      void read();
+    };
+    function later() {
+      if (soon) clearTimeout(soon);
+      soon = setTimeout(attempt, 250);
+    }
+    if (calm()) void read();
+    else {
+      unsubscribe = onRefreshFree(later);
+      document.addEventListener("focusout", later, true);
+      window.addEventListener("pointerup", later, true);
+      window.addEventListener("pointercancel", later, true);
+      poll = setInterval(attempt, 2000);
+    }
+    return () => {
+      done = true;
+      quiet();
+    };
+    // On mount alone: the rail is drawn afresh by each page, so this runs once a view lands.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Settings is a view of its own now, a row under the views (22 Nov, Alex): nothing folds in the rail.
   const settingsOpen = false;
   const onSettings = settings || !!path?.startsWith(SETTINGS_HREF);
@@ -197,7 +337,7 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
         <BrandLogo className="rr-logo" banner={rail.coach.banner} bannerRatio={rail.coach.bannerRatio} name={rail.coach.business} nameInPlace={false} word />
       </div>
       {/* The coach: their face, name and business; a click opens their Profile in Settings. */}
-      <Link href={`${SETTINGS_HREF}#profile`} className="rr-coach" aria-label={`${rail.coach.name}, your profile`} onClick={goView(SETTINGS_HREF, onSettings)}>
+      <ViewLink href={`${SETTINGS_HREF}#profile`} className="rr-coach" aria-label={`${rail.coach.name}, your profile`} onClick={goView(SETTINGS_HREF, onSettings)}>
         <span className="rr-coach-avatar" aria-hidden="true">
           {rail.coach.photoPath ? (
             // eslint-disable-next-line @next/next/no-img-element -- an upload served by the app's own route
@@ -222,7 +362,7 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
             )}
           </small>
         </span>
-      </Link>
+      </ViewLink>
       {/* What they pay Norcoach (28 Oct, Alex; lib/billing.ts): a payment that failed, then read-only, as a fact and its
           way to the fix (Settings, Billing). Nothing while it is paid. */}
       {(rail.billing.state === "grace" || rail.billing.state === "readonly") && (
@@ -238,7 +378,7 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
           const href = REDRAWN[key] ?? `/admin?view=${key}`;
           const isHere = !!(REDRAWN[key] && path?.startsWith(REDRAWN[key]!));
           return (
-            <Link key={key} href={href} className={`rr-navrow${viewOn(href, isHere) ? " active" : ""}`} aria-current={isHere ? "page" : undefined} onClick={goView(href, isHere)}>
+            <ViewLink key={key} href={href} className={`rr-navrow${viewOn(href, isHere) ? " active" : ""}`} aria-current={isHere ? "page" : undefined} onClick={goView(href, isHere)}>
               <Icon />
               <span>{label}</span>
               {/* The Feed's own Needs you, counted as it lists them (22 Oct: it counted clients, a new one too, and read
@@ -253,24 +393,24 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
                   {feedOwed}
                 </em>
               )}
-            </Link>
+            </ViewLink>
           );
         })}
         {/* Owner only, as before; the coaches page in the redesign (22 Oct). */}
         {rail.isOwner && (
-          <Link href={COACHES} className={`rr-navrow${viewOn(COACHES, !!path?.startsWith(COACHES)) ? " active" : ""}`} aria-current={path?.startsWith(COACHES) ? "page" : undefined} onClick={goView(COACHES, !!path?.startsWith(COACHES))}>
+          <ViewLink href={COACHES} className={`rr-navrow${viewOn(COACHES, !!path?.startsWith(COACHES)) ? " active" : ""}`} aria-current={path?.startsWith(COACHES) ? "page" : undefined} onClick={goView(COACHES, !!path?.startsWith(COACHES))}>
             <AccountIcon />
             <span>Coaches</span>
             {/* A coach's support line the owner hasn't read: a rust dot (the inbox is on Coaches). */}
             {rail.supportUnread > 0 && <i className="rd-due" role="img" aria-label="Unread support" title="Unread support" />}
-          </Link>
+          </ViewLink>
         )}
         {/* Settings, the last view (22 Nov, Alex): the gear, the white pill while on it; its sections are on its page. */}
-        <Link href={SETTINGS_HREF} className={`rr-navrow${viewOn(SETTINGS_HREF, onSettings) ? " active" : ""}`} aria-current={onSettings ? "page" : undefined} onClick={goView(SETTINGS_HREF, onSettings)}>
+        <ViewLink href={SETTINGS_HREF} className={`rr-navrow${viewOn(SETTINGS_HREF, onSettings) ? " active" : ""}`} aria-current={onSettings ? "page" : undefined} onClick={goView(SETTINGS_HREF, onSettings)}>
           <GearIcon />
           <span>Settings</span>
           {rail.supportUnread > 0 && !rail.isOwner && <i className="rd-due" role="img" aria-label="Unread support" title="Unread support" />}
-        </Link>
+        </ViewLink>
       </nav>
       </div>
 

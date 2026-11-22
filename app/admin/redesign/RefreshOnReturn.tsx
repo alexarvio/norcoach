@@ -22,19 +22,26 @@ function typing(): boolean {
   return el.tagName === "INPUT" && TYPED.test((el as HTMLInputElement).type || "text");
 }
 
+// A button held down, kept by RefreshOnReturn's listeners (mounted by the rail on every redesign screen).
+let pressed = false;
+
+/** Nothing on the page a read could disturb: no button held, nothing holding refreshes (holdRefresh), no field with
+ *  the keyboard, no pop-up, menu, list or pending bar open. The rail's after-landing read waits for it too. */
+export function calm(): boolean {
+  return !pressed && !refreshHeld() && !typing() && !document.querySelector(OPEN);
+}
+
 export default function RefreshOnReturn() {
   const router = useRouter();
   useEffect(() => {
     let last = Date.now();
     let owed = false;
-    let pressed = false;
     let poll: ReturnType<typeof setInterval> | null = null;
     let soon: ReturnType<typeof setTimeout> | null = null;
     const stopPoll = () => {
       if (poll) clearInterval(poll);
       poll = null;
     };
-    const calm = () => !pressed && !refreshHeld() && !typing() && !document.querySelector(OPEN);
     const attempt = () => {
       if (!owed || document.visibilityState !== "visible") return;
       if (!calm()) {
