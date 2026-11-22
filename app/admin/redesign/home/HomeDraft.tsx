@@ -9,13 +9,13 @@ import { deleteClientConfirmedAction } from "../../../lib/actions";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
 import ClientCardEditor from "../../ClientCardEditor";
 import { toast } from "sonner";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription } from "../../../components/ui/dialog";
 import { AccountIcon, MoreIcon, TrashIcon, UnlockIcon, WeightGoalIcon } from "../../../components/icons";
 import { openClientAppAction } from "../../../lib/appLockActions";
 import type { OverviewInfoRow, OverviewPanel } from "../../../lib/queries";
 // Types only: homeBoard.ts re-exports the server's reader, which must never reach the browser.
 import type { HomeBoard, MuscleGroup, MuscleWindow, PerGroup } from "../../../lib/homeBoard";
-import { ConfirmText } from "../ConfirmParts";
+import { ConfirmThing } from "../ConfirmParts";
 import AppAccessButton from "./AppAccessButton";
 import type { ClientAccess } from "../../../lib/access-actions";
 import { dayMonth, logDate, logDateWidth } from "../../../lib/dayMonth";
@@ -34,6 +34,7 @@ import { monotoneSegments } from "../../../lib/monotoneCurve";
 import { addDaysIso, currentGoal, daysBetween, GOAL_COLOR, kgIn, planKgAt, VERDICT_TONE, VERDICT_WORD, type WeightGoalView } from "../../../lib/weightGoal";
 import WeightGoalDialog from "../WeightGoalDialog";
 import { groupColour } from "../../../lib/categoryColors";
+import { PopupTitle } from "../PopupWho";
 
 /** Weight's own colour, its metric group's (Body): the line while a goal runs, over the goal's beige. */
 const WEIGHT_BLUE = groupColour("body").hex;
@@ -410,7 +411,7 @@ export default function HomeDraft({
                 )}
               </span>
               <div className="rh-details-who">
-                <DialogTitle className="dlh-title">{home.name}</DialogTitle>
+                <PopupTitle>{home.name}</PopupTitle>
               </div>
               <DialogClose className="dlh-x" aria-label="Close">
                 ✕
@@ -458,7 +459,7 @@ export default function HomeDraft({
         {photo && home.avatarPath && (
           <DialogContent className="dlh rh-photodlg">
             <div className="dlh-head">
-              <DialogTitle className="dlh-title">{home.name}</DialogTitle>
+              <PopupTitle>{home.name}</PopupTitle>
               <DialogClose className="dlh-x" aria-label="Close">
                 ✕
               </DialogClose>
@@ -1463,20 +1464,20 @@ function DeleteClientDialog({ clientId, name, firstName }: { clientId: number; n
   return (
     <DialogContent
       className="dlh"
+      aria-describedby={undefined}
       onOpenAutoFocus={(e) => {
         e.preventDefault();
         setTimeout(() => field.current?.focus(), 60);
       }}
     >
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">Delete {name}?</DialogTitle>
+        <PopupTitle>Delete {name}?</PopupTitle>
         <DialogClose className="dlh-x" aria-label="Close">
           ✕
         </DialogClose>
       </div>
-      <ConfirmText>
-        {firstName}&rsquo;s login, programmes, logged sets, check-ins, photos, meetings and chat are deleted, and their invoices stay. This can&rsquo;t be undone.
-      </ConfirmText>
+      {/* The client on the paper, what goes in rust (22 Nov, C). */}
+      <ConfirmThing name={name} lose={<>Everything {firstName} logged goes: their login, programmes, sets, check-ins, photos, meetings and chat. Their invoices stay as records. This can&rsquo;t be undone.</>} />
       <label className="rh-field">
         <span className="dlh-label">Type their name</span>
         <input

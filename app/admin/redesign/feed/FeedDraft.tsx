@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { dismissHomeActionAction } from "../../../lib/actions";
 import { acceptJoinRequestAction, declineJoinRequestAction } from "../../../lib/joinActions";
-import { Dialog, DialogClose, DialogContent, DialogTitle } from "../../../components/ui/dialog";
+import { Dialog, DialogClose, DialogContent } from "../../../components/ui/dialog";
 import { ConfirmText } from "../ConfirmParts";
 import { SepJoin } from "../Sep";
 import { Toaster } from "../../../components/ui/toast";
@@ -19,6 +19,7 @@ import { logDate, logDateWidth } from "../../../lib/dayMonth";
 import { pic } from "../../../lib/pic";
 // Types only: feedBoard.ts re-exports the server's reader, which must never reach the browser.
 import type { ActivityKind, ActivityRow, FeedBoard, JoinRow, NeedRow } from "../../../lib/feedBoard";
+import { PopupTitle } from "../PopupWho";
 
 // The coach's Feed (21 Oct, Alex: built from the Feed mockup, root "rd trn rls rh rfd"): every client at once, clear at a
 // glance. Training's header (no Since line: 24 Oct, Alex), then
@@ -280,7 +281,7 @@ export function NeedsYou({ needs, now, joins = [] }: { needs: NeedRow[]; now: nu
         {declining && (
           <DialogContent className="dlh" aria-describedby="decline-join-text">
             <div className="dlh-head">
-              <DialogTitle className="dlh-title">Decline {declining.name}?</DialogTitle>
+              <PopupTitle>Decline {declining.name}?</PopupTitle>
               <DialogClose className="dlh-x" aria-label="Close">
                 ✕
               </DialogClose>

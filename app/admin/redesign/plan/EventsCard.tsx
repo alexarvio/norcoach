@@ -7,7 +7,7 @@ import type React from "react";
 import { toast } from "sonner";
 import type { SaveJob } from "../useSaveQueue";
 import { addClientEventAction, deleteClientEventAction, updateClientEventAction } from "../../../lib/actions";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription } from "../../../components/ui/dialog";
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, WeightGoalIcon } from "../../../components/icons";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
 import { MonthRange } from "../MonthRange";
@@ -23,6 +23,7 @@ import { SepJoin } from "../Sep";
 import { Fold } from "../Fold";
 import { pic } from "../../../lib/pic";
 import { newOnceKey } from "../../../lib/onceKey";
+import { PopupTitle } from "../PopupWho";
 
 // The New event dialog after the client's sheet and the phase dialog (10 Oct):
 // a category pill in the title, category tiles with icons, the dates as pills.
@@ -591,7 +592,7 @@ export function EventDialog({ today, event, cats, firstName, faces, initialStart
     return (
       <DialogContent className="dlh" role="alertdialog">
         <div className="dlh-head">
-          <DialogTitle className="dlh-title">{named ? `Delete the event “${named}”?` : chromeOf(cats, event.kind).label.toLowerCase() === "event" ? "Delete this event?" : `Delete the ${chromeOf(cats, event.kind).label.toLowerCase()} event?`}</DialogTitle>
+          <PopupTitle>{named ? `Delete the event “${named}”?` : chromeOf(cats, event.kind).label.toLowerCase() === "event" ? "Delete this event?" : `Delete the ${chromeOf(cats, event.kind).label.toLowerCase()} event?`}</PopupTitle>
           <DialogClose className="dlh-x" aria-label="Close">
             ✕
           </DialogClose>
@@ -614,7 +615,7 @@ export function EventDialog({ today, event, cats, firstName, faces, initialStart
   return (
     <DialogContent className="npd" style={{ "--npd-c": pickInk, "--npd-rgb": rgbOf(ink) } as React.CSSProperties}>
       <div className="npd-head">
-        <DialogTitle className="npd-title">{event ? event.title : "New event"}</DialogTitle>
+        <PopupTitle className="npd-title">{event ? event.title : "New event"}</PopupTitle>
         <span className="npd-tools">
           <DialogClose className="npd-x" aria-label="Close">
             ✕
@@ -780,7 +781,7 @@ export function MoveEventDialog({ event: e, start, end, cats, today, onCancel, o
     <DialogContent className="dlh mvd" style={{ "--mv": k.ink, "--mv-rgb": rgbOf(k.ink) } as React.CSSProperties}>
       <div className="dlh-head">
         {/* Untitled, it is named by its category: "Move family event" (24 Oct, Alex: never "something"). */}
-        <DialogTitle className="dlh-title">Move {e.title.trim() || `${k.label.toLowerCase()} event`}</DialogTitle>
+        <PopupTitle>Move {e.title.trim() || `${k.label.toLowerCase()} event`}</PopupTitle>
         <button type="button" className="dlh-x" onClick={onCancel} aria-label="Close">
           ✕
         </button>

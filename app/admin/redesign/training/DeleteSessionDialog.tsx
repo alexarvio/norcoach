@@ -1,10 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { DialogContent, DialogTitle } from "../../../components/ui/dialog";
-import { ConfirmChoice, ConfirmText } from "../ConfirmParts";
+import { DialogContent } from "../../../components/ui/dialog";
+import { ConfirmChoice, ConfirmText, ConfirmThing } from "../ConfirmParts";
 import { dayMonth } from "../../../lib/dayMonth";
 import { SepJoin } from "../Sep";
+import { PopupTitle } from "../PopupWho";
 
 // Deleting a session, in the admin hairline style (20 Oct, Alex): the title,
 // one line of what goes with it, and, when the client logged sets on it, a
@@ -55,7 +56,7 @@ export default function DeleteSessionDialog({
   const parts = [exercises ? plural(exercises, "exercise") : null, cardioBlocks ? `${cardioBlocks} cardio` : null].filter(Boolean);
   const text = [
     parts.length ? `Its ${parts.join(" and ")} ${parts.length > 1 || exercises + cardioBlocks > 1 ? "are" : "is"} deleted with it.` : null,
-    gated ? `${firstName}’s logged sets come out of their history and progress charts.${hasUploads ? " Their videos stay in Media." : ""}` : null,
+    gated ? `They come out of ${firstName}’s history and progress charts.${hasUploads ? " Their videos stay in Media." : ""}` : null,
   ]
     .filter(Boolean)
     .join(" ");
@@ -84,11 +85,13 @@ export default function DeleteSessionDialog({
       }}
     >
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">{name ? <>Delete the session &ldquo;{name}&rdquo;?</> : `Delete Session ${number}?`}</DialogTitle>
+        <PopupTitle>{name ? <>Delete the session &ldquo;{name}&rdquo;?</> : `Delete Session ${number}?`}</PopupTitle>
         <button type="button" className="dlh-x" onClick={onClose} aria-label="Close">
           ✕
         </button>
       </div>
+      {/* The session itself on the paper, what the client logged on it in rust (22 Nov, C). */}
+      <ConfirmThing name={name ?? `Session ${number}`} facts={[...parts, programme]} lose={gated ? `${firstName}’s ${plural(loggedSets, "logged set")} go with it${lastLoggedAt ? `, the last on ${dayMonth(lastLoggedAt)}` : ""}.` : null} />
       {/* What goes with it, in plain sentences (11 Nov, Alex: A of docs/boards/popup-anatomy-mockup.html). */}
       {text && <ConfirmText id="dlh-desc">{text}</ConfirmText>}
       {/* A gate: Delete wakes once it is ticked. */}

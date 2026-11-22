@@ -8,7 +8,7 @@ import { agreedPoints } from "../../../lib/meetingDates";
 import type React from "react";
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription } from "../../../components/ui/dialog";
 import { CalendarIcon, ChatIcon, CheckIcon, ChevronDownIcon, MoreIcon, LinkIcon, PencilIcon, PlusIcon, TrashIcon } from "../../../components/icons";
 import DateText from "../DateText";
 import { MonthRange } from "../MonthRange";
@@ -29,6 +29,7 @@ import type { CoachFocus, FocusGoalView } from "../../../lib/focus";
 import { useHoldWhile, useSaveQueue } from "../useSaveQueue";
 import { SaveStatus } from "../SaveStatus";
 import KindMark from "../KindMark";
+import { PopupTitle } from "../PopupWho";
 
 // The calmer Meetings tab, as a draft on real data, in the Training draft's
 // sheet. The next call with everything to prepare it, the calls after it,
@@ -329,6 +330,7 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
     const weekly = n > 0 && days.every((d, i) => i === 0 || Math.round((parse(d).getTime() - parse(days[i - 1]).getTime()) / 86400000) === 7);
     const span = n ? (n === 1 ? dayMonth(later[0].date) : `${dayMonth(later[0].date)} – ${dayMonth(later[n - 1].date)}`) : "";
     return {
+      thing: { name: name || "Call", facts: [`${parse(m.date).toLocaleDateString("en-GB", { weekday: "short" })} ${dayMonth(m.date)}`, m.time, `${m.durationMinutes} min`] },
       title: name ? `Delete the call “${name}”?` : "Delete this call?",
       description: [goes, keeps, `${firstName} is told it’s cancelled.`].filter(Boolean).join(" "),
       tick: n ? (n === 1 ? "Also delete the next call" : `Also delete the next ${n} calls`) : null,
@@ -1327,7 +1329,7 @@ function ScheduleDialog({ date: initialDate, reschedule, rest = null, onDelete, 
   return (
     <DialogContent className="npd rt-npd" style={{ "--npd-c": kind.color, "--npd-rgb": kind.rgb } as React.CSSProperties}>
       <div className="npd-head">
-        <DialogTitle className="npd-title">{reschedule ? `Reschedule ${reschedule.topic || "the call"}` : "Schedule a meeting"}</DialogTitle>
+        <PopupTitle className="npd-title">{reschedule ? `Reschedule ${reschedule.topic || "the call"}` : "Schedule a meeting"}</PopupTitle>
         <span className="npd-tools">
           <DialogClose className="npd-x" aria-label="Close">
             ✕
@@ -1551,7 +1553,7 @@ function LinkDialog({ value, onSave }: { value: string; onSave: (link: string) =
   return (
     <DialogContent className="dlh">
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">Meeting link</DialogTitle>
+        <PopupTitle>Meeting link</PopupTitle>
         <DialogClose className="dlh-x" aria-label="Close">
           ✕
         </DialogClose>
@@ -1585,7 +1587,7 @@ function CompleteDialog({ firstName, value, title: initialTitle, goals, focus = 
   return (
     <DialogContent className="dlh rt-complete">
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">How did the call go?</DialogTitle>
+        <PopupTitle>How did the call go?</PopupTitle>
         <DialogClose className="dlh-x" aria-label="Close">
           ✕
         </DialogClose>

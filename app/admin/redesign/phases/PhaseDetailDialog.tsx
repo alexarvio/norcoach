@@ -3,7 +3,7 @@
 import { useRef } from "react";
 import type React from "react";
 import Link from "next/link";
-import { DialogClose, DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
+import { DialogClose, DialogContent, DialogDescription } from "../../../components/ui/dialog";
 import { phaseStateOf, STATE_LABEL, stateTagStyle, TRACK_ACCENT, TRACK_LABEL } from "../../phaseChrome";
 import { phaseLengthLabel } from "../../../lib/phases";
 import { FEATURES } from "../../../lib/features";
@@ -14,6 +14,7 @@ import { relative } from "../plan/timelineParts";
 import DateSpan from "./DateSpan";
 import type { OverviewClient } from "./load";
 import { mondayOf, nextOnTrack, prevOnTrack, weekSegments, type OverviewPhase } from "./timeline";
+import { PopupTitle } from "../PopupWho";
 
 // A phase's detail (14 Oct; the .dlh card since 21 Oct), from a bar on the Phases timeline. Read-only, and one anatomy
 // with the event's (24 Oct, Alex: docs/boards/plan-popups-mockup.html): the name; its track and state as tags; its days
@@ -57,7 +58,7 @@ export default function PhaseDetailDialog({ client, phase: p, today, onMove }: {
       }}
     >
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">{p.name}</DialogTitle>
+        <PopupTitle>{p.name}</PopupTitle>
         <DialogClose className="dlh-x" aria-label="Close">
           ✕
         </DialogClose>

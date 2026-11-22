@@ -12,7 +12,7 @@ import Compare from "./Compare";
 import { Fold } from "../Fold";
 import { RowFold } from "../RowFold";
 import { TodoStrip } from "../TodoStrip";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription } from "../../../components/ui/dialog";
 import { Popover, PopoverAnchor, PopoverContent } from "../../../components/ui/popover";
 import { CameraIcon, ChevronLeftIcon, PlusIcon, TrashIcon } from "../../../components/icons";
 import { ConfirmDialog, MessageDialog, useClickAway } from "../training/TrainingDraft";
@@ -27,6 +27,7 @@ import { dayMonth, dayMonthTime, logDate } from "../../../lib/dayMonth";
 import { pic } from "../../../lib/pic";
 import { newOnceKey } from "../../../lib/onceKey";
 import { landOn } from "../../../lib/landOn";
+import { PopupTitle } from "../PopupWho";
 
 // The Shape update tab (21 Oct, Alex), built as Training's header. Each update is "Shape update 1, 2, 3" in the order
 // they opened, never "Month 2" or "Week 3", and nothing reads "sheet" (6 Nov, Alex). The code keeps its sheet names.
@@ -569,7 +570,7 @@ function SetupDialog({ clientId, firstName, plan, onSaved }: { clientId: number;
       }}
     >
       <div className="npd-head">
-        <DialogTitle className="npd-title">Setup</DialogTitle>
+        <PopupTitle className="npd-title">Setup</PopupTitle>
         <span className="npd-tools">
           <DialogClose className="npd-x" aria-label="Close">
             ✕
@@ -1003,9 +1004,9 @@ function PhotoDialog({ sheet, sheets, slotId, onMove }: { sheet: Sheet; sheets: 
     <DialogContent className="rp-photodlg">
       <div className="dlh-head">
         <div className="rp-photodlg-titles">
-          <DialogTitle className="dlh-title">
+          <PopupTitle>
             <SepJoin parts={[cell.label, sheet.title]} />
-          </DialogTitle>
+          </PopupTitle>
           <DialogDescription className="rp-photodlg-fact">
             <SepJoin parts={[cell.shot ?? sheet.dateLabel, sheet.weight != null && `${sheet.weight} kg`]} />
           </DialogDescription>

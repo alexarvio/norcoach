@@ -10,7 +10,7 @@ import { FEATURES } from "../../../lib/features";
 import Link from "next/link";
 import { addClientGoalAction, addClientPhaseAction, applyGoalDoneChangesAction, cancelProgramScheduleAction, unschedulePhaseAction, duplicateClientPhaseAction, removeClientGoalAction, deletePhaseAction, reorderClientGoalsAction, saveAndDeployPhaseNowAction, saveAndSchedulePhaseOrSayWhyAction, updateClientGoalAction, updateClientPhaseAction } from "../../../lib/actions";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription } from "../../../components/ui/dialog";
 import { TRAINING_ICON } from "../../../lib/eventTypes";
 import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, MoreIcon, PlusIcon, TrashIcon } from "../../../components/icons";
 import type { GoalEditorOptions, PlanGoalRow, PlanPhaseRow, PlanProgramOption } from "../../../lib/queries";
@@ -34,6 +34,7 @@ import type { WeightGoalView } from "../../../lib/weightGoal";
 import { useSaveQueue } from "../useSaveQueue";
 import { SaveStatus } from "../SaveStatus";
 import { AddCells, EmptyLane, gridFor, LaneRow, packLanes, PhaseBar, rgbOf, Timeline, weekSpan, weeksBetween } from "./timelineParts";
+import { PopupTitle } from "../PopupWho";
 
 // The calmer Plan tab, as a draft on real data, in the Training draft's
 // sheet. Three cards: the one headline goal, the phases as bars on a week
@@ -836,7 +837,7 @@ export function PhaseDialog({ clientId, firstName, today, thisWeek, phase, track
     return (
       <DialogContent className="dlh">
         <div className="dlh-head">
-          <DialogTitle className="dlh-title">{t.title}</DialogTitle>
+          <PopupTitle>{t.title}</PopupTitle>
           <DialogClose className="dlh-x" aria-label="Close">
             ✕
           </DialogClose>
@@ -867,7 +868,7 @@ export function PhaseDialog({ clientId, firstName, today, thisWeek, phase, track
     // The phase's own colour (21 Oct, Alex): its track tags under the title, its range on the calendar.
     <DialogContent className="npd" style={{ "--npd-c": TRACK_ACCENT[track], "--npd-rgb": rgbOf(TRACK_ACCENT[track]) } as React.CSSProperties}>
       <div className="npd-head">
-        <DialogTitle className="npd-title">{editing ? phase.name : "New phase"}</DialogTitle>
+        <PopupTitle className="npd-title">{editing ? phase.name : "New phase"}</PopupTitle>
         <span className="npd-tools">
           {/* Straight to the tab where the phase's contents live. */}
           {editing && (
@@ -1097,7 +1098,7 @@ export function MoveDialog({ phase: p, start, end, today, onCancel, onSave }: { 
   return (
     <DialogContent className="dlh mvd" style={{ "--mv": ink, "--mv-rgb": rgbOf(ink) } as React.CSSProperties}>
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">Move {p.name}</DialogTitle>
+        <PopupTitle>Move {p.name}</PopupTitle>
         <button type="button" className="dlh-x" onClick={onCancel} aria-label="Close">
           ✕
         </button>
@@ -1326,7 +1327,7 @@ function GoalDialog({ firstName, goal, options, phases, today, onSave }: { first
       }}
     >
       <div className="npd-head">
-        <DialogTitle className="npd-title">{goal ? "Edit goal" : "New goal"}</DialogTitle>
+        <PopupTitle className="npd-title">{goal ? "Edit goal" : "New goal"}</PopupTitle>
         <span className="npd-tools">
           <DialogClose className="npd-x" aria-label="Close">
             ✕

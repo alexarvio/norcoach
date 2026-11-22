@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import type React from "react";
 import Link from "next/link";
-import { DialogClose, DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
+import { DialogClose, DialogContent, DialogDescription } from "../../../components/ui/dialog";
 import { dayMonth } from "../../../lib/dayMonth";
 import { repeatWords } from "../../../lib/eventRepeat";
 import { pic } from "../../../lib/pic";
@@ -13,6 +13,7 @@ import { eventName, eventState, relative } from "../plan/timelineParts";
 import DateSpan from "./DateSpan";
 import type { OverviewClient } from "./load";
 import { daysBetween, type OverviewEvent } from "./timeline";
+import { PopupTitle } from "../PopupWho";
 
 // An event's detail (14 Oct; the .dlh card since 21 Oct), from a bar or pin on the Phases timeline: the phase pop-up's
 // sibling, read-only (23 Oct, Alex: events are changed on the client's own screens). One anatomy with the phase's
@@ -59,7 +60,7 @@ export default function EventDetailDialog({ client, event: e, today, coach }: { 
       }}
     >
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">{eventName(e, k.label)}</DialogTitle>
+        <PopupTitle>{eventName(e, k.label)}</PopupTitle>
         <DialogClose className="dlh-x" aria-label="Close">
           ✕
         </DialogClose>

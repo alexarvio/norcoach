@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { addClientPhaseAction, applySupplementChangesAction, deletePhaseAction, deployPhaseNowAction, markSeenAction, saveAndSchedulePhaseOrSayWhyAction, saveCoachNutritionNoteAction, saveNutritionTargetsAction, sendChatMessageAction, unschedulePhaseAction, updateClientPhaseAction } from "../../../lib/actions";
 import type { MessageLink } from "../../../lib/messageLinks";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription } from "../../../components/ui/dialog";
 import { CalendarIcon, CameraIcon, ChatIcon, NoteIcon,ChevronDownIcon, MoreIcon, PlusIcon, TrashIcon } from "../../../components/icons";
 import type { LoggedDay, LoggedDaysView, LoggedMeal, MealComment } from "../../../lib/queries";
 import { ConfirmDialog, DeletePhaseDialog, MessageDialog, fmtDate, stateLabel, useClickAway } from "../training/TrainingDraft";
@@ -31,6 +31,7 @@ import { SaveStatus } from "../SaveStatus";
 import { Fold } from "../Fold";
 import { RowFold } from "../RowFold";
 import { landOn } from "../../../lib/landOn";
+import { PopupTitle } from "../PopupWho";
 
 // The Nutrition tab, built as Training and Lifestyle are (21 Oct, Alex): the
 // phase's name to click and type, its state tag as its menu, the goals and
@@ -182,6 +183,8 @@ export default function NutritionDraft({
   const ended = plan.status === "past";
   const today = plan.planCtx.today;
   const startHasCome = !!plan.startDate && plan.startDate <= today;
+  // The phase on a pop-up's paper (22 Nov, C): what it holds and its dates; read when a pop-up opens, after lastDay.
+  const phaseFactsOf = () => [plan.training.protein != null ? `P ${plan.training.protein}` : null, plan.training.carbs != null ? `C ${plan.training.carbs}` : null, plan.training.fats != null ? `F ${plan.training.fats}` : null, plan.startDate && lastDay ? `${fmtDate(plan.startDate)} – ${fmtDate(lastDay)}` : null];
   const lastDay = plan.endDate ? addDays(plan.endDate, 6) : null;
 
   // ---- Targets: typed in place, saved a moment after the typing stops (21 Oct, Alex: no Apply bar).
@@ -1031,6 +1034,7 @@ export default function NutritionDraft({
         )}
         {dlg?.kind === "deploy" && startHasCome && (
           <ConfirmDialog
+            thing={{ name: plan.name, facts: phaseFactsOf() }}
             title={`Make “${plan.name}” live?`}
             description={`${firstName} sees its targets and supplements from today.`}
             confirm="Make it live"
@@ -1043,6 +1047,7 @@ export default function NutritionDraft({
         {/* Now, whatever its dates say (21 Oct, as Training): it starts this week. */}
         {dlg?.kind === "liveNow" && (
           <ConfirmDialog
+            thing={{ name: plan.name, facts: phaseFactsOf() }}
             title={`Make “${plan.name}” live now?`}
             description={`Its start moves to this week, and ${firstName} sees its targets from today.`}
             confirm="Make it live"
@@ -1054,6 +1059,7 @@ export default function NutritionDraft({
         )}
         {dlg?.kind === "backToDraft" && (
           <ConfirmDialog
+            thing={{ name: plan.name, facts: phaseFactsOf() }}
             title={`Move “${plan.name}” back to draft?`}
             description={`It comes off ${firstName}’s schedule.`}
             confirm="Back to draft"
@@ -1067,6 +1073,7 @@ export default function NutritionDraft({
         {dlg?.kind === "deletePhase" && phaseId != null && (
           <DeletePhaseDialog
             name={plan.name}
+            facts={phaseFactsOf()}
             logged={0}
             firstName={firstName}
             onDelete={() => {
@@ -1520,11 +1527,11 @@ function PhotoDialog({ firstName, date, meal, comments, onSend }: { firstName: s
       }}
     >
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">
+        <PopupTitle>
           {meal.label}
           <Sep />
           {dayMonth(date)}
-        </DialogTitle>
+        </PopupTitle>
         <DialogClose className="dlh-x" aria-label="Close">
           ✕
         </DialogClose>

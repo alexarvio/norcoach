@@ -2,12 +2,13 @@
 
 import { Fragment, useEffect, useState } from "react";
 import type React from "react";
-import { DialogClose, DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
+import { DialogClose, DialogContent, DialogDescription } from "../../../components/ui/dialog";
 import { TRACK_ACCENT } from "../../phaseChrome";
 import { dayMonth } from "../../../lib/dayMonth";
 import { addDays } from "../phases/timeline";
 import { Sep, SepJoin } from "../Sep";
 import { inUnit, type ApplyFig, type ApplyPreview, type ApplySession } from "./applyShape";
+import { PopupTitle } from "../PopupWho";
 
 // The confirm of Apply to the rest and of a session's Apply to remaining weeks (23 Oct, Alex: "naming nicely and
 // structured the changes that we are applying"): the title and the weeks' fact as before, then exactly what changes
@@ -90,7 +91,7 @@ export default function ApplyChangesDialog({ title, description, confirm, load, 
   return (
     <DialogContent className="dlh apx" style={{ "--apx-c": TRACK_ACCENT.training } as React.CSSProperties}>
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">{title}</DialogTitle>
+        <PopupTitle>{title}</PopupTitle>
         <DialogClose className="dlh-x" aria-label="Close">
           ✕
         </DialogClose>

@@ -22273,3 +22273,33 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
    aligned with the title instead of the icon"): indented by the heart’s 14px and its 7px gap. Measured on a 390px phone, the
    label’s words and Steps start on the same pixel. */
 .cki-auto-row .cki-auto-name { padding-left: 21px; }
+
+/* ---- C on every pop-up (22 Nov, Alex: "the pop ups in the admin panel… are also quite vague"; docs/boards/admin-popups-c-mockup.html,
+   "build them"): the client's notification pop-up carried over. The head is the coach's dark (their brand colour, else
+   #1c1c1e) to the card's edges, their logo faint in it (whole when it is their own), the title white; the paper rises
+   over its foot with 20px corners and holds the rest as before. `.dlh-who` (PopupWho.tsx) puts the client's face and
+   `{Name} | {what}` over the title where the pop-up is about one client. */
+.dlh.dlh > .dlh-head:first-child, .npd.npd > .npd-head:first-child { position: relative; flex: none; overflow: hidden; align-items: flex-start; margin: -20px -20px 0; padding: 18px 20px 38px; border-radius: 20px 20px 0 0; background: var(--brand, #1c1c1e); color: #fff; }
+.dlh.dlh > .dlh-head:first-child::before, .npd.npd > .npd-head:first-child::before { content: ""; position: absolute; right: -40px; top: -34px; width: 170px; height: 164px; background: #fff; opacity: 0.06; pointer-events: none; -webkit-mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; }
+.has-coach-logo .dlh.dlh > .dlh-head:first-child::before, .has-coach-logo .npd.npd > .npd-head:first-child::before { right: 54px; top: 10px; width: 76px; height: calc(100% - 44px); opacity: 0.12; }
+.dlh.dlh > .dlh-head:first-child::after, .npd.npd > .npd-head:first-child::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 20px; border-radius: 20px 20px 0 0; background: #fff; pointer-events: none; }
+.dlh.dlh > .dlh-head:first-child > *, .npd.npd > .npd-head:first-child > * { position: relative; z-index: 1; }
+.dlh.dlh > .dlh-head:first-child .dlh-title, .npd.npd > .npd-head:first-child .npd-title { color: #fff; }
+.dlh.dlh > .dlh-head:first-child .dlh-x, .npd.npd > .npd-head:first-child .npd-x { color: rgba(255, 255, 255, 0.72); }
+.dlh.dlh > .dlh-head:first-child .dlh-x:hover, .npd.npd > .npd-head:first-child .npd-x:hover, .npd.npd > .npd-head:first-child .npd-x:focus-visible { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.npd.npd > .npd-head:first-child .npd-open { color: rgba(255, 255, 255, 0.8); }
+.npd.npd > .npd-head:first-child .npd-open:hover, .npd.npd > .npd-head:first-child .npd-open:focus-visible { background: rgba(255, 255, 255, 0.12); color: #fff; }
+/* The client and what it is about, over the title (PopupWho.tsx). */
+.dlh-whohead { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.dlh-whohead > div { min-width: 0; }
+.dlh-whoface { position: relative; flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: #fff; color: #141a24; font-size: 16px; font-weight: 600; }
+.dlh-whoface img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.dlh-whoeye { display: block; overflow: hidden; margin-bottom: 3px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; text-overflow: ellipsis; white-space: nowrap; color: var(--who-c, rgba(255, 255, 255, 0.6)); }
+/* The thing itself on the paper (ConfirmThing, ConfirmParts.tsx): its name, its facts grey, what goes with it in soft rust. */
+.dlh-thing { margin: 0 0 14px; }
+.dlh-thing-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.dlh-thing-words { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.dlh-thing-name { font-size: 16px; line-height: 22px; font-weight: 600; color: #141a24; overflow-wrap: anywhere; }
+.dlh-thing-facts { font-size: 12.5px; line-height: 18px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; }
+.dlh-thing-aside { flex: none; font-size: 24px; line-height: 28px; font-weight: 500; color: #141a24; font-variant-numeric: tabular-nums; }
+.dlh-thing-lose { margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; background: rgba(184, 71, 31, 0.07); font-size: 13px; line-height: 19px; font-weight: 500; color: #b8471f; }

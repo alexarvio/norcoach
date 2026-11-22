@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { DialogContent, DialogTitle } from "../../../components/ui/dialog";
+import { DialogContent } from "../../../components/ui/dialog";
 import { dayMonth, logDate, logDateWidth } from "../../../lib/dayMonth";
 import { isAssisted, judge, liftedKg, repRange, rowStatus, type Judged, type Session, type Verdict } from "../../../lib/progressRules";
 import { monotoneSegments } from "../../../lib/monotoneCurve";
 import { Fold } from "../Fold";
 import { Sep, SepJoin } from "../Sep";
+import { PopupTitle } from "../PopupWho";
 
 // An exercise's progress, for the coach (23 Oct, Alex: mockup B). The .dlh card: the name, the verdict as a state pill
 // with the targets and the gym as facts, the estimated one-rep max now with its change and the best set, 7 days | 30
@@ -395,7 +396,7 @@ export default function ExerciseProgressDialog({
       }}
     >
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">{exerciseName}</DialogTitle>
+        <PopupTitle>{exerciseName}</PopupTitle>
         <button type="button" className="dlh-x" onClick={onClose} aria-label="Close">
           <svg viewBox="0 0 24 24" width={12} height={12} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" aria-hidden="true">
             <path d="M6 6l12 12M18 6 6 18" />

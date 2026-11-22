@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { createInvoiceAction, deleteInvoiceAction, deleteInvoiceTemplateAction, saveInvoiceTemplateAction, setInvoiceRepeatPausedAction, setInvoiceStatusByIdAction, stopInvoiceRepeatAction } from "../../../lib/actions";
 import type { InvoiceEvery, InvoiceLine, InvoiceTemplate } from "../../../lib/db";
 import type { InvoiceView } from "../../../lib/queries";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../../../components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription } from "../../../components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
 import { ArrowRightIcon, ChevronDownIcon, MoreIcon, PlusIcon, TrashIcon } from "../../../components/icons";
@@ -18,6 +18,7 @@ import { newOnceKey } from "../../../lib/onceKey";
 import { SepJoin } from "../Sep";
 import { ConfirmDialog } from "../training/TrainingDraft";
 import { planPerPeriod } from "../../../lib/planText";
+import { PopupTitle } from "../PopupWho";
 
 // A client's invoices (21 Oct, Alex: built as the track tabs are, root "rd trn rls riv"): Training's header with
 // New invoice as a white pill, the figures in one hairline card, what Settings still lacks as a fact and its fix,
@@ -361,8 +362,9 @@ export default function InvoicesDraft({ clientId, firstName, clientName, plan }:
       <Dialog open={removing != null} onOpenChange={(o) => !o && setRemoving(null)}>
         {removing && (
           <ConfirmDialog
+            thing={{ name: fill(removing.lines[0]?.description || "Invoice", removing.issueDate), facts: [removing.number, "Not sent", `Issued ${dayMonth(removing.issueDate)}`], aside: money(removing.total, removing.currency) }}
             title={`Remove invoice ${removing.number}?`}
-            description={`It hasn’t reached ${firstName}. This can’t be undone.`}
+            description="This can’t be undone."
             confirm="Remove"
             danger
             onConfirm={() => {
@@ -430,7 +432,7 @@ function NewInvoiceDialog({ clientName, firstName, plan, from, onCreate }: { cli
   return (
     <DialogContent className="dlh riv-new">
       <div className="dlh-head">
-        <DialogTitle className="dlh-title">New invoice</DialogTitle>
+        <PopupTitle>New invoice</PopupTitle>
         <DialogClose className="dlh-x" aria-label="Close">
           ✕
         </DialogClose>
