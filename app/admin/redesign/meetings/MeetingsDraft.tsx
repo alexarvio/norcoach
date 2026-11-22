@@ -381,7 +381,6 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
   };
   // None open at first (21 Oct, Alex): a row opens when it is clicked.
   const [openPast, setOpenPast] = useState<number | null>(null);
-  const [selectedDay, setSelectedDay] = useState(upcoming?.date ?? today);
   // The month's dots: what came from the server, with what was done here on top.
   const dots: DraftDot[] = [...plan.dots.filter((d) => !d.mine || meetings.some((m) => m.date === d.date && m.time === d.time && m.status !== "cancelled")), ...meetings.filter((m) => m.id < 0 && m.status !== "cancelled").map((m) => ({ date: m.date, time: m.time, durationMinutes: m.durationMinutes, name: firstName, topic: m.topic, mine: true, completed: m.status === "completed" }))];
 
@@ -635,7 +634,8 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
         </div>
         <div className="trn-head-actions">
           {/* White pills, as Training's Phase goals and Note (21 Oct, Alex: the black ones were heavy). */}
-          <button type="button" className="trn-pill" onClick={() => setDlg({ kind: "schedule", date: selectedDay, reschedule: null })}>
+          {/* A new call opens on today, in the month you are in (22 Nov, Alex: it opened on the last day scheduled, January). */}
+          <button type="button" className="trn-pill" onClick={() => setDlg({ kind: "schedule", date: today, reschedule: null })}>
             <CalendarIcon /> Schedule a meeting
           </button>
           <DropdownMenu modal={false}>
@@ -662,7 +662,7 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
             return true;
           }
           if (item.kind === "ask-call") {
-            setDlg({ kind: "schedule", date: selectedDay, reschedule: null, topic: plan.request?.about });
+            setDlg({ kind: "schedule", date: today, reschedule: null, topic: plan.request?.about });
             return true;
           }
           return false;
@@ -867,7 +867,6 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
                 const onceKey = newOnceKey();
                 act(() => addMeetingAction(fd({ clientId, date: v.date, time: v.time, tz: v.tz, durationMinutes: v.durationMinutes, topic: v.topic, link: v.link ?? "", repeatWeeks: v.repeatWeeks, count: v.count, meetingType: v.meetingType, onceKey })));
               }
-              setSelectedDay(v.date);
               close();
             }}
           />
