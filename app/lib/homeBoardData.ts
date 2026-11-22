@@ -536,7 +536,9 @@ function lastPaidOf(ctx: Ctx): HomeBoard["lastPaid"] {
 // ---- Since the coach last looked ------------------------------------------------------------
 
 function sinceOf(ctx: Ctx, thread: ChatThread, foodRows: FoodRows): HomeBoard["since"] {
-  const prev = ctx.client?.home_looked?.prev;
+  // From the look this showing makes (lookNow), not the stored one: the look is written after the page is on screen
+  // (noteHomeLooked, 22 Nov), so a new visit's first render still counts from the visit before, as when it was written first.
+  const prev = ctx.client ? lookNow(ctx.client.home_looked, Date.now()).look.prev : null;
   if (prev == null || !Number.isFinite(prev)) return null;
   const data = getData();
   const from = localDateStr(new Date(prev));
@@ -901,23 +903,30 @@ function thirtyDaysOf(ctx: Ctx): HomeBoard["days"] {
 }
 
 /**
- * The coach has this client on screen (loadHome, any of their tabs): a look more than 30 minutes after the last starts a
- * new visit, and the visit before becomes what "Since" counts from. Call before getHomeBoard: a new visit moves the last
- * look into prev first, so the board counts from the previous visit on its first render too (and on every re-read in it).
+ * What the look would be if the coach looked now, written nowhere: a look more than 30 minutes after the last starts a
+ * new visit (the last look becomes prev), else the same visit. `write` says whether noteHomeLooked would save it (a new
+ * visit, or a minute on since the last look).
+ */
+function lookNow(had: ClientRow["home_looked"], now: number): { look: NonNullable<ClientRow["home_looked"]>; write: boolean } {
+  if (!had || !Number.isFinite(had.at) || now - had.at > VISIT_GAP_MS) return { look: { at: now, prev: had && Number.isFinite(had.at) ? had.at : null }, write: true };
+  if (now - had.at >= LOOK_STEP_MS) return { look: { at: now, prev: had.prev ?? null }, write: true };
+  return { look: had, write: false };
+}
+
+/**
+ * The coach has this client on screen (any of their tabs): a look more than 30 minutes after the last starts a new visit,
+ * and the visit before becomes what "Since" counts from. Called once the page is really shown (22 Nov: visitClient
+ * from RedesignShell, so a rail hover's prefetch of the page is never a look), after the render; the render counts from
+ * the look it would make (sinceOf, lookNow), so a new visit's first render reads the previous visit as before.
  */
 export function noteHomeLooked(clientId: number): void {
   try {
     const client = getData().clients.find((c) => c.id === clientId);
     if (!client) return;
-    const now = Date.now();
-    const had = client.home_looked;
-    if (!had || !Number.isFinite(had.at) || now - had.at > VISIT_GAP_MS) {
-      client.home_looked = { at: now, prev: had && Number.isFinite(had.at) ? had.at : null };
-      persist();
-    } else if (now - had.at >= LOOK_STEP_MS) {
-      client.home_looked = { at: now, prev: had.prev ?? null };
-      persist();
-    }
+    const { look, write } = lookNow(client.home_looked, Date.now());
+    if (!write) return;
+    client.home_looked = look;
+    persist();
   } catch (e) {
     console.error("[homeBoard] noteHomeLooked:", e);
   }

@@ -55,16 +55,27 @@ const SETTINGS_HREF = "/admin/redesign/settings";
 // prefetched in full (`prefetch={true}`, the docs' "Hover-triggered prefetch"), so the click shows a page already in
 // the browser. Never on viewport entry: that would draw all seven heavy pages on the server for every page, again after
 // every save (a revalidation re-prefetches every armed visible link), and note a Feed or Business visit the coach never
-// made. The row lets go as the pointer leaves (a prefetch under way still lands), so a save re-prefetches only the row
-// under the pointer. A full prefetch is kept 5 minutes (staleTimes.static,
+// made. The row lets go as the pointer leaves, as it is clicked, and HOLD_MS after it armed (a prefetch under way still
+// lands), so a save or a refresh never re-prefetches a row the pointer merely rests on. A full prefetch is kept 5 minutes (staleTimes.static,
 // 03-api-reference/05-config/01-next-config-js/staleTimes.md): a page shown from one older than FRESH_MS reads itself
 // again in the background as it lands, so the coach sees it at once and the newest a moment later. Production only:
-// Next never prefetches in `next dev`.
+// Next never prefetches in `next dev`. A client row the same since 22 Nov ("idk still take a decent amount of time":
+// about 0.22s of every click is the way to the server), after a longer rest (CLIENT_ARM_MS), so scrolling the list
+// past the rows never prefetches them: the client's page writes nothing for being drawn (the visit is written once
+// it is on screen, visitClient from RedesignShell), so a hover is no visit.
 const ARM_MS = 70; // a pointer passing over the rail doesn't prefetch every row it crosses
+const CLIENT_ARM_MS = 150; // a client row: the list scrolls under a resting pointer, and its page is the heaviest
 const FRESH_MS = 15_000; // as RefreshOnReturn's gap
 const KEPT_MS = 5 * 60_000; // staleTimes.static's default
+const HOLD_MS = 1000; // an armed row lets go after this: its prefetch is under way by then and still lands
 /** When each view or client was last prefetched by a row (keyOf; at most once in KEPT_MS, as the cache keeps it). */
 const prefetchedAt = new Map<string, number>();
+/** The client cache was emptied (a refresh, or a save that revalidates: RedesignShell sees its page read again): every
+ *  time above speaks of a copy that is gone, so the next arm records a real fetch and a click never reads again a page
+ *  it has just fetched. */
+export function forgetPrefetches() {
+  prefetchedAt.clear();
+}
 /** The view a click is going to whose prefetch may be old: it reads itself again once it lands. */
 let readOnArrival: string | null = null;
 /** A page as the address tells it apart: the view, and on a client's screens the client too. */
@@ -74,17 +85,31 @@ const keyOf = (href: string) => {
   return client ? `${path}?client=${client}` : path;
 };
 
-/** A view row of the rail: a Link prefetched in full while the mouse (or the keyboard's focus) rests on it. */
-function ViewLink({ href, onClick, onPointerDown, children, still = false, ...rest }: Omit<ComponentProps<typeof Link>, "href" | "prefetch" | "onPointerEnter" | "onPointerLeave" | "onFocus" | "onBlur"> & { href: string; /** Never prefetched (Feed, Business): their page notes the coach's look as it is read, and Next's full prefetch
+/** A view or client row of the rail: a Link prefetched in full while the mouse (or the keyboard's focus) rests on it. */
+function ViewLink({ href, onClick, onPointerDown, children, still = false, armAfter, ...rest }: Omit<ComponentProps<typeof Link>, "href" | "prefetch" | "onPointerEnter" | "onPointerLeave" | "onPointerCancel" | "onFocus" | "onBlur"> & { href: string; /** Never prefetched (Feed, Business): their page notes the coach's look as it is read, and Next's full prefetch
    *  carries nothing that tells it from a visit, so a hover would count as one (22 Nov, review). The click still shows
-   *  its outline at once (RailFrame). */ still?: boolean }) {
+   *  its outline at once (RailFrame). */ still?: boolean; /** How long the pointer (or the keyboard's focus) rests before
+   *  the prefetch, in ms: ARM_MS when left out, the focus at once; a client row's CLIENT_ARM_MS, its focus after it too,
+   *  so tabbing down the list doesn't draw every client's page, and a finger landing on it waits too (a flick of the
+   *  list starts on a row). */ armAfter?: number }) {
   const [armed, setArmed] = useState(false);
   const timer = useRef<number | null>(null);
+  const hold = useRef<number | null>(null);
   const stop = () => {
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = null;
   };
-  useEffect(() => stop, []);
+  const stopHold = () => {
+    if (hold.current !== null) window.clearTimeout(hold.current);
+    hold.current = null;
+  };
+  useEffect(
+    () => () => {
+      stop();
+      stopHold();
+    },
+    [],
+  );
   const arm = () => {
     stop();
     if (still) return;
@@ -93,9 +118,17 @@ function ViewLink({ href, onClick, onPointerDown, children, still = false, ...re
     const at = prefetchedAt.get(key);
     if (at === undefined || now - at > KEPT_MS) prefetchedAt.set(key, now);
     setArmed(true);
+    // Armed only long enough to start the prefetch (HOLD_MS): Next fetches every armed link again after each save or
+    // refresh (pingVisibleLinks), and a pointer resting on the row would draw its page each time.
+    stopHold();
+    hold.current = window.setTimeout(() => {
+      hold.current = null;
+      setArmed(false);
+    }, HOLD_MS);
   };
   const letGo = () => {
     stop();
+    stopHold();
     setArmed(false);
   };
   return (
@@ -107,23 +140,35 @@ function ViewLink({ href, onClick, onPointerDown, children, still = false, ...re
       onPointerEnter={(e) => {
         if (e.pointerType === "touch" || armed) return;
         stop();
-        timer.current = window.setTimeout(arm, ARM_MS);
+        timer.current = window.setTimeout(arm, armAfter ?? ARM_MS);
       }}
       onPointerLeave={letGo}
-      // A tap: the prefetch starts as the finger lands, ahead of the click (about 100ms gained).
+      // A tap: the prefetch starts as the finger lands, ahead of the click (about 100ms gained). A row with armAfter (a
+      // client's) waits that long with the finger down: a flick of the list starts on a row, and the browser taking the
+      // gesture for a scroll cancels the pointer (onPointerCancel) before then.
       onPointerDown={(e) => {
         onPointerDown?.(e);
-        if (e.pointerType === "touch" && !armed) arm();
+        if (e.pointerType !== "touch" || armed) return;
+        if (armAfter === undefined) return arm();
+        stop();
+        timer.current = window.setTimeout(arm, armAfter);
       }}
+      onPointerCancel={letGo}
       // The keyboard's focus, not the one a mouse press gives (that comes with the click).
       onFocus={(e) => {
-        if (!armed && e.currentTarget.matches(":focus-visible")) arm();
+        if (armed || !e.currentTarget.matches(":focus-visible")) return;
+        if (armAfter === undefined) return arm();
+        stop();
+        timer.current = window.setTimeout(arm, armAfter);
       }}
       onBlur={letGo}
       onClick={(e) => {
         onClick?.(e);
+        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        // Going there: the row lets go, so it is never armed (and fetched again) as the page lands, refreshes or saves.
+        letGo();
         // Next prefetches nothing in `next dev`: there is nothing old to read again there.
-        if (process.env.NODE_ENV !== "production" || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        if (process.env.NODE_ENV !== "production") return;
         const key = keyOf(href);
         if (keyOf(window.location.pathname + window.location.search) === key) {
           readOnArrival = null;
@@ -486,10 +531,12 @@ export default function RedesignRail({ rail, clientId, settings = false, onArriv
               return (
                 <div key={c.id} className={`rr-item${open ? " open" : ""}`}>
                   <div className="rr-head">
-                    {/* Never prefetched in full on hover: the client page notes the look and draws all nine tabs, and
-                        a prefetch would count as opening them (22 Nov, review). Its outline shows at once (RailFrame). */}
-                    <Link
+                    {/* Prefetched in full once the pointer rests on it a little longer than on a view (22 Nov: CLIENT_ARM_MS),
+                        so the click lands on a page already in; the page writes nothing for being drawn, its visit is
+                        written once it is on screen (visitClient). Its outline still shows at once (RailFrame). */}
+                    <ViewLink
                       href={`/admin/redesign/home?client=${c.id}`}
+                      armAfter={CLIENT_ARM_MS}
                       className={`rr-row${active ? " active" : ""}${pendingId === c.id ? " loading" : ""}`}
                       aria-current={active ? "page" : undefined}
                       onClick={(e) => {
@@ -508,7 +555,7 @@ export default function RedesignRail({ rail, clientId, settings = false, onArriv
                         )}
                       </span>
                       <span className="rr-name">{c.name}</span>
-                    </Link>
+                    </ViewLink>
                     {/* How many things need you, a rust number and nothing more said (22 Oct, Alex); a click drops the
                         screens they are on open under the row. */}
                     {c.total > 0 && (
