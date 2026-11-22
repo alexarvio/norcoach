@@ -118,12 +118,12 @@ export function FeedIcon() {
 }
 
 // Three staggered bars: phases on a timeline.
+/** Phases: three offset lines, phases on a timeline (22 Nov, Alex: "use the phases icon that you did in the mock ups it
+ *  is so much cleaner"; was three rounded bars). */
 export function PhasesIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="2" y="3.25" width="8.5" height="3" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
-      <rect x="6" y="7.5" width="10" height="3" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
-      <rect x="3.5" y="11.75" width="7" height="3" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" xmlns="http://www.w3.org/2000/svg">
+      <path d="M4 6h10M8 12h12M4 18h8" />
     </svg>
   );
 }

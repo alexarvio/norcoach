@@ -74,16 +74,55 @@ function fromHsl(h: number, s: number, l: number): Rgb {
   return [hue(h + 1 / 3) * 255, hue(h) * 255, hue(h - 1 / 3) * 255];
 }
 
-/** The colour as it is used, lowercase '#rrggbb', and whether it had to be darkened; null when it isn't a colour. */
-export function brandColour(input: string): { hex: string; changed: boolean } | null {
+/** The ink words go dark in on a bright colour. */
+const INK: Rgb = [20, 26, 36];
+const contrastWithInk = (rgb: Rgb) => (luminance(rgb) + 0.05) / (luminance(INK) + 0.05);
+
+/** The colour as it is used, lowercase '#rrggbb', whether it had to be darkened, and the words on it: white, or ink on a
+ *  colour too bright for white (22 Nov, Alex: D of docs/boards/light-brand-mockup.html: a neon yellow stays itself, its
+ *  words dark, never darkened to mustard). Only a colour in the narrow middle where neither reads at 4.5:1 is darkened
+ *  a touch, its hue kept, until white does. Null when it isn't a colour. */
+export function brandColour(input: string): { hex: string; changed: boolean; ink: "#ffffff" | "#141a24"; text: string } | null {
   const rgb = parse(input ?? "");
   if (!rgb) return null;
-  if (contrastWithWhite(rgb) >= MIN_CONTRAST) return { hex: toHex(rgb), changed: false };
+  if (contrastWithWhite(rgb) >= MIN_CONTRAST) return { hex: toHex(rgb), changed: false, ink: "#ffffff", text: toHex(rgb) };
+  if (contrastWithInk(rgb) >= MIN_CONTRAST) return { hex: toHex(rgb), changed: false, ink: "#141a24", text: readableOnWhite(rgb) };
   const [h, s, l0] = toHsl(rgb);
   for (let step = 1; step <= 100; step++) {
     const l = Math.max(0, l0 - step / 100);
     const next = fromHsl(h, s, l).map((c) => Math.round(c)) as Rgb;
-    if (contrastWithWhite(next) >= MIN_CONTRAST || l === 0) return { hex: toHex(next), changed: true };
+    if (contrastWithWhite(next) >= MIN_CONTRAST || l === 0) return { hex: toHex(next), changed: true, ink: "#ffffff", text: toHex(next) };
   }
-  return { hex: "#000000", changed: true };
+  return { hex: "#000000", changed: true, ink: "#ffffff", text: "#000000" };
+}
+
+/** A bright colour as words or a faint mark on white (the client's picked tab, the mark behind the page): darkened, its
+ *  hue kept, until it reads at 4.5:1; a neon yellow alone on white can't be read. */
+function readableOnWhite(rgb: Rgb): string {
+  const [h, s, l0] = toHsl(rgb);
+  for (let step = 1; step <= 100; step++) {
+    const l = Math.max(0, l0 - step / 100);
+    const next = fromHsl(h, s, l).map((c) => Math.round(c)) as Rgb;
+    if (contrastWithWhite(next) >= MIN_CONTRAST || l === 0) return toHex(next);
+  }
+  return "#000000";
+}
+
+/** The colour's CSS variables for the body (the layout, Settings as it is picked, a phone preview): `--brand` the
+ *  colour; on a bright one, what sits on it turns dark: `--brand-ink` the words and marks on the colour (white by
+ *  default), `--brand-pill` and `--brand-pill-ink` the picked pill on a surface of the colour (white with ink words by
+ *  default; ink with white words on a bright one), `--brand-count` a count on it (soft rust by default; dark rust). */
+export function brandVars(input: string | null | undefined): Record<string, string> {
+  const c = input ? brandColour(input) : null;
+  if (!c) return {};
+  const vars: Record<string, string> = { "--brand": c.hex };
+  if (c.ink === "#141a24") {
+    vars["--brand-ink"] = "#141a24";
+    vars["--brand-pill"] = "#141a24";
+    vars["--brand-pill-ink"] = "#ffffff";
+    vars["--brand-count"] = "#8a3a12";
+    // The colour as words on white, darkened until it reads there.
+    vars["--brand-text"] = c.text;
+  }
+  return vars;
 }

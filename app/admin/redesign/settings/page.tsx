@@ -15,10 +15,11 @@ import { loadChatDock, loadRail } from "../loaders";
 import RedesignRail from "../RedesignRail";
 import ChatDock from "../ChatDock";
 import "../messages/messages.css";
-import { AccountSettings, BannerSettings, BrandColourSettings, BusinessSettings, InvoicingSettings, LogoSettings, PrivacySettings } from "./SettingsForms";
+import { AccountSettings, BusinessSettings, InvoicingSettings, PrivacySettings } from "./SettingsForms";
 import { coachBrandInline } from "../../../lib/brandMark";
-import { coachCardPictures } from "../../../lib/coachCards";
-import CardPicturesSettings from "./CardPicturesSettings";
+import { coachCardPictures, coachCardsDefault } from "../../../lib/coachCards";
+import BrandingSection from "./BrandingSection";
+import { PHASE_COVERS } from "../../../lib/phaseCovers";
 import { BRAND_SWATCHES } from "../../../lib/brandColour";
 import SupportSection from "./SupportSection";
 import BillingSettings from "./BillingSettings";
@@ -88,6 +89,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const asked = Number(params.coachId);
   const coachId = owner && Number.isInteger(asked) && asked > 0 && t.time("profileView", () => getCoachProfileView(asked)) ? asked : coach.id;
   const profile = t.time("profileView", () => getCoachProfileView(coachId));
+  // The coach signed in, for their own Branding card (the owner may be looking at another coach's profile).
+  const me = coachId === coach.id ? profile : getCoachProfileView(coach.id);
   // Their ids and emails alone (Step 5: no coach's feed built for them).
   const coaches = owner ? t.time("coachAccounts", () => listCoachEmails()) : [];
   // Your details: the account basics, beside the public profile.
@@ -164,14 +167,20 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       // the logo, the banner and the brand colour (19 Nov, Alex: docs/boards/coach-brand-mockup.html), and the card pictures.
       key: "branding",
       fact: facts.branding,
+      // C's identity card and A's card pictures (22 Nov, Alex: "have the branding like in c and the card pictures like in a";
+      // docs/boards/settings-branding-mockup.html): the coach's brand drawn as it shows, edited in place.
       body: (
-        <>
-          <LogoSettings mark={settings.brand?.mark ?? null} />
-          <BannerSettings banner={brandNow.banner ?? null} ratio={brandNow.bannerRatio ?? null} />
-          <BrandColourSettings picked={settings.brand?.color ?? null} />
-          {/* The coach's own card pictures, up to five a track, for all their clients (19 Nov, Alex). */}
-          <CardPicturesSettings cards={coachCardPictures(coach.id)} />
-        </>
+        <BrandingSection
+          mark={settings.brand?.mark ?? null}
+          banner={brandNow.banner ?? null}
+          bannerRatio={brandNow.bannerRatio ?? null}
+          colour={settings.brand?.color ?? null}
+          cards={coachCardPictures(coach.id)}
+          cardsDefault={coachCardsDefault(coach.id)}
+          stock={PHASE_COVERS}
+          business={business.business_name?.trim() ?? ""}
+          coach={{ name: me?.displayName ?? coach.email, photo: me?.avatarPath ?? null }}
+        />
       ),
     },
     { key: "plans", fact: facts.plans, body: <PlansSettings plans={plans} currency={eff.currency} vatFact={eff.rate > 0 ? `Prices ${eff.pricesIncludeVat ? "include" : "exclude"} ${eff.rate}% ${eff.taxLabel}` : null} /> },

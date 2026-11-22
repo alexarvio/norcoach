@@ -1,0 +1,110 @@
+/* Settings, Branding (22 Nov, Alex: C's identity card, A's card pictures; BrandingSection.tsx). Everything under .rbr,
+   doubled so it never loses to settings.css on load order. */
+
+.rbr.rbr { display: flex; flex-direction: column; color: #141a24; }
+
+/* ---- the identity card */
+.rbr.rbr .rbr-id { position: relative; overflow: hidden; border-radius: 18px; background: #fff; box-shadow: 0 0 0 1px #E1E5EB; }
+
+/* the band in the coach's colour, white type (dark on a bright colour: --brand-ink, 22 Nov) */
+.rbr.rbr .rbr-band { position: relative; overflow: hidden; padding: 24px 24px 44px; background: var(--brand, #1c1c1e); color: var(--brand-ink, #fff); transition: background-color 0.25s ease; }
+/* their logo, else the star, a white shape at 13%, a third past the band's right edge */
+.rbr.rbr .rbr-band-mark { position: absolute; top: 50%; right: -76px; width: 228px; height: 228px; margin-top: -124px; background: var(--brand-ink, #fff); opacity: 0.13; pointer-events: none;
+  -webkit-mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; }
+.rbr.rbr .rbr-band-grid { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px; }
+
+.rbr.rbr .rbr-cap { display: flex; align-items: center; min-width: 0; height: 18px; font-size: 10.5px; font-weight: 600; line-height: 14px; letter-spacing: 0.16em; text-transform: uppercase; color: color-mix(in srgb, var(--brand-ink, #fff) 78%, transparent); white-space: nowrap; }
+.rbr.rbr .rbr-cap.r { justify-content: flex-end; }
+.rbr.rbr .rbr-cap .rd-sep { background: color-mix(in srgb, var(--brand-ink, #fff) 45%, transparent); }
+.rbr.rbr .rbr-fact { overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.rbr.rbr .rbr-titled { display: inline-flex; align-items: center; gap: 8px; }
+.rbr.rbr .rbr-titled [data-slot="help-tip"] { letter-spacing: 0; text-transform: none; }
+
+.rbr.rbr .rbr-slot { display: flex; align-items: center; gap: 16px; min-width: 0; height: 36px; margin-top: 10px; }
+.rbr.rbr .rbr-slot.r { justify-content: flex-end; gap: 12px; }
+/* the banner as it shows, white; NORCOACH without one */
+.rbr.rbr .rbr-bannerdraw { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; max-width: 260px; height: 32px; font-size: 32px; color: var(--brand-ink, #fff); }
+.rbr.rbr .rbr-bannerdraw .brand-banner { max-height: 32px; }
+.rbr.rbr .rbr-bannerdraw .nc-logo { font-size: 18px; }
+
+/* an outlined white pill on the band, Remove in white words */
+.rbr.rbr .rbr-gpill { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: transparent; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-ink, #fff) 42%, transparent); font: inherit; font-size: 13px; font-weight: 600; color: var(--brand-ink, #fff); white-space: nowrap; cursor: pointer; transition: box-shadow 0.15s, background-color 0.15s; }
+.rbr.rbr .rbr-gpill svg { width: 13px; height: 13px; translate: 0 -0.5px; }
+@media (hover: hover) { .rbr.rbr .rbr-gpill:hover:not(:disabled) { background: color-mix(in srgb, var(--brand-ink, #fff) 8%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-ink, #fff) 70%, transparent); } }
+.rbr.rbr .rbr-gpill:disabled { cursor: default; opacity: 0.7; }
+.rbr.rbr .rbr-gpill:focus-visible, .rbr.rbr .rbr-gword:focus-visible { outline: 2px solid var(--brand-ink, #fff); outline-offset: 2px; }
+.rbr.rbr .rbr-gword { flex: none; height: 32px; padding: 0 4px; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: color-mix(in srgb, var(--brand-ink, #fff) 78%, transparent); cursor: pointer; }
+@media (hover: hover) { .rbr.rbr .rbr-gword:hover:not(:disabled) { color: var(--brand-ink, #fff); } }
+.rbr.rbr .rbr-gword:disabled { cursor: default; opacity: 0.6; }
+
+/* the coach */
+.rbr.rbr .rbr-who { position: relative; display: flex; align-items: center; gap: 12px; margin-top: 36px; }
+.rbr.rbr .rbr-face { display: block; flex: none; width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: #fff; box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--brand-ink, #fff) 85%, transparent); }
+.rbr.rbr .rbr-face.none { display: inline-flex; align-items: center; justify-content: center; box-shadow: inset 0 0 0 1px #E1E5EB, 0 0 0 1.5px color-mix(in srgb, var(--brand-ink, #fff) 85%, transparent); font-size: 18px; font-weight: 600; line-height: 1; color: #141a24; }
+.rbr.rbr .rbr-who-words { min-width: 0; }
+.rbr.rbr .rbr-who-words b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; font-weight: 600; line-height: 22px; }
+.rbr.rbr .rbr-who-words > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; line-height: 18px; color: color-mix(in srgb, var(--brand-ink, #fff) 78%, transparent); }
+
+/* the paper rising over the band's foot */
+.rbr.rbr .rbr-paper { position: relative; display: flex; flex-direction: column; gap: 12px; margin-top: -20px; padding: 22px 24px 24px; border-radius: 20px 20px 0 0; background: #fff; }
+.rbr.rbr .rbr-paper-row { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px 24px; }
+.rbr.rbr .rbr-colourname { flex: none; padding-top: 0; }
+.rbr.rbr .rbr-colourname b { display: block; font-size: 15px; font-weight: 600; line-height: 20px; }
+.rbr.rbr .rbr-colourname > span { display: block; margin-top: 2px; font-size: 13px; font-weight: 500; line-height: 18px; color: #8b93a1; font-variant-numeric: tabular-nums; }
+.rbr.rbr .rbr-err { display: block; font-size: 12.5px; font-weight: 500; line-height: 18px; color: #b42318; }
+
+/* BrandColourSettings in the row: its own head goes (the row names it), its card is the row itself */
+.rbr.rbr .rbr-colour { flex: 0 1 auto; min-width: 0; }
+.rd .rbr.rbr .rbr-colour .rls-section.rst-sub { display: block; margin: 0; padding: 0; gap: 0; }
+.rd .rbr.rbr .rbr-colour .rls-section.rst-sub > .trn-weekhead { display: none; }
+.rd .rbr.rbr .rbr-colour .rls-card.rst-card.rst-brand { align-items: flex-end; gap: 12px; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; overflow: visible; }
+.rd .rbr.rbr .rbr-colour .rst-swatches { justify-content: flex-end; gap: 8px; }
+.rd .rbr.rbr .rbr-colour .rst-picker { align-self: stretch; max-width: none; }
+
+/* ---- card pictures */
+.rbr.rbr .rbr-pics { display: flex; flex-direction: column; margin-top: 32px; }
+.rbr.rbr .rbr-label { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
+.rbr.rbr .rbr-label-words { display: inline-flex; align-items: center; min-width: 0; white-space: nowrap; }
+.rbr.rbr .rbr-label-words b { font-size: 10.5px; font-weight: 600; line-height: 16px; letter-spacing: 0.16em; text-transform: uppercase; color: #5b6474; }
+.rbr.rbr .rbr-label-words > span:not(.rd-sep) { font-size: 12.5px; font-weight: 500; color: #8b93a1; }
+.rbr.rbr .rbr-pics > .rbr-err { margin: -4px 0 8px; }
+
+.rbr.rbr .rbr-pics-card { overflow: hidden; border-radius: 18px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; }
+.rbr.rbr .rbr-track { display: flex; flex-direction: column; gap: 6px; padding: 14px 20px; }
+.rbr.rbr .rbr-track + .rbr-track { border-top: 1px solid #EEF0F3; }
+.rbr.rbr .rbr-track > .rbr-err { padding-left: 128px; }
+.rbr.rbr .rbr-track-row { display: flex; align-items: center; gap: 16px; min-height: 80px; }
+.rbr.rbr .rbr-trk { display: inline-flex; flex: none; align-items: center; gap: 8px; width: 112px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; }
+.rbr.rbr .rbr-trk svg { flex: none; translate: 0 -0.5px; }
+.rbr.rbr .rbr-tiles { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.rbr.rbr .rbr-count { flex: none; margin-left: auto; font-size: 13px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; }
+
+/* a 3:4 tile */
+.rbr.rbr .rbr-pic { position: relative; flex: none; width: 60px; aspect-ratio: 3 / 4; overflow: hidden; border-radius: 10px; background: #F5F6F8; }
+.rbr.rbr .rbr-pic img { display: block; width: 100%; height: 100%; object-fit: cover; transition: opacity 0.2s; }
+.rbr.rbr .rbr-pic.up img { animation: rbr-breathe 1.4s ease-in-out infinite; }
+@keyframes rbr-breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+.rbr.rbr .rbr-pic.asking img { opacity: 0.2; }
+.rbr.rbr .rbr-pic.add { display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1.5px dashed #C9CFD8; background: #fff; color: #8b93a1; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
+@media (hover: hover) { .rbr.rbr .rbr-pic.add:hover { border-color: #141a24; color: #141a24; } }
+.rbr.rbr .rbr-pic-x { position: absolute; top: 5px; right: 5px; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; color: #141a24; cursor: pointer; opacity: 0; transition: opacity 0.15s; }
+.rbr.rbr .rbr-pic:hover .rbr-pic-x, .rbr.rbr .rbr-pic-x:focus-visible { opacity: 1; }
+@media (any-hover: none) { html:not([data-mouse]) .rbr.rbr .rbr-pic-x { opacity: 1; } }
+.rbr.rbr .rbr-pic-ask { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; }
+.rbr.rbr .rbr-pic-ask b { margin-bottom: 1px; font-size: 11.5px; font-weight: 600; color: #141a24; }
+.rbr.rbr .rbr-pic-word { height: 20px; padding: 0 6px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 11.5px; font-weight: 600; color: #5b6474; cursor: pointer; }
+.rbr.rbr .rbr-pic-word.danger { color: #b42318; }
+@media (hover: hover) { .rbr.rbr .rbr-pic-word:hover { background: #fff; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .rbr.rbr .rbr-band { transition: none; }
+  .rbr.rbr .rbr-pic.up img { animation: none; opacity: 0.6; }
+}
+
+/* a narrow page: the logo under the banner, the swatches under the colour's name */
+@media (max-width: 720px) {
+  .rbr.rbr .rbr-band-grid { grid-template-columns: minmax(0, 1fr); }
+  .rbr.rbr .rbr-band-grid > .rbr-cap.r { grid-row: 3; justify-content: flex-start; margin-top: 20px; }
+  .rbr.rbr .rbr-band-grid > .rbr-slot.r { grid-row: 4; justify-content: flex-end; flex-direction: row-reverse; } /* reversed, flex-end is the left */
+  .rbr.rbr .rbr-track-row { flex-wrap: wrap; }
+}

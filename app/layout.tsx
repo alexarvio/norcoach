@@ -13,6 +13,7 @@ import NativeLinks from "./components/NativeLinks";
 import { buildId } from "./lib/buildId";
 import { getSessionUser } from "./lib/auth";
 import { bannerInline, bannerPathFor, brandFor, brandMarkInline, markFor, markInline } from "./lib/brandMark";
+import { brandColour, brandVars } from "./lib/brandColour";
 
 export const metadata: Metadata = {
   title: "NORCOACH", // the tab's name in capitals, as the wordmark (24 Oct, Alex)
@@ -93,10 +94,11 @@ async function bodyBrand(): Promise<React.CSSProperties | undefined> {
     const bannerPath = bannerPathFor(user);
     if (bannerPath) await bannerInline(bannerPath);
     const brand = brandFor(user);
-    if (brand.color) style["--brand"] = brand.color;
+    // The colour and, on a bright one, its dark words (brandVars, lib/brandColour.ts).
+    if (brand.color) Object.assign(style, brandVars(brand.color));
     // The faint mark in that colour (Home, the client's chat, the admin's page); with ink, the mark as it is.
     if (brand.color && brand.color !== "#141a24") {
-      const tint = await brandMarkInline(mark, brand.color);
+      const tint = await brandMarkInline(mark, brandColour(brand.color)?.text ?? brand.color);
       if (tint) style["--brand-mark"] = `url("${tint}")`;
     }
     return Object.keys(style).length ? (style as React.CSSProperties) : undefined;

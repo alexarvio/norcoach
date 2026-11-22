@@ -32,12 +32,13 @@
 .rr-navrow:hover { background: #fafbfd; color: #141a24; }
 .rr-navrow:hover svg { color: #141a24; }
 .rr-navrow:focus-visible { outline: 2px solid #141a24; outline-offset: -2px; }
-.rr-navrow.active { background: #141a24; color: #fff; font-weight: 600; }
-.rr-navrow.active svg { color: #fff; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.rr-navrow.active { background: #141a24; color: var(--brand-ink, #fff); font-weight: 600; }
+.rr-navrow.active svg { color: var(--brand-ink, #fff); }
 .rr-navrow.active:focus-visible { outline-offset: 2px; }
 /* How many clients need you, on Feed: the count in rust words, no pill. */
 .rr-badge { flex: none; font-size: 12px; font-style: normal; font-weight: 600; color: #b8471f; font-variant-numeric: tabular-nums; }
-.rr-navrow.active .rr-badge { color: rgba(255, 255, 255, 0.7); }
+.rr-navrow.active .rr-badge { color: color-mix(in srgb, var(--brand-ink, #fff) 70%, transparent); } /* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
 
 /* Clients and Settings share the height between the views and the coach:
    one grows while the other folds (flex-grow animates). Sections parted by space, not lines (6 Nov, Alex:
@@ -79,10 +80,11 @@
 .rr .rr-filter { flex: none; display: flex; width: 100%; height: 36px; gap: 2px; margin: 8px 0; padding: 4px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; box-sizing: border-box; }
 .rr .rr-filter button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: none; box-shadow: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; white-space: nowrap; cursor: pointer; transition: background 0.2s ease, color 0.2s ease; } /* 600 picked or not, so switching moves nothing (6 Nov, Alex) */
 .rr .rr-filter button:hover:not(.on) { color: #141a24; }
-.rr .rr-filter button.on { background: var(--brand, #141a24); font-weight: 600; color: #fff; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.rr .rr-filter button.on { background: var(--brand, #141a24); font-weight: 600; color: var(--brand-ink, #fff); }
 .rr .rr-filter button:focus-visible { outline: 2px solid #141a24; outline-offset: 1px; }
 .rr .rr-filter small { font-size: 12px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; }
-.rr .rr-filter button.on small { color: rgba(255, 255, 255, 0.65); }
+.rr .rr-filter button.on small { color: color-mix(in srgb, var(--brand-ink, #fff) 65%, transparent); } /* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
 
 /* The one part that scrolls; a thin bar rather than none, so the length shows. */
 .rr-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; margin: 0 -4px; padding: 0 4px; scrollbar-width: thin; scrollbar-color: #dce1e8 transparent; }
@@ -168,7 +170,7 @@
 .rtour-go { display: flex; align-items: center; gap: 14px; }
 .rtour-word { padding: 0; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; cursor: pointer; }
 .rtour-word:hover { color: #141a24; }
-.rtour-next { height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--brand, #141a24); font: inherit; font-size: 13px; font-weight: 600; color: #fff; cursor: pointer; }
+.rtour-next { height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--brand, #141a24); font: inherit; font-size: 13px; font-weight: 600; color: var(--brand-ink, #fff); cursor: pointer; } /* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
 .rtour-word:focus-visible, .rtour-next:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .rtour-lit, .rtour-card { transition: none; } }
 /* Every admin screen on paper, as Home and the chats (27 Oct, Alex: "the logo in the background on every screen"): the
@@ -190,12 +192,14 @@
    on the page, app/layout.tsx) on the view you are on and the one ink pill of a pop-up, and the faint page mark drawn
    in it (`--brand-mark`); nothing else. None set, today's ink and the mark as it was. */
 .rr .rr-navrow.rr-navrow.active { background: var(--brand, #141a24); }
-.dlh-go.dlh-go:not(:disabled), .rd-addpop-go.rd-addpop-go { background: var(--brand, #141a24); }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.dlh-go.dlh-go:not(:disabled), .rd-addpop-go.rd-addpop-go { background: var(--brand, #141a24); color: var(--brand-ink, #fff); }
 .dlh-go.dlh-go:not(:disabled):focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand, #141a24) 18%, transparent); }
 /* The `.npd` pop-ups' one action too (Schedule a meeting, a Calendar entry, a phase, an event, Setup). Its hover and
    focus lift the colour a touch as ink's do. Only with a colour set (the layout puts `--brand` on the body), so with
    none the pill, its hover and focus are ink's own exactly. */
-body[style*="--brand"] .npd.npd .npd-save.npd-save:not(:disabled) { background: var(--brand); }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+body[style*="--brand"] .npd.npd .npd-save.npd-save:not(:disabled) { background: var(--brand); color: var(--brand-ink, #fff); }
 body[style*="--brand"] .npd.npd .npd-save.npd-save:not(:disabled):hover { background: color-mix(in srgb, var(--brand) 88%, #fff); }
 body[style*="--brand"] .npd.npd .npd-save.npd-save:not(:disabled):focus-visible { background: color-mix(in srgb, var(--brand) 82%, #fff); }
 .rd-frame > .rd-page.rd-page::before { background-image: var(--brand-mark, var(--bg-mark, url("/brand/mark.svg"))); }
@@ -203,13 +207,16 @@ body[style*="--brand"] .npd.npd .npd-save.npd-save:not(:disabled):focus-visible 
    and nothing changes… I select the color and then automatically applies to the whole thing"): the brand shows on
    every admin screen at once, Settings too. Not Home's Muscle balance windows, each outlined in its own colour. */
 body[style*="--brand"] :is(.rd-btn-group:not(.rh-spans), .npd-seg, .dlh-seg, .rd-coltabs, .rd-switch-states) { --pill-bg: var(--brand); }
-body[style*="--brand"] :is(.rd-btn-group:not(.rh-spans), .npd-seg, .dlh-seg, .rd-coltabs, .rd-switch-states) > button.on { background: var(--brand); }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+body[style*="--brand"] :is(.rd-btn-group:not(.rh-spans), .npd-seg, .dlh-seg, .rd-coltabs, .rd-switch-states) > button.on { background: var(--brand); color: var(--brand-ink, #fff); }
+body[style*="--brand"] .rd-switch-states.rd-switch-states > button[data-state="on"] { color: var(--brand-ink, #fff); }
 /* And New client (19 Nov, Alex: "the toggles, the pop-ups, everything should be in that color"): its Member info |
    App access and Gender capsules and its one pill, Next or Create (globals.css draws them ink under .nc-hl). Brand set
    only, so with none they are ink's own exactly. */
 body[style*="--brand"] .nc-hl :is(.nc-steps, .nc-pills) { --pill-bg: var(--brand); }
-body[style*="--brand"] .nc-hl .nc-steps > .nc-step.on, body[style*="--brand"] .nc-hl .nc-pills > .pl-chip.on { background: var(--brand); }
-body[style*="--brand"] .nc-hl .nc-foot .pl-primary:not(:disabled) { background: var(--brand); }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+body[style*="--brand"] .nc-hl .nc-steps > .nc-step.on, body[style*="--brand"] .nc-hl .nc-pills > .pl-chip.on { background: var(--brand); color: var(--brand-ink, #fff); }
+body[style*="--brand"] .nc-hl .nc-foot .pl-primary:not(:disabled) { background: var(--brand); color: var(--brand-ink, #fff); }
 body[style*="--brand"] .nc-hl .nc-foot .pl-primary:not(:disabled):hover { background: color-mix(in srgb, var(--brand) 88%, #fff); }
 body[style*="--brand"] .nc-hl .nc-foot .pl-primary:not(:disabled):focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent); }
 
@@ -217,8 +224,9 @@ body[style*="--brand"] .nc-hl .nc-foot .pl-primary:not(:disabled):focus-visible 
    color"): Details' pop-up (ClientCardEditor look="hairline"), its Gender capsule, the sliding pill too, and its Save.
    None set, ink exactly as before. */
 .cc-hl .nc-pills { --pill-bg: var(--brand, #141a24); }
-.cc-hl.cc-hl .nc-pills .pl-chip.on { background: var(--brand, #141a24); }
-body[style*="--brand"] .cc-hl.cc-hl .ad-btn-primary:not(:disabled) { background: var(--brand); }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.cc-hl.cc-hl .nc-pills .pl-chip.on { background: var(--brand, #141a24); color: var(--brand-ink, #fff); }
+body[style*="--brand"] .cc-hl.cc-hl .ad-btn-primary:not(:disabled) { background: var(--brand); color: var(--brand-ink, #fff); }
 body[style*="--brand"] .cc-hl.cc-hl .ad-btn-primary:not(:disabled):hover { background: color-mix(in srgb, var(--brand) 88%, #fff); }
 body[style*="--brand"] .cc-hl.cc-hl .ad-btn-primary:not(:disabled):focus-visible { background: color-mix(in srgb, var(--brand) 82%, #fff); }
 
@@ -228,11 +236,12 @@ body[style*="--brand"] .cc-hl.cc-hl .ad-btn-primary:not(:disabled):focus-visible
    (face, name with the Fold after it, the business or who they are under it; a click opens Settings below as the foot
    did), and the views, the one you are on the white pill. The paper with the clients and Settings rises over its foot
    with 20px corners. */
-.rr-dark { position: relative; flex: none; overflow: hidden; padding-bottom: 32px; background: var(--brand, #1c1c1e); color: #fff; }
+.rr-dark { position: relative; flex: none; overflow: hidden; padding-bottom: 32px; background: var(--brand, #1c1c1e); color: var(--brand-ink, #fff); } /* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
 /* The mark in the dark (22 Nov, Alex: D of docs/boards/admin-rail-logo-mockup.html, "the direction of D but have 66% of the
    logo shown"): 220px, faint, behind the views, a third of it past the rail's right edge; the coach's own logo there, else
    the star, in the same spot. The one place a coach's logo is cut. */
-.rr-dark::before { content: ""; position: absolute; right: -73px; top: 128px; width: 220px; height: 220px; background: #fff; opacity: 0.07; pointer-events: none; -webkit-mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.rr-dark::before { content: ""; position: absolute; right: -73px; top: 128px; width: 220px; height: 220px; background: var(--brand-ink, #fff); opacity: 0.07; pointer-events: none; -webkit-mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; }
 .has-coach-logo .rr-dark::before { opacity: 0.09; }
 .rr-dark > * { position: relative; z-index: 1; }
 .rr-paper { position: relative; z-index: 1; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; margin-top: -20px; border-radius: 20px 20px 0 0; background: #fff; }
@@ -240,36 +249,43 @@ body[style*="--brand"] .cc-hl.cc-hl .ad-btn-primary:not(:disabled):focus-visible
 /* The brand: the banner or NORCOACH in white, sized as the mockup, clear of the faint logo on the right. */
 .rr-dark .rr-brand { padding: 20px 22px 12px; }
 /* The word alone (5.68em wide at 1em) across the whole row inside its padding. */
-.rr-dark .rr-logo { font-size: calc(100cqw / 5.68); color: #fff; }
+.rr-dark .rr-logo { font-size: calc(100cqw / 5.68); color: var(--brand-ink, #fff); } /* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
 /* A banner across the row as the word is, never taller than 40px. */
 .rr-dark .rr-logo.brand-banner { font-size: min(calc(100cqw / var(--banner-ratio, 4)), 40px); max-width: 100%; }
 /* The coach, on the views' left line. */
 .rr-dark .rr-coach { margin: 0 0 10px; padding: 7px 14px 7px 22px; }
-.rr-dark .rr-coach:hover { background: rgba(255, 255, 255, 0.08); }
-.rr-dark .rr-coach:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
-.rr-dark .rr-coach-avatar { box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.9); }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.rr-dark .rr-coach:hover { background: color-mix(in srgb, var(--brand-ink, #fff) 8%, transparent); }
+.rr-dark .rr-coach:focus-visible { outline: 2px solid var(--brand-ink, #fff); outline-offset: -2px; }
+.rr-dark .rr-coach-avatar { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--brand-ink, #fff) 90%, transparent); }
 .rr-coach-name { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.rr-dark .rr-coach-text b { color: #fff; }
-.rr-dark .rr-coach-text small { overflow: hidden; color: rgba(255, 255, 255, 0.62); text-overflow: ellipsis; white-space: nowrap; }
-.rr-dark .rr-coach-text .rd-sep { background: rgba(255, 255, 255, 0.35); }
+.rr-dark .rr-coach-text b { color: var(--brand-ink, #fff); }
+.rr-dark .rr-coach-text small { overflow: hidden; color: color-mix(in srgb, var(--brand-ink, #fff) 62%, transparent); text-overflow: ellipsis; white-space: nowrap; }
+.rr-dark .rr-coach-text .rd-sep { background: color-mix(in srgb, var(--brand-ink, #fff) 35%, transparent); }
 /* The Fold, as every row that opens (draft.css's .rd-fold, written here too: not every page loads draft.css). */
 .rr .rd-fold { display: inline-flex; flex: none; align-self: center; color: #98a2b3; transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
 .rr .rd-fold svg { width: 16px; height: 16px; }
 .rr .rd-fold.open { transform: rotate(90deg); }
-.rr-dark .rd-fold { color: rgba(255, 255, 255, 0.62); }
-.rr-dark .rr-coach:hover .rd-fold { color: #fff; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.rr-dark .rd-fold { color: color-mix(in srgb, var(--brand-ink, #fff) 62%, transparent); }
+.rr-dark .rr-coach:hover .rd-fold { color: var(--brand-ink, #fff); }
 @media (prefers-reduced-motion: reduce) { .rr .rd-fold { transition: none; } }
 /* The views on the dark: white words, the one you are on the white pill with ink words, counts a soft rust. */
-.rr .rr-dark .rr-navrow { color: rgba(255, 255, 255, 0.9); }
-.rr .rr-dark .rr-navrow svg { color: rgba(255, 255, 255, 0.7); }
-.rr .rr-dark .rr-navrow:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
-.rr .rr-dark .rr-navrow:hover svg { color: #fff; }
-.rr .rr-dark .rr-navrow:focus-visible { outline-color: #fff; }
-.rr .rr-dark .rr-navrow.rr-navrow.active, html.look-hl .rr .rr-dark .rr-navrow.rr-navrow.active { background: #fff; color: #141a24; }
-.rr .rr-dark .rr-navrow.rr-navrow.active svg, html.look-hl .rr .rr-dark .rr-navrow.rr-navrow.active svg { color: #141a24; }
-.rr .rr-dark .rr-badge { color: #f2a888; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour; the pill --brand-pill, ink on a bright one, its
+   words --brand-pill-ink; the counts --brand-count) */
+.rr .rr-dark .rr-navrow { color: color-mix(in srgb, var(--brand-ink, #fff) 90%, transparent); }
+.rr .rr-dark .rr-navrow svg { color: color-mix(in srgb, var(--brand-ink, #fff) 70%, transparent); }
+.rr .rr-dark .rr-navrow:hover { background: color-mix(in srgb, var(--brand-ink, #fff) 8%, transparent); color: var(--brand-ink, #fff); }
+.rr .rr-dark .rr-navrow:hover svg { color: var(--brand-ink, #fff); }
+.rr .rr-dark .rr-navrow:focus-visible { outline-color: var(--brand-ink, #fff); }
+.rr .rr-dark .rr-navrow.rr-navrow.active, html.look-hl .rr .rr-dark .rr-navrow.rr-navrow.active { background: var(--brand-pill, #fff); color: var(--brand-pill-ink, #141a24); }
+.rr .rr-dark .rr-navrow.rr-navrow.active svg, html.look-hl .rr .rr-dark .rr-navrow.rr-navrow.active svg { color: var(--brand-pill-ink, #141a24); }
+.rr .rr-dark .rr-badge { color: var(--brand-count, #f2a888); }
 .rr .rr-dark .rr-navrow.active .rr-badge { color: #b8471f; }
-.rr .rr-dark .rd-due { background: #f2a888; }
+/* On a bright brand the picked pill is ink, so its count goes back to the soft rust that reads on ink. */
+body[style*="--brand-pill"] .rr .rr-dark .rr-navrow.active .rr-badge { color: #f2a888; }
+.rr .rr-dark .rd-due { background: var(--brand-count, #f2a888); }
+body[style*="--brand-pill"] .rr .rr-dark .rr-navrow.active .rd-due { background: #f2a888; }
 .rr-dark .rr-nav { padding-bottom: 0; }
 /* Settings folds open on the dark right under the coach, and the views fold away while it is open (22 Nov, Alex: "sure
    lets try"): the shared fold, rows 0fr to 1fr over 340ms on cubic-bezier(.22, 1, .36, 1), what is in it fading in. */
@@ -279,9 +295,11 @@ body[style*="--brand"] .cc-hl.cc-hl .ad-btn-primary:not(:disabled):focus-visible
 .rr-fold.open > .rr-fold-in { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .rr-fold, .rr-fold-in { transition: none; } }
 .rr-dark .rr-settings { flex: none; display: flex; flex-direction: column; justify-content: flex-start; gap: 2px; padding: 0 10px; overflow: visible; opacity: 1; }
-.rr-dark .rr-settings > .rr-label { margin: 2px 12px 4px; color: rgba(255, 255, 255, 0.55); }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour; Sign out the danger red there) */
+.rr-dark .rr-settings > .rr-label { margin: 2px 12px 4px; color: color-mix(in srgb, var(--brand-ink, #fff) 55%, transparent); }
 .rr .rr-dark .rr-navrow.rr-signout { margin-top: 6px; color: #f4a49a; }
 .rr .rr-dark .rr-navrow.rr-signout:hover { color: #ffb8ae; }
+body[style*="--brand-ink"] .rr .rr-dark .rr-navrow.rr-signout, body[style*="--brand-ink"] .rr .rr-dark .rr-navrow.rr-signout:hover { color: #b42318; }
 /* The clients no longer fold: their head is a plain head. */
 .rr-paper > .rr-clients-head { cursor: default; }
 /* The coach row is a link to their Profile now: no underline. */

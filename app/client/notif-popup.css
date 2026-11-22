@@ -24,19 +24,25 @@
 /* C (22 Nov, Alex: "C is so good… build them"; docs/boards/notification-popup-kinds-mockup.html): Home's head in small,
    the coach's dark (their brand colour, darkened as always until white reads on it) with their logo faint in it, their
    face and what they did; the paper rising over its foot with the thing itself. */
-.nfp-dark { position: relative; overflow: hidden; padding: 18px 18px 44px; background: var(--brand, #1c1c1e); color: #fff; }
-.nfp-dark::before { content: ""; position: absolute; right: -50px; top: -40px; width: 200px; height: 192px; background: #fff; opacity: 0.06; pointer-events: none; -webkit-mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; }
+/* (22 Nov: its words and faint logo follow --brand-ink, dark on a bright brand colour) */
+.nfp-dark { position: relative; overflow: hidden; padding: 18px 18px 44px; background: var(--brand, #1c1c1e); color: var(--brand-ink, #fff); }
+.nfp-dark::before { content: ""; position: absolute; right: -50px; top: -40px; width: 200px; height: 192px; background: var(--brand-ink, #fff); opacity: 0.06; pointer-events: none; -webkit-mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; }
 /* A coach's own logo whole, never cut (21 Nov, Alex), on the dark's right. */
 .has-coach-logo .nfp-dark::before { right: 12px; top: 12px; width: 96px; height: calc(100% - 50px); opacity: 0.12; }
-.nfp-count { position: absolute; right: 18px; top: 16px; font-size: 12px; font-weight: 600; color: rgba(255, 255, 255, 0.6); font-variant-numeric: tabular-nums; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.nfp-count { position: absolute; right: 18px; top: 16px; font-size: 12px; font-weight: 600; color: color-mix(in srgb, var(--brand-ink, #fff) 60%, transparent); font-variant-numeric: tabular-nums; }
 .nfp-who { position: relative; display: flex; align-items: center; gap: 12px; }
 .nfp .nfp-face.nfp-face, .nfp .nfp-face img, .nfp .nfp-face .ntf-avatar-initial, .nfp .nfp-face .ntf-avatar-sys { width: 42px; height: 42px; }
 .nfp .nfp-face .ntf-avatar-initial { font-size: 17px; }
-.nfp .nfp-face .ntf-avatar-sys { background: none; color: var(--c-light); box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.3); }
+/* (22 Nov: its ring follows --brand-ink, dark on a bright brand colour) */
+.nfp .nfp-face .ntf-avatar-sys { background: none; color: var(--c-light); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--brand-ink, #fff) 30%, transparent); }
 .nfp .nfp-face .ntf-badge.ntf-badge { box-shadow: 0 0 0 2.5px var(--brand, #1c1c1e); }
 .nfp-text { flex: 1; min-width: 0; padding-right: 36px; }
 .nfp-kind { display: block; font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--c-light); }
-.nfp-title { margin: 4px 0 0; font-size: 16.5px; font-weight: 600; line-height: 1.25; letter-spacing: -0.01em; color: #fff; overflow-wrap: anywhere; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.nfp-title { margin: 4px 0 0; font-size: 16.5px; font-weight: 600; line-height: 1.25; letter-spacing: -0.01em; color: var(--brand-ink, #fff); overflow-wrap: anywhere; }
+/* On a bright brand the kind's colour lightened for the dark would not read (22 Nov): the kind's own colour, deepened toward the ink. */
+body[style*="--brand-ink"] .nfp .nfp-kind, body[style*="--brand-ink"] .nfp .nfp-face .ntf-avatar-sys { color: color-mix(in srgb, var(--c) 70%, var(--brand-ink)); }
 .nfp-paper { position: relative; margin-top: -26px; padding: 18px 18px 0; border-radius: 24px 24px 0 0; background: #F5F5F5; }
 
 /* No thing to show: the coach's words, as before. */
@@ -91,7 +97,8 @@
 .nfp-angles em { display: block; margin-top: 5px; overflow: hidden; font-style: normal; font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; text-align: center; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; color: #8b93a1; }
 
 /* The screen's main pill: the coach's brand colour, ink with none (docs/DESIGN-RULES.md §4). */
-.nfp-view { height: 40px; margin-left: 4px; padding: 0 22px; border: 0; border-radius: 999px; background: var(--brand, #141a24); font: inherit; font-size: 13.5px; font-weight: 600; color: #fff; cursor: pointer; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.nfp-view { height: 40px; margin-left: 4px; padding: 0 22px; border: 0; border-radius: 999px; background: var(--brand, #141a24); font: inherit; font-size: 13.5px; font-weight: 600; color: var(--brand-ink, #fff); cursor: pointer; }
 .nfp-view:active { opacity: 0.85; }
 
 @keyframes nfp-fade { from { opacity: 0; } }

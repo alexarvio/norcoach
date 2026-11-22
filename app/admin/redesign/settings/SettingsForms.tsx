@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { connectStripeAction, disconnectStripeAction, removeCoachBannerAction, removeCoachLogoAction, saveCoachBusinessAction, saveCoachInvoicingAction, setBrandColourAction, uploadCoachBannerAction, uploadCoachLogoAction } from "../../../lib/actions";
-import { BRAND_SWATCHES, brandColour, normalHex } from "../../../lib/brandColour";
+import { BRAND_SWATCHES, brandColour, brandVars, normalHex } from "../../../lib/brandColour";
 import type { PaymentsState } from "../../../lib/payments";
 import { changeOwnEmailAction, changeOwnPasswordAction, logoutAction } from "../../../lib/auth-actions";
 import type { CoachBusiness, CoachInvoicing } from "../../../lib/db";
@@ -372,18 +372,20 @@ export function BrandColourSettings({ picked }: { picked: string | null }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ink = BRAND_SWATCHES[0].hex;
   const shown = now ?? ink;
-  const used = brandColour(shown) ?? { hex: ink, changed: false };
+  const used = brandColour(shown) ?? { hex: ink, changed: false, ink: "#ffffff" as const, text: ink };
   // The admin takes the colour the moment it is picked (19 Nov, Alex: "just have the ui change the color when i click on
   // a color so they see immediately how it is"; no Start pill): --brand on the page at once, the save following, and
   // the faint mark behind the page redrawn in it here (the server's own tinted copy comes with the save).
   useEffect(() => {
     const body = document.body.style;
+    // The colour with its words: on a bright one they turn dark at once (brandVars; 22 Nov, Alex: D).
+    const VARS = ["--brand", "--brand-ink", "--brand-pill", "--brand-pill-ink", "--brand-count"];
+    for (const v of [...VARS, "--brand-text"]) body.removeProperty(v);
     if (used.hex === ink) {
-      body.removeProperty("--brand");
       body.removeProperty("--brand-mark");
       return;
     }
-    body.setProperty("--brand", used.hex);
+    for (const [k, v] of Object.entries(brandVars(used.hex))) body.setProperty(k, v);
     let gone = false;
     const mark = /url\(["']?([^"')]+)["']?\)/.exec(getComputedStyle(document.body).getPropertyValue("--bg-mark"))?.[1] ?? "/brand/mark.svg";
     const img = new Image();
@@ -398,7 +400,7 @@ export function BrandColourSettings({ picked }: { picked: string | null }) {
       if (!g) return;
       g.drawImage(img, 0, 0, c.width, c.height);
       g.globalCompositeOperation = "source-in";
-      g.fillStyle = used.hex;
+      g.fillStyle = used.text;
       g.fillRect(0, 0, c.width, c.height);
       body.setProperty("--brand-mark", `url("${c.toDataURL("image/png")}")`);
     };

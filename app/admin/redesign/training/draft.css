@@ -469,7 +469,8 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
 .rd-coltabs { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; height: 36px; margin: 2px 2px 6px; padding: 4px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; box-sizing: border-box; }
 .rd-coltabs button { height: 28px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; cursor: pointer; }
 .rd-coltabs button:hover:not(.on) { color: #141a24; }
-.rd-coltabs button.on { background: var(--brand, #141a24); color: #fff; font-weight: 600; box-shadow: none; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.rd-coltabs button.on { background: var(--brand, #141a24); color: var(--brand-ink, #fff); font-weight: 600; box-shadow: none; }
 .rd-cardio { margin-top: 14px; padding-top: 6px; border-top: 1px solid #eef0f3; }
 .rd-cardio .rd-cols { padding-top: 8px; }
 .rd-cardio .rd-row.cardio .rd-ex { font-weight: 600; }
@@ -695,7 +696,8 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
 .rd-demo-switch { position: relative; flex: none; display: inline-block; width: 36px; height: 22px; padding: 0; border: 0; border-radius: 999px; background: var(--brand, #141a24); cursor: pointer; transition: background-color 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
 .rd-demo-switch.off { background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; }
 .rd-demo-switch.fixed { cursor: default; }
-.rd-demo-switch > i { position: absolute; top: 3px; left: 17px; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 999px; background: #fff; color: #141a24; transition: left 0.25s cubic-bezier(0.22, 1, 0.36, 1), color 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
+/* (22 Nov: the knob on the brand is --brand-pill with its play in --brand-pill-ink, ink knob and white play on a bright brand colour) */
+.rd-demo-switch > i { position: absolute; top: 3px; left: 17px; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 999px; background: var(--brand-pill, #fff); color: var(--brand-pill-ink, #141a24); transition: left 0.25s cubic-bezier(0.22, 1, 0.36, 1), color 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
 .rd-demo-switch.off > i { left: 3px; background: #98a2b3; color: #fff; }
 .rd-demo-switch svg { width: 16px; height: 16px; margin-left: 1px; }
 .rd-demo-switch:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(20, 26, 36, 0.18); }
@@ -832,7 +834,8 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
    Alex: the audit; they were boxed on a third grey at radius 9). */
 .rpg-page { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 32px; padding: 0 8px; box-sizing: border-box; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; text-decoration: none; cursor: pointer; transition: background-color 0.2s ease; }
 .rpg-page:hover { background: #fafbfd; }
-.rpg-page.on, .rpg-page.on:hover { background: var(--brand, #141a24); color: #fff; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.rpg-page.on, .rpg-page.on:hover { background: var(--brand, #141a24); color: var(--brand-ink, #fff); }
 .rpg-page.off, .rpg-page.off:hover { opacity: 0.35; background: none; cursor: default; }
 .rpg-gap { padding: 0 4px; color: #8b93a1; }
 .rpg-count { grid-column: 3; justify-self: end; font-size: 12px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -1466,6 +1469,7 @@ span.rd-demo { cursor: default; }
    nav bar", option 1 of docs/boards/admin-popup-logo-mockup.html), as every capsule's picked option; none set, the white
    pill as before. The pill slides (SlidePills), so its colour is --pill-bg. */
 body[style*="--brand"] .rd-nav { --pill-bg: var(--brand); --pill-shadow: none; }
-body[style*="--brand"] .rd-nav button.on, body[style*="--brand"] .rd-nav button.on:hover { color: #fff; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+body[style*="--brand"] .rd-nav button.on, body[style*="--brand"] .rd-nav button.on:hover { color: var(--brand-ink, #fff); }
 /* The tabs' track in the coach's colour toned down, as the client row on the rail ("apply this to the nav bar also"). */
 body[style*="--brand"] .rd-nav { background: color-mix(in srgb, var(--brand) 9%, #fff); }

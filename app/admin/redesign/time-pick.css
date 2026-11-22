@@ -17,4 +17,5 @@
 .tpk-time { flex: none; height: 34px; padding: 0 10px; border: 0; border-radius: 7px; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: #141a24; font-variant-numeric: tabular-nums; text-align: left; cursor: pointer; }
 /* One hover for every row and menu item (25 Oct, Alex): the soft neutral. */
 .tpk-time:hover, .tpk-time:focus-visible { outline: none; background: #fafbfd; }
-.tpk-time.on, .tpk-time.on:hover { background: var(--brand, #141a24); color: #fff; font-weight: 600; }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.tpk-time.on, .tpk-time.on:hover { background: var(--brand, #141a24); color: var(--brand-ink, #fff); font-weight: 600; }

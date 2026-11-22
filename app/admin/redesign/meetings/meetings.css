@@ -165,8 +165,9 @@ body:has(.npd.npd) .rt-boxpick-menu { min-width: var(--radix-dropdown-menu-trigg
 .rt-tzp-item { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 34px; padding: 0 10px; border: 0; border-radius: 7px; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: #141a24; text-align: left; cursor: pointer; }
 /* One hover for every row and menu item (25 Oct, Alex): the exercise row's soft neutral. */
 .rt-tzp-item:hover { background: #fafbfd; }
-.rt-tzp-item.on, .rt-tzp-item.on:hover { background: var(--brand, #141a24); color: #fff; }
-.rt-tzp-item.on small, .rt-tzp-item.on em { color: rgba(255, 255, 255, 0.72); }
+/* (22 Nov: its words follow --brand-ink, dark on a bright brand colour) */
+.rt-tzp-item.on, .rt-tzp-item.on:hover { background: var(--brand, #141a24); color: var(--brand-ink, #fff); }
+.rt-tzp-item.on small, .rt-tzp-item.on em { color: color-mix(in srgb, var(--brand-ink, #fff) 72%, transparent); }
 .rt-tzp-item span { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .rt-tzp-item small { font-size: 11.5px; color: #8b93a1; font-weight: 500; }
 .rt-tzp-item em { flex: none; font-style: normal; font-size: 12.5px; font-weight: 600; color: #5b6474; font-variant-numeric: tabular-nums; }

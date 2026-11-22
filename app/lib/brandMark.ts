@@ -218,7 +218,7 @@ export function saveBrandColour(coachId: number, hex: string | null): boolean {
   return true;
 }
 
-export type CoachBrand = { color?: string; banner?: string; bannerRatio?: number; businessName?: string };
+export type CoachBrand = { /** The colour as it is used (brandColour). */ color?: string; banner?: string; bannerRatio?: number; businessName?: string };
 
 /** What a coach's screens and their clients' wear (19 Nov, Alex): the colour as it is used (made fit for white words,
  *  brandColour), the banner inside the page when it has been read (its address until then, while it is fetched), its

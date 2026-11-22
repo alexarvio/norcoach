@@ -45,7 +45,8 @@
 /* Offered on this session: a switch, ink when on. */
 .sbh-switch { position: relative; flex: none; width: 36px; height: 22px; padding: 0; border: 0; border-radius: 999px; background: var(--brand, #141a24); cursor: pointer; transition: background 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
 .sbh-switch[aria-checked="false"] { background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; }
-.sbh-switch i { position: absolute; top: 3px; left: 17px; width: 16px; height: 16px; border-radius: 999px; background: #fff; transition: left 0.25s cubic-bezier(0.22, 1, 0.36, 1), background 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
+/* (22 Nov: its knob follows --brand-ink, dark on a bright brand colour; off, it stays grey below) */
+.sbh-switch i { position: absolute; top: 3px; left: 17px; width: 16px; height: 16px; border-radius: 999px; background: var(--brand-ink, #fff); transition: left 0.25s cubic-bezier(0.22, 1, 0.36, 1), background 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
 .sbh-switch[aria-checked="false"] i { left: 3px; background: #98a2b3; }
 .sbh-switch:focus-visible { outline: none; box-shadow: 0 0 0 4px #eef0f3; }
 
@@ -82,11 +83,12 @@
 .sbh-cancel { height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: #5b6474; cursor: pointer; }
 .sbh-cancel:hover { color: #141a24; }
 .sbh-cancel:focus-visible { outline: none; background: #f5f6f8; color: #141a24; }
-.sbh-save { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--brand, #141a24); font: inherit; font-size: 13.5px; font-weight: 600; color: #fff; white-space: nowrap; cursor: pointer; transition: background 0.15s; }
+.sbh-save { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--brand, #141a24); font: inherit; font-size: 13.5px; font-weight: 600; color: var(--brand-ink, #fff); white-space: nowrap; cursor: pointer; transition: background 0.15s; }
+/* (22 Nov: Save's words follow --brand-ink, dark on a bright brand colour; greyed they keep white) */
 .sbh-save:hover { background: #000; }
 /* The coach's brand on the switch and Save (19 Nov, Alex: "the toggles, the pop-ups, everything should be in that color"). */
 body[style*="--brand"] .sbh-save:hover:not(:disabled) { background: color-mix(in srgb, var(--brand) 88%, #fff); }
 .sbh-save:focus-visible { outline: none; box-shadow: 0 0 0 4px #e1e5eb; }
-.sbh-save:disabled { background: #c9cfd8; box-shadow: none; cursor: default; }
+.sbh-save:disabled { background: #c9cfd8; box-shadow: none; color: #fff; cursor: default; }
 .sbh-spin { width: 13px; height: 13px; border-radius: 999px; border: 2px solid rgba(255, 255, 255, 0.35); border-top-color: #fff; box-sizing: border-box; animation: sbh-spin 0.8s linear infinite; }
 @keyframes sbh-spin { to { transform: rotate(360deg); } }
