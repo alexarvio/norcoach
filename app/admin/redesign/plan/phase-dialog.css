@@ -258,3 +258,10 @@ body:has(.npd.npd) .rd-picker-menu [data-slot="dropdown-menu-item"] small { font
 @media (prefers-reduced-motion: reduce) { .npd.npd .npd-switch, .npd.npd .npd-switch i { transition: none; } }
 .npd.npd .npd-noend { display: block; width: 100%; padding: 0; border: 0; background: none; font: inherit; font-size: 15px; font-weight: 500; color: #98a2b3; text-align: left; cursor: pointer; }
 .npd.npd .npd-ongoing { display: inline-flex; align-items: center; color: #141a24; }
+
+/* A phase keeps its track's colour, never the coach's brand (22 Nov, Alex: "make the phase colors the exception though.
+   those we always keep"): in the phase pop-up the picked track tile, the date box being set and the Indefinite switch are
+   the track's; the action (Add, Save) stays the brand's, as every action. */
+.npd.npd.npd-phase .npd-tile.on { background: var(--npd-c); }
+.npd.npd.npd-phase .npd-date.arm { box-shadow: inset 0 0 0 1.5px var(--npd-c); }
+.npd.npd.npd-phase .npd-switch.on { background: var(--npd-c); }

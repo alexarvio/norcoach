@@ -868,7 +868,7 @@ export function PhaseDialog({ clientId, firstName, today, thisWeek, phase, track
   // and offers the fix. Delete as red words on the left, Save a black pill.
   return (
     // The phase's own colour (21 Oct, Alex): its track tags under the title, its range on the calendar.
-    <DialogContent className="npd" style={{ "--npd-c": TRACK_ACCENT[track], "--npd-rgb": rgbOf(TRACK_ACCENT[track]) } as React.CSSProperties}>
+    <DialogContent className="npd npd-phase" style={{ "--npd-c": TRACK_ACCENT[track], "--npd-rgb": rgbOf(TRACK_ACCENT[track]) } as React.CSSProperties}>
       <div className="npd-head">
         <PopupTitle className="npd-title">{editing ? phase.name : "New phase"}</PopupTitle>
         <span className="npd-tools">
