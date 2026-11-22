@@ -180,7 +180,8 @@ export default function CheckInScreen({
           <button type="button" className="ci-back" onClick={onBack} aria-label="Back to home">
             <ChevronLeftIcon />
           </button>
-          <h1 className="ci-title">Check-in</h1>
+          {/* The section is Lifestyle (22 Nov, Alex: "it is still named check in, change that to lifestyle"); a day filled in stays a check-in. */}
+          <h1 className="ci-title">Lifestyle</h1>
           <div className="ci-count" aria-label={`${filled.length} of ${todayRows.length} filled in`}>
             <span className={`ci-count-dot${complete ? " done" : ""}`} aria-hidden="true" />
             {filled.length}
@@ -194,7 +195,7 @@ export default function CheckInScreen({
           {pictures && pictures.length > 0 && <PictureCycle pictures={pictures} className="tr-banner-pic" />}
           <div className="tr-kicker"><Bars parts={["Daily", weeklyOpen && "weekly", monthlyOpen && sections.some((s) => s.id === "monthly") && "monthly"]} /></div>
           <FitTitle className="tr-name">{dateLabel}</FitTitle>
-          <div className="tr-weeks ci-views" role="tablist" aria-label="Check-in">
+          <div className="tr-weeks ci-views" role="tablist" aria-label="Lifestyle">
             {(["today", "progress", "calendar"] as const).map((v) => (
               <button key={v} type="button" role="tab" aria-selected={view === v} className={`tr-wk${view === v ? " on" : ""}`} onClick={() => setView(v)}>
                 {v === "today" ? "Entries" : v === "progress" ? "Progress" : "Calendar"}

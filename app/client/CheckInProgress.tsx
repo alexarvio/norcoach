@@ -91,6 +91,13 @@ const one = (v: number) => v.toLocaleString("en-GB", { maximumFractionDigits: 1 
 /** "20 Dec", the year after it when it isn't this one. */
 const dmy = (s: string, _today: string) => dayWords(s);
 const unitOf = (s: CheckInSeries) => (s.scaleMax ? `/ ${s.scaleMax}` : s.unit);
+/** A change as a share of where it began, `+3.1%` (the admin's changeParts); null for a percentage metric or a start of 0. */
+const sharePct = (move: number, from: number, unit: string): string | null => {
+  if (unit.trim() === "%" || from === 0 || !Number.isFinite(from)) return null;
+  const pc = Math.round((move / from) * 1000) / 10;
+  return `${pc > 0 ? "+" : pc < 0 ? "−" : ""}${Math.abs(pc).toFixed(1)}%`;
+};
+
 /** A change rounded to the metric's decimals: +0.4, −1.8, or 0.0 with no sign. */
 const signed = (v: number, p: number) => {
   const r = Number(v.toFixed(p));
@@ -288,8 +295,10 @@ function MetricPanel({
               {unit && <small>{unit}</small>}
               {move != null && (
                 <span className={`pg-delta${tone}`}>
-                  {signed(move, p)}
-                  {moveUnit && ` ${moveUnit}`}
+                  {/* Its share of where the range began too, as the admin's graphs (22 Nov, Alex: "the % change in the
+                      graphs like we have in the admin"; MeasurementsDraft changeParts): `+2.7 kg | +3.1%`, none for a
+                      metric that is a percentage already or one that began at nothing. */}
+                  <Bars parts={[`${signed(move, p)}${moveUnit ? ` ${moveUnit}` : ""}`, sharePct(move, points[0].value, moveUnit)]} />
                   <span className="pg-sr">{` ${rangeWord}`}</span>
                 </span>
               )}
