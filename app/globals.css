@@ -22241,18 +22241,18 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
 
 /* A coach's own logo is shown, never cut to a corner of it (21 Nov, Alex: "it shows like 25% of that… position it in a way
    that we can see the totality of it"; A and D of docs/boards/coach-logo-whole-mockup.html). Only with a logo of the
-   coach's own (`coach-mark` on the body, app/layout.tsx); Norcoach's star keeps its crop.
+   coach's own (`has-coach-logo` on the body, app/layout.tsx); Norcoach's star keeps its crop.
    - Home's dark: the logo whole on the right, from just under the clock down to the arc, white at 14%, behind the bar's
      name and the bell; it scrolls away with the dark as the star does.
    - Every chat (the client's, the coach's phone, the laptop's panel): the logo whole in the thread's top right, 200px wide,
      as faint as the star, still while the messages scroll (and riding with the keyboard in the client's, as before). */
-.coach-mark .hm > .hm-banner:not(.st-banner)::before {
+.has-coach-logo .hm > .hm-banner:not(.st-banner)::before {
   opacity: 0.14;
   -webkit-mask: var(--bg-mark) right 14px top 22px / auto calc(100% - 52px) no-repeat;
   mask: var(--bg-mark) right 14px top 22px / auto calc(100% - 52px) no-repeat;
 }
-.coach-mark .cm-body.cm-body { background-position: 0 0, right 16px top calc(14px + var(--mark-ride, 0px)); background-size: auto, 200px auto; }
-.coach-mark .cph-thread.cph-thread, .coach-mark .rm-thread.rm-thread { background-position: 0 0, right 16px top 14px; background-size: auto, 200px auto; }
+.has-coach-logo .cm-body.cm-body { background-position: 0 0, right 16px top calc(14px + var(--mark-ride, 0px)); background-size: auto, 200px auto; }
+.has-coach-logo .cph-thread.cph-thread, .has-coach-logo .rm-thread.rm-thread { background-position: 0 0, right 16px top 14px; background-size: auto, 200px auto; }
 
 /* The check-in pop-up: a filled row reads as logged (21 Nov, Alex: "make the numbers green and blur them a little bit, so
    it really gives the visual idea that it is logged in"; then "take that [glow] away, I just want the number green"): its figure in the done green at 600,
