@@ -9,6 +9,8 @@ export const NOTES_READ_PATHS = [
   "page.client.phone",
   ...NOTE_TABS.map((t) => `page.tab.${t}` as const),
   "action.markRead",
+  // A call cancelled before its booking was read takes the booking back (22 Nov, callNotes.ts).
+  "action.callCancel",
   "action.nutritionTargets",
   "action.chatNote.edit",
   "action.chatNote.delete",
