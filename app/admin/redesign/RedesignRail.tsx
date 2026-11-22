@@ -63,14 +63,21 @@ const SETTINGS_HREF = "/admin/redesign/settings";
 const ARM_MS = 70; // a pointer passing over the rail doesn't prefetch every row it crosses
 const FRESH_MS = 15_000; // as RefreshOnReturn's gap
 const KEPT_MS = 5 * 60_000; // staleTimes.static's default
-/** When each view was last prefetched by a row (its path; at most once in KEPT_MS, as the cache keeps it). */
+/** When each view or client was last prefetched by a row (keyOf; at most once in KEPT_MS, as the cache keeps it). */
 const prefetchedAt = new Map<string, number>();
-/** The view a click is going to whose prefetch may be old: it reads itself again once its rail is drawn. */
+/** The view a click is going to whose prefetch may be old: it reads itself again once it lands. */
 let readOnArrival: string | null = null;
-const pathOf = (href: string) => href.split(/[?#]/)[0];
+/** A page as the address tells it apart: the view, and on a client's screens the client too. */
+const keyOf = (href: string) => {
+  const [path, query = ""] = href.split("#")[0].split("?");
+  const client = new URLSearchParams(query).get("client");
+  return client ? `${path}?client=${client}` : path;
+};
 
 /** A view row of the rail: a Link prefetched in full while the mouse (or the keyboard's focus) rests on it. */
-function ViewLink({ href, onClick, onPointerDown, children, ...rest }: Omit<ComponentProps<typeof Link>, "href" | "prefetch" | "onPointerEnter" | "onPointerLeave" | "onFocus" | "onBlur"> & { href: string }) {
+function ViewLink({ href, onClick, onPointerDown, children, still = false, ...rest }: Omit<ComponentProps<typeof Link>, "href" | "prefetch" | "onPointerEnter" | "onPointerLeave" | "onFocus" | "onBlur"> & { href: string; /** Never prefetched (Feed, Business): their page notes the coach's look as it is read, and Next's full prefetch
+   *  carries nothing that tells it from a visit, so a hover would count as one (22 Nov, review). The click still shows
+   *  its outline at once (RailFrame). */ still?: boolean }) {
   const [armed, setArmed] = useState(false);
   const timer = useRef<number | null>(null);
   const stop = () => {
@@ -80,7 +87,8 @@ function ViewLink({ href, onClick, onPointerDown, children, ...rest }: Omit<Comp
   useEffect(() => stop, []);
   const arm = () => {
     stop();
-    const key = pathOf(href);
+    if (still) return;
+    const key = keyOf(href);
     const now = Date.now();
     const at = prefetchedAt.get(key);
     if (at === undefined || now - at > KEPT_MS) prefetchedAt.set(key, now);
@@ -116,9 +124,15 @@ function ViewLink({ href, onClick, onPointerDown, children, ...rest }: Omit<Comp
         onClick?.(e);
         // Next prefetches nothing in `next dev`: there is nothing old to read again there.
         if (process.env.NODE_ENV !== "production" || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-        const key = pathOf(href);
+        const key = keyOf(href);
+        if (keyOf(window.location.pathname + window.location.search) === key) {
+          readOnArrival = null;
+          return;
+        }
+        // A prefetch older than FRESH_MS reads itself again as it lands; set afresh on every click, so one left by a
+        // click that never landed never fires later.
         const at = prefetchedAt.get(key);
-        if (at !== undefined && Date.now() - at > FRESH_MS && window.location.pathname !== key) readOnArrival = key;
+        readOnArrival = at !== undefined && Date.now() - at > FRESH_MS ? key : null;
       }}
     >
       {children}
@@ -134,7 +148,7 @@ let keptListTop = 0;
 let keptFilter: "all" | "needs" = "all";
 
 
-export default function RedesignRail({ rail, clientId, settings = false, onArrivalRead }: { rail: RailData; clientId: number; /** On the Settings page: the rail opens on Settings and marks the section open. */ settings?: boolean; /** Told when the read on landing (below) will read the page and the layout again, so the frame leaves its own read of this move out (RailFrame). */ onArrivalRead?: () => void }) {
+export default function RedesignRail({ rail, clientId, settings = false, onArrivalRead, onGoing }: { rail: RailData; clientId: number; /** On the Settings page: the rail opens on Settings and marks the section open. */ settings?: boolean; /** Told when the read on landing (below) will read the page and the layout again, so the frame leaves its own read of this move out (RailFrame). */ onArrivalRead?: () => void; /** Told of a click to another view or client (its href), so the frame can draw that page's outline while it comes; null for a click back to the page on screen (RailFrame). */ onGoing?: (href: string | null) => void }) {
   // This browser's timezone, for the server: meetings read in it (lib/viewZone.ts).
   // New or changed (a trip): the page is drawn again in it.
   const router = useRouter();
@@ -150,12 +164,17 @@ export default function RedesignRail({ rail, clientId, settings = false, onArriv
   }, [router]);
   // The view you are on (Feed, Calendar…) is marked, as the client you are on is.
   const path = usePathname();
-  // Landed on a view shown from a prefetch older than FRESH_MS (ViewLink): read it again in the background, once nothing
-  // holds the page, and never across a deploy (a read from a newer build loads the whole page again; RefreshOnReturn).
+  const search = useSearchParams();
+  // A click away: the frame shows the page's outline if it isn't in by the next moment (RailFrame).
+  const going = (href: string | null) => onGoing?.(href);
+  // The page on screen as keyOf names it: the view, and the client on a client's screens.
+  const landedKey = keyOf(`${path}?${search.toString()}`);
+  // Landed on a view shown from a prefetch older than FRESH_MS (ViewLink): read it again in the background, once nothing holds the page, and never across a deploy (a read from a newer build
+  // loads the whole page again; RefreshOnReturn).
   useEffect(() => {
     const due = readOnArrival;
     readOnArrival = null;
-    if (!due || path !== due) return;
+    if (!due || landedKey !== due) return;
     // The refresh reads the layout's rail again too: the frame's own read of this move would be a second one.
     onArrivalRead?.();
     let done = false;
@@ -210,9 +229,10 @@ export default function RedesignRail({ rail, clientId, settings = false, onArriv
       done = true;
       quiet();
     };
-    // Once a view lands: the rail is drawn once by the layout now (22 Nov, RailFrame) and stays, so each new address.
+    // Once a view or client lands: the rail is drawn once by the layout now (22 Nov, RailFrame) and stays, so each new
+    // page (a week or tab picked inside one is no landing).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path]);
+  }, [landedKey]);
   // Settings is a view of its own now, a row under the views (22 Nov, Alex): nothing folds in the rail.
   const settingsOpen = false;
   const onSettings = settings || !!path?.startsWith(SETTINGS_HREF);
@@ -275,8 +295,14 @@ export default function RedesignRail({ rail, clientId, settings = false, onArriv
   const viewOn = (href: string, isHere: boolean) => (pendingView ? pendingView === href : isHere);
   const goView = (href: string, isHere: boolean) => (e: MouseEvent) => {
     // A new tab or window goes the usual way, and the row you are on changes nothing.
-    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || isHere) return;
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    // The view you are on: an outline still up from another click comes down (the click goes back to this page).
+    if (isHere) {
+      going(null);
+      return;
+    }
     setGoingTo({ href, from: path });
+    going(href);
   };
 
   // The client list where it was left (keptListTop): set before the first paint, so a page switch never shows it at the
@@ -396,7 +422,7 @@ export default function RedesignRail({ rail, clientId, settings = false, onArriv
           const href = REDRAWN[key] ?? `/admin?view=${key}`;
           const isHere = !!(REDRAWN[key] && path?.startsWith(REDRAWN[key]!));
           return (
-            <ViewLink key={key} href={href} className={`rr-navrow${viewOn(href, isHere) ? " active" : ""}`} aria-current={isHere ? "page" : undefined} onClick={goView(href, isHere)}>
+            <ViewLink key={key} href={href} still={key === "feed" || key === "business"} className={`rr-navrow${viewOn(href, isHere) ? " active" : ""}`} aria-current={isHere ? "page" : undefined} onClick={goView(href, isHere)}>
               <Icon />
               <span>{label}</span>
               {/* The Feed's own Needs you, counted as it lists them (22 Oct: it counted clients, a new one too, and read
@@ -460,7 +486,19 @@ export default function RedesignRail({ rail, clientId, settings = false, onArriv
               return (
                 <div key={c.id} className={`rr-item${open ? " open" : ""}`}>
                   <div className="rr-head">
-                    <Link href={`/admin/redesign/home?client=${c.id}`} className={`rr-row${active ? " active" : ""}${pendingId === c.id ? " loading" : ""}`} aria-current={active ? "page" : undefined} onClick={() => setPendingId(c.id)}>
+                    {/* Never prefetched in full on hover: the client page notes the look and draws all nine tabs, and
+                        a prefetch would count as opening them (22 Nov, review). Its outline shows at once (RailFrame). */}
+                    <Link
+                      href={`/admin/redesign/home?client=${c.id}`}
+                      className={`rr-row${active ? " active" : ""}${pendingId === c.id ? " loading" : ""}`}
+                      aria-current={active ? "page" : undefined}
+                      onClick={(e) => {
+                        setPendingId(c.id);
+                        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                        // The page you are on: no outline, and one still up from another click comes down.
+                        going(c.id === clientId && path === "/admin/redesign/home" ? null : `/admin/redesign/home?client=${c.id}`);
+                      }}
+                    >
                       <span className={`rr-avatar${c.notSignedIn ? " pending" : ""}`} title={c.notSignedIn ? "Hasn't signed in to the app yet" : undefined}>
                         {c.avatarPath ? (
                           // eslint-disable-next-line @next/next/no-img-element -- client-uploaded file

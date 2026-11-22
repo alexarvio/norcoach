@@ -1,8 +1,9 @@
 "use client";
 
-import { createContext, Suspense, use, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, Suspense, use, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import RedesignRail from "./RedesignRail";
+import PageSkeleton, { VIEW_SKELETON } from "./PageSkeleton";
 import type { RailData, StampedRail } from "./loaders";
 
 // The rail stays, only the page swaps (22 Nov, Alex: "if we have to touch the rail… to make it a proper product, then
@@ -33,6 +34,11 @@ export const isFramedPath = (path: string | null) => viewOf(path) != null;
  *  counts (the shell's ?tab= rewrite that drops ?program= or adds ?client=, the Calendar's ?month= and ?day=, the
  *  Library's ?edit=, a week or a phase picked): the rail's counts are the coach's, never the view's. */
 const READ_GAP_MS = 200;
+/** How long a rail click waits for its page before the outline takes the page's place: a page the browser has lands
+ *  well inside it, so it never flashes. */
+const OUTLINE_MS = 90;
+/** A click that never lands lets go of the outline after this, the page it left shown again. */
+const GIVE_UP_MS = 4000;
 
 type RailContextValue = {
   /** The newest rail read (null while the first is on its way). */
@@ -59,7 +65,7 @@ const newest = (a: StampedRail | null, b: StampedRail | null) => (!a ? b : !b ? 
  *  read drew, so the rail stays mounted with its search, filter and scroll. The client marked: the one the page reported
  *  (`here`), else the address's (`asked`; 0 on a coach-wide view), else on a client's screen with no ?client= the one
  *  the page picks by default, as the read says it, so it is marked from the first paint. */
-function RailFromLayout({ promise, kept, fetched, here, asked, onLayout, onMissing, onArrivalRead }: { promise: Promise<StampedRail | null>; kept: StampedRail | null; fetched: StampedRail | null; here: number | null; asked: number | null; onLayout: (r: StampedRail) => void; onMissing: () => void; onArrivalRead: () => void }) {
+function RailFromLayout({ promise, kept, fetched, here, asked, onLayout, onMissing, onArrivalRead, onGoing }: { promise: Promise<StampedRail | null>; kept: StampedRail | null; fetched: StampedRail | null; here: number | null; asked: number | null; onLayout: (r: StampedRail) => void; onMissing: () => void; onArrivalRead: () => void; onGoing: (href: string | null) => void }) {
   const fromLayout = use(promise);
   useEffect(() => {
     if (fromLayout) onLayout(fromLayout);
@@ -68,7 +74,7 @@ function RailFromLayout({ promise, kept, fetched, here, asked, onLayout, onMissi
   }, [promise, fromLayout, onLayout, onMissing]);
   const shown = newest(newest(kept, fromLayout), fetched);
   const clientId = here ?? asked ?? shown?.defaultClient ?? 0;
-  return shown ? <RedesignRail rail={shown.rail} clientId={clientId} onArrivalRead={onArrivalRead} /> : <RailSkeleton />;
+  return shown ? <RedesignRail rail={shown.rail} clientId={clientId} onArrivalRead={onArrivalRead} onGoing={onGoing} /> : <RailSkeleton />;
 }
 
 /** The rail before its data is in: the dark top and the paper, nothing in them (rail.css, `.rr-skel`). */
@@ -144,14 +150,72 @@ export default function RailFrame({ rail: promise, children }: { rail: Promise<S
 
   const value = useMemo<RailContextValue>(() => ({ rail: latest?.rail ?? null, reportHere }), [latest, reportHere]);
 
+  // A rail click whose page isn't in by OUTLINE_MS (22 Nov, Alex: "a bit faster yeah but not completely smooth"; a click
+  // on a client Next hasn't kept showed nothing for half a second, then swapped): the page you were on gives way to the
+  // outline of the one coming, as its loading.tsx draws it, until the new address lands. A page already in the browser
+  // (a view prefetched on hover) lands before that and never shows it. Let go after GIVE_UP_MS or on Back, so a click
+  // that never lands never leaves the outline up.
+  // The outline is drawn (hidden) the moment of the click, an urgent render before Next's own transition starts; showing
+  // it later is a plain attribute on the frame (`data-going`), never a React render, so it can't cut into the new page's
+  // render under way (22 Nov, review: a state update there threw the transition's work away and flashed the outline over
+  // a page about to land). React never renders the attribute, so nothing it draws takes it off by mistake.
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [goingTo, setGoingTo] = useState<string | null>(null);
+  const hide = useCallback(() => frameRef.current?.removeAttribute("data-going"), []);
+  const onGoing = useCallback(
+    (href: string | null) => {
+      hide();
+      const v = href ? viewOf(href.split(/[?#]/)[0]) : null;
+      setGoingTo(v);
+    },
+    [hide]
+  );
+  // A new click restarts the wait (a click on the same view as the last one too: the effect keys on the click itself).
+  const [clicks, setClicks] = useState(0);
+  const onGoingCounted = useCallback(
+    (href: string | null) => {
+      onGoing(href);
+      setClicks((n) => n + 1);
+    },
+    [onGoing]
+  );
+  useEffect(() => {
+    if (!goingTo) return;
+    const show = window.setTimeout(() => frameRef.current?.setAttribute("data-going", ""), OUTLINE_MS);
+    const stop = () => {
+      hide();
+      setGoingTo(null);
+    };
+    // A click that never lands (abandoned, or sent back to this very page by the server) lets go after GIVE_UP_MS.
+    const giveUp = window.setTimeout(stop, GIVE_UP_MS);
+    window.addEventListener("popstate", stop);
+    return () => {
+      window.clearTimeout(show);
+      window.clearTimeout(giveUp);
+      window.removeEventListener("popstate", stop);
+    };
+  }, [goingTo, clicks, hide]);
+  // Landed: another view, or another client (a tab or a week picked inside a page is no landing). The attribute comes off
+  // before the paint that shows the new page.
+  const address = `${path}|${params.get("client") ?? ""}`;
+  const [seenAddress, setSeenAddress] = useState(address);
+  if (seenAddress !== address) {
+    setSeenAddress(address);
+    setGoingTo(null);
+  }
+  useLayoutEffect(() => {
+    if (goingTo == null) hide();
+  }, [goingTo, hide]);
+
   return (
     <RailContext.Provider value={value}>
       {framed ? (
-        <div className="rd-frame">
+        <div className="rd-frame" ref={frameRef}>
           <Suspense fallback={<RailSkeleton />}>
-            <RailFromLayout promise={promise} kept={fromLayout} fetched={fetched} here={hereId} asked={asked} onLayout={onLayout} onMissing={onMissing} onArrivalRead={onArrivalRead} />
+            <RailFromLayout promise={promise} kept={fromLayout} fetched={fetched} here={hereId} asked={asked} onLayout={onLayout} onMissing={onMissing} onArrivalRead={onArrivalRead} onGoing={onGoingCounted} />
           </Suspense>
           {children}
+          {goingTo != null && <PageSkeleton {...VIEW_SKELETON[goingTo]} chat={false} />}
         </div>
       ) : (
         children
