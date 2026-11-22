@@ -631,18 +631,17 @@ export function EventDialog({ today, event, cats, firstName, faces, initialStart
           </DialogClose>
         </span>
       </div>
-      <DialogDescription className="npd-tags">
-        <span className="npd-track">
-          <KindIcon id={kind} size={12} />
-          {k.label}
-        </span>
-        {/* An existing event wears its state as a phase does (16 Nov, Alex, the audit: §10.2, STATE_TAG): Live, Scheduled, Past. */}
-        {event && (
+      {/* No category tag over the category tiles (22 Nov, Alex: "having the 8 options there is enough"). An existing
+          event wears its state as a phase does (16 Nov, Alex, the audit: §10.2, STATE_TAG): Live, Scheduled, Past. */}
+      {event ? (
+        <DialogDescription className="npd-tags">
           <span className="npd-state" style={stateTagStyle(eventState(event, today))}>
             {STATE_LABEL[eventState(event, today)]}
           </span>
-        )}
-      </DialogDescription>
+        </DialogDescription>
+      ) : (
+        <DialogDescription className="sr-only">{k.label}</DialogDescription>
+      )}
 
       {/* A past event is shown as it was and can't be changed (20 Oct, Alex): every field below is disabled. */}
       <fieldset className="npd-ro" disabled={readOnly}>

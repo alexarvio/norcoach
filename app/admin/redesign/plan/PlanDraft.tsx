@@ -894,10 +894,13 @@ export function PhaseDialog({ clientId, firstName, today, thisWeek, phase, track
         </span>
       </div>
       <DialogDescription className="npd-tags">
-        <span className="npd-track">
-          <TrackIcon track={track} size={12} />
-          {TRACK_LABEL[track]}
-        </span>
+        {/* The track's tag only where its tiles aren't shown (22 Nov, Alex: "having the 8 options there is enough"). */}
+        {(editing || lockTrack) && (
+          <span className="npd-track">
+            <TrackIcon track={track} size={12} />
+            {TRACK_LABEL[track]}
+          </span>
+        )}
         {actionable ? (
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger className="npd-state npd-state-btn" style={stateTagStyle(state)} aria-label={`${STATE_LABEL[state]}: change`} disabled={!ok}>

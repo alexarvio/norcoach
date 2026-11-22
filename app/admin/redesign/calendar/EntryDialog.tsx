@@ -304,12 +304,7 @@ export default function EntryDialog({ open, cats, clients, dayEntries, onDone }:
           </button>
         </span>
       </div>
-      <div className="npd-tags">
-        <span className="npd-track">
-          <CatIcon d={iconOf(cat)} size={12} />
-          {current?.label}
-        </span>
-      </div>
+      {/* No category tag over the category tiles (22 Nov, Alex: "having the 8 options there is enough"). */}
 
       {/* The categories as tiles across the row, the icon in its colour; the chosen one ink. */}
       <div className="npd-field">
