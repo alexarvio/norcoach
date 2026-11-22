@@ -175,7 +175,7 @@
    (6 Nov, Alex: admin audit; was a 28px ghost .rd-btn). */
 .rd.rnt .rn-day .rd-row-more > .trn-row-more { opacity: 0; transition: opacity 0.12s; }
 .rd.rnt .rn-day .rd-row-main:hover .rd-row-more > .trn-row-more, .rd.rnt .rn-day .rd-row-main:focus-within .rd-row-more > .trn-row-more { opacity: 1; }
-@media (any-hover: none) { .rd.rnt .rn-day .rd-row-more > .trn-row-more { opacity: 1; } }
+@media (any-hover: none) { html:not([data-mouse]) { .rd.rnt .rn-day .rd-row-more > .trn-row-more { opacity: 1; } } }
 .rd.rnt .rn-shot { color: #5b6474; }
 .rd.rnt .rn-meal-name { font-weight: 600; }
 /* The targets' figures as clean lines too (21 Oct, Alex): the unit right after the figure (235 g), no box. */

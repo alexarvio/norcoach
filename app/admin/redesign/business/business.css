@@ -89,7 +89,7 @@
    column of buttons; as Training's ⋯), and while the keyboard is on the row; always there on a touch screen. */
 .rd.rbz .rbz-act .trn-pill { opacity: 0; transition: opacity 0.12s; }
 .rd.rbz .rbz-row:hover .rbz-act .trn-pill, .rd.rbz .rbz-row:focus-within .rbz-act .trn-pill { opacity: 1; }
-@media (any-hover: none) { .rd.rbz .rbz-act .trn-pill { opacity: 1; } }
+@media (any-hover: none) { html:not([data-mouse]) { .rd.rbz .rbz-act .trn-pill { opacity: 1; } } }
 
 /* ---- The pop-ups (portaled, so never under .rd): the floating list, as the Phases' Extend menu. Six rows, then it
    scrolls inside (design rules 6). In the ⋯ menu's look (6 Nov, Alex: docs/boards/admin-choices-mockup.html, A): radius 10,

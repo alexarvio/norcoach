@@ -286,4 +286,4 @@ body:has(.npd.npd) .rt-boxpick-menu { min-width: var(--radix-dropdown-menu-trigg
    screen. */
 .rd.rt .rt-lines .rt-addev { opacity: 0; transition: opacity 0.12s, background-color 0.12s; }
 .rd.rt .rt-lines li:hover .rt-addev, .rd.rt .rt-lines li:focus-within .rt-addev { opacity: 1; }
-@media (any-hover: none) { .rd.rt .rt-lines .rt-addev { opacity: 1; } }
+@media (any-hover: none) { html:not([data-mouse]) { .rd.rt .rt-lines .rt-addev { opacity: 1; } } }

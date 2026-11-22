@@ -150,7 +150,7 @@ body[style*="--brand"] .rd.rp .rp-save:hover:not(:disabled) { background: color-
 .npd.npd.rp-setupdlg .rp-abin svg { width: 15px; height: 15px; }
 .npd.npd.rp-setupdlg .rp-arow:hover .rp-abin, .npd.npd.rp-setupdlg .rp-arow:focus-within .rp-abin { opacity: 1; }
 .npd.npd.rp-setupdlg .rp-abin:hover { color: #b42318; }
-@media (any-hover: none) { .npd.npd.rp-setupdlg .rp-abin { opacity: 1; } }
+@media (any-hover: none) { html:not([data-mouse]) { .npd.npd.rp-setupdlg .rp-abin { opacity: 1; } } }
 /* + Angle: the words alone, from the left as every add in the admin; its search floats under it from the same edge. */
 .rp-add { display: inline-flex; align-items: center; gap: 6px; height: 36px; margin-top: 6px; padding: 0 12px 0 0; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; white-space: nowrap; cursor: pointer; }
 .rp-add svg { width: 14px; height: 14px; }
@@ -257,6 +257,6 @@ body[style*="--brand"] .rd.rp .rp-save:hover:not(:disabled) { background: color-
 .rd.rp .rp-slot:hover .rp-cap-remove, .rd.rp .rp-cap-remove:focus-visible { opacity: 1; }
 .rd.rp .rp-cap-remove:hover { color: #b42318; }
 .rd.rp .rp-cap-remove:focus-visible { outline: none; text-decoration: underline; text-decoration-color: #c5ccd8; text-underline-offset: 4px; }
-@media (any-hover: none) { .rd.rp .rp-cap-remove { opacity: 1; } }
+@media (any-hover: none) { html:not([data-mouse]) { .rd.rp .rp-cap-remove { opacity: 1; } } }
 
 /* All sheets before any has closed: None yet alone, the one empty box (9 Nov, Alex; draft.css). */
