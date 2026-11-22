@@ -279,3 +279,5 @@ body[style*="--brand"] .cc-hl.cc-hl .ad-btn-primary:not(:disabled):focus-visible
 .rr .rr-dark .rr-navrow.rr-signout:hover { color: #ffb8ae; }
 /* The clients no longer fold: their head is a plain head. */
 .rr-paper > .rr-clients-head { cursor: default; }
+/* The coach row is a link to their Profile now: no underline. */
+.rr-coach, .rr-coach:hover { text-decoration: none; }

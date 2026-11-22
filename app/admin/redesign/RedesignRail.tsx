@@ -5,10 +5,8 @@ import Link from "next/link";
 import { dayMonth } from "../../lib/dayMonth";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import RailTour from "./RailTour";
-import { AccountIcon, BusinessIcon, CalendarIcon, FeedIcon, PhasesIcon, PlusIcon, SearchIcon } from "../../components/icons";
+import { AccountIcon, BusinessIcon, CalendarIcon, FeedIcon, GearIcon, PhasesIcon, PlusIcon, SearchIcon } from "../../components/icons";
 import { TRAINING_ICON } from "../../lib/eventTypes";
-import { settingsFor } from "./settingsNav";
-import { goToSetting, useOpenSetting } from "./settings/settingsScroll";
 import { logoutAction } from "../../lib/auth-actions";
 import NewClientDialog from "../NewClientDialog";
 import type { RailClient, RailData } from "./loaders";
@@ -17,7 +15,6 @@ import NativeCoachRedirect from "../../coach/NativeCoachRedirect";
 import RefreshOnReturn from "./RefreshOnReturn";
 import { pic } from "../../lib/pic";
 import { BrandLogo } from "../../components/BrandLogo";
-import { Fold } from "./Fold";
 
 // The left rail, in the redesign's sheet: the brand, the coach's cross-client
 // views as icon rows, every client in one scrolling list, and the coach at
@@ -46,6 +43,7 @@ function LibraryIcon() {
 // Views already redrawn here open in the redesign; the rest where they always were.
 const REDRAWN: Partial<Record<string, string>> = { feed: "/admin/redesign/feed", calendar: "/admin/redesign/calendar", phases: "/admin/redesign/phases", business: "/admin/redesign/business", library: "/admin/redesign/library" };
 const COACHES = "/admin/redesign/coaches";
+const SETTINGS_HREF = "/admin/redesign/settings";
 
 // Where the client list was left, kept from page to page (4 Nov, Alex: "whenever I switch a page, it kind of like pulls
 // the page up. So I have to scroll back down"). Every coach page draws its own rail, so each switch drew a new one at
@@ -69,11 +67,11 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
       router.refresh();
     } catch {}
   }, [router]);
-  const [settingsOpen, setSettingsOpen] = useState(settings);
-  // Settings is one page of folding sections (23 Oct, Alex): its rows open theirs, the open one marked.
-  const openSetting = useOpenSetting();
   // The view you are on (Feed, Calendar…) is marked, as the client you are on is.
   const path = usePathname();
+  // Settings is a view of its own now, a row under the views (22 Nov, Alex): nothing folds in the rail.
+  const settingsOpen = false;
+  const onSettings = settings || !!path?.startsWith(SETTINGS_HREF);
   // "Take a tour" from the welcome steps.
   const touring = useSearchParams().get("tour") === "1";
   const [query, setQuery] = useState("");
@@ -195,7 +193,8 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
         {/* Their banner in its place when they uploaded one (19 Nov, Alex); without one, NORCOACH as before. */}
         <BrandLogo className="rr-logo" banner={rail.coach.banner} bannerRatio={rail.coach.bannerRatio} name={rail.coach.business} nameInPlace={false} />
       </div>
-      <button type="button" className={`rr-coach${settingsOpen ? " open" : ""}`} onClick={() => setSettingsOpen(!settingsOpen)} aria-expanded={settingsOpen} aria-label={settingsOpen ? "Close settings" : "Open settings"}>
+      {/* The coach: their face, name and business; a click opens their Profile in Settings. */}
+      <Link href={`${SETTINGS_HREF}#profile`} className="rr-coach" aria-label={`${rail.coach.name}, your profile`} onClick={goView(SETTINGS_HREF, onSettings)}>
         <span className="rr-coach-avatar" aria-hidden="true">
           {rail.coach.photoPath ? (
             // eslint-disable-next-line @next/next/no-img-element -- an upload served by the app's own route
@@ -205,11 +204,7 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
           )}
         </span>
         <span className="rr-coach-text">
-          {/* The chevron right after the name, as every row that opens: right at rest, down while Settings is open. */}
-          <span className="rr-coach-name">
-            <b>{rail.coach.name}</b>
-            <Fold open={settingsOpen} />
-          </span>
+          <b>{rail.coach.name}</b>
           {/* Their business under them, or who they are when a banner already names it (22 Nov, Alex: B1). */}
           <small>
             {rail.coach.business && !rail.coach.banner ? (
@@ -224,40 +219,7 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
             )}
           </small>
         </span>
-      </button>
-      {/* Settings folds open right under the coach, on the dark, and the views fold away meanwhile, so the dark keeps its
-          height and the clients never move (22 Nov, Alex: "settings appear where they use to so not from the chevron";
-          "sure lets try"). The shared fold: rows 0fr to 1fr over 340ms on the fold's curve. */}
-      <div className={`rr-fold${settingsOpen ? " open" : ""}`} aria-hidden={!settingsOpen} inert={!settingsOpen}>
-        <div className="rr-fold-in">
-          <div className="rr-settings">
-            <span className="rr-label">Settings</span>
-            <nav className="rr-settings-list" aria-label="Settings">
-              {settingsFor(rail.isOwner, rail.billingOn).map(({ key, label, href, Icon }) => (
-                <Link
-                  key={key}
-                  href={href}
-                  className={`rr-navrow${openSetting === key ? " active" : ""}`}
-                  aria-current={openSetting === key ? "location" : undefined}
-                  onClick={(e) => {
-                    // On the page already: the section opens there (the open one folds); a new tab or window goes the usual way.
-                    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-                    if (goToSetting(key)) e.preventDefault();
-                  }}
-                >
-                  <Icon />
-                  <span>{label}</span>
-                  {/* The company's line the coach hasn't read: a rust dot. */}
-                  {key === "support" && rail.supportUnread > 0 && <i className="rd-due" role="img" aria-label="Unread" title="Unread" />}
-                </Link>
-              ))}
-            </nav>
-            <button type="button" className="rr-navrow rr-signout" onClick={() => logoutAction()}>
-              <span>Sign out</span>
-            </button>
-          </div>
-        </div>
-      </div>
+      </Link>
       {/* What they pay Norcoach (28 Oct, Alex; lib/billing.ts): a payment that failed, then read-only, as a fact and its
           way to the fix (Settings, Billing). Nothing while it is paid. */}
       {(rail.billing.state === "grace" || rail.billing.state === "readonly") && (
@@ -267,8 +229,6 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
         </Link>
       )}
 
-      <div className={`rr-fold${settingsOpen ? "" : " open"}`} aria-hidden={settingsOpen} inert={settingsOpen}>
-      <div className="rr-fold-in">
       <nav className="rr-nav" aria-label="Views">
         {/* The cross-client views are not redrawn yet: they open where they always were. */}
         {VIEWS.map(({ key, label, Icon }) => {
@@ -302,9 +262,13 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
             {rail.supportUnread > 0 && <i className="rd-due" role="img" aria-label="Unread support" title="Unread support" />}
           </Link>
         )}
+        {/* Settings, the last view (22 Nov, Alex): the gear, the white pill while on it; its sections are on its page. */}
+        <Link href={SETTINGS_HREF} className={`rr-navrow${viewOn(SETTINGS_HREF, onSettings) ? " active" : ""}`} aria-current={onSettings ? "page" : undefined} onClick={goView(SETTINGS_HREF, onSettings)}>
+          <GearIcon />
+          <span>Settings</span>
+          {rail.supportUnread > 0 && !rail.isOwner && <i className="rd-due" role="img" aria-label="Unread support" title="Unread support" />}
+        </Link>
       </nav>
-      </div>
-      </div>
       </div>
 
       <div className="rr-paper">

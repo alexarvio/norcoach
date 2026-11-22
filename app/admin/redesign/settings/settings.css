@@ -235,3 +235,8 @@ body:has(.rd.rst) .rd-picker-menu [data-slot="dropdown-menu-item"] small { font-
 .rd.rst .rjc-edit .rst-plan-foot { margin-left: auto; }
 /* Your code sits over Account with the room the profile parts keep between them (profile.css .rpf-details). */
 .rd.rst .rjc-part { margin-bottom: 22px; }
+/* Sign out at the foot of the sections (22 Nov, Alex: Settings is a view of the rail now): the one word action, in red,
+   on the sections' left line, the space parting it from them. */
+.rd.rst .rst-signout { align-self: flex-start; height: 32px; margin: 14px 0 0 4px; padding: 0 10px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #b42318; cursor: pointer; }
+.rd.rst .rst-signout:hover { background: #f5f6f8; }
+.rd.rst .rst-signout:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; }
