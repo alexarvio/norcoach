@@ -5,7 +5,7 @@ import Link from "next/link";
 import { dayMonth } from "../../lib/dayMonth";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import RailTour from "./RailTour";
-import { AccountIcon, BusinessIcon, CalendarIcon, ChevronDownIcon, FeedIcon, PhasesIcon, PlusIcon, SearchIcon } from "../../components/icons";
+import { AccountIcon, BusinessIcon, CalendarIcon, FeedIcon, PhasesIcon, PlusIcon, SearchIcon } from "../../components/icons";
 import { TRAINING_ICON } from "../../lib/eventTypes";
 import { settingsFor } from "./settingsNav";
 import { goToSetting, useOpenSetting } from "./settings/settingsScroll";
@@ -17,6 +17,7 @@ import NativeCoachRedirect from "../../coach/NativeCoachRedirect";
 import RefreshOnReturn from "./RefreshOnReturn";
 import { pic } from "../../lib/pic";
 import { BrandLogo } from "../../components/BrandLogo";
+import { Fold } from "./Fold";
 
 // The left rail, in the redesign's sheet: the brand, the coach's cross-client
 // views as icon rows, every client in one scrolling list, and the coach at
@@ -187,18 +188,43 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
       <NativeCoachRedirect />
       {/* Back at the window, the page reads itself again (23 Oct, Alex): what the client logged meanwhile shows. */}
       <RefreshOnReturn />
-      {/* The Norcoach logo over the coach's business (24 Oct, Alex), as on the sign-in card. */}
+      {/* The rail in B1 (22 Nov, Alex: docs/boards/admin-rail-b-coach-mockup.html): the coach's dark holds their business,
+          the banner or NORCOACH, the coach under it and the views; the paper with the clients rises over its foot. */}
+      <div className="rr-dark">
       <div className="rr-brand">
         {/* Their banner in its place when they uploaded one (19 Nov, Alex); without one, NORCOACH as before. */}
         <BrandLogo className="rr-logo" banner={rail.coach.banner} bannerRatio={rail.coach.bannerRatio} name={rail.coach.business} nameInPlace={false} />
-        {/* The coach's own business (Settings, Business details), one line, nothing when none is set (16 Nov, the audit);
-            none under a banner, which says it already (19 Nov, Alex). */}
-        {rail.coach.business && !rail.coach.banner && (
-          <span className="rr-brand-text">
-            <b>{rail.coach.business}</b>
-          </span>
-        )}
       </div>
+      <button type="button" className={`rr-coach${settingsOpen ? " open" : ""}`} onClick={() => setSettingsOpen(!settingsOpen)} aria-expanded={settingsOpen} aria-label={settingsOpen ? "Close settings" : "Open settings"}>
+        <span className="rr-coach-avatar" aria-hidden="true">
+          {rail.coach.photoPath ? (
+            // eslint-disable-next-line @next/next/no-img-element -- an upload served by the app's own route
+            <img src={pic(rail.coach.photoPath, 96)} alt="" />
+          ) : (
+            rail.coach.name.charAt(0).toUpperCase()
+          )}
+        </span>
+        <span className="rr-coach-text">
+          {/* The chevron right after the name, as every row that opens: right at rest, down while Settings is open. */}
+          <span className="rr-coach-name">
+            <b>{rail.coach.name}</b>
+            <Fold open={settingsOpen} />
+          </span>
+          {/* Their business under them, or who they are when a banner already names it (22 Nov, Alex: B1). */}
+          <small>
+            {rail.coach.business && !rail.coach.banner ? (
+              rail.coach.business
+            ) : rail.isOwner ? (
+              <>
+                Owner<Sep />
+                Coach
+              </>
+            ) : (
+              "Coach"
+            )}
+          </small>
+        </span>
+      </button>
       {/* What they pay Norcoach (28 Oct, Alex; lib/billing.ts): a payment that failed, then read-only, as a fact and its
           way to the fix (Settings, Billing). Nothing while it is paid. */}
       {(rail.billing.state === "grace" || rail.billing.state === "readonly") && (
@@ -242,11 +268,13 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
           </Link>
         )}
       </nav>
+      </div>
 
+      <div className="rr-paper">
       <button type="button" className={`rr-clients-head${settingsOpen ? " folded" : ""}`} onClick={() => setSettingsOpen(false)} aria-expanded={!settingsOpen} disabled={!settingsOpen}>
         <span className="rr-label">Clients</span>
         <span className="rr-count">{q || filter === "needs" ? `${shown.length} of ${rail.clients.length}` : rail.clients.length}</span>
-        {settingsOpen && <ChevronDownIcon />}
+        {settingsOpen && <Fold open={false} />}
       </button>
       <div className={`rr-clients${settingsOpen ? " folded" : ""}`} aria-hidden={settingsOpen} inert={settingsOpen}>
         <label className="rr-search">
@@ -346,33 +374,8 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
           <span>Sign out</span>
         </button>
       </div>
+      </div>
 
-      <button type="button" className={`rr-coach${settingsOpen ? " open" : ""}`} onClick={() => setSettingsOpen(!settingsOpen)} aria-expanded={settingsOpen} aria-label={settingsOpen ? "Close settings" : "Open settings"}>
-        <span className="rr-coach-avatar" aria-hidden="true">
-          {rail.coach.photoPath ? (
-            // eslint-disable-next-line @next/next/no-img-element -- an upload served by the app's own route
-            <img src={pic(rail.coach.photoPath, 96)} alt="" />
-          ) : (
-            rail.coach.name.charAt(0).toUpperCase()
-          )}
-        </span>
-        <span className="rr-coach-text">
-          <b>{rail.coach.name}</b>
-          <small>
-            {rail.isOwner ? (
-              <>
-                Owner<Sep />
-                Coach
-              </>
-            ) : (
-              "Coach"
-            )}
-          </small>
-        </span>
-        <span className="rr-coach-chev" aria-hidden="true">
-          <ChevronDownIcon />
-        </span>
-      </button>
       {touring && <RailTour />}
       {adding && <NewClientDialog look="hairline" inviteReady={rail.inviteReady} clerk={rail.clerk} onClose={() => setAdding(false)} />}
     </aside>
