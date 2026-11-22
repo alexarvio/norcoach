@@ -90,6 +90,20 @@ export default function PhasesOverview({ data, needs = [], now }: { data: Phases
   const grid = gridFor(prefs.win, thisWeek, intoWeek, back);
   // Sideways scrolling moves it a week a notch, as the Plan's (23 Oct, Alex).
   const sideScroll = useSideScroll((n) => setBack((b) => Math.max(0, b - n)));
+  // Its own sideways scroll gone later wakes Today too, and Today brings it back (22 Nov, Alex: "only seems to work… if i
+  // go into the past not the future").
+  const [away, setAway] = useState(false);
+  useEffect(() => {
+    const el = sideScroll.current;
+    if (!el) return;
+    const tell = () => setAway(el.scrollLeft > 8);
+    el.addEventListener("scroll", tell, { passive: true });
+    return () => el.removeEventListener("scroll", tell);
+  }, [sideScroll]);
+  const goToday = () => {
+    setBack(0);
+    sideScroll.current?.scrollTo({ left: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  };
 
   // The three readings of the same data: the list, the toggle's count, the order.
   const soonRows = useMemo(
@@ -236,7 +250,7 @@ export default function PhasesOverview({ data, needs = [], now }: { data: Phases
               <button type="button" className="rd-btn ghost" onClick={() => setBack((b) => b + 4)} aria-label="Earlier" title="Earlier">
                 <ChevronLeftIcon />
               </button>
-              <button type="button" className="rd-btn ghost rq-today" disabled={back === 0} onClick={() => setBack(0)}>
+              <button type="button" className="rd-btn ghost rq-today" disabled={back === 0 && !away} onClick={goToday}>
                 Today
               </button>
               <button type="button" className="rd-btn ghost" disabled={back === 0} onClick={() => setBack((b) => Math.max(0, b - 4))} aria-label="Later" title="Later">

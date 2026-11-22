@@ -22329,3 +22329,23 @@ html.kb-open .evs .evs-type.on .evs-type-change { display: inline; margin-left: 
 .dlh-thing-facts { font-size: 12.5px; line-height: 18px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; }
 .dlh-thing-aside { flex: none; font-size: 24px; line-height: 28px; font-weight: 500; color: #141a24; font-variant-numeric: tabular-nums; }
 .dlh-thing-lose { margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; background: rgba(184, 71, 31, 0.07); font-size: 13px; line-height: 19px; font-weight: 500; color: #b8471f; }
+
+/* New client in C (22 Nov, Alex: "new client pop up still needs the rework"): its own dialog (NewClientDialog, .nc-hl) takes
+   the pop-ups' dark head: the coach's colour, their logo big and faint a third past the right edge, the face that will be
+   the client's (a person with a plus until a first name is typed, then its initial) and the name as it is typed over New
+   client; the paper rising over its foot; no hairline ring. One step: the email typed is where the invite goes. */
+.nc-dialog.nc-hl { box-shadow: 0 30px 60px -24px rgba(16, 24, 40, 0.35); overflow: hidden; }
+.nc-dialog.nc-hl > .nc-head:first-child { position: relative; flex: none; overflow: hidden; align-items: flex-start; margin: -20px 0 0; padding: 18px 20px 38px; border-radius: 20px 20px 0 0; background: linear-gradient(var(--brand, #1c1c1e), var(--brand, #1c1c1e)) top / 100% calc(100% - 2px) no-repeat; color: #fff; }
+.nc-dialog.nc-hl > .nc-head:first-child::before { content: ""; position: absolute; right: -53px; top: 50%; translate: 0 -58%; width: 160px; height: 160px; background: #fff; opacity: 0.07; pointer-events: none; -webkit-mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; }
+.has-coach-logo .nc-dialog.nc-hl > .nc-head:first-child::before { opacity: 0.13; }
+.nc-dialog.nc-hl > .nc-head:first-child::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 20px; border-radius: 20px 20px 0 0; background: #fff; pointer-events: none; }
+.nc-dialog.nc-hl > .nc-head:first-child > * { position: relative; z-index: 1; }
+.nc-dialog.nc-hl > .nc-head:first-child .nc-title { color: #fff; }
+.nc-dialog.nc-hl > .nc-head:first-child .cc-dialog-x { color: rgba(255, 255, 255, 0.72); }
+.nc-dialog.nc-hl > .nc-head:first-child .cc-dialog-x:hover, .nc-dialog.nc-hl > .nc-head:first-child .cc-dialog-x:focus-visible { background: rgba(255, 255, 255, 0.12); color: #fff; }
+/* Nobody yet: the face a dashed white ring with a person and a plus in it. */
+.nc-hl .dlh-whoface.nc-face:not(:has(img)):has(svg) { background: none; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.55); color: rgba(255, 255, 255, 0.85); }
+/* The phone: the dial code its own width, the number taking the rest (the picker spread across the row and left the
+   number no room). */
+.nc-hl .nc-phone .rd-picker.nc-dialpick { width: auto; flex: none; }
+.nc-hl .nc-phone .nc-input { flex: 1 1 auto; min-width: 0; }

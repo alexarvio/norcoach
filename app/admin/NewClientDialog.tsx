@@ -161,10 +161,24 @@ export default function NewClientDialog({
     <div className={`nc-scrim${hl ? " nc-hl-scrim" : ""}`} role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className={`nc-dialog${hl ? " nc-hl" : ""}`} role="dialog" aria-modal="true" aria-label="New client">
         <header className="nc-head">
+          {hl ? (
+            // In C (22 Nov, Alex: "new client pop up still needs the rework"): the coach's dark, the face that will be theirs
+            // (their initial once a first name is typed, else a person with a plus), the name as it is typed over New client.
+            <div className="dlh-whohead">
+              <span className="dlh-whoface nc-face" aria-hidden="true">
+                {draft.firstName.trim() ? draft.firstName.trim().charAt(0).toUpperCase() : <PersonPlusIcon />}
+              </span>
+              <div>
+                <span className="dlh-whoeye">{form.name ? "New client" : "Clients"}</span>
+                <div className="nc-title">{form.name || "New client"}</div>
+              </div>
+            </div>
+          ) : (
           <div>
             <div className="nc-title">New client</div>
             {clerk && !hl && <div className="nc-sub">{step === 1 ? "Step 1 of 2 · who they are" : "Step 2 of 2 · how they get into the app"}</div>}
           </div>
+          )}
           <button type="button" className="cc-dialog-x" onClick={onClose} aria-label="Close">
             {hl ? "✕" : "×"}
           </button>
@@ -174,7 +188,7 @@ export default function NewClientDialog({
             something without losing what is typed. Step 2 once step 1 has
             what it needs. */}
         {/* Hairline: the two steps are the capsule under the title (design rules 5), the names alone. */}
-        {clerk && (
+        {clerk && !hl && (
           <div className="nc-steps" role="tablist">
             {[
               { n: 1 as const, name: "Member info", hint: "Name, birthdate, contact" },
@@ -301,7 +315,7 @@ export default function NewClientDialog({
             <button type="button" className="pl-primary nc-btn" onClick={() => open(made)}>
               Open client
             </button>
-          ) : step === 1 && clerk ? (
+          ) : step === 1 && clerk && !hl ? (
             <>
               <button type="button" className="pl-text-btn nc-btn nc-secondary" onClick={onClose}>
                 Cancel
@@ -312,8 +326,8 @@ export default function NewClientDialog({
             </>
           ) : (
             <>
-              <button type="button" className="pl-text-btn nc-btn nc-secondary" onClick={clerk ? () => setStep(1) : onClose} disabled={saving}>
-                {clerk ? "Back" : "Cancel"}
+              <button type="button" className="pl-text-btn nc-btn nc-secondary" onClick={clerk && !hl ? () => setStep(1) : onClose} disabled={saving}>
+                {clerk && !hl ? "Back" : "Cancel"}
               </button>
               <button type="button" className="pl-primary nc-btn" onClick={create} disabled={!form.step1Ok || saving}>
                 {createLabel}
@@ -324,6 +338,16 @@ export default function NewClientDialog({
       </div>
     </div>,
     document.body
+  );
+}
+
+/** Nobody yet: a person with a plus, in the face's place in the head. */
+function PersonPlusIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="10" cy="8" r="3.5" />
+      <path d="M3.5 19.5c1.2-3.3 3.6-5 6.5-5s5.3 1.7 6.5 5M18.5 8v6M15.5 11h6" />
+    </svg>
   );
 }
 

@@ -205,6 +205,9 @@ export default function PlanDraft({ clientId, firstName, plan }: { clientId: num
   // timeline and drifts off as the weeks go by. The arrows step back into the past a month at a time
   // (21 Oct, Alex: a past phase that clashed was nowhere to be seen); Today comes back.
   const [back, setBack] = useState(0);
+  // The timeline scrolled later inside its card wakes Today too; Today brings it back (22 Nov, Alex).
+  const [away, setAway] = useState(false);
+  const [home, setHome] = useState(0);
   // The grid for this window (the maths in gridFor, shared with the Events card, which has a window of its own since 10 Oct).
   const grid = gridFor(win, thisWeek, intoWeek, back);
   const { first, count, weeks } = grid;
@@ -335,7 +338,7 @@ export default function PlanDraft({ clientId, firstName, plan }: { clientId: num
                 <ChevronLeftIcon />
               </button>
               {/* Always there (21 Oct, Alex), so the arrows never move under the pointer; at today it rests, greyed. */}
-              <button type="button" className="rd-btn ghost rq-today" disabled={back === 0} onClick={() => setBack(0)}>
+              <button type="button" className="rd-btn ghost rq-today" disabled={back === 0 && !away} onClick={() => { setBack(0); setHome((h) => h + 1); }}>
                 Today
               </button>
               <button type="button" className="rd-btn ghost" disabled={back === 0} onClick={() => setBack((b) => Math.max(0, b - 4))} aria-label="Later" title="Later">
@@ -356,7 +359,7 @@ export default function PlanDraft({ clientId, firstName, plan }: { clientId: num
         </div>
         <div className="pln-card">
           {/* The timeline is plan/timelineParts.tsx, as on the Phases screen: months over weeks, the NOW line, a row of lanes a track. */}
-          <Timeline grid={grid} onStep={(n) => setBack((b) => Math.max(0, b - n))}>
+          <Timeline grid={grid} onAway={setAway} home={home} onStep={(n) => setBack((b) => Math.max(0, b - n))}>
             {TRACKS.map((t) => {
               const mine = phases.filter((p) => p.track === t.id).sort((a, b) => (a.start_week < b.start_week ? -1 : 1));
               // Phases that share a week column on one track stack into lanes, judged by the columns they are drawn in.
