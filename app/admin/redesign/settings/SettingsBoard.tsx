@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { SETTINGS } from "../settingsNav";
+import { logoutAction } from "../../../lib/auth-actions";
 import { SaveHost, useUnsaved } from "./SaveHost";
 import { onGoToSetting, sayOpen } from "./settingsScroll";
 import { Toaster } from "../../../components/ui/toast";
@@ -123,6 +124,10 @@ function Sections({ sections }: { sections: SettingsSection[] }) {
             </button>
           );
         })}
+        {/* Sign out, at the foot of the sections, in red words (22 Nov, Alex: Settings left the rail, Sign out with it). */}
+        <button type="button" className="rst-signout" onClick={() => logoutAction()}>
+          Sign out
+        </button>
       </nav>
       <div className="rst-shown" ref={content}>
         {sections.map((s) => (
