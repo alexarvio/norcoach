@@ -281,3 +281,6 @@ body[style*="--brand"] .cc-hl.cc-hl .ad-btn-primary:not(:disabled):focus-visible
 .rr-paper > .rr-clients-head { cursor: default; }
 /* The coach row is a link to their Profile now: no underline. */
 .rr-coach, .rr-coach:hover { text-decoration: none; }
+/* The views in two groups, parted by space alone (22 Nov, Alex): Feed, Phases, Calendar; then Library, Business,
+   Coaches, Settings. */
+.rr-nav > .rr-navrow.rr-gap { margin-top: 14px; }
