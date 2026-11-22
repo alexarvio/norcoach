@@ -23,8 +23,8 @@ import { BrandLogo } from "../../components/BrandLogo";
 // brings the list back. Only the client list scrolls.
 
 const VIEWS = [
-  // Two groups, parted by space (22 Nov, Alex: "feed, phases, calendar, library, business settings"): every day first,
-  // the two counts side by side; then what is opened now and then, Coaches (the owner's) and Settings last.
+  // Every day first, the two counts side by side, then what is opened now and then, Coaches (the owner's) and Settings
+  // last, all evenly spaced (22 Nov, Alex: "feed, phases, calendar, library, business settings"; "take the space out").
   { key: "feed", label: "Feed", Icon: FeedIcon },
   { key: "phases", label: "Phases", Icon: PhasesIcon },
   { key: "calendar", label: "Calendar", Icon: CalendarIcon },
@@ -193,7 +193,8 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
       <div className="rr-dark">
       <div className="rr-brand">
         {/* Their banner in its place when they uploaded one (19 Nov, Alex); without one, NORCOACH as before. */}
-        <BrandLogo className="rr-logo" banner={rail.coach.banner} bannerRatio={rail.coach.bannerRatio} name={rail.coach.business} nameInPlace={false} />
+        {/* NORCOACH as the word alone across the row, no star (22 Nov, Alex: "take out the north star from here… expand it to occupy the whole row"). */}
+        <BrandLogo className="rr-logo" banner={rail.coach.banner} bannerRatio={rail.coach.bannerRatio} name={rail.coach.business} nameInPlace={false} word />
       </div>
       {/* The coach: their face, name and business; a click opens their Profile in Settings. */}
       <Link href={`${SETTINGS_HREF}#profile`} className="rr-coach" aria-label={`${rail.coach.name}, your profile`} onClick={goView(SETTINGS_HREF, onSettings)}>
@@ -237,7 +238,7 @@ export default function RedesignRail({ rail, clientId, settings = false }: { rai
           const href = REDRAWN[key] ?? `/admin?view=${key}`;
           const isHere = !!(REDRAWN[key] && path?.startsWith(REDRAWN[key]!));
           return (
-            <Link key={key} href={href} className={`rr-navrow${key === "library" ? " rr-gap" : ""}${viewOn(href, isHere) ? " active" : ""}`} aria-current={isHere ? "page" : undefined} onClick={goView(href, isHere)}>
+            <Link key={key} href={href} className={`rr-navrow${viewOn(href, isHere) ? " active" : ""}`} aria-current={isHere ? "page" : undefined} onClick={goView(href, isHere)}>
               <Icon />
               <span>{label}</span>
               {/* The Feed's own Needs you, counted as it lists them (22 Oct: it counted clients, a new one too, and read

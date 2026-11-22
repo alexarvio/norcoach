@@ -229,15 +229,20 @@ body[style*="--brand"] .cc-hl.cc-hl .ad-btn-primary:not(:disabled):focus-visible
    did), and the views, the one you are on the white pill. The paper with the clients and Settings rises over its foot
    with 20px corners. */
 .rr-dark { position: relative; flex: none; overflow: hidden; padding-bottom: 32px; background: var(--brand, #1c1c1e); color: #fff; }
-.rr-dark::before { content: ""; position: absolute; right: -44px; top: -38px; width: 170px; height: 164px; background: #fff; opacity: 0.06; pointer-events: none; -webkit-mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; }
-.has-coach-logo .rr-dark::before { right: 16px; top: 16px; width: 44px; height: 44px; opacity: 0.12; }
+/* The mark in the dark (22 Nov, Alex: D of docs/boards/admin-rail-logo-mockup.html, "the direction of D but have 66% of the
+   logo shown"): 220px, faint, behind the views, a third of it past the rail's right edge; the coach's own logo there, else
+   the star, in the same spot. The one place a coach's logo is cut. */
+.rr-dark::before { content: ""; position: absolute; right: -73px; top: 128px; width: 220px; height: 220px; background: #fff; opacity: 0.07; pointer-events: none; -webkit-mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; }
+.has-coach-logo .rr-dark::before { opacity: 0.09; }
 .rr-dark > * { position: relative; z-index: 1; }
 .rr-paper { position: relative; z-index: 1; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; margin-top: -20px; border-radius: 20px 20px 0 0; background: #fff; }
 .rr-paper > .rr-clients-head { padding-top: 18px; }
 /* The brand: the banner or NORCOACH in white, sized as the mockup, clear of the faint logo on the right. */
 .rr-dark .rr-brand { padding: 20px 22px 12px; }
-.rr-dark .rr-logo { font-size: calc(62cqw / 7.23); color: #fff; }
-.rr-dark .rr-logo.brand-banner { font-size: calc(62cqw / var(--banner-ratio, 4)); max-width: 70cqw; }
+/* The word alone (5.68em wide at 1em) across the whole row inside its padding. */
+.rr-dark .rr-logo { font-size: calc(100cqw / 5.68); color: #fff; }
+/* A banner across the row as the word is, never taller than 40px. */
+.rr-dark .rr-logo.brand-banner { font-size: min(calc(100cqw / var(--banner-ratio, 4)), 40px); max-width: 100%; }
 /* The coach, on the views' left line. */
 .rr-dark .rr-coach { margin: 0 0 10px; padding: 7px 14px 7px 22px; }
 .rr-dark .rr-coach:hover { background: rgba(255, 255, 255, 0.08); }
@@ -281,6 +286,3 @@ body[style*="--brand"] .cc-hl.cc-hl .ad-btn-primary:not(:disabled):focus-visible
 .rr-paper > .rr-clients-head { cursor: default; }
 /* The coach row is a link to their Profile now: no underline. */
 .rr-coach, .rr-coach:hover { text-decoration: none; }
-/* The views in two groups, parted by space alone (22 Nov, Alex): Feed, Phases, Calendar; then Library, Business,
-   Coaches, Settings. */
-.rr-nav > .rr-navrow.rr-gap { margin-top: 14px; }
