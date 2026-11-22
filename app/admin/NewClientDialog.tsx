@@ -341,12 +341,13 @@ export default function NewClientDialog({
   );
 }
 
-/** Nobody yet: a person with a plus, in the face's place in the head. */
+/** Nobody yet: a person, in the face's place in the head (22 Nov, Alex: "the icon only to be the person… without the plus
+ *  sign"); centred in its box. */
 function PersonPlusIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="10" cy="8" r="3.5" />
-      <path d="M3.5 19.5c1.2-3.3 3.6-5 6.5-5s5.3 1.7 6.5 5M18.5 8v6M15.5 11h6" />
+      <circle cx="12" cy="8" r="3.5" />
+      <path d="M5.5 19.5c1.2-3.3 3.6-5 6.5-5s5.3 1.7 6.5 5" />
     </svg>
   );
 }
