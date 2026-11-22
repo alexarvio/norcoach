@@ -3085,7 +3085,7 @@ export async function setBuiltinColumnVisibleAction(formData: FormData) {
 export async function swapCardioAction(entryId: number, name: string) {
   const owner = getClientIdForCardio(Number(entryId));
   if (owner == null || !(await canAccessClient(owner))) return;
-  setCardioSwap(Number(entryId), String(name ?? ""));
+  await setCardioSwap(Number(entryId), String(name ?? ""));
   revalidatePath("/client");
   revalidatePath("/admin");
 }
@@ -3094,7 +3094,7 @@ export async function swapCardioAction(entryId: number, name: string) {
 export async function clearCardioSwapAction(entryId: number) {
   const owner = getClientIdForCardio(Number(entryId));
   if (owner == null || !(await canAccessClient(owner))) return;
-  setCardioSwap(Number(entryId), null);
+  await setCardioSwap(Number(entryId), null);
   revalidatePath("/client");
   revalidatePath("/admin");
 }
@@ -3112,7 +3112,7 @@ export async function setCardioDoneAction(entryId: number, done: boolean) {
   if (!entryId) return;
   const owner = getClientIdForCardio(entryId);
   if (owner == null || !(await canAccessClient(owner))) return;
-  setCardioDone(entryId, done);
+  await setCardioDone(entryId, done);
   revalidatePath("/client");
   revalidatePath("/admin");
 }
@@ -4450,7 +4450,7 @@ export async function saveWorkoutAction(clientId: number, entries: unknown): Pro
   let unsaved = false;
   // Async for the sets' door (each set its own transaction in pg mode); in memory mode every line still runs at once.
   const applyOne = async (e: Record<string, unknown>): Promise<WorkoutSaveResult> => {
-    if (SETS_PG && unsaved && (e?.kind === "set" || e?.kind === "rows")) {
+    if (SETS_PG && unsaved && (e?.kind === "set" || e?.kind === "rows" || e?.kind === "cardioDone" || e?.kind === "cardioSwap")) {
       try {
         await persistNow();
       } catch {
@@ -4519,12 +4519,17 @@ export async function saveWorkoutAction(clientId: number, entries: unknown): Pro
         setExerciseSwap(assignment.id, { library_exercise_id: libOk ? lib : null, custom_name: libOk ? null : custom });
         return "done";
       }
-      case "cardioDone":
-        if (cardio) setCardioDone(cardio.id, e.done === true, clamped(e.at));
-        return "done";
-      case "cardioSwap":
-        if (cardio) setCardioSwap(cardio.id, typeof e.name === "string" && e.name.trim() ? e.name : null);
-        return "done";
+      case "cardioDone": {
+        // Through the sets' door (quest 10): the outbox's "still the session it was ticked in" looked at again inside
+        // the write (with SETS_STORE=pg under the client's lock, so a discard committed ahead of it keeps it out).
+        const went = cardio ? await setCardioDone(cardio.id, e.done === true, clamped(e.at), () => !stale(day, startedAt)) : true;
+        return went ? "done" : "stale";
+      }
+      case "cardioSwap": {
+        // Its tick as cardioDone's: the session looked at again inside the write (SETS_STORE=pg, under the client's lock).
+        const went = cardio ? await setCardioSwap(cardio.id, typeof e.name === "string" && e.name.trim() ? e.name : null, () => !stale(day, startedAt)) : true;
+        return went ? "done" : "stale";
+      }
       case "cardioFigure": {
         const field = e.field === "time" || e.field === "pace" || e.field === "incline" || e.field === "distance" ? e.field : null;
         if (cardio && field) setFreeCardio(cardio.id, { [field]: str(e.value, 40) });

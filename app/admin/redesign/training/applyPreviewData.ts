@@ -65,7 +65,8 @@ function compare(sr: SetRows, clientId: number, gone: Set<number>) {
   }
   const clientCardio = new Set([...cardioOfDay.values()].flat());
   const cardioTicks = new Map<number, number>();
-  for (const l of data.cardio_logs ?? []) if (clientCardio.has(l.cardio_entry_id)) cardioTicks.set(l.cardio_entry_id, (cardioTicks.get(l.cardio_entry_id) ?? 0) + 1);
+  // The ticks through the sets' door (quest 10, with the sets since 22 Nov): the client's whole (sr.need above).
+  for (const l of sr.ticks) if (clientCardio.has(l.cardio_entry_id)) cardioTicks.set(l.cardio_entry_id, (cardioTicks.get(l.cardio_entry_id) ?? 0) + 1);
   const askOf = new Map<number, (typeof data.video_requests)[number]>();
   for (const r of data.video_requests) if (!askOf.has(r.assignment_id)) askOf.set(r.assignment_id, r);
   const recurring = data.video_requests.filter((r) => r.recurring && r.client_id === clientId && !r.from_client);

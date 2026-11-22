@@ -45,7 +45,7 @@ import { CHECKINS_PG } from "./checkins/mode";
 import { deleteClientCheckIns, fetchDueCheckIns, removeMetricWithReadings, sweepClientCheckIns, whileNoFigures, writeCheckIns, type CheckInBox, type CheckInRows, type CheckInSpan } from "./checkins/rows";
 import { setsDue } from "./setsDue";
 import { SETS_PG } from "./sets/mode";
-import { deleteClientSets, dropSetsOfRows, fetchSetOwner, fetchSetsForClients, pinSetGyms, setHomeSetWeek, setSessionNewsCounter, sweepClientSets, writeSets, type SetBox, type SetRows } from "./sets/rows";
+import { deleteClientSets, dropSetsOfRows, dropTicksOfEntries, fetchSetOwner, fetchSetsForClients, pinSetGyms, setHomeSetWeek, setSessionNewsCounter, sweepClientSets, writeSets, type SetBox, type SetRows } from "./sets/rows";
 import { assistedRow, beforeStop, copiedWeights, isReset, laneKg, laneOfGym, laneTypedAt, laterSlot, liftOf, raisedTo, repWindow, setsSinceReset, stopAfter, writeLane, type Lane } from "./targetRule";
 import { FEATURES } from "./features";
 import { daysBetween, weightGoalViews, type WeightGoalView } from "./weightGoal";
@@ -344,7 +344,9 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
   data.assignment_custom_values = data.assignment_custom_values.filter((v) => !assignmentIds.has(v.workout_assignment_id));
   data.workout_assignments = data.workout_assignments.filter((wa) => !assignmentIds.has(wa.id));
   // Their cardio rows too (22 Nov, Alex: "rest yes" to fixing it): they hang on the days by program_day_id alone, so the
-  // client_id sweep below never took them and they stayed behind as orphans. Their ticks (cardio_logs) carry client_id.
+  // client_id sweep below never took them and they stayed behind as orphans. Their ticks (cardio_logs) carry client_id
+  // (memory: that sweep; SETS_STORE=pg: deleteClientSets above, and sweepClientSets after, by client and these entries).
+  const cardioIds = (data.cardio_entries ?? []).filter((c) => dayIds.has(c.program_day_id)).map((c) => c.id);
   data.cardio_entries = (data.cardio_entries ?? []).filter((c) => !dayIds.has(c.program_day_id));
   data.program_days = data.program_days.filter((pd) => !dayIds.has(pd.id));
   data.training_programs = data.training_programs.filter((p) => p.client_id !== clientId);
@@ -388,7 +390,7 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
   // chat-door: chat rows go through deleteClientChat. food-door: the food lists by the same filter (pg: deleteClientFood above)
   // notes-door: the notifications go through deleteClientNotes, in their turn among the collections (memory: at once, the
   // same filter; with NOTES_STORE=pg they went first, above)
-  for (const [name, value] of Object.entries(store)) { // checkins-door: the check-in notes by this filter in memory (pg: deleteClientCheckIns above); sets-door: the sets went by writeSets above (no client_id, so this filter keeps them; pg: deleteClientSets)
+  for (const [name, value] of Object.entries(store)) { // checkins-door: the check-in notes by this filter in memory (pg: deleteClientCheckIns above); sets-door: the sets went by writeSets above (no client_id, so this filter keeps them; pg: deleteClientSets), the cardio ticks by this filter in memory (pg: deleteClientSets)
     if (name === NOTES_TABLE) {
       if (!NOTES_PG) void deleteClientNotes(clientId, "w.client.delete");
       continue;
@@ -441,7 +443,7 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
   // from memory (writeSets), and this sweep takes what any committed between, by the client and the rows they had.
   if (SETS_PG) {
     try {
-      await sweepClientSets(clientId, [...assignmentIds]);
+      await sweepClientSets(clientId, [...assignmentIds], cardioIds);
     } catch (error) {
       console.error(`[sets] the second sweep of client ${clientId}'s sets failed; the boot's orphan count will name what is left:`, error instanceof Error ? error.message : error);
     }
@@ -763,7 +765,8 @@ export function removeSession(sr: SetRows, programDayId: number) {
   dropSetsOfRows("w.remove.session", day.client_id, assignmentIds);
   data.assignment_custom_values = data.assignment_custom_values.filter((v) => !assignmentIds.has(v.workout_assignment_id));
   data.workout_assignments = data.workout_assignments.filter((wa) => !assignmentIds.has(wa.id));
-  data.cardio_logs = (data.cardio_logs ?? []).filter((l) => !cardioIds.has(l.cardio_entry_id));
+  // Its cardio ticks through the sets' door (dropTicksOfEntries): memory as before; pg a tombstone, the DELETE after the save.
+  dropTicksOfEntries("w.remove.session", day.client_id, cardioIds);
   data.cardio_entries = (data.cardio_entries ?? []).filter((c) => !cardioIds.has(c.id));
   data.program_days = data.program_days.filter((pd) => pd.id !== day.id);
   getWeek(day.client_id, day.week_number).forEach((d, i) => (d.day_of_week = i + 1));
@@ -1652,7 +1655,7 @@ export function removeWeek(sr: SetRows, clientId: number, week: number) {
   dropSetsOfRows("w.remove.week", clientId, assignmentIds);
   data.assignment_custom_values = data.assignment_custom_values.filter((v) => !assignmentIds.has(v.workout_assignment_id));
   data.workout_assignments = data.workout_assignments.filter((wa) => !assignmentIds.has(wa.id));
-  data.cardio_logs = (data.cardio_logs ?? []).filter((l) => !cardioIds.has(l.cardio_entry_id));
+  dropTicksOfEntries("w.remove.week", clientId, cardioIds);
   data.cardio_entries = (data.cardio_entries ?? []).filter((c) => !cardioIds.has(c.id));
   data.program_days = data.program_days.filter((pd) => !dayIds.has(pd.id));
   persist();
@@ -1701,7 +1704,9 @@ export type TrainingIndex = {
   /** The sets logged on each session, as stored. */
   logsByDay: Map<number, SetLog[]>;
   cardioByDay: Map<number, CardioEntry[]>;
-  /** Every cardio entry with a tick (any client's: isCardioDone reads them all). */
+  /** Each indexed cardio entry's session (the first of an id, as find reads it). */
+  cardioDay: Map<number, number>;
+  /** Every cardio entry with a tick in the view (a read says first whose session it reads: sr.needTicks). */
   ticked: Set<number>;
   /** The library by id, the first of an id as find reads it. */
   exercises: Map<number, Exercise>;
@@ -1746,16 +1751,20 @@ export function trainingIndex(sr: SetRows, clients: number | Iterable<number>): 
     else logsByDay.set(day, [sl]);
   }
   const cardioByDay = new Map<number, CardioEntry[]>();
+  const cardioDay = new Map<number, number>();
   for (const c of data.cardio_entries ?? []) {
     if (!dayById.has(c.program_day_id)) continue;
     const list = cardioByDay.get(c.program_day_id);
     if (list) list.push(c);
     else cardioByDay.set(c.program_day_id, [c]);
+    if (!cardioDay.has(c.id)) cardioDay.set(c.id, c.program_day_id);
   }
-  const ticked = new Set((data.cardio_logs ?? []).map((l) => l.cardio_entry_id));
+  // The ticks through the sets' door (quest 10, with the sets since 22 Nov): each read of `ticked` says first whose
+  // session it reads (sr.needTicks), so a coach-wide view holds only the sessions the rail reads.
+  const ticked = new Set(sr.ticks.map((l) => l.cardio_entry_id));
   const exercises = new Map<number, Exercise>();
   for (const e of data.exercises) if (!exercises.has(e.id)) exercises.set(e.id, e);
-  return { daysOf, dayById, rowsByDay, rowIds, logsByRow, logsByDay, cardioByDay, ticked, exercises, sr };
+  return { daysOf, dayById, rowsByDay, rowIds, logsByRow, logsByDay, cardioByDay, cardioDay, ticked, exercises, sr };
 }
 
 /** getAssignmentsForDay, read from the index. */
@@ -1779,6 +1788,9 @@ export function cardioForDayIn(ix: TrainingIndex, programDayId: number): CardioE
 
 /** isCardioDone, read from the index. */
 export function cardioDoneIn(ix: TrainingIndex, entryId: number): boolean {
+  const day = ix.cardioDay.get(entryId);
+  if (day == null) return isCardioDone(ix.sr, entryId);
+  ix.sr.needTicks("cardioDoneIn", [day]);
   return ix.ticked.has(entryId);
 }
 
@@ -1796,6 +1808,7 @@ export function sessionCompleteIn(ix: TrainingIndex, programDayId: number): bool
   const assignments = [...(ix.rowsByDay.get(programDayId) ?? [])].sort((a, b) => a.order_index - b.order_index);
   ix.sr.needRows("sessionCompleteIn", assignments.map((a) => a.id));
   const cardio = cardioForDayIn(ix, programDayId);
+  if (cardio.length) ix.sr.needTicks("sessionCompleteIn", [programDayId]);
   if (assignments.length === 0 && cardio.length === 0) return false;
   return (
     assignments.every((a) => {
@@ -1824,6 +1837,7 @@ export function laterSameSlotSessionsIn(ix: TrainingIndex, programDayId: number)
     const target = weekIn(ix, day.client_id, week).find((d) => d.day_of_week === day.day_of_week);
     if (!target) continue;
     ix.sr.needRows("laterSameSlotSessionsIn", (ix.rowsByDay.get(target.id) ?? []).map((wa) => wa.id));
+    if ((ix.cardioByDay.get(target.id) ?? []).length) ix.sr.needTicks("laterSameSlotSessionsIn", [target.id]);
     const logged = (ix.logsByDay.get(target.id)?.length ?? 0) > 0 || (ix.cardioByDay.get(target.id) ?? []).some((c) => ix.ticked.has(c.id));
     if (!logged) out.push(target.id);
   }
@@ -1858,7 +1872,7 @@ export function copyProgramWeek(sr: SetRows, clientId: number, fromWeek: number,
     // Ticked cardio counts as logged too, now that cardio comes along.
     const destRows = new Set(data.workout_assignments.filter((wa) => wa.program_day_id === dest.id).map((wa) => wa.id));
     const destCardio = new Set((data.cardio_entries ?? []).filter((c) => c.program_day_id === dest.id).map((c) => c.id));
-    if (sr.logs.some((l) => destRows.has(l.workout_assignment_id)) || (data.cardio_logs ?? []).some((l) => destCardio.has(l.cardio_entry_id))) continue;
+    if (sr.logs.some((l) => destRows.has(l.workout_assignment_id)) || sr.ticks.some((l) => destCardio.has(l.cardio_entry_id))) continue;
     dest.label = src.label;
     // Replace rather than append, so copying twice doesn't double the day.
     const replacedIds = [...destRows];
@@ -2550,7 +2564,7 @@ setHomeSetWeek(homeSetWeek);
  * How many sessions of these days are news at or after T, by client (activityFeeds' own rule, sessionNews, on these sets):
  * what the coach-wide fetches count while they look for a coach's newest n (sets/rows.ts topDays).
  */
-setSessionNewsCounter((dayIds, sets, t) => {
+setSessionNewsCounter((dayIds, sets, cardioTicks, t) => {
   const data = getData();
   const rowDay = new Map<number, number>();
   const rowsOf = new Map<number, StoredAssignment[]>();
@@ -2564,7 +2578,8 @@ setSessionNewsCounter((dayIds, sets, t) => {
     const d = rowDay.get(s.workout_assignment_id);
     if (d != null) logsOf.set(d, [...(logsOf.get(d) ?? []), s]);
   }
-  const tickOf = new Map((data.cardio_logs ?? []).map((l) => [l.cardio_entry_id, l] as const));
+  // The ticks the resolve read for these days' entries (the door's source: the store's, or SQL).
+  const tickOf = new Map(cardioTicks.map((l) => [l.cardio_entry_id, l] as const));
   const out = new Map<number, number>();
   for (const day of data.program_days) {
     if (!dayIds.has(day.id)) continue;
@@ -3866,7 +3881,8 @@ function activityFeeds(coachIds: readonly number[], chat: ChatCoachView, food: F
     if (list) list.push(c);
     else cardioByDay.set(c.program_day_id, [c]);
   }
-  const tickOf = new Map((data.cardio_logs ?? []).map((l) => [l.cardio_entry_id, l] as const));
+  // The ticks through the sets' door (with the sets since 22 Nov): the sessions the feed's asks resolved to (needFeed above).
+  const tickOf = new Map(sr.ticks.map((l) => [l.cardio_entry_id, l] as const));
   // Its note is the client's words on the row; the copy the app sends to the chat is left out of the logs (echo).
   const sessionNotes = new Map<number, string>();
   for (const day of data.program_days) {
@@ -10586,7 +10602,7 @@ function sessionGyms(sr: SetRows, clientId: number) {
     if (g != null) dayGym.set(d, g);
   }
   const entryDay = new Map((data.cardio_entries ?? []).filter((c) => days.has(c.program_day_id)).map((c) => [c.id, c.program_day_id]));
-  const cardioDone = new Set((data.cardio_logs ?? []).flatMap((l) => (entryDay.has(l.cardio_entry_id) ? [entryDay.get(l.cardio_entry_id)!] : [])));
+  const cardioDone = new Set(sr.ticks.flatMap((l) => (entryDay.has(l.cardio_entry_id) ? [entryDay.get(l.cardio_entry_id)!] : [])));
   for (const pd of days.values()) if (!dayGym.has(pd.id) && pd.gym_id != null && pd.session_ended_at && cardioDone.has(pd.id)) dayGym.set(pd.id, pd.gym_id);
   return { home, days, dayGym };
 }
@@ -10883,7 +10899,8 @@ function sessionStamps(sr: SetRows, day: ProgramDay) {
   sr.needRows("sessionStamps", ids);
   const sets = sr.logs.filter((sl) => ids.has(sl.workout_assignment_id)).map((sl) => stampMs(sl.logged_at)).filter(Number.isFinite);
   const cardioIds = new Set(listCardioForDay(day.id).map((c) => c.id));
-  const cardio = (data.cardio_logs ?? []).filter((l) => cardioIds.has(l.cardio_entry_id)).map((l) => stampMs(l.done_at));
+  sr.needTicks("sessionStamps", [day.id]);
+  const cardio = sr.ticks.filter((l) => cardioIds.has(l.cardio_entry_id)).map((l) => stampMs(l.done_at));
   const media = (data.video_requests ?? []).filter((r) => ids.has(r.assignment_id) && !!r.file_path);
   const clips = media.map((r) => (r.submitted_at ? stampMs(r.submitted_at) : NaN)).filter(Number.isFinite);
   return { started: day.session_started_at ? stampMs(day.session_started_at) : NaN, sets, cardio, cardioDone: cardio.length > 0, sentMedia: media.length > 0, clips };
@@ -11075,7 +11092,10 @@ export async function removeFreeSession(programDayId: number, opts: { onlyIfNoSe
   const day = data.program_days.find((pd) => pd.id === programDayId);
   if (!day?.free) return;
   const ids = new Set(data.workout_assignments.filter((wa) => wa.program_day_id === day.id).map((wa) => wa.id));
-  const rest = (files: boolean) => {
+  const cardioOfDay = () => new Set((data.cardio_entries ?? []).filter((c) => c.program_day_id === day.id).map((c) => c.id));
+  // `box` in memory mode (its ticks the store's own list, today's line in its place); null in pg, where the body took
+  // the ticks out in the sets' transaction.
+  const rest = (files: boolean, box: SetBox | null) => {
     // Its video asks and anything sent on it go with its rows, files too, so nothing is left waiting on a row that isn't there.
     const gone: string[] = [];
     for (const r of data.video_requests.filter((x) => ids.has(x.assignment_id)))
@@ -11084,29 +11104,34 @@ export async function removeFreeSession(programDayId: number, opts: { onlyIfNoSe
         if (files) void deleteUpload(file).catch(() => {});
       }
     data.workout_assignments = data.workout_assignments.filter((wa) => wa.program_day_id !== day.id);
-    const cardio = new Set((data.cardio_entries ?? []).filter((c) => c.program_day_id === day.id).map((c) => c.id));
-    data.cardio_logs = (data.cardio_logs ?? []).filter((c) => !cardio.has(c.cardio_entry_id));
+    const cardio = cardioOfDay();
+    if (box) box.ticks = box.ticks.filter((c) => !cardio.has(c.cardio_entry_id));
     data.cardio_entries = (data.cardio_entries ?? []).filter((c) => c.program_day_id !== day.id);
     data.program_days = data.program_days.filter((pd) => pd.id !== day.id);
     persist();
     return gone;
   };
-  // The sets through the door (quest 10): memory today's lines in order; pg the sets' DELETE first, then the session
-  // whole, and its files only once the store's save holds it gone.
+  // The sets through the door (quest 10): memory today's lines in order; pg the sets' DELETE first (its cardio ticks in
+  // the same transaction), then the session whole, and its files only once the store's save holds it gone.
   await writeSets(
     opts.onlyIfNoSets ? "w.session.staleDiscard" : "w.session.freeRemove",
     day.client_id,
     () => [...ids],
     (box) => {
-      if (opts.onlyIfNoSets && SETS_PG && box.logs.some((sl) => ids.has(sl.workout_assignment_id))) return false;
+      if (opts.onlyIfNoSets && SETS_PG && (box.logs.some((sl) => ids.has(sl.workout_assignment_id)) || box.ticks.length > 0)) return false;
       box.logs = box.logs.filter((sl) => !ids.has(sl.workout_assignment_id));
-      if (!SETS_PG) rest(true);
+      if (!SETS_PG) rest(true, box);
+      else {
+        const cardio = cardioOfDay();
+        box.ticks = box.ticks.filter((c) => !cardio.has(c.cardio_entry_id));
+      }
       return true;
     },
     {
+      ticks: () => [day.id],
       afterCommit: (done) => {
         if (!SETS_PG || !done) return;
-        const gone = rest(false);
+        const gone = rest(false, null);
         markProgressClient(day.client_id);
         void persistNow()
           .then(() => {
@@ -11275,7 +11300,9 @@ export async function discardSession(programDayId: number, opts: { onlyIfNoSets?
     return;
   }
   const ids = new Set(data.workout_assignments.filter((wa) => wa.program_day_id === day.id).map((wa) => wa.id));
-  const rest = () => {
+  // `box` in memory mode (its ticks the store's own list, today's line in its place); null in pg, where the body took
+  // the ticks out in the sets' transaction.
+  const rest = (box: SetBox | null) => {
     for (const wa of data.workout_assignments) {
       if (!ids.has(wa.id)) continue;
       delete wa.warmup_sets;
@@ -11283,7 +11310,7 @@ export async function discardSession(programDayId: number, opts: { onlyIfNoSets?
       delete wa.sets_removed;
     }
     const cardioIds = new Set(listCardioForDay(day.id).map((c) => c.id));
-    data.cardio_logs = (data.cardio_logs ?? []).filter((c) => !cardioIds.has(c.cardio_entry_id));
+    if (box) box.ticks = box.ticks.filter((c) => !cardioIds.has(c.cardio_entry_id));
     delete day.session_started_at;
     delete day.session_ended_at;
     delete day.session_note;
@@ -11300,15 +11327,22 @@ export async function discardSession(programDayId: number, opts: { onlyIfNoSets?
     day.client_id,
     () => [...ids],
     (box) => {
-      if (opts.onlyIfNoSets && SETS_PG && box.logs.some((sl) => ids.has(sl.workout_assignment_id))) return false;
+      // The 12 h job's discard of an empty session: a set, or a cardio ticked, come in meanwhile keeps it (pg; memory
+      // decided at once, endStaleSessions).
+      if (opts.onlyIfNoSets && SETS_PG && (box.logs.some((sl) => ids.has(sl.workout_assignment_id)) || box.ticks.length > 0)) return false;
       box.logs = box.logs.filter((sl) => !ids.has(sl.workout_assignment_id));
-      if (!SETS_PG) rest();
+      if (!SETS_PG) rest(box);
+      else {
+        const cardioIds = new Set(listCardioForDay(day.id).map((c) => c.id));
+        box.ticks = box.ticks.filter((c) => !cardioIds.has(c.cardio_entry_id));
+      }
       return true;
     },
     {
+      ticks: () => [day.id],
       afterCommit: (done) => {
         if (!SETS_PG || !done) return;
-        rest();
+        rest(null);
         markProgressClient(day.client_id);
       },
     }
@@ -11845,7 +11879,8 @@ export function copyProgramDay(fromDayId: number, toDayId: number) {
   // Cardio is part of the session too; the target's own goes, ticks and all.
   data.cardio_entries = data.cardio_entries ?? [];
   const replacedCardio = new Set(data.cardio_entries.filter((c) => c.program_day_id === dest.id).map((c) => c.id));
-  data.cardio_logs = (data.cardio_logs ?? []).filter((l) => !replacedCardio.has(l.cardio_entry_id));
+  // Their ticks through the sets' door (dropTicksOfEntries): memory as before; pg a tombstone, the DELETE after the save.
+  dropTicksOfEntries("w.remove.copyOver", dest.client_id, replacedCardio);
   data.cardio_entries = data.cardio_entries.filter((c) => c.program_day_id !== dest.id);
   for (const c of data.cardio_entries.filter((c) => c.program_day_id === src.id)) {
     data.cardio_entries.push({ ...c, id: allocId("cardio_entries"), program_day_id: dest.id });
@@ -11926,7 +11961,7 @@ export function laterSameSlotSessions(sr: SetRows, programDayId: number): number
     if (!target) continue;
     const rows = new Set(data.workout_assignments.filter((wa) => wa.program_day_id === target.id).map((wa) => wa.id));
     const cardio = new Set((data.cardio_entries ?? []).filter((c) => c.program_day_id === target.id).map((c) => c.id));
-    const logged = sr.logs.some((l) => rows.has(l.workout_assignment_id)) || (data.cardio_logs ?? []).some((l) => cardio.has(l.cardio_entry_id));
+    const logged = sr.logs.some((l) => rows.has(l.workout_assignment_id)) || sr.ticks.some((l) => cardio.has(l.cardio_entry_id));
     if (!logged) out.push(target.id);
   }
   return out;
@@ -12028,21 +12063,46 @@ export function getClientIdForCardio(entryId: number): number | null {
   return data.program_days.find((pd) => pd.id === entry.program_day_id)?.client_id ?? null;
 }
 
-export function isCardioDone(entryId: number): boolean {
-  return (getData().cardio_logs ?? []).some((l) => l.cardio_entry_id === entryId);
+export function isCardioDone(sr: SetRows, entryId: number): boolean {
+  // The ticks through the sets' door (quest 10, with the sets since 22 Nov): the entry's session's, said first.
+  const day = (getData().cardio_entries ?? []).find((c) => c.id === entryId)?.program_day_id;
+  if (day != null) sr.needTicks("isCardioDone", [day]);
+  return sr.ticks.some((l) => l.cardio_entry_id === entryId);
 }
 
-// Tick or untick a cardio entry. A double tap is idempotent either way.
-export function setCardioDone(entryId: number, done: boolean, at: Date | string | null = null) {
-  const data = getData();
-  data.cardio_logs = data.cardio_logs ?? [];
+/**
+ * Tick or untick a cardio entry. A double tap is idempotent either way. Through the sets' door (quest 10): memory today's
+ * lines on the store; with SETS_STORE=pg one transaction under the client's lock beside their sets. `stillOn` (the
+ * outbox's "still the session it was ticked in") is looked at again inside it: false leaves it untouched (false back).
+ */
+export async function setCardioDone(entryId: number, done: boolean, at: Date | string | null = null, stillOn?: () => boolean): Promise<boolean> {
   const clientId = getClientIdForCardio(entryId);
-  if (clientId == null) return;
-  const has = data.cardio_logs.some((l) => l.cardio_entry_id === entryId);
-  if (done && !has) data.cardio_logs.push({ id: allocId("cardio_logs"), cardio_entry_id: entryId, client_id: clientId, done_at: localStamp(stampDate(at)) });
-  else if (!done && has) data.cardio_logs = data.cardio_logs.filter((l) => l.cardio_entry_id !== entryId);
-  else return;
-  persist();
+  const dayId = (getData().cardio_entries ?? []).find((c) => c.id === entryId)?.program_day_id;
+  if (clientId == null || dayId == null) {
+    // As before: the store's list made sure of first, then nothing.
+    if (!SETS_PG) await writeSets("w.cardio.tick", 0, () => [], (box) => void (box.ticks = box.ticks));
+    return true;
+  }
+  return writeSets(
+    "w.cardio.tick",
+    clientId,
+    () => [],
+    (box) => {
+      if (stillOn && !stillOn()) return false;
+      // With SETS_STORE=pg the coach may have taken the cardio out while this waited on the client's chain: nothing to
+      // do, as memory mode's tap on a gone cardio (memory mode: the same answer as the look just above, nothing between).
+      if (getClientIdForCardio(entryId) !== clientId) return true;
+      const ticks = box.ticks;
+      box.ticks = ticks;
+      const has = ticks.some((l) => l.cardio_entry_id === entryId);
+      if (done && !has) ticks.push({ id: box.allocTick(), cardio_entry_id: entryId, client_id: clientId, done_at: localStamp(stampDate(at)) });
+      else if (!done && has) box.ticks = ticks.filter((l) => l.cardio_entry_id !== entryId);
+      else return true;
+      box.persist();
+      return true;
+    },
+    { ticks: () => [dayId] }
+  );
 }
 
 export function listCardioForDay(programDayId: number): CardioEntry[] {
@@ -14184,7 +14244,7 @@ export function isSessionComplete(sr: SetRows, programDayId: number): boolean {
     assignments.every((a) => {
       const logged = new Set(getLogsForAssignment(sr, a.id).map((l) => l.set_number));
       return Array.from({ length: setsDue(a) }, (_, i) => i + 1).every((n) => logged.has(n));
-    }) && cardio.every((c) => isCardioDone(c.id))
+    }) && cardio.every((c) => isCardioDone(sr, c.id))
   );
 }
 
@@ -15749,15 +15809,45 @@ function keepMeasurements(values: MeasurementValue[]) {
  * they did also ticks the entry off: they did their cardio, so the session
  * can still come out complete. Null takes the swap back (the tick stays).
  */
-export function setCardioSwap(entryId: number, name: string | null) {
+export async function setCardioSwap(entryId: number, name: string | null, stillOn?: () => boolean): Promise<boolean> {
   const data = getData();
   const entry = (data.cardio_entries ?? []).find((c) => c.id === entryId);
-  if (!entry) return;
+  if (!entry) return true;
   const clean = name?.trim().slice(0, 80) || null;
+  const was = entry.swap;
   if (clean) entry.swap = { name: clean, at: new Date().toISOString() };
   else delete entry.swap;
   persist();
-  if (clean) setCardioDone(entryId, true);
+  if (!clean) return true;
+  // The tick through the sets' door (quest 10): memory at once, as before. With SETS_STORE=pg the tick commits on its
+  // own, so the swap's name is saved first (a crash between never keeps the tick without what was done instead), and
+  // `stillOn` (the outbox's "still the session it was swapped in") is looked at again inside the tick's write: a discard
+  // committed ahead of it leaves neither the tick nor the swap (false back).
+  const takeBack = () => {
+    if (was) entry.swap = was;
+    else delete entry.swap;
+    persist();
+  };
+  if (SETS_PG) {
+    try {
+      await persistNow();
+    } catch {
+      // Neither half (verify pass, 22 Nov): the swap's name taken back with the tick never sent; the phone sends both again.
+      takeBack();
+      throw Object.assign(new Error("[sets] the store (its save before a cardio swap's tick) is not saved yet"), { name: "NotYetSaved" });
+    }
+  }
+  let went: boolean;
+  try {
+    went = await setCardioDone(entryId, true, null, stillOn);
+  } catch (error) {
+    // SETS_STORE=pg (verify pass, 22 Nov): the tick's transaction failed, so the swap's name is taken back too and the entry
+    // is all or nothing (a batch answering "Couldn't save" kept the name with no tick). Memory mode as before.
+    if (SETS_PG) takeBack();
+    throw error;
+  }
+  if (!went) takeBack();
+  return went;
 }
 
 /**

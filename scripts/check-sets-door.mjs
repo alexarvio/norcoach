@@ -1,5 +1,5 @@
 // The logged sets' one door, checked (22 Nov, Step 6 quest 10 of docs/database-plan.md): nothing in app/ reaches the
-// store's sets list (set_logs) but app/lib/sets/. A sibling of check-checkins-door.mjs (and the chat, notes and food
+// store's sets list (set_logs), nor its cardio ticks (cardio_logs, through the same door since 22 Nov), but app/lib/sets/. A sibling of check-checkins-door.mjs (and the chat, notes and food
 // guards, all left as they are): tsc already refuses `data.set_logs` (a sealed type in db.ts, and every reader takes a
 // SetRows); this catches what a type can't:
 //   (a) the name set_logs (and set_twins, sets_removing, sets_gym_pins) in code anywhere but app/lib/sets, app/lib/pg and
@@ -27,8 +27,9 @@ const extraFiles = [path.join(ROOT, "instrumentation.ts")].filter((f) => fs.exis
 const rel = (f) => path.relative(ROOT, f).split(path.sep).join("/");
 const INSIDE = (r) => r.startsWith("app/lib/sets/") || r.startsWith("app/lib/pg/") || r === "app/lib/db.ts";
 const MARK = "sets-door:";
-// set_twins (the rows a pg boot kept aside), sets_removing (a removal's tombstones) and sets_gym_pins (home-gym pins) too.
-const NAMES = /\b(set_logs|set_twins|sets_removing|sets_gym_pins)\b/;
+// set_twins (the rows a pg boot kept aside), sets_removing (a removal's tombstones) and sets_gym_pins (home-gym pins) too;
+// and since 22 Nov the cardio ticks (cardio_logs), which moved with the sets.
+const NAMES = /\b(set_logs|cardio_logs|set_twins|sets_removing|sets_gym_pins)\b/;
 /** What answers a promise and must be awaited (or handed on). */
 const ASYNC = new Set([
   "fetchClientSets",
@@ -42,6 +43,7 @@ const ASYNC = new Set([
   "fetchSetsLogged",
   "fetchSetsForClients",
   "fetchAllSets",
+  "fetchTicksOfClients",
   "fetchSetOwner",
   "fetchAppLockSets",
   "withClientSetsLocked",
@@ -62,6 +64,9 @@ const ASYNC = new Set([
   "setPhaseOpenEnded",
   "applyDueProgramDeployments",
   "removeClient",
+  // The cardio ticks through the door (22 Nov).
+  "setCardioDone",
+  "setCardioSwap",
 ]);
 
 function walk(dir, out = []) {

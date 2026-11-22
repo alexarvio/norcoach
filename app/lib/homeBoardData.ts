@@ -7,7 +7,7 @@ import { getData, persist, type Data, type PhaseTrack } from "./db";
 import type { ChatThread } from "./chat/rows";
 import type { FoodRows } from "./food/rows";
 import type { CheckInRows } from "./checkins/rows";
-import type { SetLogRow as StoredSetLog, SetRows } from "./sets/rows";
+import type { CardioTickRow, SetLogRow as StoredSetLog, SetRows } from "./sets/rows";
 import {
   coachGroups,
   getActivityCalendar,
@@ -154,6 +154,8 @@ type Ctx = {
   days: ProgramDayRow[];
   byDay: Map<number, AssignmentRow[]>;
   logsByAssignment: Map<number, SetLogRow[]>;
+  /** The client's cardio ticks (by their client), through the sets' door (quest 10, with the sets since 22 Nov). */
+  ticks: CardioTickRow[];
   sets: LoggedSet[];
   /** Per day, the counted sets and the volume by group. */
   perDay: Map<string, { sets: PerGroup; volume: PerGroup }>;
@@ -297,6 +299,7 @@ function context(clientId: number, today: string, food: FoodRows | null, ck: Che
     days,
     byDay,
     logsByAssignment,
+    ticks: sr.ticks.filter((l) => l.client_id === clientId),
     sets,
     perDay,
     weights,
@@ -548,7 +551,7 @@ function sinceOf(ctx: Ctx, thread: ChatThread, foodRows: FoodRows): HomeBoard["s
     if (list) list.push(c);
     else cardioByDay.set(c.program_day_id, [c]);
   }
-  const ticks = (data.cardio_logs ?? []).filter((l) => l.client_id === ctx.clientId);
+  const ticks = ctx.ticks;
   let sessions = 0;
   for (const d of ctx.days) {
     const as = ctx.byDay.get(d.id) ?? [];

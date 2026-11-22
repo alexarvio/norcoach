@@ -1,6 +1,7 @@
 // The logged sets' shadow week (quest 10), on the check-ins' pattern (app/lib/checkins/shadow.ts; its file untouched):
 // beside the door's fetches, the SQL that will replace them (rows.ts loadScope, the same the cut-over runs) runs against
-// Postgres and every difference is counted and logged with ids and field names, never a weight, a rep or a stamp.
+// Postgres and every difference is counted and logged with ids and field names, never a weight, a rep or a stamp. Since
+// 22 Nov each sample compares the cardio ticks too (rows.ts loadTicks against cutTicks), table by table.
 //
 //   SETS_SHADOW=off       (the default) no query runs; the door still counts each path it is asked through.
 //   SETS_SHADOW=baseline  as off, and the totals kept (below): the week before, for the writer's times.
@@ -21,7 +22,7 @@ import { sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import { getData, persist } from "../db";
 import { fromRecord } from "../pg/store";
-import { set_logs } from "../pg/schema";
+import { cardio_logs, set_logs } from "../pg/schema";
 import { SETS_PG } from "./mode";
 import { SETS_PATHS_BY_HAND, SETS_PATHS_OUTSIDE_WEEK, SETS_READ_PATHS, SETS_WRITE_PATHS, type SetPath, type SetReadPath, type SetWritePath } from "./paths";
 
@@ -172,41 +173,56 @@ function stableJson(v: unknown): string {
     .join(",")}}`;
 }
 
+/** The two lists the shadow compares (the sets, and the cardio ticks since 22 Nov). */
+const TABLES = ["set_logs", "cardio_logs"] as const;
+type ShadowTable = (typeof TABLES)[number];
+const SCHEMA_OF = { set_logs, cardio_logs } as const;
+export type SetsShadowLists = Record<ShadowTable, Row[]>;
+
 /** What the last save committed, decoded as a fetch decodes (fromRecord), in id order; rows decoded again only when changed. */
-let committedAt: { generation: number; map: ReadonlyMap<string, string>; rows: Row[] } | null = null;
-function committedRows(): Row[] | null {
+const committedAt = new Map<ShadowTable, { generation: number; map: ReadonlyMap<string, string>; rows: Row[] }>();
+function committedRows(): SetsShadowLists | null {
   const s = state();
-  const map = s.writer?.committed("set_logs");
-  if (!map) return null;
-  // The same save's rows already decoded and sorted: handed out again (a sample never changes them; cut copies its scope).
-  const generation = s.writer?.generation ?? 0;
-  if (committedAt && committedAt.generation === generation && committedAt.map === map) return committedAt.rows;
-  const rows = decodeCommitted(map);
-  committedAt = { generation, map, rows };
-  return rows;
+  const out = {} as SetsShadowLists;
+  for (const t of TABLES) {
+    const map = s.writer?.committed(t);
+    if (!map) return null;
+    // The same save's rows already decoded and sorted: handed out again (a sample never changes them; cut copies its scope).
+    const generation = s.writer?.generation ?? 0;
+    const at = committedAt.get(t);
+    if (at && at.generation === generation && at.map === map) {
+      out[t] = at.rows;
+      continue;
+    }
+    const rows = decodeCommitted(t, map);
+    committedAt.set(t, { generation, map, rows });
+    out[t] = rows;
+  }
+  return out;
 }
-function decodeCommitted(map: ReadonlyMap<string, string>): Row[] {
+function decodeCommitted(t: ShadowTable, map: ReadonlyMap<string, string>): Row[] {
   const s = state();
   const out: Row[] = [];
   const keep = new Set<string>();
-  for (const [key, json] of map) {
+  for (const [id, json] of map) {
+    const key = `${t}:${id}`;
     keep.add(key);
     let got = s.decoded.get(key);
     if (!got || got.json !== json) {
-      got = { json, row: fromRecord(set_logs, JSON.parse(json)) as Row };
+      got = { json, row: fromRecord(SCHEMA_OF[t], JSON.parse(json)) as Row };
       s.decoded.set(key, got);
     }
     out.push(got.row);
   }
-  for (const k of [...s.decoded.keys()]) if (!keep.has(k)) s.decoded.delete(k);
+  for (const k of [...s.decoded.keys()]) if (k.startsWith(`${t}:`) && !keep.has(k)) s.decoded.delete(k);
   return out.sort((a, b) => Number(a.id) - Number(b.id));
 }
 
 export type SetsShadowFetch = {
-  /** The scope's own SQL (the cut-over's statements), its rows decoded. */
-  sqlRows: (q: Q) => Promise<Row[]>;
-  /** The same scope cut from the committed rows (store order), by the same predicate. */
-  cut: (committed: Row[]) => Promise<Row[]>;
+  /** The scope's own SQL (the cut-over's statements), its rows decoded, the sets and the ticks. */
+  sqlRows: (q: Q) => Promise<SetsShadowLists>;
+  /** The same scope cut from the committed rows (store order), by the same predicates. */
+  cut: (committed: SetsShadowLists) => Promise<SetsShadowLists>;
 };
 
 /** A fetch done (memory mode, read): sampled into the queue, never awaited, never thrown. */
@@ -225,6 +241,22 @@ export function onSetsFetch(path: SetReadPath, f: SetsShadowFetch) {
   });
 }
 
+/** One table's difference, by id and field name alone. */
+function diffOf(want: Row[], got: Row[]) {
+  const a = new Map(want.map((r) => [Number(r.id), r] as const));
+  const b = new Map(got.map((r) => [Number(r.id), r] as const));
+  const missing = [...a.keys()].filter((id) => !b.has(id));
+  const extra = [...b.keys()].filter((id) => !a.has(id));
+  const changed: string[] = [];
+  for (const [id, r] of a) {
+    const o = b.get(id);
+    if (!o) continue;
+    const fields = [...new Set([...Object.keys(r), ...Object.keys(o)])].filter((k) => stableJson(r[k]) !== stableJson(o[k]));
+    if (fields.length) changed.push(`${id}(${fields.sort().join(",")})`);
+  }
+  return { missing, extra, changed };
+}
+
 async function readJob(path: SetReadPath, f: SetsShadowFetch, again = false): Promise<void> {
   const s = state();
   const c = qc(path);
@@ -235,7 +267,7 @@ async function readJob(path: SetReadPath, f: SetsShadowFetch, again = false): Pr
     c.raced++;
     return;
   }
-  let sqlRows: Row[];
+  let sqlRows: SetsShadowLists;
   try {
     sqlRows = await s.db!.transaction(async (tx) => f.sqlRows(async (query) => (((await (tx as unknown as AnyDb).execute(query)) as { rows?: Row[] }).rows ?? []) as Row[]), { isolationLevel: "repeatable read", accessMode: "read only" });
   } catch (error) {
@@ -253,31 +285,24 @@ async function readJob(path: SetReadPath, f: SetsShadowFetch, again = false): Pr
   if (!committed) return;
   const want = await f.cut(committed);
   c.sampled++;
-  if (want.length + sqlRows.length > CAP) {
+  if (TABLES.reduce((n, t) => n + want[t].length + sqlRows[t].length, 0) > CAP) {
     c.skipped++;
     return;
   }
-  const a = new Map(want.map((r) => [Number(r.id), r] as const));
-  const b = new Map(sqlRows.map((r) => [Number(r.id), r] as const));
-  const missing = [...a.keys()].filter((id) => !b.has(id));
-  const extra = [...b.keys()].filter((id) => !a.has(id));
-  const changed: string[] = [];
-  for (const [id, r] of a) {
-    const o = b.get(id);
-    if (!o) continue;
-    const fields = [...new Set([...Object.keys(r), ...Object.keys(o)])].filter((k) => stableJson(r[k]) !== stableJson(o[k]));
-    if (fields.length) changed.push(`${id}(${fields.sort().join(",")})`);
-  }
+  const diffs = TABLES.map((t) => [t, diffOf(want[t], sqlRows[t])] as const);
   const ms = performance.now() - t0;
   c.msTotal += ms;
   c.msMax = Math.max(c.msMax, ms);
-  if (!missing.length && !extra.length && !changed.length) {
+  if (diffs.every(([, d]) => !d.missing.length && !d.extra.length && !d.changed.length)) {
     c.matched++;
     return;
   }
   c.differed++;
   // Ids and field names alone, never a weight, a rep or a stamp.
-  say(`diff:${path}:${missing.length}:${extra.length}:${changed.length}`, `${path} set_logs: missing ${missing.length} [${missing.slice(0, 10).join(",")}], extra ${extra.length} [${extra.slice(0, 10).join(",")}], changed ${changed.length} [${changed.slice(0, 10).join(",")}]`);
+  for (const [t, { missing, extra, changed }] of diffs) {
+    if (!missing.length && !extra.length && !changed.length) continue;
+    say(`diff:${path}:${t}:${missing.length}:${extra.length}:${changed.length}`, `${path} ${t}: missing ${missing.length} [${missing.slice(0, 10).join(",")}], extra ${extra.length} [${extra.slice(0, 10).join(",")}], changed ${changed.length} [${changed.slice(0, 10).join(",")}]`);
+  }
 }
 
 // ---- Boot, totals, report -------------------------------------------------------------------------------------------

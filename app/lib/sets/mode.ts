@@ -11,8 +11,10 @@
 //
 // Read once, at module load. This is the only file that reads SETS_STORE (scripts/check-sets-door.mjs refuses it anywhere
 // else); pg/runtime.ts initStore refuses a value it doesn't know, and "pg" with the JSON store. Independent of CHAT_STORE,
-// NOTES_STORE, FOOD_STORE and CHECKINS_STORE: all thirty-two combinations work. The sessions (program_days), the plan
-// (workout_assignments), the cardio (cardio_entries, cardio_logs) and everything else stay in memory in both modes.
+// NOTES_STORE, FOOD_STORE and CHECKINS_STORE: all thirty-two combinations work. The cardio ticks (cardio_logs) move with
+// the sets, through the same door and under the same switches (22 Nov, Alex: "move cardio as well"). The sessions
+// (program_days), the plan (workout_assignments), the coach's cardio (cardio_entries) and everything else stay in memory
+// in both modes.
 
 const BUILDING = process.env.NEXT_PHASE === "phase-production-build";
 
@@ -22,8 +24,8 @@ export const SETS_STORE_ASKED = (process.env.SETS_STORE ?? "").trim();
 /** The logged sets live in Postgres alone (SETS_STORE=pg with the Postgres store, not while building). */
 export const SETS_PG = !BUILDING && process.env.STORE === "postgres" && !!process.env.DATABASE_URL && SETS_STORE_ASKED === "pg";
 
-/** The store's name for them, for the generic loops over every collection to step round. */
-export const SETS_TABLES = ["set_logs"] as const;
+/** The store's names for them (the sets, and since 22 Nov the cardio ticks), for the generic loops over every collection to step round. */
+export const SETS_TABLES = ["set_logs", "cardio_logs"] as const;
 export type SetTable = (typeof SETS_TABLES)[number];
 
 /** A kv key a SETS_STORE=pg boot writes, so the memory boot after it knows to wait for the lease and drop the rule. */

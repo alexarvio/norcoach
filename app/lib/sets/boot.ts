@@ -12,12 +12,17 @@
 //     4. kv's `sets_pg` mark, set by the boot's own save.
 //   memory boot: the unique rule dropped every time, the mark taken out, a tombstone or pin left finished in memory. The
 //   lease is waited for when kv holds the mark or the rule is there (pg/runtime.ts).
+//   The cardio ticks (cardio_logs, with the sets since 22 Nov) the same: a tombstone's entries' ticks deleted (or, in
+//   memory, filtered out), their rule `cardio_logs_entry_uq` (one tick an entry, a constraint checked at the commit, so
+//   an older build's writer passes it) made after their twin pass (the highest id of an entry kept, the one memory's
+//   readers read: `new Map(…)` keeps the last of the store's order) and dropped by a memory boot, their orphans (ticks of
+//   no entry memory holds) counted in the boot's line, never moved.
 
 import { sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
-import { newerSetTwin, type Data, type SetLogRow } from "../db";
+import { newerSetTwin, type CardioTickRow, type Data, type SetLogRow } from "../db";
 import { fromRecord, insertRowsOnce, repairDerivedPg, setClientMapOf } from "../pg/store";
-import { set_logs } from "../pg/schema";
+import { cardio_logs, set_logs } from "../pg/schema";
 import { SETS_PG_MARK, SETS_REMOVING, SETS_TABLES } from "./mode";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -30,7 +35,19 @@ const GYM_PINS = "sets_gym_pins";
 
 /** The unique rule a pg boot makes (and a memory boot drops). */
 export const SETS_UNIQUE = "set_logs_assignment_set_uq";
-const NEEDED_INDEXES = ["set_logs_assignment_idx", "set_logs_client_idx", "set_logs_client_row_idx", "set_logs_client_tz_idx", "set_logs_odd_idx"];
+/** The cardio ticks' (one tick an entry), the same way, but a constraint checked at the commit (DEFERRABLE INITIALLY
+ *  DEFERRED): an older build's store writer, which upserts a table's rows before it deletes, can then untick and tick one
+ *  entry in one save (the new tick's INSERT before the old one's DELETE) with the rule still in place. */
+export const TICKS_UNIQUE = "cardio_logs_entry_uq";
+
+/** The ticks' rule dropped, whichever way it was made (this build's constraint, or a plain index of that name). */
+async function dropTicksRule(exec: (s: ReturnType<typeof sql>) => Promise<unknown>) {
+  // The constraint only when it is there: ALTER TABLE takes the table's lock even when there is nothing to drop.
+  const constraint = rowsOf(await exec(sql`SELECT 1 FROM pg_constraint WHERE conname = ${TICKS_UNIQUE} AND conrelid = to_regclass('cardio_logs')`)).length > 0;
+  if (constraint) await exec(sql.raw(`ALTER TABLE "cardio_logs" DROP CONSTRAINT IF EXISTS "${TICKS_UNIQUE}"`));
+  await exec(sql.raw(`DROP INDEX IF EXISTS "${TICKS_UNIQUE}"`));
+}
+const NEEDED_INDEXES = ["set_logs_assignment_idx", "set_logs_client_idx", "set_logs_client_row_idx", "set_logs_client_tz_idx", "set_logs_odd_idx", "cardio_logs_entry_idx", "cardio_logs_client_idx"];
 
 /** What SETS_STORE=pg leans on and is missing: migration 0025's objects (and, with `unique`, the pg boot's rule). */
 export async function setsProblems(db: AnyDb, opts: { unique: boolean }): Promise<string[]> {
@@ -39,15 +56,29 @@ export async function setsProblems(db: AnyDb, opts: { unique: boolean }): Promis
   const col = rowsOf(await db.execute(sql`SELECT 1 FROM information_schema.columns WHERE table_name = 'set_logs' AND column_name = 'client_id'`));
   if (!col.length) out.push("the column set_logs.client_id is missing");
   const have = new Set(rowsOf(await db.execute(sql`SELECT c.relname AS name FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE i.indisvalid`)).map((r) => String(r.name)));
-  for (const i of [...NEEDED_INDEXES, ...(opts.unique ? [SETS_UNIQUE] : [])]) if (!have.has(i)) out.push(`the index ${i} is missing or not valid`);
-  if (rowsOf(await db.execute(sql`SELECT to_regclass('set_logs_id_seq') IS NOT NULL AS ok`))[0]?.ok !== true) out.push("the sequence set_logs_id_seq is missing");
+  for (const i of [...NEEDED_INDEXES, ...(opts.unique ? [SETS_UNIQUE, TICKS_UNIQUE] : [])]) if (!have.has(i)) out.push(`the index ${i} is missing or not valid`);
+  for (const s of ["set_logs_id_seq", "cardio_logs_id_seq", "cardio_entries_id_seq"]) if (rowsOf(await db.execute(sql`SELECT to_regclass(${s}) IS NOT NULL AS ok`))[0]?.ok !== true) out.push(`the sequence ${s} is missing`);
   return out;
 }
 
-/** A pg instance was here before this memory boot: kv holds its mark, or the unique rule is there. This boot then waits for the lease. */
+/** A pg instance was here before this memory boot: kv holds its mark, or a unique rule is there. This boot then waits for the lease. */
 export async function kvHoldsSetsMark(db: AnyDb): Promise<boolean> {
   if (rowsOf(await db.execute(sql`SELECT 1 FROM kv WHERE key = ${SETS_PG_MARK}`)).length > 0) return true;
-  return rowsOf(await db.execute(sql`SELECT 1 FROM pg_class WHERE relname = ${SETS_UNIQUE} AND relkind = 'i'`)).length > 0;
+  return rowsOf(await db.execute(sql`SELECT 1 FROM pg_class WHERE relname IN (${SETS_UNIQUE}, ${TICKS_UNIQUE}) AND relkind = 'i'`)).length > 0;
+}
+
+/** The ticks the cardio twin pass keeps aside: of each entry's ticks, all but the highest id. A tick of no entry (NULL,
+ *  which the rule lets repeat) is no one's twin: never moved. */
+export function tickTwinsToMove(rows: readonly CardioTickRow[]): number[] {
+  const best = new Map<string, CardioTickRow>();
+  for (const t of rows) {
+    if (t.cardio_entry_id == null) continue;
+    const key = String(t.cardio_entry_id);
+    const cur = best.get(key);
+    if (!cur || t.id > cur.id) best.set(key, t);
+  }
+  const keep = new Set([...best.values()].map((t) => t.id));
+  return rows.filter((t) => t.cardio_entry_id != null && !keep.has(t.id)).map((t) => t.id);
 }
 
 const say = (alert: string, message: string) => {
@@ -57,7 +88,7 @@ const say = (alert: string, message: string) => {
     .catch(() => {});
 };
 
-type Tomb = Record<string, { client?: number; rows?: number[] }>;
+type Tomb = Record<string, { client?: number; rows?: number[]; entries?: number[] }>;
 type Pins = Record<string, { client?: number; rows?: number[]; gym?: number; upTo?: number }>;
 // chat-door: notes-door: food-door: checkins-door: kv keys by their own names (the tombstones, the pins, the mark), never a walk.
 const keyOf = <T>(data: Partial<Data>, key: string): T => {
@@ -90,14 +121,18 @@ export async function setsBootPg(db: AnyDb, data: Data): Promise<boolean> {
   const tomb = keyOf<Tomb>(data, SETS_REMOVING);
   if (Object.keys(tomb).length) {
     const live = new Set(data.workout_assignments.map((w) => w.id));
+    const liveEntries = new Set((data.cardio_entries ?? []).map((c) => c.id));
     let deleted = 0;
+    let ticks = 0;
     for (const t of Object.values(tomb)) {
       const rows = (t.rows ?? []).filter((r) => Number.isInteger(r) && !live.has(r));
       if (rows.length) deleted += rowsOf(await db.execute(sql`DELETE FROM set_logs WHERE workout_assignment_id = ANY(${ints(rows)}::int[]) RETURNING id`)).length;
+      const entries = (t.entries ?? []).filter((e) => Number.isInteger(e) && !liveEntries.has(e));
+      if (entries.length) ticks += rowsOf(await db.execute(sql`DELETE FROM cardio_logs WHERE cardio_entry_id = ANY(${ints(entries)}::int[]) RETURNING id`)).length;
     }
     delete d[SETS_REMOVING];
     changed = true;
-    log(`pg: ${Object.keys(tomb).length} removal(s) finished, ${deleted} set(s) deleted`);
+    log(`pg: ${Object.keys(tomb).length} removal(s) finished, ${deleted} set(s) and ${ticks} cardio tick(s) deleted`);
   }
   const pins = keyOf<Pins>(data, GYM_PINS);
   if (Object.keys(pins).length) {
@@ -134,6 +169,33 @@ export async function setsBootPg(db: AnyDb, data: Data): Promise<boolean> {
     if (twins) say("sets-twins", `Set twins moved to set_twins: ${twins}`);
     log(`pg: unique rule made on set_logs${twins ? `, ${twins} twins moved` : ""}`);
   }
+  // 2b. The cardio ticks' rule the same: one tick an entry, the twins kept aside in set_twins (tbl `cardio_logs`); the
+  //     rule a deferred constraint (TICKS_UNIQUE), so a plain index of its name (an earlier preview build's) is made again.
+  const ticksThere =
+    rowsOf(
+      await db.execute(
+        sql`SELECT 1 FROM pg_constraint k JOIN pg_index i ON i.indexrelid = k.conindid WHERE k.conname = ${TICKS_UNIQUE} AND k.conrelid = to_regclass('cardio_logs') AND k.contype = 'u' AND k.condeferrable AND k.condeferred AND i.indisvalid`
+      )
+    ).length > 0;
+  if (!ticksThere) {
+    let twins = 0;
+    await db.transaction(async (tx) => {
+      const q = (s: ReturnType<typeof sql>) => (tx as unknown as AnyDb).execute(s);
+      await q(sql.raw(`LOCK TABLE "cardio_logs" IN SHARE ROW EXCLUSIVE MODE`));
+      await dropTicksRule(q);
+      const groups = rowsOf(await q(sql`SELECT t.* FROM cardio_logs t JOIN (SELECT cardio_entry_id AS e FROM cardio_logs WHERE cardio_entry_id IS NOT NULL GROUP BY 1 HAVING count(*) > 1) g ON g.e = t.cardio_entry_id ORDER BY t.id`));
+      const move = tickTwinsToMove(groups.map((r) => fromRecord(cardio_logs, r) as unknown as CardioTickRow));
+      if (move.length) {
+        await q(sql`INSERT INTO set_twins (tbl, id, row, reason) SELECT 'cardio_logs', t.id, to_jsonb(t), 'twin' FROM cardio_logs t WHERE t.id = ANY(${ints(move)}::int[])
+          ON CONFLICT (tbl, id) DO UPDATE SET row = EXCLUDED.row, reason = EXCLUDED.reason, moved_at = now()`);
+        await q(sql`DELETE FROM cardio_logs WHERE id = ANY(${ints(move)}::int[])`);
+      }
+      twins = move.length;
+      await q(sql.raw(`ALTER TABLE "cardio_logs" ADD CONSTRAINT "${TICKS_UNIQUE}" UNIQUE ("cardio_entry_id") DEFERRABLE INITIALLY DEFERRED`));
+    });
+    if (twins) say("sets-twins", `Cardio tick twins moved to set_twins: ${twins}`);
+    log(`pg: unique rule made on cardio_logs${twins ? `, ${twins} twins moved` : ""}`);
+  }
   // 3. Orphans counted; the client column put right.
   const rows = data.workout_assignments.map((w) => w.id);
   const orphans = Number(rowsOf(await db.execute(sql`SELECT count(*)::int AS n FROM set_logs WHERE workout_assignment_id IS NULL OR NOT (workout_assignment_id = ANY(${ints(rows)}::int[]))`))[0]?.n ?? 0);
@@ -142,6 +204,12 @@ export async function setsBootPg(db: AnyDb, data: Data): Promise<boolean> {
   const fixed = await repairDerivedPg(db, "set_logs", [...map].map(([id, client_id]) => ({ id, client_id })));
   const top = Number(rowsOf(await db.execute(sql`SELECT COALESCE(MAX(id), 0)::bigint AS m, count(*)::int AS n FROM set_logs`))[0]?.m ?? 0);
   log(`pg: max id ${top}, orphans ${orphans}, client ids written again ${fixed}`);
+  // The cardio ticks of no entry memory holds (an older erase left some): counted, kept, as memory keeps them.
+  const entries = (data.cardio_entries ?? []).map((c) => c.id);
+  const tickOrphans = Number(rowsOf(await db.execute(sql`SELECT count(*)::int AS n FROM cardio_logs WHERE cardio_entry_id IS NULL OR NOT (cardio_entry_id = ANY(${ints(entries)}::int[]))`))[0]?.n ?? 0);
+  // A line, no alert: a cardio the coach takes out of a session leaves its tick behind in both modes (as before the
+  // door), so these only grow, and `sets-orphans` stays the sets' own.
+  log(`pg: cardio ticks of no entry ${tickOrphans} (kept, as memory keeps them)`);
   // 4. The mark.
   if (!d[SETS_PG_MARK]) {
     d[SETS_PG_MARK] = { at: new Date().toISOString(), v: 1 };
@@ -162,6 +230,11 @@ export async function setsBootMemory(db: AnyDb, raw: Partial<Data>, opts: { mark
     const live = new Set((raw.workout_assignments ?? []).map((w) => w.id));
     const dead = new Set(Object.values(keyOf<Tomb>(raw, SETS_REMOVING)).flatMap((t) => (t.rows ?? []).filter((r) => !live.has(r))));
     if (Array.isArray(list) && dead.size) d.set_logs = list.filter((s) => !dead.has((s as { workout_assignment_id?: number }).workout_assignment_id as number));
+    // The cardio ticks of the entries a tombstone names, the same.
+    const liveEntries = new Set((raw.cardio_entries ?? []).map((c) => c.id));
+    const deadEntries = new Set(Object.values(keyOf<Tomb>(raw, SETS_REMOVING)).flatMap((t) => (t.entries ?? []).filter((e) => !liveEntries.has(e))));
+    const ticks = d.cardio_logs;
+    if (Array.isArray(ticks) && deadEntries.size) d.cardio_logs = ticks.filter((t) => !deadEntries.has((t as { cardio_entry_id?: number }).cardio_entry_id as number));
     delete d[SETS_REMOVING];
     changed = true;
     log("memory: a removal a pg instance left finished");
@@ -176,14 +249,17 @@ export async function setsBootMemory(db: AnyDb, raw: Partial<Data>, opts: { mark
     changed = true;
     log("memory: a home-gym pin a pg instance left finished");
   }
-  try {
-    await db.execute(sql.raw(`DROP INDEX IF EXISTS "${SETS_UNIQUE}"`));
-  } catch (error) {
-    const still = await db
-      .execute(sql`SELECT 1 FROM pg_class WHERE relname = ${SETS_UNIQUE} AND relkind = 'i'`)
-      .then((x) => rowsOf(x).length > 0)
-      .catch(() => true);
-    if (still) throw new Error(`[sets] Refusing to start in memory mode: the unique rule ${SETS_UNIQUE} could not be dropped (${error instanceof Error ? error.message.split("\n")[0] : String(error)}); drop it by hand (docs/database-plan.md, the sets item's rollback) and deploy again`);
+  for (const rule of [SETS_UNIQUE, TICKS_UNIQUE]) {
+    try {
+      if (rule === TICKS_UNIQUE) await dropTicksRule((s) => db.execute(s));
+      else await db.execute(sql.raw(`DROP INDEX IF EXISTS "${rule}"`));
+    } catch (error) {
+      const still = await db
+        .execute(sql`SELECT 1 FROM pg_class WHERE relname = ${rule} AND relkind = 'i'`)
+        .then((x) => rowsOf(x).length > 0)
+        .catch(() => true);
+      if (still) throw new Error(`[sets] Refusing to start in memory mode: the unique rule ${rule} could not be dropped (${error instanceof Error ? error.message.split("\n")[0] : String(error)}); drop it by hand (docs/database-plan.md, the sets item's rollback) and deploy again`);
+    }
   }
   if (!opts.marked) return changed;
   if (SETS_PG_MARK in d) {
@@ -201,11 +277,13 @@ export async function importSets(db: AnyDb, raw: Partial<Data>) {
     if (process.env.ALLOW_JSON_WITHOUT_SETS !== "1") throw new Error("[store] Refusing to start: the JSON to import was written with SETS_STORE=pg and holds no logged sets (they are in Postgres). Restore the database instead (scripts/restore-pg-backup.mjs), or set ALLOW_JSON_WITHOUT_SETS=1 to start without them.");
     delete r._sets_in_postgres;
   }
-  const list = r.set_logs;
-  delete r.set_logs;
-  if (!Array.isArray(list) || !list.length) return;
-  const n = await insertRowsOnce(db, "set_logs", list);
-  log(`set_logs: ${n} rows of the JSON imported into the table (SETS_STORE=pg)`);
+  for (const t of SETS_TABLES) {
+    const list = r[t];
+    delete r[t];
+    if (!Array.isArray(list) || !list.length) continue;
+    const n = await insertRowsOnce(db, t, list);
+    log(`${t}: ${n} rows of the JSON imported into the table (SETS_STORE=pg)`);
+  }
 }
 
 /** A memory boot's import of a JSON a pg instance wrote (its sets in Postgres): refused unless asked. */
@@ -216,7 +294,9 @@ export function checkSetsJson(raw: Partial<Data>) {
   delete r._sets_in_postgres;
 }
 
-/** The table's highest id (SETS_STORE=pg: memory no longer holds the rows raiseCounters reads). */
-export async function setsMaxId(db: AnyDb): Promise<number> {
-  return Number(rowsOf(await db.execute(sql.raw(`SELECT COALESCE(MAX(id), 0)::bigint AS m FROM "set_logs"`)))[0]?.m ?? 0);
+/** Each table's highest id, the sets' and the cardio ticks' (SETS_STORE=pg: memory no longer holds the rows raiseCounters reads). */
+export async function setsMaxIds(db: AnyDb): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  for (const t of SETS_TABLES) out[t] = Number(rowsOf(await db.execute(sql.raw(`SELECT COALESCE(MAX(id), 0)::bigint AS m FROM "${t}"`)))[0]?.m ?? 0);
+  return out;
 }

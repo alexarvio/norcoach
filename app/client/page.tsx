@@ -694,7 +694,7 @@ function TrainingTab({
   // rule the coach's Complete uses. One ended with sets missing is
   // unfinished: not counted as done, and not still "left" either.
   const complete = ({ day, assignments }: (typeof trainingDays)[number]) =>
-    assignments.every((a) => getLogsForAssignment(sr, a.id).length >= setsDue(a)) && listCardioForDay(day.id).every((c) => isCardioDone(c.id));
+    assignments.every((a) => getLogsForAssignment(sr, a.id).length >= setsDue(a)) && listCardioForDay(day.id).every((c) => isCardioDone(sr, c.id));
   const sessionsDone = trainingDays.filter(complete).length;
   const unfinished = trainingDays.filter((d) => !!d.day.session_ended_at && !complete(d)).length;
   const pct = Math.round((Math.min(sessionsDone, dayTarget) / dayTarget) * 100);
@@ -865,7 +865,7 @@ function TrainingTab({
                 sessionNote: day.session_note ?? "",
                 questions: questionsForDay(day),
                 answers: Object.fromEntries(sessionAnswers(day).flatMap((a): [string, number | string][] => (a.text != null ? [[a.id, a.text]] : a.value != null ? [[a.id, a.value]] : []))),
-                cardio: listCardioForDay(day.id).map((c) => ({ id: c.id, name: c.name, time: c.time, pace: c.pace, incline: c.incline, distance: c.distance ?? "", notes: c.notes, done: isCardioDone(c.id), swap: c.swap?.name ?? null, alternatives: c.alternatives ?? [] })),
+                cardio: listCardioForDay(day.id).map((c) => ({ id: c.id, name: c.name, time: c.time, pace: c.pace, incline: c.incline, distance: c.distance ?? "", notes: c.notes, done: isCardioDone(sr, c.id), swap: c.swap?.name ?? null, alternatives: c.alternatives ?? [] })),
                 exercises: assignments.map((a) => ({
                   id: a.id,
                   name: a.exercise_name ?? "Exercise",

@@ -183,7 +183,7 @@ export async function buildDemoClient(coachId: number, name: string): Promise<nu
           });
         }
       }
-      for (const c of data.cardio_entries.filter((c) => c.program_day_id === d.id)) setCardioDone(c.id, true);
+      for (const c of data.cardio_entries.filter((c) => c.program_day_id === d.id)) await setCardioDone(c.id, true);
     }
   }
   persist();

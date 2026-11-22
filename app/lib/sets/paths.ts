@@ -67,6 +67,9 @@ export const SETS_WRITE_PATHS = [
   "w.set.demo",
   "w.set.seed",
   "w.set.dev",
+  // The cardio ticks (with the sets since 22 Nov): a tick or an untick, and a copy over a session replacing its cardio.
+  "w.cardio.tick",
+  "w.remove.copyOver",
   "w.session.discard",
   "w.session.freeRemove",
   "w.session.staleDiscard",

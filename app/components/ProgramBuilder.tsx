@@ -233,7 +233,7 @@ export default function ProgramBuilder({
           const logged = new Set(getLogsForAssignment(sr, a.id).map((l) => l.set_number));
           return Array.from({ length: setsDue(a) }, (_, i) => i + 1).every((n) => logged.has(n));
         }) &&
-        listCardioForDay(day.id).every((c) => isCardioDone(c.id));
+        listCardioForDay(day.id).every((c) => isCardioDone(sr, c.id));
       const summary = isEmpty
         ? "Nothing yet"
         : [

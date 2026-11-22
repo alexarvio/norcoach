@@ -20,10 +20,17 @@
 //                             throws.
 //
 // A reader handed no view doesn't compile (every reader takes one); a page, route, action or job fetches first.
+//
+// The cardio ticks (cardio_logs) came through the same door on 22 Nov (Alex: "move cardio as well"): a view and a box
+// carry them beside the sets as `ticks`, under the same switches, in the same snapshot and the same transaction. A tick
+// belongs to a cardio entry (cardio_entries, the coach's, in memory), which belongs to a day: a view holds the ticks of the
+// days it holds (`needTicks`), every tick of a client it holds whole or by "logged" (`need`, `needLogged`), and a
+// client's first tick for "any" (`needLogged(…, true)`). A write names the days whose ticks it reads and changes
+// (writeSets' `ticks`).
 
 import { getTableColumns, sql, type Column } from "drizzle-orm";
-import { allocId, getData, persist, persistNow, type Data, type SetLogRow } from "../db";
-import { set_logs } from "../pg/schema";
+import { allocId, getData, persist, persistNow, type CardioTickRow, type Data, type SetLogRow } from "../db";
+import { cardio_logs, set_logs } from "../pg/schema";
 import { fromRecord, recordForWrite } from "../pg/store";
 import { oddSet, readerStampMs, SQL_ODD_SET, STAMP_MARGIN_MS, isoOf, TOP_ROUNDS_DAYS } from "../pg/feedSlices";
 import { FEED_KIND_ROWS, HOME_NEW_DAYS } from "../chat/pick";
@@ -33,7 +40,7 @@ import { lostConnection, poolWait, setChainsSettled, setsRead, setsWriteRaw, thr
 import { noteSetsMissed, noteSetsSeen, noteSetsWrite, onSetsFetch, setsShadowReads } from "./shadow";
 
 export { SETS_TABLES };
-export type { SetLogRow };
+export type { CardioTickRow, SetLogRow };
 
 const MODE: "wide" | "narrow" = SETS_PG || process.env.SETS_VIEWS === "narrow" ? "narrow" : "wide";
 /** Where a miss throws rather than being said: always with the sets in Postgres (there is no store to fall back on). */
@@ -171,21 +178,32 @@ type Scope = {
   rows: Set<number>;
   /** Rows of which one set (the lowest id) was taken, to say the row is logged. */
   loggedRows: Set<number>;
+  /** Days whose cardio ticks were taken whole (asked, the days of rows asked, resolved from feed asks). A client taken
+   *  whole or by "logged" has every tick of theirs besides. */
+  tickDays: Set<number>;
   /** The index the scope was resolved against. */
   ix: RowIndex;
 };
 const emptyClient = (): ClientScope => ({ all: false, logged: false, any: false, feed: null, top: null });
 function makeScope(asks: Iterable<readonly [number, readonly SetSpan[]]>, opts: { every?: boolean; fresh?: boolean; ix?: RowIndex } = {}): Scope {
   const ix = opts.ix ?? rowIndex(opts.fresh ?? (SETS_PG || MODE === "narrow"));
-  const scope: Scope = { every: !!opts.every, clients: new Map(), rows: new Set(), loggedRows: new Set(), ix };
+  const scope: Scope = { every: !!opts.every, clients: new Map(), rows: new Set(), loggedRows: new Set(), tickDays: new Set(), ix };
   for (const [id, spans] of asks) {
     const s = scope.clients.get(id) ?? emptyClient();
     for (const span of spans) {
       if (span === "all") s.all = true;
       else if (span === "loggedRows") s.logged = true;
       else if (span === "loggedAny") s.any = true;
-      else if ("rows" in span) for (const r of span.rows) scope.rows.add(r);
-      else if ("days" in span) for (const r of rowsOfDays(ix, span.days)) scope.rows.add(r);
+      else if ("rows" in span)
+        for (const r of span.rows) {
+          scope.rows.add(r);
+          const d = ix.dayOfRow.get(r);
+          if (d != null) scope.tickDays.add(d);
+        }
+      else if ("days" in span) {
+        for (const r of rowsOfDays(ix, span.days)) scope.rows.add(r);
+        for (const d of span.days) scope.tickDays.add(d);
+      }
       else if ("feedFrom" in span) s.feed = Math.min(s.feed ?? Infinity, span.feedFrom);
       else if ("coachTop" in span) s.top = Math.max(s.top ?? 0, span.coachTop);
     }
@@ -201,10 +219,47 @@ function holdsRow(scope: Scope, rowId: number): boolean {
   const c = clientOfRow(scope.ix, rowId) ?? clientOfRow(rowIndex(), rowId);
   return c != null && !!scope.clients.get(c)?.all;
 }
+/** Whether the scope holds this day's cardio ticks whole. */
+function holdsTickDay(scope: Scope, dayId: number): boolean {
+  if (scope.every || scope.tickDays.has(dayId)) return true;
+  const c = scope.ix.clientOfDay.get(dayId) ?? rowIndex().clientOfDay.get(dayId);
+  const s = c == null ? undefined : scope.clients.get(c);
+  return !!s && (s.all || s.logged);
+}
+
+// ---- The cardio entries, from memory --------------------------------------------------------------------------------
+
+/** Each cardio entry's day (the coach's, in memory), the first of an id as find reads it. */
+function entryDayMap(): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const c of getData().cardio_entries ?? []) if (!out.has(c.id)) out.set(c.id, c.program_day_id);
+  return out;
+}
+/** The cardio entries of these days, as memory holds them now. */
+function entriesOfDays(dayIds: Iterable<number>): number[] {
+  const days = new Set(dayIds);
+  if (!days.size) return [];
+  const out = new Set<number>();
+  for (const c of getData().cardio_entries ?? []) if (days.has(c.program_day_id)) out.add(c.id);
+  return [...out];
+}
+/** The days whose ticks a scope takes whole (its own, and every day of the clients it holds whole or by "logged"), and those clients. */
+function tickScope(scope: Scope): { days: Set<number>; clients: number[]; anyClients: number[] } {
+  const days = new Set(scope.tickDays);
+  const clients: number[] = [];
+  const anyClients: number[] = [];
+  for (const [c, s] of scope.clients) {
+    if (s.all || s.logged) {
+      clients.push(c);
+      for (const d of scope.ix.daysOfClient.get(c) ?? []) days.add(d.id);
+    } else if (s.any) anyClients.push(c);
+  }
+  return { days, clients, anyClients };
+}
 
 // ---- The list: the store's, or a slice of it -----------------------------------------------------------------------
 
-type Holder = { get(): SetLogRow[]; set(rows: SetLogRow[]): void };
+type Holder = { get(): SetLogRow[]; set(rows: SetLogRow[]): void; ticks(): CardioTickRow[]; setTicks(rows: CardioTickRow[]): void };
 /** The store's own array, read fresh each time (a delete puts a new list in its place). Memory mode alone. */
 const storeHolder: Holder = {
   get() {
@@ -218,12 +273,27 @@ const storeHolder: Holder = {
     // chat-door: notes-door: food-door: checkins-door: the same, the list replaced by name.
     (getData() as unknown as Record<string, SetLogRow[]>).set_logs = rows;
   },
+  ticks() {
+    if (SETS_PG) throw new Error("[sets] !!! the store's cardio_logs was read with SETS_STORE=pg (they live in Postgres alone)");
+    // chat-door: notes-door: food-door: checkins-door: one list by its own name (the cardio ticks), never a walk. Read as
+    // the readers read it (`data.cardio_logs ?? []`): never put into the store by a read.
+    return (getData() as unknown as Record<string, CardioTickRow[] | undefined>).cardio_logs ?? [];
+  },
+  setTicks(rows) {
+    if (SETS_PG) throw new Error("[sets] !!! the store's cardio_logs was written with SETS_STORE=pg");
+    // chat-door: notes-door: food-door: checkins-door: the same, the list replaced by name.
+    (getData() as unknown as Record<string, CardioTickRow[]>).cardio_logs = rows;
+  },
 };
-function listHolder(list: { logs: SetLogRow[] }): Holder {
+function listHolder(list: { logs: SetLogRow[]; ticks?: CardioTickRow[] }): Holder {
   return {
     get: () => list.logs,
     set: (rows) => {
       list.logs = rows;
+    },
+    ticks: () => (list.ticks ??= []),
+    setTicks: (rows) => {
+      list.ticks = rows;
     },
   };
 }
@@ -249,7 +319,24 @@ export class SetRows {
   get logs(): SetLogRow[] {
     return this.holder.get();
   }
-  /** Every set of every row of these clients (their whole history). */
+  /** The cardio ticks the fetch took (memory, wide: the store's own list), in the store's order. */
+  get ticks(): CardioTickRow[] {
+    return this.holder.ticks();
+  }
+  /** These days' cardio ticks, whole. */
+  needTicks(reader: string, dayIds: Iterable<number>): void {
+    const scope = this.scope;
+    if (!scope || scope.every) return;
+    let out = 0;
+    let first: number | null = null;
+    for (const d of dayIds) {
+      if (holdsTickDay(scope, d)) continue;
+      out++;
+      first ??= d;
+    }
+    if (out) this.miss(`[sets] ${reader} on ${this.path}: the cardio ticks of ${out} session(s) were not fetched (session ${first})`);
+  }
+  /** Every set of every row of these clients (their whole history), and every cardio tick of theirs. */
   need(reader: string, clientIds: number | Iterable<number>): void {
     const scope = this.scope;
     if (!scope || scope.every) return;
@@ -290,7 +377,8 @@ export class SetRows {
     for (const r of rowIds) if (!holdsRow(scope, r)) return false;
     return true;
   }
-  /** Which of these clients' rows hold a set (one set a row is enough), or with `any` only whether they hold one. */
+  /** Which of these clients' rows hold a set (one set a row is enough), and every tick of theirs; or with `any` only
+   *  whether they hold a set (the first) and a tick (their first by its client). */
   needLogged(reader: string, clientIds: number | Iterable<number>, any = false): void {
     const scope = this.scope;
     if (!scope || scope.every) return;
@@ -315,16 +403,32 @@ export class SetBox extends SetRows {
   private readonly onPersist: () => void;
   /** Ids an earlier try of the same write took and never inserted (writeSets' run once more), handed out first. */
   private readonly spare: number[];
-  constructor(token: symbol, path: SetWritePath, holder: Holder, scope: Scope | null, onPersist: () => void, spare: number[] = []) {
+  private readonly spareTicks: number[];
+  constructor(token: symbol, path: SetWritePath, holder: Holder, scope: Scope | null, onPersist: () => void, spare: number[] = [], spareTicks: number[] = []) {
     super(token, path, holder, scope);
     this.onPersist = onPersist;
     this.spare = spare;
+    this.spareTicks = spareTicks;
   }
   override get logs(): SetLogRow[] {
     return super.logs;
   }
   override set logs(rows: SetLogRow[]) {
     this.holder.set(rows);
+  }
+  override get ticks(): CardioTickRow[] {
+    return super.ticks;
+  }
+  override set ticks(rows: CardioTickRow[]) {
+    this.holder.setTicks(rows);
+  }
+  /** The ids this box handed out to ticks (inserted, never written over a tick holding one). */
+  readonly allocatedTicks = new Set<number>();
+  /** A new id for a cardio tick (its counter in memory mode; its sequence, pg/ids.ts, with SETS_STORE=pg). */
+  allocTick(): number {
+    const id = this.spareTicks.length ? this.spareTicks.shift()! : allocId("cardio_logs");
+    this.allocatedTicks.add(id);
+    return id;
   }
   /** The ids this box handed out (a write inserts them, never writes over a set holding one: writeSets). */
   readonly allocated = new Set<number>();
@@ -353,8 +457,8 @@ export function storeSetRows(path: SetReadPath): SetRows {
   return new SetRows(MINT, path, storeHolder, null);
 }
 /** A writer's committed sets read again as a view (afterCommit's rule, sets/rows.ts writeSets). */
-function viewOf(path: SetWritePath, logs: SetLogRow[], scope: Scope | null): SetRows {
-  return new SetRows(MINT, path, listHolder({ logs }), scope);
+function viewOf(path: SetWritePath, logs: SetLogRow[], ticks: CardioTickRow[], scope: Scope | null): SetRows {
+  return new SetRows(MINT, path, listHolder({ logs, ticks }), scope);
 }
 
 // ---- The coach-wide asks resolved: sessions as news ------------------------------------------------------------------
@@ -369,6 +473,8 @@ type SetSource = {
   /** Each client's oldest readable set stamp (ms; a client with none left out): once a round's window starts at or
    *  before it, a later round would find no set of theirs more. */
   oldest(clients: readonly number[]): Promise<Map<number, number>>;
+  /** The cardio ticks of these entries, whole, in id order (the store's, or SQL by `cardio_logs_entry_idx`). */
+  ticksOf(entries: readonly number[]): Promise<CardioTickRow[]>;
 };
 const SQL_CHUNK = 5000;
 function* chunks<T>(list: readonly T[], size = SQL_CHUNK): Generator<T[]> {
@@ -376,9 +482,10 @@ function* chunks<T>(list: readonly T[], size = SQL_CHUNK): Generator<T[]> {
 }
 const ints = (ids: Iterable<number>) => `{${[...ids].filter((n) => Number.isInteger(n)).join(",")}}`;
 const decode = (r: Row) => fromRecord(set_logs, r) as unknown as SetLogRow;
+const decodeTick = (r: Row) => fromRecord(cardio_logs, r) as unknown as CardioTickRow;
 const byId = (a: { id: number }, b: { id: number }) => a.id - b.id;
 
-function listSetSource(list: readonly SetLogRow[], ix: RowIndex): SetSource {
+function listSetSource(list: readonly SetLogRow[], ticks: readonly CardioTickRow[], ix: RowIndex): SetSource {
   // Each client's sets with their stamps read once, on the first ask (a resolve asks round after round).
   let byClient: Map<number, { s: SetLogRow; ms: number; odd: boolean }[]> | null = null;
   const grouped = () => {
@@ -407,6 +514,10 @@ function listSetSource(list: readonly SetLogRow[], ix: RowIndex): SetSource {
       const out = new Map<number, number>();
       for (const c of new Set(clients)) for (const x of grouped().get(c) ?? []) if (!x.odd && Number.isFinite(x.ms)) out.set(c, Math.min(out.get(c) ?? Infinity, x.ms));
       return out;
+    },
+    async ticksOf(entries) {
+      const want = new Set(entries);
+      return ticks.filter((t) => want.has(t.cardio_entry_id));
     },
   };
 }
@@ -442,6 +553,11 @@ function sqlSetSource(q: Q): SetSource {
       }
       return out;
     },
+    async ticksOf(entries) {
+      const out: CardioTickRow[] = [];
+      for (const part of chunks([...new Set(entries)])) for (const r of await q(sql`SELECT * FROM cardio_logs WHERE cardio_entry_id = ANY(${ints(part)}::int[]) ORDER BY id`)) out.push(decodeTick(r));
+      return out.sort(byId);
+    },
   };
 }
 
@@ -449,33 +565,35 @@ function sqlSetSource(q: Q): SetSource {
  * The days a session-as-news reader may read for a client from T on (queries.ts activityFeeds' sessionNews): a session's
  * moment is always one of its own stamps (a set, a cardio tick, its end), so a day whose news is at or after T has a set
  * (by its stamp, or an odd one), a tick or an end at or after T, less the margin the stored instant may sit from the
- * readers' reading. The ticks, ends and starts are memory's.
+ * readers' reading. The ends and starts are memory's; the ticks the source's (the store's, or SQL, since 22 Nov).
  */
 /**
- * Memory's own stamps a resolve reads (each day's latest cardio tick), built once a resolve on the days of the clients
- * it asks about, never once a round.
+ * The cardio ticks a resolve reads (each day's latest tick, and the ticks themselves for the news counter), read once a
+ * resolve from its source for the entries of the days of the clients it asks about, never once a round.
  */
-type Ticks = { clients: Set<number>; tickDay: Map<number, number> | null };
-const ticksFor = (clients: Iterable<number>): Ticks => ({ clients: new Set(clients), tickDay: null });
-function tickDays(ix: RowIndex, memo: Ticks): Map<number, number> {
+type Ticks = { clients: Set<number>; tickDay: Map<number, number> | null; list: CardioTickRow[] };
+const ticksFor = (clients: Iterable<number>): Ticks => ({ clients: new Set(clients), tickDay: null, list: [] });
+async function tickDays(ix: RowIndex, memo: Ticks, src: SetSource): Promise<Map<number, number>> {
   if (memo.tickDay) return memo.tickDay;
   const data = getData();
   const days = new Set<number>();
   for (const c of memo.clients) for (const d of ix.daysOfClient.get(c) ?? []) days.add(d.id);
   const entryDay = new Map<number, number>();
   for (const c of data.cardio_entries ?? []) if (days.has(c.program_day_id)) entryDay.set(c.id, c.program_day_id);
+  const list = entryDay.size ? await src.ticksOf([...entryDay.keys()]) : [];
   const ticks = new Map<number, number>();
-  for (const l of data.cardio_logs ?? []) if (entryDay.has(l.cardio_entry_id)) ticks.set(l.cardio_entry_id, Math.max(ticks.get(l.cardio_entry_id) ?? -Infinity, readerStampMs(String(l.done_at ?? ""))));
+  for (const l of list) if (entryDay.has(l.cardio_entry_id)) ticks.set(l.cardio_entry_id, Math.max(ticks.get(l.cardio_entry_id) ?? -Infinity, readerStampMs(String(l.done_at ?? ""))));
   const tickDay = new Map<number, number>();
   for (const [entry, day] of entryDay) {
     const ms = ticks.get(entry);
     if (ms != null && Number.isFinite(ms)) tickDay.set(day, Math.max(tickDay.get(day) ?? -Infinity, ms));
   }
+  memo.list = list;
   return (memo.tickDay = tickDay);
 }
 /** Each client's oldest stamp memory holds for a session (an end, a tick): with the sets' oldest, where a window holds all. */
-function memoryOldest(ix: RowIndex, memo: Ticks, clients: Iterable<number>): Map<number, number> {
-  const tickDay = tickDays(ix, memo);
+async function memoryOldest(ix: RowIndex, memo: Ticks, clients: Iterable<number>, src: SetSource): Promise<Map<number, number>> {
+  const tickDay = await tickDays(ix, memo, src);
   const out = new Map<number, number>();
   for (const c of clients) {
     let m = Infinity;
@@ -504,7 +622,7 @@ async function feedDays(ix: RowIndex, clients: Map<number, number>, src: SetSour
     for (const c of clients.keys()) memo.clients.add(c);
     memo.tickDay = null;
   }
-  const tickDay = tickDays(ix, memo);
+  const tickDay = await tickDays(ix, memo, src);
   for (const [c, t] of clients) {
     for (const d of ix.daysOfClient.get(c) ?? []) {
       const end = d.session_ended_at ? readerStampMs(d.session_ended_at) : NaN;
@@ -530,7 +648,7 @@ async function roundsByGroup(
   groups: Map<number, { clients: number[]; need: number }>,
   src: SetSource,
   now: number,
-  countNews: (dayIds: Set<number>, sets: SetLogRow[], t: number) => Map<number, number>,
+  countNews: NewsCounter,
   memo: Ticks
 ): Promise<{ days: Set<number>; whole: number[] }> {
   const days = new Set<number>();
@@ -541,7 +659,7 @@ async function roundsByGroup(
   const every = [...groupOf.keys()];
   // Where each client's stamps begin: the sets' (SQL or the list) and memory's ends and ticks.
   const setsOldest = await src.oldest(every);
-  const memOldest = memoryOldest(ix, memo, every);
+  const memOldest = await memoryOldest(ix, memo, every, src);
   const oldestOf = new Map(every.map((c) => [c, Math.min(setsOldest.get(c) ?? Infinity, memOldest.get(c) ?? Infinity)] as const));
   let pending = new Set(groups.keys());
   const loaded = new Set<number>();
@@ -555,7 +673,9 @@ async function roundsByGroup(
     for (const d of fresh) loaded.add(d);
     if (fresh.length) sets.push(...(await src.ofRows(rowsOfDays(ix, fresh))));
     sets.sort(byId);
-    const perClient = countNews(got, sets, t);
+    // The ticks the resolve read for these clients (memo.list): every tick of every entry on their days.
+    await tickDays(ix, memo, src);
+    const perClient = countNews(got, sets, memo.list, t);
     const perGroup = new Map<number, number>();
     for (const [c, n] of perClient) {
       const g = groupOf.get(c);
@@ -579,8 +699,10 @@ async function roundsByGroup(
 }
 
 /** activityFeeds' count of sessions as news at or after T, by client (queries.ts hands it over at load: no import cycle). */
-let newsCounter: ((dayIds: Set<number>, sets: SetLogRow[], t: number) => Map<number, number>) | null = null;
-export function setSessionNewsCounter(fn: (dayIds: Set<number>, sets: SetLogRow[], t: number) => Map<number, number>) {
+/** The counter is handed the cardio ticks of the days' entries (the resolve's source) beside their sets. */
+export type NewsCounter = (dayIds: Set<number>, sets: SetLogRow[], ticks: readonly CardioTickRow[], t: number) => Map<number, number>;
+let newsCounter: NewsCounter | null = null;
+export function setSessionNewsCounter(fn: NewsCounter) {
   newsCounter = fn;
 }
 
@@ -617,7 +739,10 @@ async function resolveScope(scope: Scope, src: SetSource, now: number): Promise<
   }
   const memo = ticksFor([...feed.keys(), ...top.keys()]);
   const take = (days: Iterable<number>) => {
-    for (const d of days) for (const r of scope.ix.rowsOfDay.get(d) ?? []) scope.rows.add(r);
+    for (const d of days) {
+      for (const r of scope.ix.rowsOfDay.get(d) ?? []) scope.rows.add(r);
+      scope.tickDays.add(d);
+    }
   };
   take(await feedDays(scope.ix, feedWithHealth(feed), src, memo));
   // And each such client's newest session as news, whenever it is (getClientHome's "quiet" reads every kind's newest):
@@ -691,6 +816,65 @@ function cutRows(scope: Scope, list: readonly SetLogRow[]): SetLogRow[] {
   return list.filter((s) => w.has(s.workout_assignment_id) || extra.has(s));
 }
 
+/**
+ * The scope's cardio ticks from a list in store order (the store's, or what the last save committed): the ticks of the
+ * entries on its days, every tick whose client it holds whole or by "logged", and for "any" a client's first tick (the
+ * lowest id carrying their client, as appLock reads it). The predicate loadTicks follows.
+ */
+function cutTicks(scope: Scope, list: readonly CardioTickRow[]): CardioTickRow[] {
+  if (scope.every) return [...list];
+  const { days, clients, anyClients } = tickScope(scope);
+  const entries = new Set(entriesOfDays(days));
+  const whole = new Set(clients);
+  const any = new Set(anyClients);
+  const first = new Map<number, CardioTickRow>();
+  for (const t of list) {
+    if (!any.has(t.client_id)) continue;
+    const b = first.get(t.client_id);
+    if (!b || t.id < b.id) first.set(t.client_id, t);
+  }
+  const extra = new Set(first.values());
+  return list.filter((t) => entries.has(t.cardio_entry_id) || whole.has(t.client_id) || extra.has(t));
+}
+
+/** The scope's cardio ticks read from Postgres (one snapshot), by id: the same predicate as cutTicks. */
+async function loadTicks(q: Q, scope: Scope): Promise<CardioTickRow[]> {
+  if (scope.every) return loadPagedTicks(q);
+  const { days, clients, anyClients } = tickScope(scope);
+  const out = new Map<number, CardioTickRow>();
+  const take = (rows: Row[]) => {
+    for (const r of rows) {
+      const t = decodeTick(r);
+      if (!out.has(t.id)) out.set(t.id, t);
+    }
+  };
+  for (const part of chunks(entriesOfDays(days))) take(await q(sql`SELECT * FROM cardio_logs WHERE cardio_entry_id = ANY(${ints(part)}::int[]) ORDER BY id`));
+  for (const part of chunks(clients)) take(await q(sql`SELECT * FROM cardio_logs WHERE client_id = ANY(${ints(part)}::int[]) ORDER BY id`));
+  // A client's first tick: one probe of (client_id, id) a client, past any a tombstone names (memory dropped those).
+  const dead = ints(deadEntries());
+  for (const part of chunks(anyClients))
+    take(await q(sql`SELECT t.* FROM unnest(${ints(part)}::int[]) AS c(id) CROSS JOIN LATERAL (SELECT * FROM cardio_logs t WHERE t.client_id = c.id AND COALESCE(t.cardio_entry_id = ANY(${dead}::int[]), false) = false ORDER BY t.id LIMIT 1) t`));
+  return [...out.values()].sort(byId);
+}
+async function loadPagedTicks(q: Q): Promise<CardioTickRow[]> {
+  const out: CardioTickRow[] = [];
+  for (let after = 0; ; ) {
+    const page = await q(sql`SELECT * FROM cardio_logs WHERE id > ${after}::int ORDER BY id LIMIT ${PAGE}`);
+    for (const r of page) out.push(decodeTick(r));
+    if (page.length < PAGE) break;
+    after = Number(page[page.length - 1].id);
+  }
+  return out;
+}
+/**
+ * The ticks a fetch in pg mode hands on: those of entries a coach's removal took out of memory whose DELETE is still to
+ * commit (a tombstone names them) left out, as memory left them out at once.
+ */
+function liveTicks(list: CardioTickRow[]): CardioTickRow[] {
+  const dead = deadEntries();
+  return dead.size ? list.filter((t) => !dead.has(t.cardio_entry_id)) : list;
+}
+
 /** The scope read from Postgres (one snapshot), by id: the cut-over's own statements, the same in pg mode and in the shadow. */
 async function loadScope(q: Q, scope: Scope): Promise<SetLogRow[]> {
   if (scope.every) return loadPaged(q, null);
@@ -721,19 +905,20 @@ async function fetchScope(path: SetReadPath, scope: Scope): Promise<SetRows> {
   noteSetsSeen(path);
   const now = Date.now();
   if (SETS_PG) {
-    const logs = await setsRead(async (q) => {
+    const { logs, ticks } = await setsRead(async (q) => {
       await resolveScope(scope, sqlSetSource(q), now);
-      return loadScope(q, scope);
+      return { logs: await loadScope(q, scope), ticks: await loadTicks(q, scope) };
     });
     // Sets of rows memory no longer holds (a coach's removal whose DELETE is still to commit, an orphan) are left out.
     const known = scope.ix.dayOfRow;
-    return new SetRows(MINT, path, listHolder({ logs: applyGymPins(logs.filter((s) => known.has(s.workout_assignment_id))) }), scope);
+    return new SetRows(MINT, path, listHolder({ logs: applyGymPins(logs.filter((s) => known.has(s.workout_assignment_id))), ticks: liveTicks(ticks) }), scope);
   }
   shadowSample(path, scope, now);
   if (MODE === "narrow") {
     const store = storeHolder.get();
-    await resolveScope(scope, listSetSource(store, scope.ix), now);
-    return new SetRows(MINT, path, listHolder({ logs: cutRows(scope, store) }), scope);
+    const ticks = storeHolder.ticks();
+    await resolveScope(scope, listSetSource(store, ticks, scope.ix), now);
+    return new SetRows(MINT, path, listHolder({ logs: cutRows(scope, store), ticks: cutTicks(scope, ticks) }), scope);
   }
   return new SetRows(MINT, path, storeHolder, scope);
 }
@@ -748,19 +933,20 @@ function shadowSample(path: SetReadPath, scope: Scope, now: number) {
   onSetsFetch(path, {
     sqlRows: async (q) => {
       await resolveScope(sqlScope, sqlSetSource(q), now);
-      return (await loadScope(q, sqlScope)) as unknown as Row[];
+      return { set_logs: (await loadScope(q, sqlScope)) as unknown as Row[], cardio_logs: (await loadTicks(q, sqlScope)) as unknown as Row[] };
     },
     cut: async (committed) => {
-      const list = committed as unknown as SetLogRow[];
-      await resolveScope(committedScope, listSetSource(list, committedScope.ix), now);
-      return cutRows(committedScope, list) as unknown as Row[];
+      const list = committed.set_logs as unknown as SetLogRow[];
+      const ticks = committed.cardio_logs as unknown as CardioTickRow[];
+      await resolveScope(committedScope, listSetSource(list, ticks, committedScope.ix), now);
+      return { set_logs: cutRows(committedScope, list) as unknown as Row[], cardio_logs: cutTicks(committedScope, ticks) as unknown as Row[] };
     },
   });
 }
 function copyScope(scope: Scope): Scope {
   const clients = new Map<number, ClientScope>();
   for (const [c, s] of scope.clients) clients.set(c, { ...s });
-  return { ...scope, clients, rows: new Set(scope.rows), loggedRows: new Set(scope.loggedRows) };
+  return { ...scope, clients, rows: new Set(scope.rows), loggedRows: new Set(scope.loggedRows), tickDays: new Set(scope.tickDays) };
 }
 
 /** Every client still unopened while the locked app's one-time sweep hasn't run (lib/appLock.ts reads whether they logged). */
@@ -894,13 +1080,14 @@ export async function withClientSetsLocked<T>(path: SetReadPath, clientId: numbe
           inner = null;
           const ix = rowIndex(true);
           const rows = rowsOfClients(ix, [clientId]);
-          const logs = await inTx(async (q) => {
+          const scope = makeScope([[clientId, ["all"]]], { ix });
+          const { logs, ticks } = await inTx(async (q) => {
             await q(lockOf(clientId));
             const out: SetLogRow[] = [];
             for (const part of chunks(rows)) for (const r of await q(sql`SELECT * FROM set_logs WHERE workout_assignment_id = ANY(${ints(part)}::int[]) ORDER BY id`)) out.push(decode(r));
-            return out.sort(byId);
+            return { logs: out.sort(byId), ticks: await loadTicks(q, scope) };
           });
-          const view = new SetRows(MINT, path, listHolder({ logs: applyGymPins(logs.filter((s) => ix.dayOfRow.has(s.workout_assignment_id))) }), makeScope([[clientId, ["all"]]], { ix }));
+          const view = new SetRows(MINT, path, listHolder({ logs: applyGymPins(logs.filter((s) => ix.dayOfRow.has(s.workout_assignment_id))), ticks: liveTicks(ticks) }), scope);
           try {
             return fn(view);
           } catch (error) {
@@ -936,14 +1123,31 @@ export function fetchSetsForClients(path: SetReadPath, clientIds: readonly numbe
 export async function fetchAllSets(path: SetReadPath): Promise<SetRows> {
   noteSetsSeen(path);
   if (!SETS_PG) return new SetRows(MINT, path, storeHolder, null);
-  const logs = await setsRead(async (q) => {
+  const { logs, ticks } = await setsRead(async (q) => {
     await q(sql`SET LOCAL statement_timeout = '60s'`);
     await q(sql`SET LOCAL idle_in_transaction_session_timeout = '60s'`);
-    return loadPaged(q, null);
+    return { logs: await loadPaged(q, null), ticks: await loadPagedTicks(q) };
   });
   // A home-gym pin still to commit read in, as every other fetch does (the backup and the rule's full pass read the sets
-  // as memory mode would hold them).
-  return new SetRows(MINT, path, listHolder({ logs: applyGymPins(logs) }), null);
+  // as memory mode would hold them); the ticks of entries a tombstone names left out (memory dropped them at once).
+  return new SetRows(MINT, path, listHolder({ logs: applyGymPins(logs), ticks: liveTicks(ticks) }), null);
+}
+
+/**
+ * Every cardio tick carrying one of these clients (the export: a tick has a client_id, so the export's filter keeps a
+ * coach's clients' ticks, as it always has). Memory: the store's own list, whole (the export filters it). SETS_STORE=pg:
+ * those clients' ticks by `cardio_logs_client_idx`, in id order, the ticks a tombstone names left out.
+ */
+export async function fetchTicksOfClients(path: SetReadPath, clientIds: readonly number[]): Promise<CardioTickRow[]> {
+  noteSetsSeen(path);
+  if (!SETS_PG) return storeHolder.ticks();
+  const ids = [...new Set(clientIds)];
+  const ticks = await setsRead(async (q) => {
+    const out: CardioTickRow[] = [];
+    for (const part of chunks(ids)) for (const r of await q(sql`SELECT * FROM cardio_logs WHERE client_id = ANY(${ints(part)}::int[]) ORDER BY id`)) out.push(decodeTick(r));
+    return out.sort(byId);
+  });
+  return liveTicks(ticks);
 }
 const PAGE = 2000;
 async function loadPaged(q: Q, rows: readonly number[] | null): Promise<SetLogRow[]> {
@@ -977,7 +1181,7 @@ export function setsForDueJobNow(path: SetReadPath, scope: { all: boolean; clien
 /** No sets at all, for a caller that knows its reader reads none: any need of it is a miss. */
 export function noSetRows(path: SetReadPath): SetRows {
   const scope = makeScope([]);
-  if (SETS_PG || MODE === "narrow") return new SetRows(MINT, path, listHolder({ logs: [] }), scope);
+  if (SETS_PG || MODE === "narrow") return new SetRows(MINT, path, listHolder({ logs: [], ticks: [] }), scope);
   return new SetRows(MINT, path, storeHolder, scope);
 }
 
@@ -1001,15 +1205,15 @@ export async function fetchSetOwner(setId: number): Promise<{ clientId: number; 
 
 const lockOf = (clientId: number) => sql`SELECT pg_advisory_xact_lock(20255, ${clientId}::int)`;
 
-function changedRows(before: readonly SetLogRow[], after: readonly SetLogRow[], allocated: ReadonlySet<number> = new Set()) {
-  const was = new Map(before.map((r) => [r.id, JSON.stringify(recordForWrite("set_logs", r as unknown as Row))] as const));
+function changedRows<R extends { id: number }>(before: readonly R[], after: readonly R[], allocated: ReadonlySet<number> = new Set(), table: "set_logs" | "cardio_logs" = "set_logs") {
+  const was = new Map(before.map((r) => [r.id, JSON.stringify(recordForWrite(table, r as unknown as Row))] as const));
   const upserts: Row[] = [];
-  const upserted: SetLogRow[] = [];
+  const upserted: R[] = [];
   const seen = new Set<number>();
   for (const r of after) {
     seen.add(r.id);
-    const rec = recordForWrite("set_logs", r as unknown as Row);
-    if (!rec) throw new Error(`[sets] a set the writer can't encode (id ${String(r.id)})`);
+    const rec = recordForWrite(table, r as unknown as Row);
+    if (!rec) throw new Error(`[sets] a ${table === "set_logs" ? "set" : "cardio tick"} the writer can't encode (id ${String(r.id)})`);
     if (was.get(r.id) !== JSON.stringify(rec)) {
       upserts.push(rec);
       upserted.push(r);
@@ -1063,6 +1267,45 @@ async function writeRows(q: Q, clientId: number, upserts: Row[], deletes: number
   }
 }
 
+/** The cardio tick columns as this build's schema has them. */
+let TICK_COLUMNS: { field: string; name: string }[] | null = null;
+const tickColumns = () => (TICK_COLUMNS ??= Object.entries(getTableColumns(cardio_logs) as Record<string, Column>).map(([field, c]) => ({ field, name: c.name })));
+
+/**
+ * The cardio ticks written as the store's writer writes them, each only for its own client (the tick's client_id, which
+ * the write checks is this client's): a tick another client's row holds fails the write whole. A tick the write hands
+ * out is only ever inserted, as a set's.
+ */
+async function writeTickRows(q: Q, clientId: number, upserts: Row[], deletes: number[], fresh: ReadonlySet<number>) {
+  if (deletes.length) await q(sql`DELETE FROM cardio_logs WHERE id = ANY(${ints(deletes)}::int[]) AND (client_id = ${clientId}::int OR client_id IS NULL)`);
+  if (!upserts.length) return;
+  const cols = tickColumns();
+  const list = sql.raw(cols.map((c) => quoted(c.name)).join(", "));
+  const set = sql.raw(cols.filter((c) => c.name !== "id").map((c) => `${quoted(c.name)} = EXCLUDED.${quoted(c.name)}`).join(", "));
+  const encode = (slice: Row[]) =>
+    JSON.stringify(
+      slice.map((r) => {
+        const out: Row = {};
+        for (const c of cols) if (c.field in r) out[c.name] = r[c.field];
+        return out;
+      })
+    );
+  const added = upserts.filter((r) => fresh.has(Number(r.id)));
+  const changed = upserts.filter((r) => !fresh.has(Number(r.id)));
+  for (let i = 0; i < added.length; i += 500) {
+    const slice = added.slice(i, i + 500);
+    const done = await q(sql`INSERT INTO cardio_logs (${list}) SELECT ${list} FROM jsonb_populate_recordset(NULL::cardio_logs, ${encode(slice)}::jsonb) ON CONFLICT (id) DO NOTHING RETURNING id`);
+    if (done.length !== slice.length) throw new Error(`cardio_logs: ${slice.length - done.length} new tick(s) whose id the table already holds; nothing written`);
+  }
+  for (let i = 0; i < changed.length; i += 500) {
+    const slice = changed.slice(i, i + 500);
+    const done = await q(
+      sql`INSERT INTO cardio_logs (${list}) SELECT ${list} FROM jsonb_populate_recordset(NULL::cardio_logs, ${encode(slice)}::jsonb) ON CONFLICT (id) DO UPDATE SET ${set} WHERE cardio_logs.client_id = ${clientId}::int OR cardio_logs.client_id IS NULL RETURNING id`
+    );
+    if (done.length !== slice.length) throw new Error(`cardio_logs: ${slice.length - done.length} tick(s) whose id another client's tick holds; nothing written`);
+  }
+}
+
 /** What the last store save committed holds this row (a plan row, a client, a day): pg/store.ts PgStoreWriter.committedHas. */
 function committedHas(name: string, id: number): boolean {
   const w = (globalThis as unknown as { _pgWriter?: { committedHas?(name: string, id: number | string): boolean } })._pgWriter;
@@ -1079,6 +1322,9 @@ export type SetHooks<T> = {
   /** After the commit, still on the client's chain (pg), or right after the body (memory): memory's own changes that
    *  follow the sets (the weight rule, a session's fields), handed the sets the write left in its reach. */
   afterCommit?: (answer: T, sets: SetRows) => void;
+  /** The sessions (days) whose cardio ticks the body reads and changes (`box.ticks`), evaluated with the reach; none by
+   *  default. Only this client's days count, and only the entries memory holds on them. */
+  ticks?: () => readonly number[];
 };
 
 /**
@@ -1105,9 +1351,11 @@ export async function writeSets<T>(path: SetWritePath, clientId: number, reach: 
         // this same place on the client's chain (a write queued after it never commits before it). The ids the first try
         // took (rolled back, never inserted) go to the second, so the sets get the ids memory mode gives them.
         const spare: number[] = [];
+        const spareTicks: number[] = [];
         let tried: SetBox | null = null;
         for (let saved = false; ; saved = true) {
           let left: SetLogRow[] = [];
+          let leftTicks: CardioTickRow[] = [];
           let scope: Scope | null = null;
           let answer: T;
           try {
@@ -1124,10 +1372,15 @@ export async function writeSets<T>(path: SetWritePath, clientId: number, reach: 
             // Only this client's rows still in memory: a row a coach took out meanwhile is left out of the write.
             const rows = asked.filter((r) => clientOfRow(ix, r) === clientId);
             const before = rows.length ? (await q(sql`SELECT * FROM set_logs WHERE workout_assignment_id = ANY(${ints(rows)}::int[]) ORDER BY id`)).map(decode) : [];
+            // The cardio ticks the write names: the entries memory holds on this client's days of them.
+            const tickDaysAsked = [...new Set(hooks.ticks?.() ?? [])].filter((d) => ix.clientOfDay.get(d) === clientId);
+            const entries = entriesOfDays(tickDaysAsked);
+            const entryDay = entries.length ? entryDayMap() : new Map<number, number>();
+            const ticksBefore = entries.length ? (await q(sql`SELECT * FROM cardio_logs WHERE cardio_entry_id = ANY(${ints(entries)}::int[]) ORDER BY id`)).map(decodeTick) : [];
             // A home-gym pin still to commit is read into the copies (so the write carries it, as the UPDATE would).
-            const lists = { logs: applyGymPins(before.map((s) => structuredClone(s))) };
-            scope = { every: false, clients: new Map(), rows: new Set(rows), loggedRows: new Set(), ix };
-            const box = new SetBox(MINT, path, listHolder(lists), scope, () => {}, spare);
+            const lists = { logs: applyGymPins(before.map((s) => structuredClone(s))), ticks: ticksBefore.map((t) => structuredClone(t)) };
+            scope = { every: false, clients: new Map(), rows: new Set(rows), loggedRows: new Set(), tickDays: new Set(tickDaysAsked), ix };
+            const box = new SetBox(MINT, path, listHolder(lists), scope, () => {}, spare, spareTicks);
             tried = box;
             let out: T;
             try {
@@ -1152,9 +1405,29 @@ export async function writeSets<T>(path: SetWritePath, clientId: number, reach: 
                 if (day != null && !committedHas("program_days", day)) throw new NotYetSaved(`day ${day}`);
               }
             }
+            // The ticks the same: an id handed out here that a tick already holds, nothing written; each changed tick only
+            // for an entry of the write's own, on a day, of a client, the store's last save holds.
+            for (const id of box.allocatedTicks) if (ticksBefore.some((t) => t.id === id)) throw new Error(`cardio_logs: a new tick's id ${id} is already a tick's; nothing written`);
+            const ct = changedRows(ticksBefore, lists.ticks, box.allocatedTicks, "cardio_logs");
+            if (ct.upserts.length) {
+              if (!committedHas("clients", clientId)) throw new NotYetSaved(`client ${clientId}`);
+              const own = new Set(entries);
+              for (const t of ct.upserted) {
+                if (!own.has(t.cardio_entry_id) || t.client_id !== clientId) {
+                  const error = new SetViewMiss(`[sets] a cardio tick of entry ${t.cardio_entry_id} outside ${path}'s reach`);
+                  inner = { error };
+                  throw error;
+                }
+                if (!committedHas("cardio_entries", t.cardio_entry_id)) throw new NotYetSaved(`cardio entry ${t.cardio_entry_id}`);
+                const day = entryDay.get(t.cardio_entry_id);
+                if (day != null && !committedHas("program_days", day)) throw new NotYetSaved(`day ${day}`);
+              }
+            }
             await writeRows(q, clientId, c.upserts, c.deletes, c.fresh);
+            await writeTickRows(q, clientId, ct.upserts, ct.deletes, ct.fresh);
             throwIfFaultBeforeCommit(path);
             left = lists.logs;
+            leftTicks = lists.ticks;
             return out;
           });
           } catch (error) {
@@ -1165,12 +1438,15 @@ export async function writeSets<T>(path: SetWritePath, clientId: number, reach: 
                 // The store's own save failing: a transport failure for the phone (isSetsDoorFailure), tried again later.
                 throw new NotYetSaved("the store (its save failed)");
               }
-              if (tried) spare.splice(0, spare.length, ...(tried as SetBox).allocated);
+              if (tried) {
+                spare.splice(0, spare.length, ...(tried as SetBox).allocated);
+                spareTicks.splice(0, spareTicks.length, ...(tried as SetBox).allocatedTicks);
+              }
               continue;
             }
             throw error;
           }
-          hooks.afterCommit?.(answer, viewOf(path, left, scope));
+          hooks.afterCommit?.(answer, viewOf(path, left, leftTicks, scope));
           return answer;
         }
       },
@@ -1205,18 +1481,39 @@ export function dropSetsOfRows(path: SetWritePath, clientId: number, rows: Itera
   // The tombstone in memory with the rows' removal: the caller's own save (and every save after it) carries both.
   const key = `${clientId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
   setTombstone(key, { client: clientId, rows: [...ids], at: new Date().toISOString() });
-  finishRemovalLater(key, clientId, [...ids], path, 0, 0);
+  finishRemovalLater(key, clientId, [...ids], [], path, 0, 0);
+}
+
+/**
+ * Cardio entries a coach removed (or replaced: a copy over a session), with every tick on them (removeSession,
+ * removeWeek, copyProgramDay), synchronous where the caller removes the entries, as dropSetsOfRows. Memory: the store's
+ * list filtered at once, today's line (`data.cardio_logs = (data.cardio_logs ?? []).filter(…)`). Postgres: a tombstone
+ * naming the entries in memory beside their removal, every fetch leaving their ticks out at once (liveTicks), then the
+ * DELETE on the client's chain after the store's save, the tombstone cleared. With SETS_STORE=pg cardio entry ids come from
+ * their sequence (pg/ids.ts), never handed out again, so the DELETE can never take a later entry's tick.
+ */
+export function dropTicksOfEntries(path: SetWritePath, clientId: number, entries: Iterable<number>): void {
+  noteSetsWrite(path);
+  const ids = new Set(entries);
+  if (!SETS_PG) {
+    storeHolder.setTicks(storeHolder.ticks().filter((l) => !ids.has(l.cardio_entry_id)));
+    return;
+  }
+  if (!ids.size) return;
+  const key = `${clientId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+  setTombstone(key, { client: clientId, rows: [], entries: [...ids], at: new Date().toISOString() });
+  finishRemovalLater(key, clientId, [], [...ids], path, 0, 0);
 }
 
 /**
  * A removal's DELETE, on the client's chain: the store's save first (the rows gone with the tombstone), then the sets
- * deleted under the lock, then the tombstone cleared. A failed save or DELETE is tried again a minute later, up to 30
- * times; any boot finishes a tombstone left (sets/boot.ts).
+ * (and the cardio ticks of the entries it names) deleted under the lock, then the tombstone cleared. A failed save or
+ * DELETE is tried again a minute later, up to 30 times; any boot finishes a tombstone left (sets/boot.ts).
  */
-function finishRemovalLater(key: string, clientId: number, rows: number[], path: SetWritePath, tries = 0, wait = 60_000) {
+function finishRemovalLater(key: string, clientId: number, rows: number[], entries: number[], path: SetWritePath, tries = 0, wait = 60_000) {
   if (tries >= 30) return;
   const timer = setTimeout(async () => {
-    const again = () => finishRemovalLater(key, clientId, rows, path, tries + 1);
+    const again = () => finishRemovalLater(key, clientId, rows, entries, path, tries + 1);
     if (!(key in tombstones())) return;
     // The store's save (the rows gone, with the tombstone) before the DELETE is queued: off the client's chain, so their
     // set saves never wait for a whole-store save behind a coach's removal.
@@ -1233,6 +1530,7 @@ function finishRemovalLater(key: string, clientId: number, rows: number[], path:
         await inTx(async (q) => {
           await q(lockOf(clientId));
           if (rows.length) await q(sql`DELETE FROM set_logs WHERE workout_assignment_id = ANY(${ints(rows)}::int[])`);
+          if (entries.length) await q(sql`DELETE FROM cardio_logs WHERE cardio_entry_id = ANY(${ints(entries)}::int[])`);
         });
         clearTombstone(key);
         persist();
@@ -1310,14 +1608,20 @@ function applyGymPins(list: SetLogRow[]): SetLogRow[] {
   return list;
 }
 
-export type SetTombstones = Record<string, { client: number; rows: number[]; at: string }>;
+export type SetTombstones = Record<string, { client: number; rows: number[]; entries?: number[]; at: string }>;
 /** The tombstones in memory (a store key kept in kv), read only: none is {}. */
 function tombstones(): SetTombstones {
   // chat-door: notes-door: food-door: checkins-door: one kv key by its own name (the tombstones), never a walk of the store.
   const t = (getData() as unknown as Record<string, unknown>)[SETS_REMOVING];
   return t && typeof t === "object" && !Array.isArray(t) ? (t as SetTombstones) : {};
 }
-function setTombstone(key: string, v: { client: number; rows: number[]; at: string }) {
+/** The cardio entries a tombstone names (their ticks still to delete, out of every fetch meanwhile). */
+function deadEntries(): Set<number> {
+  const out = new Set<number>();
+  for (const t of Object.values(tombstones())) for (const e of t?.entries ?? []) out.add(e);
+  return out;
+}
+function setTombstone(key: string, v: { client: number; rows: number[]; entries?: number[]; at: string }) {
   // chat-door: notes-door: food-door: checkins-door: the same key, written by name.
   (getData() as unknown as Record<string, unknown>)[SETS_REMOVING] = { ...tombstones(), [key]: v };
 }
@@ -1338,9 +1642,13 @@ function clearTombstone(key: string) {
 export async function deleteClientSets(clientId: number, path: SetWritePath = "w.client.delete"): Promise<void> {
   noteSetsWrite(path);
   if (!SETS_PG) return;
-  const rows = rowsOfClients(rowIndex(true), [clientId]);
+  const ix = rowIndex(true);
+  const rows = rowsOfClients(ix, [clientId]);
   const tomb = Object.entries(tombstones()).filter(([, t]) => t?.client === clientId);
   const all = [...new Set([...rows, ...tomb.flatMap(([, t]) => t.rows ?? [])])];
+  // Their cardio ticks the same (they carry client_id; memory's erase takes them by it): by the client, and by the
+  // entries on their days memory holds and those a tombstone of theirs names.
+  const entries = [...new Set([...entriesOfDays((ix.daysOfClient.get(clientId) ?? []).map((d) => d.id)), ...tomb.flatMap(([, t]) => t.entries ?? [])])];
   await setsWriteRaw(`st:${clientId}`, {
     op: path,
     run: async (_q, inTx) =>
@@ -1349,13 +1657,15 @@ export async function deleteClientSets(clientId: number, path: SetWritePath = "w
         await q(lockOf(clientId));
         await q(sql`DELETE FROM set_logs WHERE client_id = ${clientId}::int`);
         for (const part of chunks(all)) await q(sql`DELETE FROM set_logs WHERE workout_assignment_id = ANY(${ints(part)}::int[])`);
+        await q(sql`DELETE FROM cardio_logs WHERE client_id = ${clientId}::int`);
+        for (const part of chunks(entries)) await q(sql`DELETE FROM cardio_logs WHERE cardio_entry_id = ANY(${ints(part)}::int[])`);
       }),
   });
   for (const [k] of tomb) clearTombstone(k);
 }
 
 /** The erase's second sweep, once the client is gone from memory: anything a write queued before it committed after it. */
-export async function sweepClientSets(clientId: number, rows: readonly number[]): Promise<void> {
+export async function sweepClientSets(clientId: number, rows: readonly number[], entries: readonly number[] = []): Promise<void> {
   if (!SETS_PG) return;
   noteSetsWrite("w.client.delete");
   await setsWriteRaw(`st:${clientId}`, {
@@ -1365,11 +1675,17 @@ export async function sweepClientSets(clientId: number, rows: readonly number[])
         await q(lockOf(clientId));
         await q(sql`DELETE FROM set_logs WHERE client_id = ${clientId}::int`);
         for (const part of chunks([...rows])) await q(sql`DELETE FROM set_logs WHERE workout_assignment_id = ANY(${ints(part)}::int[])`);
+        await q(sql`DELETE FROM cardio_logs WHERE client_id = ${clientId}::int`);
+        for (const part of chunks([...entries])) await q(sql`DELETE FROM cardio_logs WHERE cardio_entry_id = ANY(${ints(part)}::int[])`);
       }),
   });
 }
 
-/** Every set, gone (the workspace reset), twice with the chains settled between. Memory: the store's list emptied. */
+/**
+ * Every set, gone (the workspace reset), twice with the chains settled between. Memory: the store's list emptied. The
+ * cardio ticks stay, as memory's reset has always left them (and the cardio entries) behind; with SETS_STORE=pg only the
+ * ticks a tombstone names go with the tombstones, as memory dropped them already.
+ */
 export async function wipeAllSets(): Promise<void> {
   noteSetsWrite("w.wipe");
   if (!SETS_PG) {
@@ -1378,7 +1694,15 @@ export async function wipeAllSets(): Promise<void> {
   }
   for (let i = 0; i < 2; i++) {
     await setChainsSettled();
-    await setsWriteRaw(null, { op: "w.wipe", run: async (_q, inTx) => inTx(async (q) => void (await q(sql`DELETE FROM set_logs`))) });
+    const dead = ints(deadEntries());
+    await setsWriteRaw(null, {
+      op: "w.wipe",
+      run: async (_q, inTx) =>
+        inTx(async (q) => {
+          await q(sql`DELETE FROM set_logs`);
+          await q(sql`DELETE FROM cardio_logs WHERE cardio_entry_id = ANY(${dead}::int[])`);
+        }),
+    });
   }
   // chat-door: notes-door: food-door: checkins-door: one kv key by its own name (the tombstones), never a walk.
   const d = getData() as unknown as Record<string, unknown>;
@@ -1393,25 +1717,55 @@ export async function wipeAllSets(): Promise<void> {
  * A whole-store copy with the sets in their place (the backup's JSON, the shutdown dump). In memory mode the store holds
  * them already: the same object back. With SETS_STORE=pg they are put where the store would hold them (after
  * workout_assignments), the sets of rows a tombstone names left out, and `_sets_in_postgres` says so when there are none,
- * so a build that doesn't know refuses it. The tombstones stay with this database.
+ * so a build that doesn't know refuses it. The tombstones stay with this database. The cardio ticks the same, after
+ * cardio_entries (the ticks of entries a tombstone names left out).
  */
 export function withSetKeys<T extends Record<string, unknown>>(data: T, rows: SetRows | null): T {
   if (!SETS_PG) return data;
   const dead = new Set(Object.values(tombstones()).flatMap((t) => t?.rows ?? []));
   const list = rows ? (dead.size ? rows.logs.filter((s) => !dead.has(s.workout_assignment_id)) : [...rows.logs]) : null;
+  const ticks = rows ? liveTicks([...rows.ticks]) : null;
   const out: Record<string, unknown> = {};
   let placed = false;
+  let placedTicks = false;
   // chat-door: notes-door: food-door: checkins-door: a copy of the keys as they are handed in (the other doors' keys already in place).
   for (const [k, v] of Object.entries(data)) {
-    if (k === "set_logs" || k === SETS_REMOVING) continue;
+    if (k === "set_logs" || k === "cardio_logs" || k === SETS_REMOVING) continue;
     out[k] = v;
+    if (k === "cardio_entries") {
+      out.cardio_logs = ticks ?? [];
+      placedTicks = true;
+    }
     if (k === "workout_assignments") {
       out.set_logs = list ?? [];
       placed = true;
     }
   }
+  if (!placedTicks) out.cardio_logs = ticks ?? [];
   if (!placed) out.set_logs = list ?? [];
   if (!list) out._sets_in_postgres = true;
+  return out as T;
+}
+
+/**
+ * The export's copy (SETS_STORE=pg): the coach's clients' cardio ticks put in their key's place, after cardio_entries,
+ * as the store holds them in memory mode (the export's filter by client_id then keeps them, as it always has; the sets
+ * carry no client_id, so it leaves every one out in both modes). Memory mode: the same object back.
+ */
+export function withTickKey<T extends Record<string, unknown>>(data: T, ticks: readonly CardioTickRow[]): T {
+  if (!SETS_PG) return data;
+  const out: Record<string, unknown> = {};
+  let placed = false;
+  // chat-door: notes-door: food-door: checkins-door: a copy of the keys as they are handed in (the other doors' keys already in place).
+  for (const [k, v] of Object.entries(data)) {
+    if (k === "cardio_logs") continue;
+    out[k] = v;
+    if (k === "cardio_entries") {
+      out.cardio_logs = [...ticks];
+      placed = true;
+    }
+  }
+  if (!placed) out.cardio_logs = [...ticks];
   return out as T;
 }
 

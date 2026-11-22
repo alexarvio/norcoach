@@ -1274,6 +1274,11 @@ declare const SETS_DOOR: unique symbol;
 export type SetStoreRows = { readonly [SETS_DOOR]: "app/lib/sets/rows.ts" };
 /** A logged set as the door (app/lib/sets/rows.ts) handles it. */
 export type SetLogRow = SetLog;
+declare const CARDIO_TICKS_DOOR: unique symbol;
+/** The store's cardio ticks, sealed (22 Nov, quest 10: they moved with the sets): only app/lib/sets/ opens them. */
+export type CardioTickStoreRows = { readonly [CARDIO_TICKS_DOOR]: "app/lib/sets/rows.ts" };
+/** A cardio tick as the sets' door (app/lib/sets/rows.ts) handles it. */
+export type CardioTickRow = CardioLog;
 /**
  * Of two twin sets (one assignment, one set number), whether `a` is the one kept: the newer stamp read as text (JS string
  * compare, so on one day an ISO stamp reads newer than a local one), then the higher id. The memory boot's twin drop
@@ -1544,7 +1549,9 @@ export type Data = {
   client_gyms: ClientGym[];
   coach_profiles: CoachProfile[];
   cardio_entries: CardioEntry[];
-  cardio_logs: CardioLog[];
+  // The cardio ticks (22 Nov, quest 10): sealed, opened by the sets' door alone (app/lib/sets/rows.ts); absent with
+  // SETS_STORE=pg, where they live in Postgres alone beside the sets.
+  cardio_logs?: CardioTickStoreRows;
   // The last COACH_RESET_TOKEN value that was acted on (see
   // resetCoachFromEnv in lib/auth.ts), so a reset token left sitting in the
   // environment only ever fires once.
@@ -1618,7 +1625,7 @@ function emptyData(): Data {
     client_gyms: [],
     coach_profiles: [],
     cardio_entries: [],
-    cardio_logs: [],
+    ...(SETS_PG ? {} : { cardio_logs: [] as unknown as CardioTickStoreRows }),
     exercises: [],
     program_days: [],
     workout_assignments: [],

@@ -32,7 +32,7 @@ import { checkCheckInsJson, checkInsBootMemory, checkInsBootPg, checkInsMaxIds, 
 import { startCheckInsPg } from "../checkins/pg";
 import { startCheckInsShadow } from "../checkins/shadow";
 import { SETS_PG, SETS_STORE_ASKED } from "../sets/mode";
-import { checkSetsJson, importSets, kvHoldsSetsMark, setsBootMemory, setsBootPg, setsMaxId, setsProblems } from "../sets/boot";
+import { checkSetsJson, importSets, kvHoldsSetsMark, setsBootMemory, setsBootPg, setsMaxIds, setsProblems } from "../sets/boot";
 import { startSetsPg } from "../sets/pg";
 import { startSetsShadow } from "../sets/shadow";
 
@@ -412,11 +412,13 @@ async function start() {
   // The logged sets' counter at least their table's highest id (SETS_STORE=pg: raiseCounters no longer sees the rows).
   let setsRaised = false;
   if (SETS_PG) {
-    const top = await setsMaxId(db);
-    if (top > (data._seq.set_logs ?? 0)) {
-      setsRaised = true;
-      log(`raised the id counter of set_logs from ${data._seq.set_logs ?? "none"} to ${top}, its highest id`);
-      data._seq.set_logs = top;
+    // The sets' and the cardio ticks' (quest 10, the ticks with the sets since 22 Nov).
+    for (const [t, top] of Object.entries(await setsMaxIds(db))) {
+      if (top > (data._seq[t] ?? 0)) {
+        setsRaised = true;
+        log(`raised the id counter of ${t} from ${data._seq[t] ?? "none"} to ${top}, its highest id`);
+        data._seq[t] = top;
+      }
     }
   }
   // Ids from Postgres for the tables that will move (step 4A), before anything can take one; the counters as raised.

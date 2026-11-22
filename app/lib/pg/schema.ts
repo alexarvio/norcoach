@@ -207,13 +207,21 @@ export const cardio_entries = pgTable("cardio_entries", {
   extra: extra(),
 });
 
-export const cardio_logs = pgTable("cardio_logs", {
-  id: id(),
-  cardio_entry_id: fk("cardio_entry_id"),
-  client_id: fk("client_id"),
-  done_at: text("done_at"),
-  extra: extra(),
-});
+// The cardio ticks by their entry and by their client (22 Nov, quest 10; migration 0026): what the sets door's queries
+// need once the ticks leave memory with the sets (app/lib/sets/rows.ts). The unique rule on (cardio_entry_id) is NOT
+// here: a SETS_STORE=pg boot makes it under the lease once its twins are moved out, and a memory boot drops it
+// (app/lib/sets/boot.ts), as the sets' own.
+export const cardio_logs = pgTable(
+  "cardio_logs",
+  {
+    id: id(),
+    cardio_entry_id: fk("cardio_entry_id"),
+    client_id: fk("client_id"),
+    done_at: text("done_at"),
+    extra: extra(),
+  },
+  (t) => [index("cardio_logs_entry_idx").on(t.cardio_entry_id, t.id), index("cardio_logs_client_idx").on(t.client_id, t.id)]
+);
 
 export const workout_assignments = pgTable("workout_assignments", {
   id: id(),
@@ -1106,6 +1114,10 @@ export const saved_days_id_seq = idSeq("saved_days");
 // The check-in notes and the metric definitions had none (quest 9): theirs, for CHECKINS_STORE=pg (pg/ids.ts takes them then).
 export const check_in_notes_id_seq = idSeq("check_in_notes");
 export const metric_definitions_id_seq = idSeq("metric_definitions");
+// The cardio ticks and the cardio entries they point at had none (22 Nov, quest 10): theirs, for SETS_STORE=pg (pg/ids.ts
+// takes them then; memory mode counts from _seq).
+export const cardio_logs_id_seq = idSeq("cardio_logs");
+export const cardio_entries_id_seq = idSeq("cardio_entries");
 
 /**
  * Names that are tables, never a key in `kv` (17 Nov): a kv row named like a collection would replace that collection

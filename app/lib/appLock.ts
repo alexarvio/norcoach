@@ -52,7 +52,9 @@ function loggedAnything(clientId: number, logged: FoodRows, ck: CheckInRows, sr:
   logged.need("appLock.loggedAnything", clientId, "logged", ["entries", "calories"]);
   if (logged.entries.some((e) => e.client_id === clientId)) return true;
   if (logged.calories.some((l) => l.client_id === clientId && l.source !== "health")) return true;
-  if ((data.cardio_logs ?? []).some((l) => l.client_id === clientId)) return true;
+  // The cardio ticks through the sets' door (quest 10, with the sets since 22 Nov): whether the client holds one (`any`).
+  sr.needLogged("appLock.loggedAnything", clientId, true);
+  if (sr.ticks.some((l) => l.client_id === clientId)) return true;
   if ((data.measurement_values ?? []).some((v) => v.client_id === clientId && !!v.logged_at)) return true;
   const slotIds = new Set((data.photo_slots ?? []).filter((s) => s.client_id === clientId).map((s) => s.id));
   if (slotIds.size && (data.photo_uploads ?? []).some((u) => slotIds.has(u.slot_id))) return true;
