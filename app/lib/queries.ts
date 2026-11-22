@@ -343,6 +343,9 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
   if (!SETS_PG) void writeSets("w.client.delete", clientId, () => [], (box) => void (box.logs = box.logs.filter((sl) => !assignmentIds.has(sl.workout_assignment_id))));
   data.assignment_custom_values = data.assignment_custom_values.filter((v) => !assignmentIds.has(v.workout_assignment_id));
   data.workout_assignments = data.workout_assignments.filter((wa) => !assignmentIds.has(wa.id));
+  // Their cardio rows too (22 Nov, Alex: "rest yes" to fixing it): they hang on the days by program_day_id alone, so the
+  // client_id sweep below never took them and they stayed behind as orphans. Their ticks (cardio_logs) carry client_id.
+  data.cardio_entries = (data.cardio_entries ?? []).filter((c) => !dayIds.has(c.program_day_id));
   data.program_days = data.program_days.filter((pd) => !dayIds.has(pd.id));
   data.training_programs = data.training_programs.filter((p) => p.client_id !== clientId);
   data.training_columns = data.training_columns.filter((c) => c.client_id !== clientId);
