@@ -28,14 +28,38 @@ export type PageSkeletonProps = {
    *  56px face's row; `track` a track tab's (Lifestyle, Training, Nutrition: `trn-head` with its 76px kept for the fact
    *  line); `bare` the bare head (the coach-wide views, Shape update, Meetings, Invoices, the Plan). */
   head?: "home" | "track" | "bare";
+  /** The chat's tab drawn with it (a loading.tsx, where the page's own is gone); false where the page's chat stays
+   *  (RailFrame's outline over a page still on screen). */
+  chat?: boolean;
 };
 
-export default function PageSkeleton({ title, tabs = false, cards = [240], head = "bare" }: PageSkeletonProps) {
+/** Each framed view's outline, as its loading.tsx draws it: RailFrame draws the same one the moment a rail click's page
+ *  isn't in yet (22 Nov), so the two never differ. */
+export const VIEW_SKELETON: Record<string, PageSkeletonProps> = {
+  feed: { title: "Feed", cards: [200, 320] },
+  phases: { title: "Phases", cards: [460] },
+  calendar: { title: "Calendar", cards: [360, 480] },
+  library: { title: "Library", cards: [480] },
+  business: { title: "Business", cards: [104, 300] },
+  coaches: { title: "Coaches", cards: [280] },
+  settings: { title: "Settings", cards: [440] },
+  home: { tabs: true, head: "home", cards: [148, 360] },
+  plan: { tabs: true, cards: [300, 220] },
+  measurements: { tabs: true, head: "track", cards: [200, 360] },
+  training: { tabs: true, head: "track", cards: [120, 420] },
+  nutrition: { tabs: true, head: "track", cards: [104, 360] },
+  pictures: { tabs: true, cards: [420] },
+  meetings: { tabs: true, cards: [260, 180] },
+  invoices: { tabs: true, cards: [104, 320] },
+  messages: { tabs: true, head: "home", cards: [480] },
+};
+
+export default function PageSkeleton({ title, tabs = false, cards = [240], head = "bare", chat = true }: PageSkeletonProps) {
   return (
     <>
     {/* The chat's tab (and a chat kept open) as every framed page has it, before the page as they draw it. */}
-    <PageSkeletonChat />
-    <div className="rd-page rd-skel" aria-busy="true" aria-label={title ? `${title}, loading` : "Loading"}>
+    {chat && <PageSkeletonChat />}
+    <div className={`rd-page rd-skel${chat ? "" : " rd-skel-over"}`} aria-busy="true" aria-label={title ? `${title}, loading` : "Loading"}>
       {tabs && (
         <nav className="rd-nav rd-skel-nav" aria-hidden="true">
           {TAB_LABELS.map((l) => (
