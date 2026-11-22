@@ -444,6 +444,7 @@ import { askedWeightUnit, removeWeightGoal, saveWeightGoal, type WeightGoalField
 import { goalWeightText } from "./weightGoal";
 import { inZone } from "./viewZone";
 import { clientPlanId, clientPlanSeries } from "./coachPlans";
+import { dropUnreadBookings } from "./callNotes";
 
 // OWNERSHIP RULE for every coach action below: a coach may only touch their
 // own clients (and their own library). Each action works out the client from
@@ -2544,9 +2545,11 @@ export async function removeMeetingAction(formData: FormData) {
   const meetingClient = stored && isClientCall(stored.category) ? stored.client_id : null;
   // A repeating call can take the rest of its series with it.
   const later = formData.get("following") === "1" ? laterInSeries(id) : [];
+  // Its booking unread goes; booked under two minutes ago, the cancellation is not sent either (22 Nov, callNotes.ts).
+  const booking = await dropUnreadBookings(meetingClient, [id, ...later]);
   removeMeeting(id);
   later.forEach(removeMeeting);
-  noteChange(meetingClient, later.length ? `Cancelled ${later.length + 1} calls` : "Cancelled your call", { tab: "home", label: "See your meetings", key: `meeting-cancel:${id}`, ref: Number(id), push: true });
+  if (booking !== "fresh") noteChange(meetingClient, later.length ? `Cancelled ${later.length + 1} calls` : "Cancelled your call", { tab: "home", label: "See your meetings", key: `meeting-cancel:${id}`, ref: Number(id), push: true });
   revalidatePath("/admin");
   // The Calendar's day panel removes from here too.
   revalidatePath("/admin/redesign/calendar");
@@ -3331,7 +3334,8 @@ export async function updateCalendarEntryAction(id: number, v: CalendarEntryInpu
   const wasCallOf = before && before.client_id != null && isClientCall(before.category) ? before.client_id : null;
   const callOf = clientId != null && isClientCall(v.category) ? clientId : null;
   if (wasCallOf != null && wasCallOf !== callOf) {
-    noteChange(wasCallOf, "Cancelled your call", { tab: "home", label: "See your meetings", key: `meeting-cancel:${id}`, ref: Number(id), push: true });
+    // Its booking unread goes; booked under two minutes ago, nothing is sent (22 Nov, callNotes.ts).
+    if ((await dropUnreadBookings(wasCallOf, [Number(id)])) !== "fresh") noteChange(wasCallOf, "Cancelled your call", { tab: "home", label: "See your meetings", key: `meeting-cancel:${id}`, ref: Number(id), push: true });
   }
   if (callOf != null && before && wasCallOf !== callOf) {
     // New to this client's screens: as a call added.
@@ -3350,8 +3354,10 @@ export async function removeCalendarEntryAction(id: number) {
   // Only a call was ever on the client's screens, so only a call is cancelled for them.
   const stored = getCalendarEntry(Number(id));
   const meetingClient = stored && isClientCall(stored.category) ? stored.client_id : null;
+  // Its booking unread goes; booked under two minutes ago, the cancellation is not sent either (22 Nov, callNotes.ts).
+  const booking = await dropUnreadBookings(meetingClient, [Number(id)]);
   removeMeeting(Number(id));
-  noteChange(meetingClient, "Cancelled your call", { tab: "home", label: "See your meetings", key: `meeting-cancel:${id}`, ref: Number(id), push: true });
+  if (booking !== "fresh") noteChange(meetingClient, "Cancelled your call", { tab: "home", label: "See your meetings", key: `meeting-cancel:${id}`, ref: Number(id), push: true });
   revalidatePath("/admin");
   revalidatePath("/client");
 }
