@@ -6,14 +6,20 @@
 // and walk the lists, never sort or edit them in place.
 
 import { cache } from "react";
-import { clientHomeRows, getActivityFeed, getClientHome, listClients, trainingIndex, type FeedEvent, type HomeAction } from "./queries";
+import { clientHomeRows, getActivityFeed, getClientHomeActions, listClients, trainingIndex, type FeedEvent, type HomeAction } from "./queries";
+import { HOME_NEW_DAYS } from "./chat/pick";
 import { sub } from "./timing";
 import type { ChatCoachView } from "./chat/rows";
 import type { FoodRows } from "./food/rows";
 import type { CheckInRows } from "./checkins/rows";
+import type { SetRows } from "./sets/rows";
 
 export type CoachNeeds = {
-  /** Everything the coach's clients logged, newest first (getActivityFeed). */
+  /**
+   * What the coach's clients logged, newest first (getActivityFeed): every event of the last HOME_NEW_DAYS and each
+   * client's newest, exactly; what the page's views hold beyond that (the Feed's newest 200 of each kind) too. Events
+   * older than any of those may be missing or partial: a reader keeps to what its own need() says it reads.
+   */
   feed: FeedEvent[];
   byId: Map<string, FeedEvent>;
   /** Each client's open Needs-you items as their Home spells them, or what getClientHome threw for them (handed on to
@@ -27,8 +33,8 @@ export type CoachNeeds = {
 // one view it fetched to every reader in its render and they share this read.
 // `food`: the page's food view the same (fetchCoachFood, app/lib/food/rows.ts), fetched beside it.
 // `ck`: the page's check-in view the same (fetchCoachCheckIns, app/lib/checkins/rows.ts), fetched beside it.
-export const coachNeeds = cache((coachId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows): CoachNeeds => {
-  const feed = sub("feed", () => getActivityFeed(coachId, chat, food, ck));
+export const coachNeeds = cache((coachId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, sr: SetRows): CoachNeeds => {
+  const feed = sub("feed", () => getActivityFeed(coachId, chat, food, ck, sr, { span: { feedFrom: Date.now() - HOME_NEW_DAYS * 86400000 } }));
   const byId = new Map(feed.map((e) => [e.id, e] as const));
   const homes = sub("needsYou", () => {
     const list = listClients(coachId);
@@ -36,7 +42,7 @@ export const coachNeeds = cache((coachId: number, chat: ChatCoachView, food: Foo
     // Needs you walked the whole feed and scanned the store per session); getClientHome reads the same rows either way.
     const feedOf = new Map<number, FeedEvent[]>(list.map((c) => [c.id, []]));
     for (const e of feed) feedOf.get(e.clientId)?.push(e);
-    const ix = trainingIndex(list.map((c) => c.id));
+    const ix = trainingIndex(sr, list.map((c) => c.id));
     // Their video and call asks and invoices grouped once too (17 Nov, mission 2: each client's Home walked them all);
     // their chat by the chat view (ChatCoachView.homeRows).
     // A bad row there fails each client's Home as it always did, not the whole read.
@@ -49,7 +55,7 @@ export const coachNeeds = cache((coachId: number, chat: ChatCoachView, food: Foo
     const out: CoachNeeds["homes"] = new Map();
     for (const c of list) {
       try {
-        out.set(c.id, { actions: getClientHome(c.id, chat, food, ck, feedOf.get(c.id) ?? [], ix, own).actions });
+        out.set(c.id, { actions: getClientHomeActions(c.id, chat, food, ck, sr, feedOf.get(c.id) ?? [], ix, own).actions });
       } catch (error) {
         out.set(c.id, { error });
       }
@@ -60,10 +66,10 @@ export const coachNeeds = cache((coachId: number, chat: ChatCoachView, food: Foo
 });
 
 /** One client's Needs-you items from the coach's read; a client outside it (not the coach's) read on its own, as before. */
-export function clientActions(coachId: number, clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows): HomeAction[] {
-  const needs = coachNeeds(coachId, chat, food, ck);
+export function clientActions(coachId: number, clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, sr: SetRows): HomeAction[] {
+  const needs = coachNeeds(coachId, chat, food, ck, sr);
   const home = needs.homes.get(clientId);
-  if (!home) return getClientHome(clientId, chat, food, ck, needs.feed).actions;
+  if (!home) return getClientHomeActions(clientId, chat, food, ck, sr, needs.feed).actions;
   if ("error" in home) throw home.error;
   return home.actions;
 }

@@ -27,7 +27,10 @@ import { allocId, getData, persist, DATA_DIR, type CalorieLog, type FoodDay, typ
 import { calorie_logs, clients as clientsTable, food_days, food_entries, food_meals, meal_photos, once_keys, saved_days, saved_meals } from "../pg/schema";
 import { fromRecord, recordForWrite } from "../pg/store";
 import { FOOD_PG, FOOD_TABLES, type FoodTable } from "./mode";
-import type { FoodReadPath, FoodWritePath } from "./paths";
+import { FOOD_SHAPE, type FoodReadPath, type FoodWritePath } from "./paths";
+import { listFoodSource, resolveFood, sqlFoodSource, type FoodAsk, type FoodSource } from "./slices";
+import { noLookPhoto, noLookSaved, oddCalorie, oddEntry, SQL_NOLOOK_PHOTO, SQL_NOLOOK_SAVED, SQL_ODD_CALORIE, SQL_ODD_ENTRY } from "../pg/feedSlices";
+import { FEED_KIND_ROWS, HOME_NEW_DAYS } from "../chat/pick";
 import { foodChainBusy, foodChainsSettled, foodRead, foodWriteRaw, lostConnection, throwIfFaultBeforeCommit, type Q, type Row } from "./pg";
 import { noteFoodMissed, noteFoodOrders, noteFoodSeen, noteFoodWrite, onFoodFetch } from "./shadow";
 import { FOOD_ORDER_STAMPS, orderKey, putOnClient, readOrders, stampClient, stampsOf, type OrderRow } from "./orders";
@@ -61,21 +64,64 @@ export class FoodViewMiss extends Error {
 
 // ---- What a fetch took ---------------------------------------------------------------------------------------------
 
-/** The days a reader reads: every day, some days, or a run of them (ISO dates, inclusive). */
-export type FoodSpan = "all" | { dates: readonly string[] } | { from: string; to: string };
+/**
+ * The days a reader reads: every day, some days, or a run of them (ISO dates, inclusive); or what a coach-wide reader
+ * reads of a client's feed, never rows by day (21 Nov, the bounded slices; food/slices.ts resolves each into days):
+ *   { feedFrom: T }  every food event of the client at or after T (an instant), and their newest whenever it is;
+ *   { coachTop: n }  the client's coach's newest n food events (asked of each of the coach's clients);
+ *   { since: prev }  the rows the Feed's Since may count as saved after the coach's last visit;
+ *   "logged"         whether the client logged any entry, or any calorie figure of their own.
+ */
+export type FoodSpan = "all" | { dates: readonly string[] } | { from: string; to: string } | { feedFrom: number } | { coachTop: number } | { since: number } | "logged";
 
-type ClientScope = { all: boolean; dates: Set<string>; ranges: { from: string; to: string }[]; meals: Set<string>; ids: Set<number> };
+type ClientScope = {
+  all: boolean;
+  dates: Set<string>;
+  ranges: { from: string; to: string }[];
+  meals: Set<string>;
+  ids: Set<number>;
+  /** The lists taken for this client (the scope's when null): a coach's other clients hold entries and calorie logs alone. */
+  tables: Set<FoodShort> | null;
+  /** What coach-wide readers asked (food/slices.ts FoodAsk), and what the fetch resolved it to. */
+  ask: FoodAsk;
+  coach: number | null;
+  keys: Set<string>;
+  odd: boolean;
+  keyEntryIds: Set<number>;
+  keyCalorieIds: Set<number>;
+};
 type Scope = {
   clients: Map<number, ClientScope>;
   tables: ReadonlySet<FoodShort>;
   /** meal_photos by file, any client (a picture's thumb: getFoodDiary, saveMeal). */
   paths: Set<string>;
+  /** The day photos and saved meals that may want their look, any client (the start-up's back-fill). */
+  nolook?: boolean;
+  /** The fetch's clock: what its asks are resolved at, the same on both sides of the shadow. */
+  now?: number;
 };
 
-const emptyClientScope = (): ClientScope => ({ all: false, dates: new Set(), ranges: [], meals: new Set(), ids: new Set() });
+const emptyClientScope = (): ClientScope => ({
+  all: false,
+  dates: new Set(),
+  ranges: [],
+  meals: new Set(),
+  ids: new Set(),
+  tables: null,
+  ask: { feed: null, top: null, since: null, logged: false },
+  coach: null,
+  keys: new Set(),
+  odd: false,
+  keyEntryIds: new Set(),
+  keyCalorieIds: new Set(),
+});
 function addSpan(s: ClientScope, span: FoodSpan) {
   if (span === "all") s.all = true;
+  else if (span === "logged") s.ask.logged = true;
   else if ("dates" in span) for (const d of span.dates) s.dates.add(d);
+  else if ("feedFrom" in span) s.ask.feed = Math.min(s.ask.feed ?? Infinity, span.feedFrom);
+  else if ("coachTop" in span) s.ask.top = { coach: s.coach ?? 0, n: Math.max(s.ask.top?.n ?? 0, span.coachTop) };
+  else if ("since" in span) s.ask.since = s.ask.since == null ? span.since : Math.min(s.ask.since, span.since);
   else s.ranges.push({ from: span.from, to: span.to });
 }
 function makeScope(clientIds: readonly number[], spans: readonly FoodSpan[], tables: readonly FoodShort[] = SHORTS, meals: readonly string[] = [], entryIds: readonly number[] = []): Scope {
@@ -89,24 +135,51 @@ function makeScope(clientIds: readonly number[], spans: readonly FoodSpan[], tab
   }
   return { clients, tables: new Set(tables), paths: new Set() };
 }
-const inDay = (s: ClientScope, date: string) => s.all || s.dates.has(date) || s.ranges.some((r) => date >= r.from && date <= r.to);
+/** One part of a coach-wide scope: these clients, these spans, these lists (a client in several holds all of theirs). */
+type ScopePart = { ids: readonly number[]; spans: readonly FoodSpan[]; tables: readonly FoodShort[] };
+function partsScope(parts: readonly ScopePart[]): Scope {
+  const clients = new Map<number, ClientScope>();
+  const all = new Set<FoodShort>();
+  const coachOf = new Map(getData().clients.map((c) => [c.id, c.coach_id ?? null] as const));
+  for (const p of parts) {
+    for (const t of p.tables) all.add(t);
+    for (const id of p.ids) {
+      const s = clients.get(id) ?? emptyClientScope();
+      s.coach ??= coachOf.get(id) ?? null;
+      for (const span of p.spans) addSpan(s, span);
+      s.tables = new Set([...(s.tables ?? []), ...p.tables]);
+      clients.set(id, s);
+    }
+  }
+  return { clients, tables: all, paths: new Set() };
+}
+const tablesOf = (scope: Scope, s: ClientScope) => s.tables ?? scope.tables;
+const inDay = (s: ClientScope, date: string) => s.all || s.dates.has(date) || s.keys.has(date) || s.ranges.some((r) => date >= r.from && date <= r.to);
 /** Whether a stored row is inside the scope (the predicate every slice, store or SQL, follows). */
 function rowIn(scope: Scope, short: FoodShort, row: { id?: number; client_id: number; date?: string; meal?: string; file_path?: string }): boolean {
   if (!scope.tables.has(short)) return false;
   if (short === "photos" && row.file_path != null && scope.paths.has(row.file_path)) return true;
+  if (scope.nolook && ((short === "photos" && noLookPhoto(row as never)) || (short === "savedMeals" && noLookSaved(row as never)))) return true;
   const s = scope.clients.get(row.client_id);
-  if (!s) return false;
+  if (!s || !tablesOf(scope, s).has(short)) return false;
   if (!DATED.has(short)) return true;
   if (short === "entries" && row.meal != null && s.meals.has(row.meal)) return true;
-  if (short === "entries" && row.id != null && s.ids.has(row.id)) return true;
+  if (short === "entries" && row.id != null && (s.ids.has(row.id) || s.keyEntryIds.has(row.id))) return true;
+  if (short === "calories" && row.id != null && s.keyCalorieIds.has(row.id)) return true;
+  if (s.odd && ((short === "entries" && oddEntry(row as never)) || (short === "calories" && oddCalorie(row as never)))) return true;
   return typeof row.date === "string" && inDay(s, row.date);
 }
 function covers(scope: Scope, clientId: number, span: FoodSpan, tables: readonly FoodShort[]): string | null {
   for (const t of tables) if (!scope.tables.has(t)) return `the ${t} list was not fetched`;
   const s = scope.clients.get(clientId);
   if (!s) return `client ${clientId} was not fetched`;
+  for (const t of tables) if (!tablesOf(scope, s).has(t)) return `the ${t} list of client ${clientId} was not fetched`;
   if (!tables.some((t) => DATED.has(t)) || s.all) return null;
   if (span === "all") return `client ${clientId}'s whole history was not fetched`;
+  if (span === "logged") return s.ask.logged ? null : `whether client ${clientId} logged food was not fetched`;
+  if ("feedFrom" in span) return s.ask.feed != null && s.ask.feed <= span.feedFrom ? null : `client ${clientId}'s food feed from ${span.feedFrom} was not fetched (held ${s.ask.feed ?? "none"})`;
+  if ("coachTop" in span) return s.ask.top && s.ask.top.n >= span.coachTop ? null : `the coach's newest ${span.coachTop} food events were not fetched for client ${clientId}`;
+  if ("since" in span) return s.ask.since != null && s.ask.since === span.since ? null : `client ${clientId}'s food since ${span.since} was not fetched (held ${s.ask.since ?? "none"})`;
   if ("dates" in span) {
     const out = span.dates.filter((d) => !inDay(s, d));
     return out.length ? `${out.length} day(s) of client ${clientId} were not fetched` : null;
@@ -232,6 +305,17 @@ export class FoodRows {
       }
     }
   }
+  /** What the start-up's look back-fill reads (storage.ts): every client's day photos and saved meals still without a look. */
+  needNoLook(reader: string): void {
+    if (!this.scope || this.scope.nolook) return;
+    const message = `[food] ${reader} on ${this.path}: the pictures without a look were not fetched`;
+    noteFoodMissed(this.path, message);
+    if (STRICT) throw new FoodViewMiss(message);
+    if (!said.has(message)) {
+      said.add(message);
+      console.warn(message);
+    }
+  }
 }
 
 /** A writer's rows: a view whose lists can be replaced, ids allocated, and the save and the pictures' clean-up asked for. */
@@ -321,6 +405,10 @@ const decodeOf = (t: FoodTable) => (r: Row) => fromRecord(TABLE_OF[t], r);
 const byId = (a: { id: number }, b: { id: number }) => a.id - b.id;
 const ints = (ids: readonly number[]) => `{${ids.filter((n) => Number.isInteger(n)).join(",")}}`;
 const textJson = (list: Iterable<string>) => JSON.stringify([...list]);
+const CHUNK = 5000;
+function* chunks<T>(list: readonly T[], size = CHUNK): Generator<T[]> {
+  for (let i = 0; i < list.length; i += size) yield list.slice(i, i + size);
+}
 
 /** The store's rows inside the scope, the same objects in the store's order (FOOD_VIEWS=narrow). */
 function sliceStore(scope: Scope): Lists {
@@ -338,6 +426,7 @@ function scopeSql(short: FoodShort, scope: Scope): SQL | null {
   const parts: SQL[] = [];
   const whole: number[] = [];
   for (const [id, s] of scope.clients) {
+    if (!tablesOf(scope, s).has(short)) continue;
     if (!DATED.has(short) || s.all) {
       whole.push(id);
       continue;
@@ -351,8 +440,36 @@ function scopeSql(short: FoodShort, scope: Scope): SQL | null {
   }
   if (whole.length) parts.push(sql`client_id = ANY(${ints(whole)}::int[])`);
   if (short === "photos" && scope.paths.size) parts.push(sql`file_path IN (SELECT jsonb_array_elements_text(${textJson(scope.paths)}::jsonb))`);
+  if (scope.nolook && short === "photos") parts.push(sql.raw(SQL_NOLOOK_PHOTO));
+  if (scope.nolook && short === "savedMeals") parts.push(sql.raw(SQL_NOLOOK_SAVED));
   if (!parts.length) return null;
   return sql`SELECT * FROM ${t} WHERE ${sql.join(parts, sql` OR `)} ORDER BY id`;
+}
+
+/**
+ * The days and rows a fetch resolved (food/slices.ts) as their own statements: each day whole by (client_id, date), a
+ * row by (client_id, id), in chunks; never an OR a client in one statement, so a coach-wide scope is a few statements.
+ */
+async function keyedRows(q: Q, short: FoodShort, scope: Scope): Promise<Row[]> {
+  if (short !== "entries" && short !== "calories") return [];
+  if (!scope.tables.has(short)) return [];
+  const t = sql.identifier(FOOD_SHORT[short]);
+  const days: { c: number; d: string }[] = [];
+  const ids: { c: number; i: number }[] = [];
+  const odd: number[] = [];
+  for (const [c, s] of scope.clients) {
+    if (s.all || !tablesOf(scope, s).has(short)) continue;
+    if (s.odd) odd.push(c);
+    for (const d of s.keys) if (!s.dates.has(d)) days.push({ c, d });
+    for (const i of short === "entries" ? s.keyEntryIds : s.keyCalorieIds) ids.push({ c, i });
+  }
+  const out: Row[] = [];
+  for (const part of chunks(days)) out.push(...(await q(sql`SELECT t.* FROM jsonb_to_recordset(${JSON.stringify(part)}::jsonb) AS k(c int, d text) CROSS JOIN LATERAL (SELECT t.* FROM ${t} t WHERE t.client_id = k.c AND t.date = k.d) t`)));
+  // The odd rows of the clients a feed's moments were asked of, on their partial indexes (food/slices.ts); no ORDER BY,
+  // so the planner never trades the partial index for an ordered walk of the whole table (sorted by id below).
+  for (const part of chunks(odd)) out.push(...(await q(sql`SELECT * FROM ${t} WHERE client_id = ANY(${ints(part)}::int[]) AND ${sql.raw(short === "entries" ? SQL_ODD_ENTRY() : SQL_ODD_CALORIE())}`)));
+  for (const part of chunks(ids)) out.push(...(await q(sql`SELECT t.* FROM jsonb_to_recordset(${JSON.stringify(part)}::jsonb) AS k(c int, i int) CROSS JOIN LATERAL (SELECT t.* FROM ${t} t WHERE t.client_id = k.c AND t.id = k.i) t`)));
+  return out;
 }
 
 /** The scope read from Postgres in one snapshot (or inside a write's transaction), each list by id. */
@@ -360,7 +477,11 @@ async function loadScope(q: Q, scope: Scope): Promise<Lists> {
   const out = {} as Record<FoodShort, unknown[]>;
   for (const short of SHORTS) {
     const query = scopeSql(short, scope);
-    out[short] = query ? (await q(query)).map(decodeOf(FOOD_SHORT[short])).sort(byId as never) : [];
+    const rows = query ? await q(query) : [];
+    const keyed = await keyedRows(q, short, scope);
+    const seen = new Set<unknown>();
+    const all = [...rows, ...keyed].filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
+    out[short] = all.map(decodeOf(FOOD_SHORT[short])).sort(byId as never);
   }
   return out as unknown as Lists;
 }
@@ -392,13 +513,60 @@ async function loadScopeWithPictures(q: Q, scope: Scope, withPictures: boolean):
   return got;
 }
 
+// ---- The coach-wide asks resolved (food/slices.ts) ------------------------------------------------------------------
+
+/** The clients whose asks are to resolve: not a client taken whole (the whole holds every answer). */
+function asksOf(scope: Scope): Map<number, FoodAsk> {
+  const out = new Map<number, FoodAsk>();
+  for (const [c, s] of scope.clients) {
+    if (s.all) continue;
+    const a = s.ask;
+    if (a.feed != null || a.top != null || a.since != null || a.logged) out.set(c, { ...a, top: a.top ? { coach: s.coach ?? 0, n: a.top.n } : null });
+  }
+  return out;
+}
+/** What the fetch resolved, onto the scope: the days whole, the odd rows, the rows by id. */
+async function resolveScope(scope: Scope, src: FoodSource): Promise<void> {
+  const asks = asksOf(scope);
+  if (!asks.size) return;
+  const got = await resolveFood(asks, src, scope.now ?? Date.now());
+  for (const [c, r] of got) {
+    const s = scope.clients.get(c);
+    if (!s) continue;
+    for (const d of r.keys) s.keys.add(d);
+    s.odd ||= r.odd;
+    for (const i of r.entryIds) s.keyEntryIds.add(i);
+    for (const i of r.calorieIds) s.keyCalorieIds.add(i);
+  }
+}
+/** The scope as asked, nothing resolved: the shadow resolves its own copy each side (SQL, and the rows committed). */
+function unresolvedCopy(scope: Scope): Scope {
+  const clients = new Map<number, ClientScope>();
+  for (const [c, s] of scope.clients) clients.set(c, { ...s, keys: new Set(), odd: false, keyEntryIds: new Set(), keyCalorieIds: new Set() });
+  return { clients, tables: scope.tables, paths: new Set(scope.paths), nolook: scope.nolook, now: scope.now };
+}
+/** What a resolved scope holds, as one line to compare (the shadow's keys check): client ids, days, ids, never a value. */
+function resolvedLine(scope: Scope): string {
+  const parts: string[] = [];
+  for (const [c, s] of [...scope.clients].sort((a, b) => a[0] - b[0])) {
+    if (!s.keys.size && !s.odd && !s.keyEntryIds.size && !s.keyCalorieIds.size) continue;
+    parts.push(`${c}:${[...s.keys].sort().join(",")}|${s.odd ? 1 : 0}|${[...s.keyEntryIds].sort((a, b) => a - b).join(",")}|${[...s.keyCalorieIds].sort((a, b) => a - b).join(",")}`);
+  }
+  return parts.join(";");
+}
+const decodeLists = { entry: (r: Row) => decodeOf("food_entries")(r) as unknown as FoodEntry, calorie: (r: Row) => decodeOf("calorie_logs")(r) as unknown as CalorieLog };
+
 async function fetchScope(path: FoodReadPath, scope: Scope, withPictures: boolean): Promise<FoodRows> {
   noteFoodSeen(path);
+  scope.now ??= Date.now();
   if (FOOD_PG) {
     // The meal order with the meal lists, in the same snapshot (a card and its place always agree), never the mirror.
     const ids = [...scope.clients.keys()];
     const gen = orderGeneration();
-    const got = await foodRead(async (q) => ({ lists: await loadScopeWithPictures(q, scope, withPictures), orders: scope.tables.has("meals") && ids.length ? await readOrders(q, ids) : null }));
+    const got = await foodRead(async (q) => {
+      await resolveScope(scope, sqlFoodSource(q, decodeLists));
+      return { lists: await loadScopeWithPictures(q, scope, withPictures), orders: scope.tables.has("meals") && ids.length ? await readOrders(q, ids) : null };
+    });
     const orders = new Map<number, MealOrderHolder>();
     if (got.orders) {
       for (const id of ids) {
@@ -409,25 +577,40 @@ async function fetchScope(path: FoodReadPath, scope: Scope, withPictures: boolea
     }
     return new FoodRows(MINT, path, listHolder(got.lists), scope, orders);
   }
-  if (MODE === "narrow" && withPictures && scope.tables.has("photos")) for (const p of picturePathsOf(sliceStore(scope))) scope.paths.add(p);
   // The shadow (FOOD_SHADOW=read): the same scope's SQL, the pictures' second statement too, compared with what the
-  // last save committed. Behind the answer, on its own copy of the scope (the view's own is never touched by it).
-  const shadowScope: Scope = { clients: scope.clients, tables: scope.tables, paths: new Set(scope.paths) };
+  // last save committed. Behind the answer, on its own copies of the scope (the view's own is never touched by it): the
+  // SQL side resolves its asks in SQL, the committed side over the rows committed, and the two resolutions are compared.
+  const sqlScope = unresolvedCopy(scope);
+  const committedScope = unresolvedCopy(scope);
+  const hasAsks = asksOf(scope).size > 0;
   onFoodFetch(path, {
     tables: SHORTS.filter((s) => scope.tables.has(s)).map((s) => FOOD_SHORT[s]),
     sqlRows: async (q) => {
-      const lists = await loadScopeWithPictures(q, shadowScope, withPictures);
+      sqlScope.paths = new Set(scope.paths);
+      if (hasAsks) await resolveScope(sqlScope, sqlFoodSource(q, decodeLists));
+      const lists = await loadScopeWithPictures(q, sqlScope, withPictures);
       return Object.fromEntries(SHORTS.map((s) => [FOOD_SHORT[s], lists[s] as unknown as Row[]]));
     },
-    committedIn: (t, row) => rowIn(shadowScope, SHORT_OF[t], row as never),
+    prepare: hasAsks
+      ? async (rowsOf) => {
+          committedScope.paths = sqlScope.paths;
+          await resolveScope(committedScope, listFoodSource(rowsOf("food_entries") as unknown as FoodEntry[], rowsOf("calorie_logs") as unknown as CalorieLog[]));
+          return { sql: resolvedLine(sqlScope), committed: resolvedLine(committedScope) };
+        }
+      : undefined,
+    committedIn: (t, row) => rowIn(hasAsks ? committedScope : sqlScope, SHORT_OF[t], row as never),
     decode: (t, record) => decodeOf(t)(record),
     clients: [...scope.clients.keys()],
-    anyClient: (t) => t === "meal_photos" && shadowScope.paths.size > 0,
+    anyClient: (t) => (t === "meal_photos" && (sqlScope.paths.size > 0 || !!scope.nolook)) || (t === "saved_meals" && !!scope.nolook),
     // The meal order: in memory mode it is the client row's (food_meal_orders is empty until a pg boot seeds it from
     // exactly that), so the SQL side is the clients table's, compared with what the last save committed of it.
     orders: scope.tables.has("meals") && scope.clients.size ? shadowOrders([...scope.clients.keys()]) : undefined,
   });
-  if (MODE === "narrow") return new FoodRows(MINT, path, listHolder(sliceStore(scope)), scope);
+  if (MODE === "narrow") {
+    await resolveScope(scope, listFoodSource(storeHolder.get("entries") as FoodEntry[], storeHolder.get("calories") as CalorieLog[]));
+    if (withPictures && scope.tables.has("photos")) for (const p of picturePathsOf(sliceStore(scope))) scope.paths.add(p);
+    return new FoodRows(MINT, path, listHolder(sliceStore(scope)), scope);
+  }
   return new FoodRows(MINT, path, storeHolder, scope);
 }
 const SHORT_OF = Object.fromEntries(SHORTS.map((s) => [FOOD_SHORT[s], s])) as Record<FoodTable, FoodShort>;
@@ -491,10 +674,48 @@ export function fetchClientFood(clientId: number, path: FoodReadPath, spans: Foo
   return fetchScope(path, makeScope([clientId], Array.isArray(spans) ? (spans as FoodSpan[]) : [spans as FoodSpan]), true);
 }
 
+const FEED_LISTS: readonly FoodShort[] = ["entries", "calories"];
+/**
+ * The moment the coach-wide readers' window starts (getClientHome's unseen marks, Needs you, markClientEventsSeen:
+ * HOME_NEW_DAYS back), an hour more for the clock between the fetch and the read, as the chat's views take it.
+ */
+const feedWindow = () => Date.now() - HOME_NEW_DAYS * 86_400_000 - 3_600_000;
+/** The coach's previous visit to the Feed (its Since), as the chat's view reads it; null on a first visit. */
+function feedPrev(coachId: number): number | null {
+  const prev = getData().users.find((u) => u.id === coachId && u.role === "coach")?.feed_looked?.prev;
+  return typeof prev === "number" && Number.isFinite(prev) ? prev : null;
+}
+const coachClientIds = (coachIds: Iterable<number>) => {
+  const coaches = new Set(coachIds);
+  return getData()
+    .clients.filter((c) => c.coach_id != null && coaches.has(c.coach_id))
+    .map((c) => c.id);
+};
+
+/**
+ * What a coach-wide page reads of these coaches' clients' food, by the page (food/paths.ts FOOD_SHAPE): the rail's
+ * window, the Feed's newest and Since, Coaches' newest per coach, or (the old admin) everything.
+ */
+function coachParts(coachIds: readonly number[], path: FoodReadPath): ScopePart[] {
+  const ids = coachClientIds(coachIds);
+  const shape = FOOD_SHAPE[path as keyof typeof FOOD_SHAPE] ?? "all";
+  if (shape === "all") return [{ ids, spans: ["all"], tables: FEED_LISTS }];
+  const spans: FoodSpan[] = [];
+  if (shape === "accounts") spans.push({ coachTop: 1 });
+  else spans.push({ feedFrom: feedWindow() });
+  if (shape === "feed") {
+    spans.push({ coachTop: FEED_KIND_ROWS });
+    const prev = coachIds.length === 1 ? feedPrev(coachIds[0]) : null;
+    if (prev != null) spans.push({ since: prev });
+  }
+  return [{ ids, spans, tables: FEED_LISTS }];
+}
+
 /** The client's own app: their whole food diary (the diary, Last 7 days, the calendar, the chat's meal links), and the
- *  clients the locked app's one-time sweep reads while it hasn't run (appLockFor). */
+ *  clients the locked app's one-time sweep reads while it hasn't run (appLockFor): whether each logged anything. */
 export function fetchClientPageFood(clientId: number, path: FoodReadPath): Promise<FoodRows> {
-  return fetchScope(path, makeScope([...new Set([clientId, ...unsweptClients()])], ["all"]), true);
+  const swept = unsweptClients().filter((id) => id !== clientId);
+  return fetchScope(path, partsScope([{ ids: [clientId], spans: ["all"], tables: SHORTS }, { ids: swept, spans: ["logged"], tables: FEED_LISTS }]), true);
 }
 
 /** Several clients' food, whole (the old admin's screens, the coach's tabs over one client and their coach's others). */
@@ -502,24 +723,40 @@ export function fetchClientsFood(clientIds: readonly number[], path: FoodReadPat
   return fetchScope(path, makeScope([...new Set(clientIds)], ["all"], tables), tables.includes("photos"));
 }
 
-/** What a coach's feed reads of food (entries and calorie logs) for every client of these coaches, and the client in focus. */
+/**
+ * What a coach's feed reads of food (entries and calorie logs) for every client of these coaches, and the client in
+ * focus: the page's shape (food/paths.ts FOOD_SHAPE: the rail's window, the Feed's newest 200 and Since, Coaches' newest
+ * per coach), or with a focus (an action about one client: its marks, its Needs you) that client's window alone.
+ */
 export function fetchCoachFood(coachIds: readonly number[], path: FoodReadPath, focus?: number): Promise<FoodRows> {
-  const coaches = new Set(coachIds);
-  const ids = getData().clients.filter((c) => c.coach_id != null && coaches.has(c.coach_id)).map((c) => c.id);
-  if (focus != null) ids.push(focus);
-  return fetchScope(path, makeScope([...new Set(ids)], ["all"], ["entries", "calories"]), false);
+  if (focus != null && FOOD_SHAPE[path as keyof typeof FOOD_SHAPE] === "focus") return fetchScope(path, partsScope([{ ids: [focus], spans: [{ feedFrom: feedWindow() }], tables: FEED_LISTS }]), false);
+  const parts = coachParts(coachIds, path);
+  if (focus != null) parts.push({ ids: [focus], spans: ["all"], tables: FEED_LISTS });
+  return fetchScope(path, partsScope(parts), false);
 }
 
 /**
  * A client's tab in the admin: one view for the rail, the dots and Home's feed (the coach's clients, and the client's
- * own coach's should the owner open another coach's client) and for every tab's reading of the client (their whole food
- * diary). As fetchClientTabChat asks for the chat.
+ * own coach's should the owner open another coach's client: their window, entries and calorie logs) and for every tab's
+ * reading of the client (their whole food diary), and whether each client still unopened logged anything (the locked
+ * app's sweep). As fetchClientTabChat asks for the chat.
  */
 export function fetchClientTabFood(coachId: number, clientId: number, path: FoodReadPath): Promise<FoodRows> {
   const own = getData().clients.find((c) => c.id === clientId)?.coach_id ?? 0;
-  const coaches = new Set(own !== coachId ? [coachId, own] : [coachId]);
-  const ids = getData().clients.filter((c) => c.coach_id != null && coaches.has(c.coach_id)).map((c) => c.id);
-  return fetchScope(path, makeScope([...new Set([...ids, clientId, ...unsweptClients()])], ["all"]), true);
+  const coaches = own !== coachId ? [coachId, own] : [coachId];
+  const ids = coachClientIds(coaches);
+  const swept = unsweptClients().filter((id) => id !== clientId);
+  // A path with no shape reads everything, as coachParts takes it.
+  const window: FoodSpan[] = (FOOD_SHAPE[path as keyof typeof FOOD_SHAPE] ?? "all") === "all" ? ["all"] : [{ feedFrom: feedWindow() }];
+  return fetchScope(
+    path,
+    partsScope([
+      { ids, spans: window, tables: FEED_LISTS },
+      { ids: [clientId], spans: ["all"], tables: SHORTS },
+      { ids: swept, spans: ["logged"], tables: FEED_LISTS },
+    ]),
+    true
+  );
 }
 
 /** Every client still unopened while the locked app's one-time sweep hasn't run (lib/appLock.ts reads their food). */
@@ -530,25 +767,26 @@ function unsweptClients(): number[] {
 
 /** Every list of these coaches' clients and the client in focus, whole (the old admin: its rail, feed and client panels). */
 export function fetchCoachClientsFood(coachIds: readonly number[], path: FoodReadPath, focus?: number | null): Promise<FoodRows> {
-  const coaches = new Set(coachIds);
-  const ids = getData().clients.filter((c) => c.coach_id != null && coaches.has(c.coach_id)).map((c) => c.id);
+  const ids = coachClientIds(coachIds);
   if (focus != null) ids.push(focus);
   return fetchScope(path, makeScope([...new Set(ids)], ["all"]), true);
 }
 
-/** The coach's food view of the client's coach (an action about one client). */
+/** The coach's food view of the client's coach (an action about one client): that client's window alone (FOOD_SHAPE). */
 export function fetchCoachFoodOfClient(clientId: number, path: FoodReadPath): Promise<FoodRows> {
   return fetchCoachFood([getData().clients.find((c) => c.id === clientId)?.coach_id ?? 0], path, clientId);
 }
 
-/** Whether these clients logged any food or a figure of their own (lib/appLock.ts): their entries and calorie logs. */
+/** Whether these clients logged any food or a figure of their own (lib/appLock.ts): their first entry and own calorie log. */
 export function fetchFoodLogged(clientIds: readonly number[], path: FoodReadPath): Promise<FoodRows> {
-  return fetchScope(path, makeScope([...new Set(clientIds)], ["all"], ["entries", "calories"]), false);
+  return fetchScope(path, partsScope([{ ids: [...new Set(clientIds)], spans: ["logged"], tables: FEED_LISTS }]), false);
 }
 
-/** Every client's meal photos and saved meals still without a look (the start-up's back-fill, storage.ts). */
+/** Every client's meal photos and saved meals that may still want a look (the start-up's back-fill, storage.ts, which
+ *  filters further): on their partial indexes, never every row. */
 export function fetchFoodPictures(path: FoodReadPath): Promise<FoodRows> {
-  return fetchScope(path, makeScope(getData().clients.map((c) => c.id), ["all"], ["photos", "savedMeals"]), false);
+  const scope: Scope = { clients: new Map(), tables: new Set<FoodShort>(["photos", "savedMeals"]), paths: new Set(), nolook: true };
+  return fetchScope(path, scope, false);
 }
 
 /**

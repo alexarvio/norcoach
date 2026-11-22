@@ -10,6 +10,7 @@ import { CHAT_PG } from "./chat/mode";
 import { NOTES_PG } from "./notes/mode";
 import { FOOD_PG } from "./food/mode";
 import { CHECKINS_PG } from "./checkins/mode";
+import { SETS_PG } from "./sets/mode";
 
 // Shutting down without losing a save (17 Nov, the safety net). Railway stops a deploy with SIGTERM; Next's own
 // handler (next/dist/server/lib/start-server.js) closes the HTTP server, waits for the requests still open, then
@@ -53,8 +54,8 @@ function dumpStore(why: string): string | null {
     // yet in the table), which a pg boot drains and a memory boot of this build applies.
     // With FOOD_STORE=pg the food diary the same (quest 8 part 1): each write committed before its answer, the file says so.
     // With CHECKINS_STORE=pg the check-in figures the same (quest 9).
-    const flags = { ...(CHAT_PG ? { _chat_in_postgres: true } : {}), ...(NOTES_PG ? { _notes_in_postgres: true } : {}), ...(FOOD_PG ? { _food_in_postgres: true } : {}), ...(CHECKINS_PG ? { _checkins_in_postgres: true } : {}) };
-    body = CHAT_PG || NOTES_PG || FOOD_PG || CHECKINS_PG ? JSON.stringify({ ...getData(), ...flags }) : JSON.stringify(getData());
+    const flags = { ...(CHAT_PG ? { _chat_in_postgres: true } : {}), ...(NOTES_PG ? { _notes_in_postgres: true } : {}), ...(FOOD_PG ? { _food_in_postgres: true } : {}), ...(CHECKINS_PG ? { _checkins_in_postgres: true } : {}), ...(SETS_PG ? { _sets_in_postgres: true } : {}) };
+    body = CHAT_PG || NOTES_PG || FOOD_PG || CHECKINS_PG || SETS_PG ? JSON.stringify({ ...getData(), ...flags }) : JSON.stringify(getData());
   } catch (e) {
     console.error(`[shutdown] !!! the last save to Postgres failed (${why}), and the store can't even be written as JSON:`, e);
     return null;
@@ -132,6 +133,11 @@ export function registerShutdown() {
         if (CHECKINS_PG) {
           const { checkInChainsSettled } = await import("./checkins/pg");
           await until(checkInChainsSettled(), deadline - 1000);
+        }
+        // SETS_STORE=pg: the set writes still on their chains settled the same (quest 10), before the lease goes.
+        if (SETS_PG) {
+          const { setChainsSettled } = await import("./sets/pg");
+          await until(setChainsSettled(), deadline - 1000);
         }
         const problem = STORE_MODE === "postgres" ? await until(first.catch(() => {}).then(() => flushStore() ?? undefined), deadline) : null;
         if (problem) {

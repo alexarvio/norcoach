@@ -834,6 +834,8 @@ export async function prepareAllChatMedia(): Promise<number> {
   // A meal's picture, day's or saved, from before they had a preview (10 Nov, Alex): the card draws its 1080 as well.
   // The food diary's door (quest 8 part 1): every client's day photos and saved meals.
   const food = await fetchFoodPictures("job.media.prepare");
+  // Those that may want a look alone (21 Nov, the bounded slices): the filter below as it was.
+  food.needNoLook("prepareAllChatMedia");
   for (const p of [...food.photos.filter((m) => !m.thumb).map((m) => m.file_path), ...food.savedMeals.filter((m) => m.picture && !m.picture_thumb).map((m) => m.picture!)]) {
     if (seen.has(p)) continue;
     seen.add(p);

@@ -8,6 +8,7 @@
 
 import { getData, persistNow } from "./db";
 import { endStaleSessions, liveSessionDays, liveSessionFor, sessionLastActivityMs } from "./queries";
+import { fetchLiveSessionSets } from "./sets/rows";
 import { stampMs } from "./targetRule";
 
 const MIN = 60_000;
@@ -37,7 +38,8 @@ export function agoWords(ms: number): string {
 export async function runWorkoutReminders(now: number = Date.now()): Promise<number> {
   // The 12 h end ran only on a request (dueJobs.ts); here it runs on the clock too, before anything is reminded.
   try {
-    endStaleSessions();
+    // Every live session's sets fetched first (quest 10, sets/rows.ts).
+    await endStaleSessions(await fetchLiveSessionSets("job.staleSessions"));
   } catch (e) {
     console.error("[reminders] ending stale sessions failed:", e instanceof Error ? e.message : e);
   }
@@ -46,9 +48,10 @@ export async function runWorkoutReminders(now: number = Date.now()): Promise<num
   let sent = 0;
   // Marked and saved before anything is sent, so a restart or a second server mid-deploy never sends one twice.
   const due: { userId: number; title: string; body: string; dayId: number; n: number }[] = [];
+  const liveSets = await fetchLiveSessionSets("job.workoutReminders");
   for (const day of liveSessionDays()) {
     if (!day.session_started_at) continue;
-    const { lastMs, lastSetMs, sets } = sessionLastActivityMs(day);
+    const { lastMs, lastSetMs, sets } = sessionLastActivityMs(liveSets, day);
     if (!Number.isFinite(lastMs)) continue;
     const idle = now - lastMs;
     const key = `${day.session_started_at}|${lastMs}`;

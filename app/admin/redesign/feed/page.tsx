@@ -6,6 +6,7 @@ import { loadChatDock, loadRail } from "../loaders";
 import { fetchCoachPageChat } from "../../../lib/chat/rows";
 import { fetchCoachFood } from "../../../lib/food/rows";
 import { fetchCoachCheckIns } from "../../../lib/checkins/rows";
+import { fetchCoachSets } from "../../../lib/sets/rows";
 import RedesignRail from "../RedesignRail";
 import ChatDock from "../ChatDock";
 import FeedDraft from "./FeedDraft";
@@ -40,13 +41,15 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
   const food = await t.time("food", () => fetchCoachFood([coach.id], "page.feed"));
   // The check-in figures the rail's feed reads (quest 9, app/lib/checkins/rows.ts), fetched first as the food is.
   const ck = await t.time("checkins", () => fetchCoachCheckIns([coach.id], "page.feed"));
+  // The logged sets (quest 10, app/lib/sets/rows.ts), fetched first as the check-ins are.
+  const sr = await t.time("sets", () => fetchCoachSets("page.feed", [coach.id]));
   const params = await searchParams;
-  const board = await t.time("feedBoard", () => getFeedBoard(coach.id, chat.coach, food, ck));
+  const board = await t.time("feedBoard", () => getFeedBoard(coach.id, chat.coach, food, ck, sr));
   // eslint-disable-next-line react-hooks/purity -- a server render reads the clock once, on purpose: the waits in Needs you count from it, the same on the server and in the browser
   const now = Date.now();
   return t.end(
     <div className="rd-frame">
-      <RedesignRail rail={t.time("rail", () => loadRail(coach, chat.coach, food, ck))} clientId={0} />
+      <RedesignRail rail={t.time("rail", () => loadRail(coach, chat.coach, food, ck, sr))} clientId={0} />
       <ChatDock chats={t.time("chatDock", () => loadChatDock(coach, chat.dock))} />
       <div className="rd-page">
         <FeedDraft board={board} now={now} kind={params.cat ?? null} />

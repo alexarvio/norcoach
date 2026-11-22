@@ -74,3 +74,31 @@ export const CHECKINS_WRITE_PATHS = [
 ] as const;
 export type CheckInWritePath = (typeof CHECKINS_WRITE_PATHS)[number];
 export type CheckInPath = CheckInReadPath | CheckInWritePath;
+
+/**
+ * What each coach-wide read path takes of the coach's clients' check-ins (21 Nov, the bounded slices; checkins/rows.ts
+ * fetchCoachCheckIns, fetchClientTabCheckIns, fetchEveryCheckIn): the rail's window (each client's check-ins of the last
+ * HOME_NEW_DAYS and their newest, and every metric's newest period), the Feed's too with the coach's newest
+ * FEED_KIND_ROWS of each kind and its Since, Coaches' newest per coach, the window of the one client an action is about,
+ * or (any path not named here: the old admin, until it is retired) everything.
+ */
+export type CheckInShape = "rail" | "feed" | "accounts" | "focus" | "all";
+export const CHECKINS_SHAPE: Partial<Record<CheckInReadPath, CheckInShape>> = {
+  ...(Object.fromEntries(CHECKIN_TABS.map((t) => [`page.tab.${t}`, "rail"])) as Record<`page.tab.${CheckInTab}`, CheckInShape>),
+  ...(Object.fromEntries(CHECKIN_TABS.map((t) => [`page.noClients.${t}`, "rail"])) as Record<`page.noClients.${CheckInTab}`, CheckInShape>),
+  "page.business": "rail",
+  "page.calendar": "rail",
+  "page.library": "rail",
+  "page.settings": "rail",
+  "page.phases": "rail",
+  "page.coaches": "rail",
+  "page.onboarding": "rail",
+  "page.onboarding.screen": "rail",
+  "page.feed": "feed",
+  "page.coaches.accounts": "accounts",
+  "page.onboarding.screen.accounts": "accounts",
+  "api.seen": "focus",
+  "action.markSeen": "focus",
+  "action.markProgramNote": "focus",
+  "action.dismissHome": "focus",
+};

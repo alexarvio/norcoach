@@ -19,6 +19,8 @@
 //   npx tsx scripts/seed-demo-block.ts
 
 import { getData, persist, allocId } from "../app/lib/db";
+// sets-door: the seeds write the store's own sets list through the door's memory-mode box (scripts only).
+import { storeSetBox } from "../app/lib/sets/rows";
 import { storeCheckInBox } from "../app/lib/checkins/rows";
 import { localDateStr, weekStart } from "../app/lib/queries";
 
@@ -155,7 +157,7 @@ const oldDayIds = new Set(oldDays.map((d) => d.id));
 const oldAssignments = data.workout_assignments.filter((a) => oldDayIds.has(a.program_day_id));
 const oldAssignmentIds = new Set(oldAssignments.map((a) => a.id));
 
-data.set_logs = data.set_logs.filter((l) => !oldAssignmentIds.has(l.workout_assignment_id));
+storeSetBox("w.set.seed").logs = storeSetBox("w.set.seed").logs.filter((l) => !oldAssignmentIds.has(l.workout_assignment_id));
 data.workout_assignments = data.workout_assignments.filter((a) => !oldDayIds.has(a.program_day_id));
 data.program_days = data.program_days.filter((d) => d.client_id !== CLIENT_ID);
 data.training_programs = data.training_programs.filter((p) => p.client_id !== CLIENT_ID);
@@ -239,7 +241,7 @@ for (let week = 1; week <= TOTAL_WEEKS; week++) {
         const repFloor = Number(ex.reps.split("-")[0]);
         const reps = Math.max(repFloor - (setNumber > 2 ? 1 : 0), repFloor - 2);
 
-        data.set_logs.push({
+        storeSetBox("w.set.seed").logs.push({
           id: allocId("set_logs"),
           workout_assignment_id: assignmentId,
           set_number: setNumber,

@@ -10,6 +10,7 @@ import { fetchThread, type ChatThread } from "../lib/chat/rows";
 import { fetchClientNotes, type ClientNotes } from "../lib/notes/rows";
 import { fetchClientPageFood, noFoodRows, type FoodRows } from "../lib/food/rows";
 import { fetchClientPageCheckIns, type CheckInRows } from "../lib/checkins/rows";
+import { fetchClientPageSets, type SetRows } from "../lib/sets/rows";
 import {
   getAssignmentsForDay,
   getFreeSessions,
@@ -231,9 +232,9 @@ function getWeekDays(CLIENT_ID: number, week?: number) {
 // This week's training in one figure, for the top of the Training tab:
 // days trained of the days built. (Sets logged used to sit beside it; it
 // told the client nothing they could act on, so it went.)
-function weekStats(CLIENT_ID: number, week: number) {
+function weekStats(sr: SetRows, CLIENT_ID: number, week: number) {
   const days = getWeekDays(CLIENT_ID, week);
-  const daysTrained = days.filter((d) => d.assignments.some((a) => getLogsForAssignment(a.id).length > 0)).length;
+  const daysTrained = days.filter((d) => d.assignments.some((a) => getLogsForAssignment(sr, a.id).length > 0)).length;
   const totalDays = days.filter((d) => d.assignments.length > 0).length;
   return { daysTrained, totalDays };
 }
@@ -397,7 +398,7 @@ function isoPlusDays(iso: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function HomeTab({ CLIENT_ID, chat, notes, photos, food, phoneTz, foodRows, ck }: { CLIENT_ID: number; chat: ChatThread; notes: ClientNotes; photos: ProgressPics; food: PhaseFoodToday; phoneTz: string | null; /** The client's food diary (app/lib/food/rows.ts): the coach's meal links' labels. */ foodRows: FoodRows; /** Their check-in figures (app/lib/checkins/rows.ts). */ ck: CheckInRows }) {
+function HomeTab({ CLIENT_ID, chat, notes, photos, food, phoneTz, foodRows, ck, sr }: { CLIENT_ID: number; chat: ChatThread; notes: ClientNotes; photos: ProgressPics; food: PhaseFoodToday; phoneTz: string | null; /** The client's food diary (app/lib/food/rows.ts): the coach's meal links' labels. */ foodRows: FoodRows; /** Their check-in figures (app/lib/checkins/rows.ts). */ ck: CheckInRows; /** The client's logged sets (app/lib/sets/rows.ts). */ sr: SetRows }) {
   const client = getClient(CLIENT_ID);
   const today = localDateStr();
 
@@ -421,7 +422,7 @@ function HomeTab({ CLIENT_ID, chat, notes, photos, food, phoneTz, foodRows, ck }
 
   // The next session, for the training card's Start.
   const session = (() => {
-    const s = getUpNextSession(CLIENT_ID);
+    const s = getUpNextSession(sr, CLIENT_ID);
     if (!s) return null;
     // Weeks in a row with at least one session done, counting back from this one.
     const current = getCurrentWeekNumber(CLIENT_ID);
@@ -429,7 +430,7 @@ function HomeTab({ CLIENT_ID, chat, notes, photos, food, phoneTz, foodRows, ck }
     for (let w = current; w >= 1; w--) {
       const days = getWeekDays(CLIENT_ID, w).filter((d) => d.assignments.length > 0);
       if (days.length === 0) break;
-      const done = days.some(({ day, assignments }) => !!day.session_ended_at || assignments.every((a) => getLogsForAssignment(a.id).length >= setsDue(a)));
+      const done = days.some(({ day, assignments }) => !!day.session_ended_at || assignments.every((a) => getLogsForAssignment(sr, a.id).length >= setsDue(a)));
       if (!done) {
         if (w === current) continue;
         break;
@@ -664,6 +665,7 @@ function TrainingTab({
   showMyNotes,
   workoutSheet = false,
   ck,
+  sr,
 }: {
   CLIENT_ID: number;
   week: number;
@@ -673,6 +675,8 @@ function TrainingTab({
   workoutSheet?: boolean;
   /** The client's check-in figures (app/lib/checkins/rows.ts): an assisted lift's PB reads the body weight. */
   ck: CheckInRows;
+  /** The client's logged sets (app/lib/sets/rows.ts). */
+  sr: SetRows;
 }) {
   const days = getWeekDays(CLIENT_ID, week);
   // The client's note about the whole programme sits between the week's
@@ -684,19 +688,19 @@ function TrainingTab({
     // A duplicate shows from when it is made, this week; a rogue session from when it starts.
     .filter((day) => !!day.session_started_at || (day.copy_of != null && week === getCurrentWeekNumber(CLIENT_ID) && trainingDays.some((t) => t.day.id === day.copy_of)))
     .map((day) => ({ day, assignments: getAssignmentsForDay(day.id) }));
-  const stats = weekStats(CLIENT_ID, week);
+  const stats = weekStats(sr, CLIENT_ID, week);
   const dayTarget = stats.totalDays || 7;
   // Sessions finished this week: every set logged and any cardio ticked, the
   // rule the coach's Complete uses. One ended with sets missing is
   // unfinished: not counted as done, and not still "left" either.
   const complete = ({ day, assignments }: (typeof trainingDays)[number]) =>
-    assignments.every((a) => getLogsForAssignment(a.id).length >= setsDue(a)) && listCardioForDay(day.id).every((c) => isCardioDone(c.id));
+    assignments.every((a) => getLogsForAssignment(sr, a.id).length >= setsDue(a)) && listCardioForDay(day.id).every((c) => isCardioDone(sr, c.id));
   const sessionsDone = trainingDays.filter(complete).length;
   const unfinished = trainingDays.filter((d) => !!d.day.session_ended_at && !complete(d)).length;
   const pct = Math.round((Math.min(sessionsDone, dayTarget) / dayTarget) * 100);
   // A session skipped with a reason is settled: it is not still "left" to
   // do. It does not count as trained either, so the ring stays honest.
-  const skipped = trainingDays.filter(({ day, assignments }) => !!day.skip_reason && !assignments.some((a) => getLogsForAssignment(a.id).length > 0)).length;
+  const skipped = trainingDays.filter(({ day, assignments }) => !!day.skip_reason && !assignments.some((a) => getLogsForAssignment(sr, a.id).length > 0)).length;
   const sessionsLeft = dayTarget - sessionsDone - unfinished - skipped;
   const ringR = 43;
   const ringC = 2 * Math.PI * ringR;
@@ -788,7 +792,7 @@ function TrainingTab({
           const gyms = listClientGyms(CLIENT_ID);
           const allGyms = listClientGyms(CLIENT_ID, true);
           // The picker's rows (13 Oct): colour, type, sessions there and the last visit.
-          const gymStats = gymSessionStats(CLIENT_ID);
+          const gymStats = gymSessionStats(sr, CLIENT_ID);
           const lastGymId = currentGymId(CLIENT_ID);
           const home = homeGymId(CLIENT_ID);
           const notesByGym = new Map(
@@ -803,7 +807,7 @@ function TrainingTab({
           let bests: ReturnType<typeof trainingBests>["bests"] = new Map();
           let barOf: ReturnType<typeof trainingBests>["barOf"] = () => null;
           try {
-            ({ bests, barOf } = trainingBests(ck, CLIENT_ID));
+            ({ bests, barOf } = trainingBests(ck, sr, CLIENT_ID));
           } catch {
             /* none shown */
           }
@@ -833,7 +837,7 @@ function TrainingTab({
               library={[...library.values()].map((e) => ({ id: e.id, name: e.name, group: exerciseGroup(e) }))}
               days={[...trainingDays, ...freeDays].map(({ day, assignments }, i) => {
                 const rogue = isRogue(day);
-                const gymId = dayGymId(day.id);
+                const gymId = dayGymId(sr, day.id);
                 // Videos the coach asked for in this session.
                 // Ask every session (15 Oct): requests this session inherits from recurring ones are made here, as the app loads it.
                 resolveRecurringVideoAsks(day, assignments);
@@ -861,7 +865,7 @@ function TrainingTab({
                 sessionNote: day.session_note ?? "",
                 questions: questionsForDay(day),
                 answers: Object.fromEntries(sessionAnswers(day).flatMap((a): [string, number | string][] => (a.text != null ? [[a.id, a.text]] : a.value != null ? [[a.id, a.value]] : []))),
-                cardio: listCardioForDay(day.id).map((c) => ({ id: c.id, name: c.name, time: c.time, pace: c.pace, incline: c.incline, distance: c.distance ?? "", notes: c.notes, done: isCardioDone(c.id), swap: c.swap?.name ?? null, alternatives: c.alternatives ?? [] })),
+                cardio: listCardioForDay(day.id).map((c) => ({ id: c.id, name: c.name, time: c.time, pace: c.pace, incline: c.incline, distance: c.distance ?? "", notes: c.notes, done: isCardioDone(sr, c.id), swap: c.swap?.name ?? null, alternatives: c.alternatives ?? [] })),
                 exercises: assignments.map((a) => ({
                   id: a.id,
                   name: a.exercise_name ?? "Exercise",
@@ -882,7 +886,7 @@ function TrainingTab({
                   // Assisted by the library's exercise or variation, as the weight rule reads it, whatever the row is called.
                   assisted: assistedRow(library.get(a.exercise_id), a.variation_id),
                   targetWeight: rogue ? null : a.target_weight_kg,
-                  unit: getExerciseUnit(a.id),
+                  unit: getExerciseUnit(sr, a.id),
                   targetRpe: a.rpe_target,
                   tempo: a.tempo,
                   rest: a.rest_seconds ?? null,
@@ -902,13 +906,13 @@ function TrainingTab({
                     const r = videoAsks.get(a.id);
                     if (r) return { id: r.id, note: r.note, src: r.file_path, sentAt: r.submitted_at, reply: videoReplies.find((x) => x.id === r.id) ?? null, fromClient: !!r.from_client, media: r.media ?? "video", about: r.about ?? null, clientNote: r.client_note ?? null };
                     // The coach's reply from an earlier session of this exercise lands here too (9 Oct).
-                    const c = carriedVideoReply(a.id);
+                    const c = carriedVideoReply(sr, a.id);
                     const reply = c ? videoReplies.find((x) => x.id === c.id) ?? null : null;
                     return c && reply ? { id: c.id, note: null, src: null, sentAt: null, reply, carried: true } : null;
                   })(),
                   gymTargets: !rogue && allGyms.length ? Object.fromEntries(allGyms.map((g) => [g.id, targetAtGym(a, g.id, home)])) : undefined,
                   gymNotes: allGyms.length ? Object.fromEntries(allGyms.map((g) => [g.id, notesByGym.get(g.id)?.get(a.exercise_id) ?? ""])) : undefined,
-                  logs: getLogsForAssignment(a.id).map((l) => ({
+                  logs: getLogsForAssignment(sr, a.id).map((l) => ({
                     id: l.id,
                     setNumber: l.set_number,
                     weight: l.weight_kg,
@@ -916,9 +920,9 @@ function TrainingTab({
                     rpe: l.rpe_actual,
                   })),
                   note: { text: a.notes, dateLabel: noteDateLabel(a.note_at), unread: !!a.notes && !a.note_read },
-                  lastSets: getLastSets(a.id, gymId),
-                  lastSetsAt: !rogue && allGyms.length > 1 ? getLastSetsByGym(a.id, allGyms.map((g) => g.id)) : undefined,
-                  history: getExerciseHistory(a.id, 3),
+                  lastSets: getLastSets(sr, a.id, gymId),
+                  lastSetsAt: !rogue && allGyms.length > 1 ? getLastSetsByGym(sr, a.id, allGyms.map((g) => g.id)) : undefined,
+                  history: getExerciseHistory(sr, a.id, 3),
                 })),
                 };
               })}
@@ -932,7 +936,7 @@ function TrainingTab({
   );
 }
 
-function NutritionTab({ CLIENT_ID, diary, readOnly = false, foodRows }: { CLIENT_ID: number; diary: FoodDiaryProps; readOnly?: boolean; /** The client's food diary (app/lib/food/rows.ts): Last 7 days. */ foodRows: FoodRows }) {
+function NutritionTab({ CLIENT_ID, diary, readOnly = false, foodRows, sr }: { CLIENT_ID: number; diary: FoodDiaryProps; readOnly?: boolean; /** The client's food diary (app/lib/food/rows.ts): Last 7 days. */ foodRows: FoodRows; /** The client's logged sets: their training days. */ sr: SetRows }) {
   const summary = getNutritionGoalsSummary(CLIENT_ID);
   const plan = getNutritionPlan(CLIENT_ID);
   const storedPlan = getStoredNutritionPlan(CLIENT_ID);
@@ -940,7 +944,7 @@ function NutritionTab({ CLIENT_ID, diary, readOnly = false, foodRows }: { CLIENT
   const today = localDateStr();
   // Sessions have no weekday: a day counts as a training day once a set was
   // logged on it (the last seven days below read their targets by it).
-  const trainedOn = trainingDates(CLIENT_ID);
+  const trainedOn = trainingDates(sr, CLIENT_ID);
   const coachName = getCoachFirstName(CLIENT_ID);
   const short = (iso: string) => dayWords(iso);
   const addDays = (iso: string, days: number) => {
@@ -1085,7 +1089,7 @@ function NutritionTab({ CLIENT_ID, diary, readOnly = false, foodRows }: { CLIENT
   );
 }
 
-function SettingsTab({ CLIENT_ID, own = false, passwordsHint = null }: { CLIENT_ID: number; /** The client in their own app: a coach looking (the phone preview, a coach on ?client=) never sees their own sign-in here. */ own?: boolean; /** Whether Clerk takes passwords, read with the page (lib/clerkPasswords.ts), so the Password row is there from the first frame. */ passwordsHint?: boolean | null }) {
+function SettingsTab({ CLIENT_ID, own = false, passwordsHint = null, sr }: { CLIENT_ID: number; /** The client in their own app: a coach looking (the phone preview, a coach on ?client=) never sees their own sign-in here. */ own?: boolean; /** Whether Clerk takes passwords, read with the page (lib/clerkPasswords.ts), so the Password row is there from the first frame. */ passwordsHint?: boolean | null; /** The client's logged sets: the gyms' pages. */ sr: SetRows }) {
   const client = getClient(CLIENT_ID);
   const coach = getCoachProfileForClient(CLIENT_ID);
   const profile = getClientProfile(CLIENT_ID);
@@ -1125,7 +1129,7 @@ function SettingsTab({ CLIENT_ID, own = false, passwordsHint = null }: { CLIENT_
       {/* A password to sign in with (17 Nov, Alex: "Settings row"), once Clerk takes passwords; the code still works. */}
       {own && clerkOn() && <PasswordSettings passwordsHint={passwordsHint} />}
 
-      <GymSettings clientId={CLIENT_ID} gyms={gymDashboards(CLIENT_ID)} />
+      <GymSettings clientId={CLIENT_ID} gyms={gymDashboards(sr, CLIENT_ID)} />
 
       {/* The pictures behind the Home cards (12 Oct): the client's own from their camera roll, or the coach's. Press and hold a card on Home does the same. */}
       <SettingsFold title="Card pictures">
@@ -1361,6 +1365,8 @@ export default async function ClientPage({
   // the untouched auto Weight line goes first, under their lock (a render can't wait for a transaction).
   await dropUnusedAutoWeightPg(CLIENT_ID);
   const ck = await fetchClientPageCheckIns(CLIENT_ID, "page.client");
+  // The logged sets (quest 10, app/lib/sets/rows.ts): the client whole, and whether each unopened client logged one.
+  const sr = await fetchClientPageSets("page.client", CLIENT_ID);
   // The Check-in screen's three sections, the measurement deltas and this
   // period's photo slots. Built here rather than in HomeTab because the
   // screen is a full-screen push view owned by AppShell.
@@ -1406,13 +1412,13 @@ export default async function ClientPage({
     // The hub's streak and month, and everything done, day by day, for its calendar (28 Sep).
     stats: (() => {
       const month = localDateStr().slice(0, 7);
-      const calendar = getWorkoutCalendar(CLIENT_ID);
+      const calendar = getWorkoutCalendar(sr, CLIENT_ID);
       return {
         streak: getCheckInStreak(ck, CLIENT_ID),
         workoutsThisMonth: calendar.filter((d) => d.date.startsWith(month)).reduce((n, d) => n + d.sessions.length, 0),
       };
     })(),
-    calendar: getActivityCalendar(foodRows, CLIENT_ID, ck),
+    calendar: getActivityCalendar(foodRows, CLIENT_ID, ck, sr),
   };
   const progressPictures = progressPicturesData(CLIENT_ID);
   // The bell: anything unread but the chat, which has its own dot on the Messages tab (7 Oct).
@@ -1433,7 +1439,7 @@ export default async function ClientPage({
   const trainingWeekLabels = deployedProgram
     ? Object.fromEntries(trainingWeeks.map((w) => [w, programWeekLabel(deployedProgram, w)]))
     : undefined;
-  const trainingWeekContents = Object.fromEntries(trainingWeeks.map((w) => [w, <TrainingTab key={w} CLIENT_ID={CLIENT_ID} week={w} currentWeek={currentWeekNum} showMyNotes={viewerIsClient} workoutSheet={workoutSheet} ck={ck} />]));
+  const trainingWeekContents = Object.fromEntries(trainingWeeks.map((w) => [w, <TrainingTab key={w} CLIENT_ID={CLIENT_ID} week={w} currentWeek={currentWeekNum} showMyNotes={viewerIsClient} workoutSheet={workoutSheet} ck={ck} sr={sr} />]));
   // A week is complete when every planned set on every training day is
   // logged — the same rule TrainingTab's progress ring uses for 100%.
   const completedWeeks = trainingWeeks.filter((w) => {
@@ -1441,7 +1447,7 @@ export default async function ClientPage({
     return (
       trainingDays.length > 0 &&
       // A day skipped with a reason is settled, the same as a finished one.
-      trainingDays.every((d) => !!d.day.skip_reason || d.assignments.every((a) => getLogsForAssignment(a.id).length >= setsDue(a)))
+      trainingDays.every((d) => !!d.day.skip_reason || d.assignments.every((a) => getLogsForAssignment(sr, a.id).length >= setsDue(a)))
     );
   });
 
@@ -1539,7 +1545,7 @@ export default async function ClientPage({
 
   const tabs: AppTab[] = [
     // Draws its own light banner (name and main goal); the top bar floats over it.
-    { id: "home", label: "Home", icon: <HomeIcon />, bare: true, darkBanner: true, content: <HomeTab CLIENT_ID={CLIENT_ID} chat={chatThread} foodRows={foodRows} ck={ck} notes={notes} phoneTz={phoneTz} photos={homePhotos}food={{ eaten: foodDiary.eaten.kcal, target: foodDiary.target?.kcal ?? null, mealsLogged: foodDiary.meals.filter((m) => m.entries.length > 0).length, mealsTotal: foodDiary.meals.length }} /> },
+    { id: "home", label: "Home", icon: <HomeIcon />, bare: true, darkBanner: true, content: <HomeTab CLIENT_ID={CLIENT_ID} chat={chatThread} foodRows={foodRows} ck={ck} sr={sr} notes={notes} phoneTz={phoneTz} photos={homePhotos}food={{ eaten: foodDiary.eaten.kcal, target: foodDiary.target?.kcal ?? null, mealsLogged: foodDiary.meals.filter((m) => m.entries.length > 0).length, mealsTotal: foodDiary.meals.length }} /> },
     {
       id: "training",
       label: "Training",
@@ -1568,12 +1574,12 @@ export default async function ClientPage({
       // Draws its own photo banner, darkened; the top bar floats over it in white.
       bare: true,
       darkBanner: true,
-      content: <NutritionTab CLIENT_ID={CLIENT_ID} diary={foodDiary} readOnly={phone} foodRows={foodRows} />,
+      content: <NutritionTab CLIENT_ID={CLIENT_ID} diary={foodDiary} readOnly={phone} foodRows={foodRows} sr={sr} />,
     },
   ];
   // Locked until the first phase goes live (19 Nov, Alex: B of docs/boards/locked-app-mockup.html): the client's own
   // app alone, never the coach's phone preview or a coach looking.
-  const lockView = phone || !viewerIsClient ? null : await appLockFor(CLIENT_ID, foodRows, ck);
+  const lockView = phone || !viewerIsClient ? null : await appLockFor(CLIENT_ID, foodRows, ck, sr);
 
   return (
     <>
@@ -1605,7 +1611,7 @@ export default async function ClientPage({
       }}
       chatUnread={getNotifications(notes, CLIENT_ID).some((n) => n.kind === "coach_note" && !n.read)}
       // Settings left the bottom nav for the burger (7 Oct): the chat has its tab.
-      settingsContent={<SettingsTab CLIENT_ID={CLIENT_ID} own={viewerIsClient} passwordsHint={viewerIsClient ? await passwordsOnHint() : null} />}
+      settingsContent={<SettingsTab CLIENT_ID={CLIENT_ID} sr={sr} own={viewerIsClient} passwordsHint={viewerIsClient ? await passwordsOnHint() : null} />}
       events={homeEvents(CLIENT_ID, ck)}
       helpEmail={getCoachEmail(CLIENT_ID)}
       coachProfile={getCoachProfileForClient(CLIENT_ID)}
@@ -1619,7 +1625,7 @@ export default async function ClientPage({
       initialTab={initialTab}
       readOnly={phone}
       // The session going, for the lock-screen pill (19 Nov, Alex): the client's own app alone.
-      liveNow={phone || !viewerIsClient ? null : liveNowFor(CLIENT_ID)}
+      liveNow={phone || !viewerIsClient ? null : liveNowFor(sr, CLIENT_ID)}
       lock={lockView}
       // A push's notification as the pop-up (19 Nov, Alex: A of docs/boards/notification-popup-mockup.html): never in the
       // coach's phone preview, a coach looking, or while locked (the locked sheet stays).

@@ -4,6 +4,7 @@ import { startTiming } from "../../../lib/timing";
 import { fetchClientTabChat, fetchCoachChat } from "../../../lib/chat/rows";
 import { fetchClientTabFood, fetchCoachFood } from "../../../lib/food/rows";
 import { fetchClientTabCheckIns, fetchCoachCheckIns } from "../../../lib/checkins/rows";
+import { fetchClientTabSets, fetchCoachSets } from "../../../lib/sets/rows";
 import { dropUnusedAutoWeightPg } from "../../../lib/queries";
 import { loadHome, loadMeasurements, loadMeetings, loadMessages, loadNutrition, loadPictures, fetchPictureNotes, loadPlan, loadRail, loadTraining, pickClient, loadInvoices, loadDots } from "../loaders";
 import RedesignShell from "../RedesignShell";
@@ -39,7 +40,8 @@ export default async function PlanRedesignPage({ searchParams }: { searchParams:
     const noClientsChat = await t.time("chat", () => fetchCoachChat([coach.id], "page.noClients.plan"));
     const noClientsFood = await t.time("food", () => fetchCoachFood([coach.id], "page.noClients.plan"));
     const noClientsCheckIns = await t.time("checkins", () => fetchCoachCheckIns([coach.id], "page.noClients.plan"));
-    return t.end(<NoClients rail={t.time("rail", () => loadRail(coach, noClientsChat, noClientsFood, noClientsCheckIns))} />);
+    const noClientsSets = await t.time("sets", () => fetchCoachSets("page.noClients.plan", [coach.id]));
+    return t.end(<NoClients rail={t.time("rail", () => loadRail(coach, noClientsChat, noClientsFood, noClientsCheckIns, noClientsSets))} />);
   }
   // The chat first (Step 5, app/lib/chat/rows.ts): the coach's view for the rail and the dots, the client's thread.
   const chat = await t.time("chat", () => fetchClientTabChat(coach.id, client.id, "page.tab.plan"));
@@ -51,21 +53,23 @@ export default async function PlanRedesignPage({ searchParams }: { searchParams:
   // untouched auto Weight line goes first, under the client's lock (a render can't wait for a transaction).
   await t.time("checkins.drop", () => dropUnusedAutoWeightPg(client.id));
   const ck = await t.time("checkins", () => fetchClientTabCheckIns(coach.id, client.id, "page.tab.plan"));
+  // The logged sets (quest 10, app/lib/sets/rows.ts), fetched first as the check-ins are.
+  const sr = await t.time("sets", () => fetchClientTabSets("page.tab.plan", coach.id, client.id));
   return t.end(
     <RedesignShell
       clientId={client.id}
       clientName={client.name ?? "Client"}
       firstName={firstName}
-      rail={t.time("rail", () => loadRail(coach, chat.coach, food, ck))}
-      dots={t.time("dots", () => loadDots(client.id, chat.coach, food, ck))}
+      rail={t.time("rail", () => loadRail(coach, chat.coach, food, ck, sr))}
+      dots={t.time("dots", () => loadDots(client.id, chat.coach, food, ck, sr))}
       initialTab={tabFromParams(params.tab, "plan")}
-      home={t.time("home", () => loadHome(client.id, chat, food, ck))}
-      training={t.time("training", () => loadTraining(coach.id, client.id, params, chat.thread, ck))}
-      nutrition={t.time("nutrition", () => loadNutrition(client.id, params, chat.thread, food))}
-      measurements={t.time("measurements", () => loadMeasurements(client.id, params, ck))}
+      home={t.time("home", () => loadHome(client.id, chat, food, ck, sr))}
+      training={t.time("training", () => loadTraining(coach.id, client.id, params, chat.thread, ck, sr))}
+      nutrition={t.time("nutrition", () => loadNutrition(client.id, params, chat.thread, food, sr))}
+      measurements={t.time("measurements", () => loadMeasurements(client.id, params, ck, sr))}
       pictures={t.time("pictures", () => loadPictures(client.id, chat.thread, notes, ck))}
-      meetings={t.time("meetings", () => loadMeetings(client.id, food, ck))}
-      plan={t.time("plan", () => loadPlan(client.id, food, ck))}
+      meetings={t.time("meetings", () => loadMeetings(client.id, food, ck, sr))}
+      plan={t.time("plan", () => loadPlan(client.id, food, ck, sr))}
       messages={t.time("messages", () => loadMessages(client.id, chat.thread, food))}
       invoices={t.time("invoices", () => loadInvoices(coach.id, client.id))}
     />

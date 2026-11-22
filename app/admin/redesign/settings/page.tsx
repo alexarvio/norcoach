@@ -4,6 +4,7 @@ import { getCoachProfileView, getCoachSettings, listCoachEmails } from "../../..
 import { fetchCoachPageChat } from "../../../lib/chat/rows";
 import { fetchCoachFood } from "../../../lib/food/rows";
 import { fetchCoachCheckIns } from "../../../lib/checkins/rows";
+import { fetchCoachSets } from "../../../lib/sets/rows";
 import { getData } from "../../../lib/db";
 import { COUNTRIES, countryOf, invoicingFor } from "../../../lib/countries";
 import { LEGAL } from "../../../lib/legal";
@@ -82,6 +83,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const food = await t.time("food", () => fetchCoachFood([coach.id], "page.settings"));
   // The check-in figures the rail's feed reads (quest 9, app/lib/checkins/rows.ts), fetched first as the food is.
   const ck = await t.time("checkins", () => fetchCoachCheckIns([coach.id], "page.settings"));
+  // The logged sets (quest 10, app/lib/sets/rows.ts), fetched first as the check-ins are.
+  const sr = await t.time("sets", () => fetchCoachSets("page.settings", [coach.id]));
   const params = await searchParams;
 
   // Profile: the coach's own, or for the owner any coach's (?coachId=).
@@ -198,7 +201,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
   return t.end(
     <div className="rd-frame">
-      <RedesignRail rail={t.time("rail", () => loadRail(coach, chat.coach, food, ck))} clientId={0} />
+      <RedesignRail rail={t.time("rail", () => loadRail(coach, chat.coach, food, ck, sr))} clientId={0} />
       {/* The chat tab and its 60px on the right, as every coach-level page (16 Nov, Alex: the audit). */}
       <ChatDock chats={t.time("chatDock", () => loadChatDock(coach, chat.dock))} />
       <div className="rd-page">

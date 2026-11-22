@@ -13,7 +13,7 @@ import type { ClientNotification } from "./notes/pick";
 import { noteTakenKey } from "./onceKeep";
 import { groupOfNotification } from "./notifGroups";
 import { healthStoreName, healthWorkoutFacts, healthWorkoutWords } from "./healthWorkouts";
-import { allocId, DATA_DIR, DAY_NAMES_FULL, getData, persist, mergeDuplicateMetricDefinitions, CardioEntry } from "./db";
+import { allocId, DATA_DIR, DAY_NAMES_FULL, getData, persist, persistNow, mergeDuplicateMetricDefinitions, CardioEntry } from "./db";
 import type { CalorieLog, CheckInNote, CustomFood, FoodDay, FoodEntry, FoodMealSlot, OffFood, SavedDay, SavedMeal, ClientEvent, ClientGym, ClientPhase, CoachProfile, CoachBusiness, CoachNotify, CoachInvoicing, CoachPayments, CoachSettings, Data, EventCategory, InvoiceEvery, InvoiceLine, InvoiceParty, InvoiceRecipient, InvoiceRepeat, InvoiceTemplate, KeptActivity, MetricAskAt, PhaseTrack, SessionAnswer, VideoRequest, WorkoutQuestion, MeetingRequest } from "./db";
 import type { CoachProfileFields, CoachProfileView } from "./coachProfileView";
 import { getCatalogFood, searchCatalog, type CatalogFood } from "./foods/catalog";
@@ -40,10 +40,12 @@ import { PHASE_OBJECTIVE_CHARS, PHASE_OBJECTIVES_MAX } from "./phaseCovers";
 import { cleanRepeat, openEnd, type EventRepeat } from "./eventRepeat";
 import { deleteUpload, trashFile } from "./storage";
 import { FOOD_PG } from "./food/mode";
-import { deleteClientFood, noFoodRows, setFoodLook, type FoodBox, type FoodRows } from "./food/rows";
+import { deleteClientFood, noFoodRows, setFoodLook, type FoodBox, type FoodRows, type FoodSpan } from "./food/rows";
 import { CHECKINS_PG } from "./checkins/mode";
 import { deleteClientCheckIns, fetchDueCheckIns, removeMetricWithReadings, sweepClientCheckIns, whileNoFigures, writeCheckIns, type CheckInBox, type CheckInRows, type CheckInSpan } from "./checkins/rows";
 import { setsDue } from "./setsDue";
+import { SETS_PG } from "./sets/mode";
+import { deleteClientSets, dropSetsOfRows, dropTicksOfEntries, fetchSetOwner, fetchSetsForClients, pinSetGyms, setHomeSetWeek, setSessionNewsCounter, sweepClientSets, writeSets, type SetBox, type SetRows } from "./sets/rows";
 import { assistedRow, beforeStop, copiedWeights, isReset, laneKg, laneOfGym, laneTypedAt, laterSlot, liftOf, raisedTo, repWindow, setsSinceReset, stopAfter, writeLane, type Lane } from "./targetRule";
 import { FEATURES } from "./features";
 import { daysBetween, weightGoalViews, type WeightGoalView } from "./weightGoal";
@@ -322,6 +324,9 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
   // figures by their metrics (a figure has no client of its own), before anything in memory changes.
   const checkInDefs = data.metric_definitions.filter((m) => m.client_id === clientId).map((m) => m.id);
   if (CHECKINS_PG) await deleteClientCheckIns(clientId, checkInDefs, "w.client.delete");
+  // With SETS_STORE=pg their logged sets the same (quest 10): one transaction under their lock, by their client and their
+  // rows, before anything in memory changes.
+  if (SETS_PG) await deleteClientSets(clientId, "w.client.delete");
   // A Personal block that still has them saved is the coach's own: it stays.
   detachStrayEntryClients();
 
@@ -334,9 +339,15 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
   const slotIds = new Set(data.photo_slots.filter((s) => s.client_id === clientId).map((s) => s.id));
   const meetingIds = new Set(data.meetings.filter((m) => m.client_id === clientId).map((m) => m.id));
 
-  data.set_logs = data.set_logs.filter((sl) => !assignmentIds.has(sl.workout_assignment_id));
+  // Memory mode: their sets out of the store's list, here and at once (the body runs before the call returns).
+  if (!SETS_PG) void writeSets("w.client.delete", clientId, () => [], (box) => void (box.logs = box.logs.filter((sl) => !assignmentIds.has(sl.workout_assignment_id))));
   data.assignment_custom_values = data.assignment_custom_values.filter((v) => !assignmentIds.has(v.workout_assignment_id));
   data.workout_assignments = data.workout_assignments.filter((wa) => !assignmentIds.has(wa.id));
+  // Their cardio rows too (22 Nov, Alex: "rest yes" to fixing it): they hang on the days by program_day_id alone, so the
+  // client_id sweep below never took them and they stayed behind as orphans. Their ticks (cardio_logs) carry client_id
+  // (memory: that sweep; SETS_STORE=pg: deleteClientSets above, and sweepClientSets after, by client and these entries).
+  const cardioIds = (data.cardio_entries ?? []).filter((c) => dayIds.has(c.program_day_id)).map((c) => c.id);
+  data.cardio_entries = (data.cardio_entries ?? []).filter((c) => !dayIds.has(c.program_day_id));
   data.program_days = data.program_days.filter((pd) => !dayIds.has(pd.id));
   data.training_programs = data.training_programs.filter((p) => p.client_id !== clientId);
   data.training_columns = data.training_columns.filter((c) => c.client_id !== clientId);
@@ -379,7 +390,7 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
   // chat-door: chat rows go through deleteClientChat. food-door: the food lists by the same filter (pg: deleteClientFood above)
   // notes-door: the notifications go through deleteClientNotes, in their turn among the collections (memory: at once, the
   // same filter; with NOTES_STORE=pg they went first, above)
-  for (const [name, value] of Object.entries(store)) { // checkins-door: the check-in notes by this filter in memory (pg: deleteClientCheckIns above)
+  for (const [name, value] of Object.entries(store)) { // checkins-door: the check-in notes by this filter in memory (pg: deleteClientCheckIns above); sets-door: the sets went by writeSets above (no client_id, so this filter keeps them; pg: deleteClientSets), the cardio ticks by this filter in memory (pg: deleteClientSets)
     if (name === NOTES_TABLE) {
       if (!NOTES_PG) void deleteClientNotes(clientId, "w.client.delete");
       continue;
@@ -426,6 +437,15 @@ export async function removeClient(clientId: number, opts: { keepInvoices?: bool
       await sweepClientCheckIns(clientId, checkInDefs);
     } catch (error) {
       console.error(`[checkins] the second sweep of client ${clientId}'s check-ins failed; the boot's orphan count will name what is left:`, error instanceof Error ? error.message : error);
+    }
+  }
+  // The logged sets the same (SETS_STORE=pg): a set queued behind the first DELETE is refused once the client is gone
+  // from memory (writeSets), and this sweep takes what any committed between, by the client and the rows they had.
+  if (SETS_PG) {
+    try {
+      await sweepClientSets(clientId, [...assignmentIds], cardioIds);
+    } catch (error) {
+      console.error(`[sets] the second sweep of client ${clientId}'s sets failed; the boot's orphan count will name what is left:`, error instanceof Error ? error.message : error);
     }
   }
 }
@@ -734,17 +754,19 @@ export function sessionAt(clientId: number, week: number, position: number, crea
  * Deletes a session with everything on it: exercises, cardio, and what the
  * client logged against them. The sessions after it move up one.
  */
-export function removeSession(programDayId: number) {
+export function removeSession(sr: SetRows, programDayId: number) {
   const data = getData();
   const day = data.program_days.find((pd) => pd.id === programDayId);
   if (!day) return;
   const assignmentIds = new Set(data.workout_assignments.filter((wa) => wa.program_day_id === day.id).map((wa) => wa.id));
   const cardioIds = new Set((data.cardio_entries ?? []).filter((c) => c.program_day_id === day.id).map((c) => c.id));
-  keepSessions([day.id]);
-  data.set_logs = data.set_logs.filter((sl) => !assignmentIds.has(sl.workout_assignment_id));
+  keepSessions(sr, [day.id]);
+  // The rows' sets through the door (sets/rows.ts dropSetsOfRows): memory as before; pg a tombstone, the DELETE after the save.
+  dropSetsOfRows("w.remove.session", day.client_id, assignmentIds);
   data.assignment_custom_values = data.assignment_custom_values.filter((v) => !assignmentIds.has(v.workout_assignment_id));
   data.workout_assignments = data.workout_assignments.filter((wa) => !assignmentIds.has(wa.id));
-  data.cardio_logs = (data.cardio_logs ?? []).filter((l) => !cardioIds.has(l.cardio_entry_id));
+  // Its cardio ticks through the sets' door (dropTicksOfEntries): memory as before; pg a tombstone, the DELETE after the save.
+  dropTicksOfEntries("w.remove.session", day.client_id, cardioIds);
   data.cardio_entries = (data.cardio_entries ?? []).filter((c) => !cardioIds.has(c.id));
   data.program_days = data.program_days.filter((pd) => pd.id !== day.id);
   getWeek(day.client_id, day.week_number).forEach((d, i) => (d.day_of_week = i + 1));
@@ -778,11 +800,12 @@ export function migrateDaysToSessions() {
 }
 
 /** Dates (YYYY-MM-DD) the client logged at least one set on: their training days. */
-export function trainingDates(clientId: number): Set<string> {
+export function trainingDates(sr: SetRows, clientId: number): Set<string> {
   const data = getData();
+  sr.need("trainingDates", clientId);
   const dayIds = new Set(data.program_days.filter((pd) => pd.client_id === clientId).map((pd) => pd.id));
   const assignmentIds = new Set(data.workout_assignments.filter((wa) => dayIds.has(wa.program_day_id)).map((wa) => wa.id));
-  return new Set(data.set_logs.filter((sl) => assignmentIds.has(sl.workout_assignment_id)).map((sl) => sl.logged_at.slice(0, 10)));
+  return new Set(sr.logs.filter((sl) => assignmentIds.has(sl.workout_assignment_id)).map((sl) => sl.logged_at.slice(0, 10)));
 }
 
 export function getWeek(clientId: number, week: number): ProgramDay[] {
@@ -1084,16 +1107,16 @@ export function createProgram(clientId: number, name: string, totalWeeks: number
   return program;
 }
 
-export function renameProgram(programId: number, name: string) {
+export function renameProgram(sr: SetRows, programId: number, name: string) {
   const data = getData();
   const program = data.training_programs.find((p) => p.id === programId);
   if (!program) return;
   program.name = name.trim() || null;
   persist();
-  syncProgramPhase(programId, false);
+  syncProgramPhase(sr, programId, false);
 }
 
-export function deployProgram(programId: number) {
+export function deployProgram(sr: SetRows, programId: number) {
   const data = getData();
   const program = data.training_programs.find((p) => p.id === programId);
   if (!program) return;
@@ -1102,7 +1125,7 @@ export function deployProgram(programId: number) {
   program.scheduled_at = null;
   for (let i = 0; i < program.total_weeks; i++) publishWeek(program.client_id, program.start_week + i);
   persist();
-  syncProgramPhase(programId);
+  syncProgramPhase(sr, programId);
   logCoachActivity(program.client_id, `Your coach published a new plan${program.name ? `: ${program.name}` : ""}. Check it out`, {
     kind: "programme",
     actionTab: "training",
@@ -1111,13 +1134,13 @@ export function deployProgram(programId: number) {
   });
 }
 
-export function scheduleProgramDeploy(programId: number, scheduledAt: string | null) {
+export function scheduleProgramDeploy(sr: SetRows, programId: number, scheduledAt: string | null) {
   const data = getData();
   const program = data.training_programs.find((p) => p.id === programId);
   if (!program) return;
   program.scheduled_at = scheduledAt;
   persist();
-  syncProgramPhase(programId);
+  syncProgramPhase(sr, programId);
 }
 
 // Deletes a draft program and every one of its (still-empty-or-not)
@@ -1153,7 +1176,7 @@ function copyWeekOneInto(clientId: number, startWeek: number, toWeek: number) {
 // the current length is just a no-op.
 // New weeks start as copies of week 1 unless `seedFromWeekOne` is false, in
 // which case they are bare: no sessions yet.
-export function updateProgramTotalWeeks(programId: number, requestedTotal: number, seedFromWeekOne = true) {
+export function updateProgramTotalWeeks(sr: SetRows, programId: number, requestedTotal: number, seedFromWeekOne = true) {
   const data = getData();
   const program = data.training_programs.find((p) => p.id === programId);
   if (!program) return;
@@ -1187,7 +1210,7 @@ export function updateProgramTotalWeeks(programId: number, requestedTotal: numbe
   }
   program.total_weeks = newTotal;
   persist();
-  syncProgramPhase(programId);
+  syncProgramPhase(sr, programId);
 }
 
 // Removes one week (1-based index within the programme) and closes the gap:
@@ -1195,7 +1218,7 @@ export function updateProgramTotalWeeks(programId: number, requestedTotal: numbe
 // five-week programme whose old week 4 is now week 3. The week's days, their
 // exercises, logged sets and custom values go with it. The last remaining
 // week can't be removed; delete the programme for that.
-export function removeProgramWeek(programId: number, weekIndex: number) {
+export function removeProgramWeek(sr: SetRows, programId: number, weekIndex: number) {
   const data = getData();
   const program = data.training_programs.find((p) => p.id === programId);
   if (!program) return;
@@ -1210,8 +1233,8 @@ export function removeProgramWeek(programId: number, weekIndex: number) {
   const assignmentIds = new Set(
     data.workout_assignments.filter((wa) => dayIds.has(wa.program_day_id)).map((wa) => wa.id)
   );
-  keepSessions(dayIds);
-  data.set_logs = data.set_logs.filter((sl) => !assignmentIds.has(sl.workout_assignment_id));
+  keepSessions(sr, dayIds);
+  dropSetsOfRows("w.remove.programWeek", program.client_id, assignmentIds);
   data.assignment_custom_values = data.assignment_custom_values.filter((v) => !assignmentIds.has(v.workout_assignment_id));
   data.workout_assignments = data.workout_assignments.filter((wa) => !assignmentIds.has(wa.id));
   data.program_days = data.program_days.filter((pd) => !dayIds.has(pd.id));
@@ -1224,14 +1247,14 @@ export function removeProgramWeek(programId: number, weekIndex: number) {
   });
   program.total_weeks -= 1;
   persist();
-  syncProgramPhase(programId);
+  syncProgramPhase(sr, programId);
 }
 
-export function removeProgram(programId: number) {
+export function removeProgram(sr: SetRows, programId: number) {
   const data = getData();
   const program = data.training_programs.find((p) => p.id === programId);
   if (!program) return;
-  for (let i = 0; i < program.total_weeks; i++) removeWeek(program.client_id, program.start_week + i);
+  for (let i = 0; i < program.total_weeks; i++) removeWeek(sr, program.client_id, program.start_week + i);
   data.training_programs = data.training_programs.filter((p) => p.id !== programId);
   data.client_phases = data.client_phases.filter((ph) => ph.program_id !== programId);
   persist();
@@ -1269,7 +1292,36 @@ function separateOverlappingPrograms() {
   if (changed) persist();
 }
 
-export function applyDueProgramDeployments() {
+/**
+ * The sets applyDueProgramDeployments reads (quest 10, the fetch before it with SETS_STORE=pg): every set when the weight
+ * rule's pass is a full one, else the clients of its rescheduling check, of every live session, of the rule's marks and
+ * of the open phases taking on a week.
+ */
+export function dueSetScope(): { all: boolean; clients: number[] } {
+  // Memory mode reads the store whole either way (setsForDueJobNow): no clients to name on a full pass.
+  if (!SETS_PG && progressPassFullNow()) return { all: true, clients: [] };
+  const pass = progressPassScope();
+  // With SETS_STORE=pg the clients are named on a full pass too: the job falls back to them when every set can't be read.
+  const data = getData();
+  const clients = new Set<number>(pass.clients);
+  const thisWeek = weekStart(localDateStr());
+  for (const p of data.training_programs) if (p.status === "deployed" && p.deployed_at && weekStart(localDayOf(p.deployed_at)) > thisWeek) clients.add(p.client_id);
+  // A programme going live now (deployProgram: its phase may end an open one before it, which copies weeks).
+  const now = new Date().toISOString();
+  for (const p of data.training_programs) if (p.status === "draft" && p.scheduled_at && p.scheduled_at <= now) clients.add(p.client_id);
+  // A programme given its phase now (syncProgramPhase, the same).
+  for (const p of data.training_programs) if ((p.status === "deployed" || p.scheduled_at) && !data.client_phases.some((ph) => ph.program_id === p.id)) clients.add(p.client_id);
+  for (const d of data.program_days) if (d.session_started_at && !d.session_ended_at) clients.add(d.client_id);
+  for (const c of openPhaseClients()) clients.add(c);
+  return { all: pass.full, clients: [...clients] };
+}
+
+/**
+ * `sr`: the sets it reads (dueSetScope); `covers`: the clients it holds whole when it is not every set (SETS_STORE=pg's
+ * fetch of the named clients; the weight rule's pass then runs on those alone, runProgressPassPg). The promise is the
+ * 12 h job's discards (pg mode; memory mode's are done at once).
+ */
+export function applyDueProgramDeployments(sr: SetRows, covers: ReadonlySet<number> | null = null): Promise<void> {
   migrateDaysToSessions();
   separateOverlappingPrograms();
   detachStrayEntryClients();
@@ -1283,7 +1335,7 @@ export function applyDueProgramDeployments() {
   let rescheduled = false;
   for (const p of data.training_programs) {
     if (p.status !== "deployed" || !p.deployed_at || weekStart(localDayOf(p.deployed_at)) <= thisWeek) continue;
-    if (programLoggedWeekIndexes(p.id).length > 0) continue;
+    if (programLoggedWeekIndexes(sr, p.id).length > 0) continue;
     p.status = "draft";
     p.scheduled_at = p.deployed_at;
     p.deployed_at = null;
@@ -1291,8 +1343,8 @@ export function applyDueProgramDeployments() {
   }
   if (rescheduled) persist();
   const due = data.training_programs.filter((p) => p.status === "draft" && p.scheduled_at && p.scheduled_at <= now);
-  due.forEach((program) => deployProgram(program.id));
-  endStaleSessions();
+  due.forEach((program) => deployProgram(sr, program.id));
+  const stale = endStaleSessions(sr);
   // Mends training phases whose draft flag and programme disagree (see
   // alignPhaseDraft); a no-op once they agree.
   let realigned = false;
@@ -1305,13 +1357,13 @@ export function applyDueProgramDeployments() {
 
   // The resets' mends and every logged row's weight rule, on the exercises something touched since the last pass, and
   // in full at start and once a day (17 Nov, mission 2; runProgressPass).
-  runProgressPass();
+  runProgressPass(sr, covers);
 
   // Programmes that went live or were scheduled before phases existed get
   // their Plan-tab phase now. syncProgramPhase is a no-op once it exists.
   data.training_programs
     .filter((p) => (p.status === "deployed" || p.scheduled_at) && !data.client_phases.some((ph) => ph.program_id === p.id))
-    .forEach((p) => syncProgramPhase(p.id));
+    .forEach((p) => syncProgramPhase(sr, p.id));
 
   // Training phases drawn on the Plan tab before phases and programmes were
   // linked: give each upcoming one its draft, so it can be built. Past ones
@@ -1346,7 +1398,8 @@ export function applyDueProgramDeployments() {
     });
   if (healed) persist();
   // Phases with no end take on this week (26 Oct).
-  extendOpenPhases();
+  extendOpenPhases(sr);
+  return stale;
 }
 
 /**
@@ -1358,18 +1411,19 @@ export function applyDueProgramDeployments() {
  */
 /** A phase one week longer: a training one's programme takes that week as a copy of its last, its weights moved on by
     what was lifted in it (the weight rule), and published when the programme is live. */
-function extendPhaseOneWeek(ph: ClientPhase) {
+function extendPhaseOneWeek(sr: SetRows, ph: ClientPhase) {
   const data = getData();
   const before = ph.end_week;
   const program = ph.track === "training" && ph.program_id ? data.training_programs.find((p) => p.id === ph.program_id) : null;
   if (program) {
     const last = program.start_week + program.total_weeks - 1;
-    updateProgramTotalWeeks(program.id, program.total_weeks + 1, false);
-    copyProgramWeek(program.client_id, last, last + 1);
+    updateProgramTotalWeeks(sr, program.id, program.total_weeks + 1, false);
+    copyProgramWeek(sr, program.client_id, last, last + 1);
     if (program.status === "deployed") publishWeek(program.client_id, last + 1);
     const lastDays = new Set(data.program_days.filter((pd) => pd.client_id === program.client_id && pd.week_number === last).map((pd) => pd.id));
-    const logged = new Set(data.set_logs.map((l) => l.workout_assignment_id));
-    for (const wa of data.workout_assignments) if (lastDays.has(wa.program_day_id) && logged.has(wa.id)) progressTargetFromLogs(wa.id);
+    sr.need("extendPhaseOneWeek", program.client_id);
+    const logged = new Set(sr.logs.map((l) => l.workout_assignment_id));
+    for (const wa of data.workout_assignments) if (lastDays.has(wa.program_day_id) && logged.has(wa.id)) progressTargetFromLogs(sr, wa.id);
     // The programme's phase follows its weeks (syncProgramPhase); one it did not move goes on by hand.
     if (ph.end_week === before) ph.end_week = addDaysIso(before, 7);
   } else {
@@ -1377,14 +1431,20 @@ function extendPhaseOneWeek(ph: ClientPhase) {
   }
 }
 
-export function extendOpenPhases(): number {
+/** The clients extendOpenPhases would take on a week for now (its own test, for the fetch before it). */
+export function openPhaseClients(): number[] {
+  const thisMonday = weekStart(localDateStr());
+  return [...new Set(getData().client_phases.filter((ph) => ph.open_ended && !ph.draft && ph.start_week <= thisMonday && ph.end_week < thisMonday).map((ph) => ph.client_id))];
+}
+
+export function extendOpenPhases(sr: SetRows): number {
   const data = getData();
   const thisMonday = weekStart(localDateStr());
   let added = 0;
   for (const ph of data.client_phases) {
     if (!ph.open_ended || ph.draft || ph.start_week > thisMonday) continue;
     for (let guard = 0; ph.end_week < thisMonday && guard < 104; guard++) {
-      extendPhaseOneWeek(ph);
+      extendPhaseOneWeek(sr, ph);
       added++;
     }
   }
@@ -1393,20 +1453,21 @@ export function extendOpenPhases(): number {
 }
 
 /** A phase with no end, or back to its dates (26 Oct). Ending it keeps the weeks it has run so far. */
-export function setPhaseOpenEnded(phaseId: number, open: boolean) {
+export async function setPhaseOpenEnded(phaseId: number, open: boolean) {
   const ph = getData().client_phases.find((p) => p.id === phaseId);
   if (!ph || !!ph.open_ended === open) return;
   if (open) ph.open_ended = true;
   else delete ph.open_ended;
   persist();
-  if (open) extendOpenPhases();
+  // The sets of every client whose open phase takes on a week now, fetched first (quest 10).
+  if (open) extendOpenPhases(await fetchSetsForClients("action.training", openPhaseClients()));
 }
 
 /**
  * A new phase on a track whose open-ended phase is running (26 Oct): that one ends the week before the new one starts,
  * keeping its weeks, so the two never overlap. Returns the phase it ended, if any.
  */
-export function endOpenPhaseBefore(clientId: number, track: PhaseTrack, newStart: string, exceptId?: number): ClientPhase | null {
+export function endOpenPhaseBefore(sr: SetRows, clientId: number, track: PhaseTrack, newStart: string, exceptId?: number): ClientPhase | null {
   const data = getData();
   const monday = weekStart(newStart);
   const open = data.client_phases.find((p) => p.client_id === clientId && p.track === track && p.open_ended && p.id !== exceptId && p.start_week < monday);
@@ -1414,7 +1475,7 @@ export function endOpenPhaseBefore(clientId: number, track: PhaseTrack, newStart
   const lastWeek = addDaysIso(monday, -7);
   // Its weeks run on up to the new one at once (27 Oct, Alex: "we add 6 weeks automatically with the exercises and
   // all"): each a copy of the week before, as each Monday would have made it, so the programme is whole to its end.
-  for (let guard = 0; open.end_week < lastWeek && guard < 104; guard++) extendPhaseOneWeek(open);
+  for (let guard = 0; open.end_week < lastWeek && guard < 104; guard++) extendPhaseOneWeek(sr, open);
   delete open.open_ended;
   if (open.end_week > lastWeek) open.end_week = lastWeek < open.start_week ? open.start_week : lastWeek;
   persist();
@@ -1580,7 +1641,7 @@ export async function runReminderPrune(): Promise<number | null> {
 // otherwise append-only — nothing else in this file ever removes one — so
 // callers are expected to only allow this for the latest week while it's
 // still a draft, to avoid leaving a gap in the sequence.
-export function removeWeek(clientId: number, week: number) {
+export function removeWeek(sr: SetRows, clientId: number, week: number) {
   const data = getData();
   // The plan's sessions only: the client's own rogue sessions that week are theirs and stay (20 Oct).
   const dayIds = new Set(
@@ -1590,11 +1651,11 @@ export function removeWeek(clientId: number, week: number) {
     data.workout_assignments.filter((wa) => dayIds.has(wa.program_day_id)).map((wa) => wa.id)
   );
   const cardioIds = new Set((data.cardio_entries ?? []).filter((c) => dayIds.has(c.program_day_id)).map((c) => c.id));
-  keepSessions(dayIds);
-  data.set_logs = data.set_logs.filter((sl) => !assignmentIds.has(sl.workout_assignment_id));
+  keepSessions(sr, dayIds);
+  dropSetsOfRows("w.remove.week", clientId, assignmentIds);
   data.assignment_custom_values = data.assignment_custom_values.filter((v) => !assignmentIds.has(v.workout_assignment_id));
   data.workout_assignments = data.workout_assignments.filter((wa) => !assignmentIds.has(wa.id));
-  data.cardio_logs = (data.cardio_logs ?? []).filter((l) => !cardioIds.has(l.cardio_entry_id));
+  dropTicksOfEntries("w.remove.week", clientId, cardioIds);
   data.cardio_entries = (data.cardio_entries ?? []).filter((c) => !cardioIds.has(c.id));
   data.program_days = data.program_days.filter((pd) => !dayIds.has(pd.id));
   persist();
@@ -1643,16 +1704,22 @@ export type TrainingIndex = {
   /** The sets logged on each session, as stored. */
   logsByDay: Map<number, SetLog[]>;
   cardioByDay: Map<number, CardioEntry[]>;
-  /** Every cardio entry with a tick (any client's: isCardioDone reads them all). */
+  /** Each indexed cardio entry's session (the first of an id, as find reads it). */
+  cardioDay: Map<number, number>;
+  /** Every cardio entry with a tick in the view (a read says first whose session it reads: sr.needTicks). */
   ticked: Set<number>;
   /** The library by id, the first of an id as find reads it. */
   exercises: Map<number, Exercise>;
+  /** The view its sets came from: each read of logsByRow or logsByDay says first what it reads (needRows). */
+  sr: SetRows;
 };
 
-export function trainingIndex(clients: number | Iterable<number>): TrainingIndex {
+export function trainingIndex(sr: SetRows, clients: number | Iterable<number>): TrainingIndex {
   const data = getData();
   const daysOf = new Map<number, ProgramDay[]>();
   for (const id of typeof clients === "number" ? [clients] : clients) daysOf.set(id, []);
+  // Its sets are read row by row through the index's readers (logsForAssignmentIn, sessionCompleteIn…), each saying what
+  // it reads (sr.needRows), so a coach-wide view holds only the rows the rail reads (sets/rows.ts coachSpans).
   const dayById = new Map<number, ProgramDay>();
   for (const pd of data.program_days) {
     const days = daysOf.get(pd.client_id);
@@ -1673,7 +1740,7 @@ export function trainingIndex(clients: number | Iterable<number>): TrainingIndex
   }
   const logsByRow = new Map<number, SetLog[]>();
   const logsByDay = new Map<number, SetLog[]>();
-  for (const sl of data.set_logs) {
+  for (const sl of sr.logs) {
     if (!rowIds.has(sl.workout_assignment_id)) continue;
     const list = logsByRow.get(sl.workout_assignment_id);
     if (list) list.push(sl);
@@ -1684,16 +1751,20 @@ export function trainingIndex(clients: number | Iterable<number>): TrainingIndex
     else logsByDay.set(day, [sl]);
   }
   const cardioByDay = new Map<number, CardioEntry[]>();
+  const cardioDay = new Map<number, number>();
   for (const c of data.cardio_entries ?? []) {
     if (!dayById.has(c.program_day_id)) continue;
     const list = cardioByDay.get(c.program_day_id);
     if (list) list.push(c);
     else cardioByDay.set(c.program_day_id, [c]);
+    if (!cardioDay.has(c.id)) cardioDay.set(c.id, c.program_day_id);
   }
-  const ticked = new Set((data.cardio_logs ?? []).map((l) => l.cardio_entry_id));
+  // The ticks through the sets' door (quest 10, with the sets since 22 Nov): each read of `ticked` says first whose
+  // session it reads (sr.needTicks), so a coach-wide view holds only the sessions the rail reads.
+  const ticked = new Set(sr.ticks.map((l) => l.cardio_entry_id));
   const exercises = new Map<number, Exercise>();
   for (const e of data.exercises) if (!exercises.has(e.id)) exercises.set(e.id, e);
-  return { daysOf, dayById, rowsByDay, rowIds, logsByRow, logsByDay, cardioByDay, ticked, exercises };
+  return { daysOf, dayById, rowsByDay, rowIds, logsByRow, logsByDay, cardioByDay, cardioDay, ticked, exercises, sr };
 }
 
 /** getAssignmentsForDay, read from the index. */
@@ -1704,7 +1775,8 @@ export function assignmentsForDayIn(ix: TrainingIndex, programDayId: number): Wo
 
 /** getLogsForAssignment, read from the index. */
 export function logsForAssignmentIn(ix: TrainingIndex, workoutAssignmentId: number): SetLog[] {
-  if (!ix.rowIds.has(workoutAssignmentId)) return getLogsForAssignment(workoutAssignmentId);
+  if (!ix.rowIds.has(workoutAssignmentId)) return getLogsForAssignment(ix.sr, workoutAssignmentId);
+  ix.sr.needRows("logsForAssignmentIn", [workoutAssignmentId]);
   return [...(ix.logsByRow.get(workoutAssignmentId) ?? [])].sort((a, b) => a.set_number - b.set_number);
 }
 
@@ -1716,6 +1788,9 @@ export function cardioForDayIn(ix: TrainingIndex, programDayId: number): CardioE
 
 /** isCardioDone, read from the index. */
 export function cardioDoneIn(ix: TrainingIndex, entryId: number): boolean {
+  const day = ix.cardioDay.get(entryId);
+  if (day == null) return isCardioDone(ix.sr, entryId);
+  ix.sr.needTicks("cardioDoneIn", [day]);
   return ix.ticked.has(entryId);
 }
 
@@ -1728,10 +1803,12 @@ export function weekIn(ix: TrainingIndex, clientId: number, week: number): Progr
 
 /** isSessionComplete, read from the index. */
 export function sessionCompleteIn(ix: TrainingIndex, programDayId: number): boolean {
-  if (!ix.dayById.has(programDayId)) return isSessionComplete(programDayId);
+  if (!ix.dayById.has(programDayId)) return isSessionComplete(ix.sr, programDayId);
   // In the order the scans hand them out, so the checks run as they did.
   const assignments = [...(ix.rowsByDay.get(programDayId) ?? [])].sort((a, b) => a.order_index - b.order_index);
+  ix.sr.needRows("sessionCompleteIn", assignments.map((a) => a.id));
   const cardio = cardioForDayIn(ix, programDayId);
+  if (cardio.length) ix.sr.needTicks("sessionCompleteIn", [programDayId]);
   if (assignments.length === 0 && cardio.length === 0) return false;
   return (
     assignments.every((a) => {
@@ -1751,7 +1828,7 @@ export function freeSessionsIn(ix: TrainingIndex, clientId: number, week: number
 /** laterSameSlotSessions, read from the index. */
 export function laterSameSlotSessionsIn(ix: TrainingIndex, programDayId: number): number[] {
   const day = ix.dayById.get(programDayId);
-  if (!day) return laterSameSlotSessions(programDayId);
+  if (!day) return laterSameSlotSessions(ix.sr, programDayId);
   const program = listPrograms(day.client_id).find((p) => day.week_number >= p.start_week && day.week_number < p.start_week + p.total_weeks);
   if (!program) return [];
   const out: number[] = [];
@@ -1759,6 +1836,8 @@ export function laterSameSlotSessionsIn(ix: TrainingIndex, programDayId: number)
     // sessionAt without create: the week's session in that place.
     const target = weekIn(ix, day.client_id, week).find((d) => d.day_of_week === day.day_of_week);
     if (!target) continue;
+    ix.sr.needRows("laterSameSlotSessionsIn", (ix.rowsByDay.get(target.id) ?? []).map((wa) => wa.id));
+    if ((ix.cardioByDay.get(target.id) ?? []).length) ix.sr.needTicks("laterSameSlotSessionsIn", [target.id]);
     const logged = (ix.logsByDay.get(target.id)?.length ?? 0) > 0 || (ix.cardioByDay.get(target.id) ?? []).some((c) => ix.ticked.has(c.id));
     if (!logged) out.push(target.id);
   }
@@ -1779,11 +1858,12 @@ export function setDayLabel(programDayId: number, label: string) {
 // sets belong to the week they were performed in. Session N lands on
 // session N; the target week grows sessions to match. Skips silently if the
 // source week has none.
-export function copyProgramWeek(clientId: number, fromWeek: number, toWeek: number) {
+export function copyProgramWeek(sr: SetRows, clientId: number, fromWeek: number, toWeek: number) {
   if (fromWeek === toWeek) return;
   const data = getData();
   const source = getWeek(clientId, fromWeek);
   if (source.length === 0) return;
+  sr.needLogged("copyProgramWeek", clientId);
 
   for (const src of source) {
     const dest = sessionAt(clientId, toWeek, src.day_of_week, true);
@@ -1792,7 +1872,7 @@ export function copyProgramWeek(clientId: number, fromWeek: number, toWeek: numb
     // Ticked cardio counts as logged too, now that cardio comes along.
     const destRows = new Set(data.workout_assignments.filter((wa) => wa.program_day_id === dest.id).map((wa) => wa.id));
     const destCardio = new Set((data.cardio_entries ?? []).filter((c) => c.program_day_id === dest.id).map((c) => c.id));
-    if (data.set_logs.some((l) => destRows.has(l.workout_assignment_id)) || (data.cardio_logs ?? []).some((l) => destCardio.has(l.cardio_entry_id))) continue;
+    if (sr.logs.some((l) => destRows.has(l.workout_assignment_id)) || sr.ticks.some((l) => destCardio.has(l.cardio_entry_id))) continue;
     dest.label = src.label;
     // Replace rather than append, so copying twice doesn't double the day.
     const replacedIds = [...destRows];
@@ -1910,26 +1990,52 @@ export function addExerciseToDay(
 /** How many sets an exercise has this session (10 Nov, Alex: `− Remove a set`, and Add a set putting one back): a value,
     so sent twice it lands once. Sets past it are deleted; a row under the coach's count remembers how many it is short,
     for their −1. A rogue session has no plan to fall short of: its count is simply this. */
-export function setExerciseRows(assignmentId: number, rows: number) {
+/** `stillOn`: as logSet's (SETS_STORE=pg alone, looked at under the client's lock; false changes nothing). */
+export async function setExerciseRows(assignmentId: number, rows: number, stillOn?: () => boolean): Promise<boolean> {
   const data = getData();
   const wa = data.workout_assignments.find((x) => x.id === assignmentId);
-  if (!wa) return;
+  // Nothing to change (answered as before: done).
+  if (!wa) return true;
   const day = data.program_days.find((pd) => pd.id === wa.program_day_id);
   const left = Math.max(1, Math.floor(rows));
-  // Only ever down on a rogue: sets added are the page's until logged, as ever, so the count never jumps past them.
-  if (day && isRogue(day)) wa.sets = Math.min(wa.sets, left);
-  else if (left < wa.sets) wa.sets_removed = wa.sets - left;
-  else delete wa.sets_removed;
-  data.set_logs = data.set_logs.filter((sl) => sl.workout_assignment_id !== wa.id || sl.set_number <= left);
-  persist();
-  progressTargetFromLogs(wa.id);
+  const rowPart = () => {
+    // Only ever down on a rogue: sets added are the page's until logged, as ever, so the count never jumps past them.
+    if (day && isRogue(day)) wa.sets = Math.min(wa.sets, left);
+    else if (left < wa.sets) wa.sets_removed = wa.sets - left;
+    else delete wa.sets_removed;
+  };
+  // The sets through the door (quest 10): memory today's order exactly; pg the sets' DELETE first, then the row's count
+  // and the rule after the commit (a crash between: the phone sends it again, a value, and it lands once).
+  return writeSets(
+    "w.set.rows",
+    day?.client_id ?? 0,
+    () => progressReach(wa),
+    (box) => {
+      if (SETS_PG && stillOn && !stillOn()) return false;
+      if (!SETS_PG) rowPart();
+      box.logs = box.logs.filter((sl) => sl.workout_assignment_id !== wa.id || sl.set_number <= left);
+      box.persist();
+      return true;
+    },
+    {
+      afterCommit: (done, view) => {
+        if (!done) return;
+        if (SETS_PG) {
+          rowPart();
+          markProgressClient(day?.client_id ?? 0);
+          persist();
+        }
+        progressTargetFromLogs(view, wa.id);
+      },
+    }
+  );
 }
 
-export function removeAssignment(assignmentId: number) {
+export function removeAssignment(sr: SetRows, assignmentId: number) {
   const data = getData();
   const was = data.workout_assignments.find((wa) => wa.id === assignmentId);
-  if (was) keepSessions([was.program_day_id]);
-  data.set_logs = data.set_logs.filter((sl) => sl.workout_assignment_id !== assignmentId);
+  if (was) keepSessions(sr, [was.program_day_id]);
+  dropSetsOfRows("w.remove.assignment", was ? (data.program_days.find((pd) => pd.id === was.program_day_id)?.client_id ?? 0) : 0, [assignmentId]);
   data.workout_assignments = data.workout_assignments.filter((wa) => wa.id !== assignmentId);
   persist();
 }
@@ -1939,6 +2045,7 @@ export function removeAssignment(assignmentId: number) {
 // once an exercise was on the sheet, which made adjusting a duplicated
 // week's targets far more tedious than it needed to be.
 export function updateAssignmentFields(
+  sr: SetRows,
   assignmentId: number,
   fields: Partial<Pick<WorkoutAssignment, "sets" | "reps" | "target_weight_kg" | "rpe_target" | "tempo" | "rest_seconds" | "distance" | "time" | "notes">>
 ) {
@@ -1962,7 +2069,7 @@ export function updateAssignmentFields(
   // Its reps or weight may move what the rule carries (runProgressPass).
   markProgressRow(assignment.id);
   // A weight the coach types is theirs, and on a running plan a reset: see typeWeight.
-  if (weighed) typeWeight(assignment, null, assignment.target_weight_kg);
+  if (weighed) typeWeight(sr, assignment, null, assignment.target_weight_kg);
   persist();
 }
 
@@ -2027,6 +2134,7 @@ export type PreviousWeekAssignmentRef = {
 // "the previous sheet for this client", which is what a coach building week
 // N+1 actually means by "last week".
 export function getPreviousWeekAssignmentRef(
+  sr: SetRows,
   clientId: number,
   week: number,
   dayOfWeek: number,
@@ -2047,7 +2155,7 @@ export function getPreviousWeekAssignmentRef(
     reps: prevAssignment.reps,
     target_weight_kg: prevAssignment.target_weight_kg,
     rpe_target: prevAssignment.rpe_target,
-    actualLogs: getLogsForAssignment(prevAssignment.id),
+    actualLogs: getLogsForAssignment(sr, prevAssignment.id),
   };
 }
 
@@ -2069,15 +2177,17 @@ export function getPublishedWeek(clientId: number, week: number): ProgramDay[] {
 
 /** Kg or lbs for an exercise's logged sets in this session (21 Oct, Alex: the switch on the workout's finish list).
     The weights stay in kg; only the unit the sets read in changes, and the exercise opens in it next time. */
-export function setAssignmentUnit(workoutAssignmentId: number, unit: "kg" | "lb") {
-  const data = getData();
-  let changed = false;
-  for (const sl of data.set_logs) {
-    if (sl.workout_assignment_id !== workoutAssignmentId || sl.unit === unit) continue;
-    sl.unit = unit;
-    changed = true;
-  }
-  if (changed) persist();
+export async function setAssignmentUnit(workoutAssignmentId: number, unit: "kg" | "lb") {
+  const clientId = getClientIdForAssignment(workoutAssignmentId) ?? 0;
+  await writeSets("w.set.unit", clientId, () => [workoutAssignmentId], (box) => {
+    let changed = false;
+    for (const sl of box.logs) {
+      if (sl.workout_assignment_id !== workoutAssignmentId || sl.unit === unit) continue;
+      sl.unit = unit;
+      changed = true;
+    }
+    if (changed) box.persist();
+  });
 }
 
 export function logSet(
@@ -2089,25 +2199,72 @@ export function logSet(
   gymId: number | null = null,
   unit: "kg" | "lb" | null = null,
   /** When it was done, on the phone (7 Nov: a set kept offline arrives later); a new row only. */
-  at: Date | string | null = null
+  at: Date | string | null = null,
+  /** SETS_STORE=pg: looked at again inside the transaction, under the client's lock (the outbox's "still the session it
+   *  was logged in"): false writes nothing and answers false. Memory mode never calls it (the caller's own check and this
+   *  write run in one go there). */
+  stillOn?: () => boolean
+): Promise<boolean> {
+  // The hottest write (every set): one transaction in pg mode on the row and the rule's reach (quest 10, sets/rows.ts
+  // writeSets), the weight rule after the commit on what the write left; memory mode today's lines in today's order.
+  const wa = getData().workout_assignments.find((x) => x.id === workoutAssignmentId);
+  const clientId = getClientIdForAssignment(workoutAssignmentId) ?? 0;
+  return writeSets(
+    "w.set.log",
+    clientId,
+    () => (wa ? progressReach(wa) : [workoutAssignmentId]),
+    (box) => {
+      if (!SETS_PG) {
+        logSetIn(box, workoutAssignmentId, setNumber, weightKg, reps, rpeActual, gymId, unit, at);
+        progressTargetFromLogs(box, workoutAssignmentId);
+        return true;
+      }
+      // A discard (or a start again) that committed while this waited on the client's chain: the set stays out.
+      if (stillOn && !stillOn()) return false;
+      // The coach took the row out while this waited on the client's chain (22 Nov, Alex: "Yes, fix it"): nothing to write,
+      // and done, as the cardio tick on a gone cardio (setCardioDone), never a SetViewMiss the phone would resend forever.
+      // Memory mode has no wait between the caller's look and this write, so it never meets a row gone in between.
+      if (getClientIdForAssignment(workoutAssignmentId) !== clientId) return true;
+      logSetIn(box, workoutAssignmentId, setNumber, weightKg, reps, rpeActual, gymId, unit, at);
+      return true;
+    },
+    {
+      afterCommit: (done, view) => {
+        if (!SETS_PG || !done) return;
+        progressTargetFromLogs(view, workoutAssignmentId);
+      },
+    }
+  );
+}
+
+/** logSet's own lines on a box: memory the store, pg a copy of the reach (its rule run after the commit, above). */
+function logSetIn(
+  box: SetBox,
+  workoutAssignmentId: number,
+  setNumber: number,
+  weightKg: number | null,
+  reps: number | null,
+  rpeActual: number | null,
+  gymId: number | null,
+  unit: "kg" | "lb" | null,
+  at: Date | string | null
 ) {
-  const data = getData();
   // Its exercise is worked out again on the weight rule's next pass, as every pass used to (runProgressPass).
   markProgressRow(workoutAssignmentId);
+  box.needRows("logSet", [workoutAssignmentId]);
   // Logging a set number that already has a row corrects that row rather
   // than adding a twin: a double tap or a retry must not count as two sets.
-  const existing = data.set_logs.find((sl) => sl.workout_assignment_id === workoutAssignmentId && sl.set_number === setNumber);
+  const existing = box.logs.find((sl) => sl.workout_assignment_id === workoutAssignmentId && sl.set_number === setNumber);
   if (existing) {
     existing.weight_kg = weightKg;
     existing.reps = reps;
     existing.rpe_actual = rpeActual;
     if (unit) existing.unit = unit;
-    persist();
-    progressTargetFromLogs(workoutAssignmentId);
+    box.persist();
     return;
   }
-  data.set_logs.push({
-    id: allocId("set_logs"),
+  box.logs.push({
+    id: box.alloc(),
     workout_assignment_id: workoutAssignmentId,
     set_number: setNumber,
     weight_kg: weightKg,
@@ -2119,8 +2276,7 @@ export function logSet(
     gym_id: gymId,
     ...(unit ? { unit } : {}),
   });
-  persist();
-  progressTargetFromLogs(workoutAssignmentId);
+  box.persist();
 }
 
 // The weight goal writes itself forward. When a client's best set of the
@@ -2151,17 +2307,18 @@ export function logSet(
 /** The client has logged this exercise on an earlier day of their programme:
     a target the coach types now is a change to a running plan, not the plan
     being written. */
-function exerciseBeingLogged(wa: WorkoutAssignment): boolean {
+function exerciseBeingLogged(sr: SetRows, wa: WorkoutAssignment): boolean {
   const data = getData();
   const day = data.program_days.find((pd) => pd.id === wa.program_day_id);
   if (!day) return false;
+  sr.needLogged("exerciseBeingLogged", day.client_id);
   const earlier = new Set(
     data.program_days
       .filter((pd) => pd.client_id === day.client_id && (pd.week_number < day.week_number || (pd.week_number === day.week_number && pd.day_of_week < day.day_of_week)))
       .map((pd) => pd.id),
   );
   const rows = new Set(data.workout_assignments.filter((x) => x.exercise_id === wa.exercise_id && earlier.has(x.program_day_id)).map((x) => x.id));
-  return data.set_logs.some((sl) => rows.has(sl.workout_assignment_id));
+  return sr.logs.some((sl) => rows.has(sl.workout_assignment_id));
 }
 
 type StoredAssignment = Data["workout_assignments"][number];
@@ -2191,9 +2348,9 @@ function exerciseOccurrences(clientId: number, exerciseId: number): { slot: Stor
  * The weight typed is the coach's own again, so the figure kept beside a
  * raised one goes (coach_kg, 4 Nov, Alex; a gym's entry is made afresh).
  */
-function typeWeight(row: StoredAssignment, lane: Lane, kg: number | null, carried = false) {
+function typeWeight(sr: SetRows, row: StoredAssignment, lane: Lane, kg: number | null, carried = false) {
   const at = new Date().toISOString();
-  const reset = !carried && exerciseBeingLogged(row);
+  const reset = !carried && exerciseBeingLogged(sr, row);
   if (lane == null) {
     row.target_weight_kg = kg;
     row.target_set_at = at;
@@ -2205,7 +2362,7 @@ function typeWeight(row: StoredAssignment, lane: Lane, kg: number | null, carrie
     else next[lane] = { kg, set_at: at, ...(reset ? { pinned: true } : {}) };
     row.gym_targets = next;
   }
-  if (reset && kg != null) carryReset(row, lane, kg, at);
+  if (reset && kg != null) carryReset(row, lane, kg, at, directLookup(sr));
   // The weight rule reads it again on its next pass (runProgressPass), the rows it was carried to with it.
   markProgressRow(row.id);
 }
@@ -2222,7 +2379,7 @@ function typeWeight(row: StoredAssignment, lane: Lane, kg: number | null, carrie
  * number) stays cleared. True when a row took it. The number carried is the
  * coach's own, so a figure kept beside an earlier raise goes (coach_kg, 4 Nov).
  */
-function carryReset(reset: StoredAssignment, lane: Lane, kg: number, at: string, look: ProgressLookup = directLookup()): boolean {
+function carryReset(reset: StoredAssignment, lane: Lane, kg: number, at: string, look: ProgressLookup): boolean {
   const day = look.day(reset.program_day_id);
   if (!day || day.free || reset.exercise_id === 0) return false;
   const rows = look.occurrences(day.client_id, reset.exercise_id);
@@ -2249,7 +2406,7 @@ function carryReset(reset: StoredAssignment, lane: Lane, kg: number, at: string,
  * each one's weight to the rows after it once, as a reset typed now would.
  * Idempotent: a row already carrying the reset's stamp is left alone.
  */
-function carryEarlierResets(look: ProgressLookup = directLookup(), take?: (row: StoredAssignment) => boolean): boolean {
+function carryEarlierResets(look: ProgressLookup, take?: (row: StoredAssignment) => boolean): boolean {
   let changed = false;
   for (const row of getData().workout_assignments) {
     // `take`: the rows of the pass's dirty exercises alone (runProgressPass); the others are carried already.
@@ -2311,13 +2468,16 @@ type ProgressLookup = {
 };
 
 /** The store as each read always scanned it: for one run of the rule. */
-function directLookup(): ProgressLookup {
+function directLookup(sr: SetRows): ProgressLookup {
   const data = getData();
   return {
     row: (id) => data.workout_assignments.find((x) => x.id === id),
     day: (id) => data.program_days.find((pd) => pd.id === id),
-    logs: (id) => data.set_logs.filter((sl) => sl.workout_assignment_id === id),
-    logged: () => new Set(data.set_logs.map((sl) => sl.workout_assignment_id)),
+    logs: (id) => {
+      sr.needRows("directLookup", [id]);
+      return sr.logs.filter((sl) => sl.workout_assignment_id === id);
+    },
+    logged: () => new Set(sr.logs.map((sl) => sl.workout_assignment_id)),
     occurrences: exerciseOccurrences,
     home: homeGymId,
     exercise: (id) => data.exercises.find((e) => e.id === id),
@@ -2326,14 +2486,14 @@ function directLookup(): ProgressLookup {
 
 /** The same reads from maps made once, for a pass. `order`: every row with a set, in the order its first set was
     stored (the order the pass has always taken them in). */
-function progressIndex(): ProgressLookup & { order: number[] } {
+function progressIndex(sr: SetRows): ProgressLookup & { order: number[] } {
   const data = getData();
   const rows = new Map<number, StoredAssignment>();
   for (const wa of data.workout_assignments) if (!rows.has(wa.id)) rows.set(wa.id, wa);
   const days = new Map<number, StoredDay>();
   for (const pd of data.program_days) if (!days.has(pd.id)) days.set(pd.id, pd);
   const logsOf = new Map<number, SetLog[]>();
-  for (const sl of data.set_logs) {
+  for (const sl of sr.logs) {
     const list = logsOf.get(sl.workout_assignment_id);
     if (list) list.push(sl);
     else logsOf.set(sl.workout_assignment_id, [sl]);
@@ -2376,9 +2536,71 @@ function progressIndex(): ProgressLookup & { order: number[] } {
   };
 }
 
-export function progressTargetFromLogs(workoutAssignmentId: number) {
-  const look = directLookup();
+export function progressTargetFromLogs(sr: SetRows, workoutAssignmentId: number) {
+  const look = directLookup(sr);
+  // A view that doesn't hold every row of the exercise (pg: a write's reach, and a coach added or retargeted a row of it
+  // meanwhile) runs nothing now: the row is marked, and the minute's pass runs it on the client whole.
+  if (SETS_PG) {
+    const wa = look.row(workoutAssignmentId);
+    const day = wa ? look.day(wa.program_day_id) : undefined;
+    if (wa && day && !sr.holdsRows([wa.id, ...look.occurrences(day.client_id, wa.exercise_id).map((o) => o.row.id)])) {
+      markProgressRow(wa.id);
+      return;
+    }
+  }
   if (progressRow(look.row(workoutAssignmentId), look)) persist();
+}
+
+/**
+ * The programme week whose sets getClientHomeActions reads (its missed sessions: the live programme's last week while
+ * it is inside the programme's weeks), or null. One rule for that reader and the coach-wide fetch (sets/rows.ts).
+ */
+export function homeSetWeek(clientId: number): number | null {
+  const deployed = getDeployedProgram(clientId);
+  const recent = deployed && programWeekNow(deployed) <= deployed.total_weeks + 1 ? deployed : null;
+  if (!recent) return null;
+  const lastWeek = recent.start_week + Math.max(1, programWeekNow(recent)) - 2;
+  return lastWeek >= recent.start_week ? lastWeek : null;
+}
+setHomeSetWeek(homeSetWeek);
+
+/**
+ * How many sessions of these days are news at or after T, by client (activityFeeds' own rule, sessionNews, on these sets):
+ * what the coach-wide fetches count while they look for a coach's newest n (sets/rows.ts topDays).
+ */
+setSessionNewsCounter((dayIds, sets, cardioTicks, t) => {
+  const data = getData();
+  const rowDay = new Map<number, number>();
+  const rowsOf = new Map<number, StoredAssignment[]>();
+  for (const wa of data.workout_assignments) {
+    if (!dayIds.has(wa.program_day_id)) continue;
+    rowDay.set(wa.id, wa.program_day_id);
+    rowsOf.set(wa.program_day_id, [...(rowsOf.get(wa.program_day_id) ?? []), wa]);
+  }
+  const logsOf = new Map<number, SetLog[]>();
+  for (const s of sets) {
+    const d = rowDay.get(s.workout_assignment_id);
+    if (d != null) logsOf.set(d, [...(logsOf.get(d) ?? []), s]);
+  }
+  // The ticks the resolve read for these days' entries (the door's source: the store's, or SQL).
+  const tickOf = new Map(cardioTicks.map((l) => [l.cardio_entry_id, l] as const));
+  const out = new Map<number, number>();
+  for (const day of data.program_days) {
+    if (!dayIds.has(day.id)) continue;
+    const logs = logsOf.get(day.id) ?? [];
+    const cardio = (data.cardio_entries ?? []).filter((c) => c.program_day_id === day.id);
+    const ticks = cardio.flatMap((c) => tickOf.get(c.id) ?? []);
+    if (logs.length === 0 && ticks.length === 0 && !day.session_ended_at) continue;
+    const news = sessionNews(day, rowsOf.get(day.id) ?? [], logs, cardio, ticks);
+    if (news && news.at >= t) out.set(day.client_id, (out.get(day.client_id) ?? 0) + 1);
+  }
+  return out;
+});
+
+/** The rows the weight rule reads for one row (progressRow): the row and every row of its exercise on the client's plan. */
+function progressReach(wa: StoredAssignment): number[] {
+  const day = getData().program_days.find((pd) => pd.id === wa.program_day_id);
+  return [wa.id, ...(day ? exerciseOccurrences(day.client_id, wa.exercise_id).map((o) => o.row.id) : [])];
 }
 
 /** One logged row's run of the weight rule (progressTargetFromLogs). True when it moved a weight. */
@@ -2461,6 +2683,9 @@ type ProgressState = {
   fullOn: string | null;
   /** The store's lists as the last pass left them (progressShape). */
   shape: unknown[] | null;
+  /** SETS_STORE=pg: who each row, day and gym belonged to as the last pass left them (progressSnap), so a list that
+   *  changed names its clients instead of making the pass a full one (a full pass reads every set from Postgres). */
+  snap?: ProgressSnap | null;
 };
 // On globalThis: every bundle that writes sets (a page's, an action's) marks the one record the pass reads.
 const progressG = globalThis as unknown as { _ironlineProgress?: ProgressState };
@@ -2485,7 +2710,7 @@ export function markProgressAll() {
 /** The lists the rule reads, and their lengths: a row, day, gym or exercise added or removed, or sets removed (every
     removal makes a new list), shows as a change, so no write has to mark it. A set added is marked by logSet instead,
     so a client training doesn't make every pass a full one. */
-function progressShape(): unknown[] {
+function progressShape(sr: SetRows | null): unknown[] {
   const data = getData();
   return [
     data.workout_assignments,
@@ -2496,16 +2721,112 @@ function progressShape(): unknown[] {
     data.client_gyms?.length,
     data.exercises,
     data.exercises.length,
-    data.set_logs,
+    // The store's own list in memory mode (a removal makes a new one). With SETS_STORE=pg sets removed without their rows
+    // mark their client (setExerciseRows, a discard), rows removed with their sets show in the lists (progressSnapDiff),
+    // and the day's full pass is the net.
+    ...(SETS_PG ? [] : [sr?.logs]),
   ];
 }
+const shapeMoved = (before: unknown[] | null, shape: unknown[]) => !before || shape.length !== before.length || shape.some((x, i) => x !== before[i]);
 
-/** The weight rule's mends and its pass, as applyDueProgramDeployments has always run them, on what changed. */
-function runProgressPass() {
+/**
+ * SETS_STORE=pg (quest 10): each row's day and exercise, each day's client and place, each gym's client, every exercise,
+ * as a pass leaves them. A list that changed since (a row, day or gym added, removed or moved) names the clients it
+ * touched (progressSnapDiff), so a coach's edit is worked out on that client alone rather than reading every set; an
+ * exercise gone makes the next pass a full one, as every list change does in memory mode.
+ */
+type ProgressSnap = { rows: Map<number, string>; days: Map<number, { client: number; sig: string }>; gyms: Map<number, number>; exercises: Set<number> };
+function progressSnap(): ProgressSnap {
+  const data = getData();
+  const days = new Map<number, { client: number; sig: string }>();
+  for (const pd of data.program_days) if (!days.has(pd.id)) days.set(pd.id, { client: pd.client_id, sig: `${pd.client_id}|${pd.week_number}|${pd.day_of_week}|${pd.free ? 1 : 0}|${pd.copy_of ?? ""}` });
+  const rows = new Map<number, string>();
+  for (const wa of data.workout_assignments) if (!rows.has(wa.id)) rows.set(wa.id, `${wa.program_day_id}|${wa.exercise_id}`);
+  const gyms = new Map<number, number>();
+  for (const g of data.client_gyms ?? []) if (!gyms.has(g.id)) gyms.set(g.id, g.client_id);
+  return { rows, days, gyms, exercises: new Set(data.exercises.map((e) => e.id)) };
+}
+function progressSnapDiff(before: ProgressSnap, now: ProgressSnap): { all: boolean; clients: Set<number> } {
+  const clients = new Set<number>();
+  const dayClient = (snap: ProgressSnap, sig: string | undefined) => (sig == null ? undefined : snap.days.get(Number(sig.split("|")[0]))?.client);
+  for (const id of before.exercises) if (!now.exercises.has(id)) return { all: true, clients };
+  for (const [id, d] of before.days) {
+    const n = now.days.get(id);
+    if (!n || n.sig !== d.sig) {
+      clients.add(d.client);
+      if (n) clients.add(n.client);
+    }
+  }
+  for (const [id, n] of now.days) if (!before.days.has(id)) clients.add(n.client);
+  for (const [id, sig] of before.rows) {
+    const n = now.rows.get(id);
+    if (n === sig) continue;
+    const a = dayClient(before, sig);
+    const b = dayClient(now, n);
+    if (a != null) clients.add(a);
+    if (b != null) clients.add(b);
+  }
+  for (const [id, sig] of now.rows) {
+    if (before.rows.has(id)) continue;
+    const c = dayClient(now, sig);
+    if (c != null) clients.add(c);
+  }
+  for (const [id, c] of before.gyms) if (now.gyms.get(id) !== c) clients.add(c);
+  for (const [id, c] of now.gyms) if (!before.gyms.has(id)) clients.add(c);
+  return { all: false, clients };
+}
+
+/** The clients of these marked rows (their days' clients, from memory). */
+function clientsOfMarkedRows(rows: Iterable<number>): Set<number> {
+  const data = getData();
+  const out = new Set<number>();
+  for (const id of rows) {
+    const wa = data.workout_assignments.find((x) => x.id === id);
+    const day = wa && data.program_days.find((pd) => pd.id === wa.program_day_id);
+    if (day) out.add(day.client_id);
+  }
+  return out;
+}
+
+/**
+ * What the next runProgressPass reads (quest 10: the fetch before it, in pg mode): every client (a full pass: at start,
+ * on the first pass of a day, or asked; in memory mode also after a list changed), and the clients of the marked rows
+ * and clients (with SETS_STORE=pg also those a changed list names), named even with a full pass (the minute job's fetch
+ * falls back to them when reading every set fails).
+ */
+/** Memory mode's own test, as before quest 10's fetch: a full pass at start, asked, on the day's first or after a list changed. */
+function progressPassFullNow(): boolean {
+  const st = progressState();
+  return st.all || st.fullOn !== localDateStr() || shapeMoved(st.shape, progressShape(null));
+}
+export function progressPassScope(): { full: boolean; clients: number[] } {
+  const st = progressState();
+  const shape = progressShape(null);
+  const reshaped = shapeMoved(st.shape, shape);
+  const clients = new Set(st.clients);
+  for (const c of clientsOfMarkedRows(st.rows)) clients.add(c);
+  let full = st.all || st.fullOn !== localDateStr();
+  if (reshaped) {
+    if (!SETS_PG || !st.snap) full = true;
+    else {
+      const d = progressSnapDiff(st.snap, progressSnap());
+      if (d.all) full = true;
+      for (const c of d.clients) clients.add(c);
+    }
+  }
+  return { full, clients: [...clients] };
+}
+
+/**
+ * The weight rule's mends and its pass, as applyDueProgramDeployments has always run them, on what changed. `covers`:
+ * the clients the view holds whole, or null for every set (memory mode always: the store's own list).
+ */
+function runProgressPass(sr: SetRows, covers: ReadonlySet<number> | null = null) {
+  if (SETS_PG) return runProgressPassPg(sr, covers);
   const st = progressState();
   const today = localDateStr();
   const before = st.shape;
-  const shape = progressShape();
+  const shape = progressShape(sr);
   const reshaped = !before || shape.length !== before.length || shape.some((x, i) => x !== before[i]);
   const nightly = st.fullOn !== today;
   const asked = st.all;
@@ -2522,12 +2843,12 @@ function runProgressPass() {
   st.clients = new Set();
   st.all = false;
   if (!full && rowsMarked.size === 0 && clientsMarked.size === 0) {
-    st.shape = progressShape();
+    st.shape = progressShape(sr);
     return;
   }
 
   try {
-    const look = progressIndex();
+    const look = progressIndex(sr);
     // The exercises to work out again: a client's every one, a marked row's own.
     let take: ((row: StoredAssignment) => boolean) | undefined;
     if (!full) {
@@ -2567,13 +2888,104 @@ function runProgressPass() {
     if (full && nightly && before && !reshaped && !asked && rowsMarked.size === 0 && clientsMarked.size === 0 && (carried || moved)) {
       console.warn(`[progress] the day's full pass moved weights on ${moved} row${moved === 1 ? "" : "s"}${carried ? " and carried a reset" : ""}: a write did not mark them (markProgressRow)`);
     }
-    st.shape = progressShape();
+    st.shape = progressShape(sr);
   } catch (e) {
     // A pass that failed leaves its marks for the next one (the pass is idempotent), as the minute's full pass retried
     // every row before, so nothing waits for the night.
     for (const id of rowsMarked) st.rows.add(id);
     for (const c of clientsMarked) st.clients.add(c);
     if (asked) st.all = true;
+    throw e;
+  }
+}
+
+/**
+ * runProgressPass with SETS_STORE=pg (quest 10). The same rule on the same exercises, with two differences forced by the
+ * sets being read before it (dueJobs.ts): a list that changed names the clients it touched (progressSnapDiff) rather
+ * than making the pass a full one, and the pass runs only on what its view holds (`covers`). What it decides is decided
+ * here, from the state as the pass runs (never from the scope the fetch was cut by, which may be older): a full pass
+ * wanted (at start, the day's first, asked, an exercise gone) on a view that is not every set runs the clients it holds
+ * and leaves the full pass for the next tick, its day not marked done; a marked client or row the view doesn't hold is
+ * put back for the next tick, never consumed with no sets.
+ */
+function runProgressPassPg(sr: SetRows, covers: ReadonlySet<number> | null) {
+  const st = progressState();
+  const today = localDateStr();
+  const before = st.shape;
+  const shape = progressShape(sr);
+  const reshaped = shapeMoved(before, shape);
+  const nightly = st.fullOn !== today;
+  const asked = st.all;
+  const snapNow = reshaped || !st.snap ? progressSnap() : st.snap;
+  const diff = !st.snap ? { all: true, clients: new Set<number>() } : reshaped ? progressSnapDiff(st.snap, snapNow) : { all: false, clients: new Set<number>() };
+  const fullWanted = asked || nightly || diff.all;
+  const full = fullWanted && covers == null;
+
+  // As in memory mode: the reset copies mended first; it marks what it mends.
+  if (unpinCopiedResets()) persist();
+
+  const rowsMarked = st.rows;
+  const clientsMarked = new Set([...st.clients, ...diff.clients]);
+  st.rows = new Set();
+  st.clients = new Set();
+  st.all = false;
+  const putBack = (rows: Iterable<number>, clients: Iterable<number>) => {
+    for (const id of rows) st.rows.add(id);
+    for (const c of clients) st.clients.add(c);
+  };
+  // Left for the next tick: the full pass (its day not marked), and every mark of a client the view doesn't hold.
+  if (fullWanted && !full) st.all = true;
+  const held = (c: number) => covers == null || covers.has(c);
+  const done = () => {
+    st.shape = shape;
+    st.snap = snapNow;
+  };
+  if (!full && rowsMarked.size === 0 && clientsMarked.size === 0) {
+    done();
+    return;
+  }
+
+  try {
+    const look = progressIndex(sr);
+    let take: ((row: StoredAssignment) => boolean) | undefined;
+    if (!full) {
+      const groupOf = (row: StoredAssignment | undefined) => {
+        const day = row && look.day(row.program_day_id);
+        return row && day ? { client: day.client_id, key: `${day.client_id}|${row.exercise_id}` } : null;
+      };
+      const groups = new Set<string>();
+      const rowsOut: number[] = [];
+      for (const id of rowsMarked) {
+        const g = groupOf(look.row(id));
+        if (!g) continue;
+        if (held(g.client)) groups.add(g.key);
+        else rowsOut.push(id);
+      }
+      putBack(rowsOut, [...clientsMarked].filter((c) => !held(c)));
+      const takenClients = new Set([...clientsMarked].filter(held));
+      if (covers) sr.need("runProgressPass", [...new Set([...takenClients, ...[...groups].map((k) => Number(k.split("|")[0]))])]);
+      take = (row) => {
+        const g = groupOf(row);
+        return !!g && held(g.client) && (takenClients.has(g.client) || groups.has(g.key));
+      };
+    }
+    const carried = carryEarlierResets(look, take);
+    if (carried) persist();
+    let moved = 0;
+    for (const id of look.order) {
+      const wa = look.row(id);
+      if (take && !(wa && take(wa))) continue;
+      if (progressRow(wa, look)) moved++;
+    }
+    if (moved) persist();
+    if (full) st.fullOn = today;
+    if (full && nightly && before && !reshaped && !asked && rowsMarked.size === 0 && clientsMarked.size === 0 && (carried || moved)) {
+      console.warn(`[progress] the day's full pass moved weights on ${moved} row${moved === 1 ? "" : "s"}${carried ? " and carried a reset" : ""}: a write did not mark them (markProgressRow)`);
+    }
+    done();
+  } catch (e) {
+    putBack(rowsMarked, clientsMarked);
+    if (asked || (fullWanted && !full)) st.all = true;
     throw e;
   }
 }
@@ -2602,32 +3014,41 @@ export function getClientIdForPhotoSlot(slotId: number): number | null {
 }
 
 
-export function getLogsForAssignment(workoutAssignmentId: number): SetLog[] {
-  return getData()
-    .set_logs.filter((sl) => sl.workout_assignment_id === workoutAssignmentId)
-    .sort((a, b) => a.set_number - b.set_number);
+export function getLogsForAssignment(sr: SetRows, workoutAssignmentId: number): SetLog[] {
+  sr.needRows("getLogsForAssignment", [workoutAssignmentId]);
+  return sr.logs.filter((sl) => sl.workout_assignment_id === workoutAssignmentId).sort((a, b) => a.set_number - b.set_number);
 }
 
 // Who owns a logged set, via its assignment — so the client-side edit action
-// can check the caller before touching it.
-export function getClientIdForSetLog(setLogId: number): number | null {
-  const log = getData().set_logs.find((sl) => sl.id === setLogId);
-  return log ? getClientIdForAssignment(log.workout_assignment_id) : null;
+// can check the caller before touching it (sets/rows.ts fetchSetOwner: one primary-key read in pg mode).
+export async function getClientIdForSetLog(setLogId: number): Promise<number | null> {
+  const owner = await fetchSetOwner(setLogId);
+  return owner ? getClientIdForAssignment(owner.rowId) : null;
 }
 
 // A set typed wrong gets corrected in place: same row, same set number,
 // new figures. logged_at keeps the original time, since that is when the
 // set was actually done.
-export function updateSetLog(setLogId: number, weightKg: number | null, reps: number | null, rpeActual: number | null) {
-  const data = getData();
-  const log = data.set_logs.find((sl) => sl.id === setLogId);
-  if (!log) return;
-  log.weight_kg = weightKg;
-  log.reps = reps;
-  log.rpe_actual = rpeActual;
-  markProgressRow(log.workout_assignment_id);
-  persist();
-  progressTargetFromLogs(log.workout_assignment_id);
+export async function updateSetLog(setLogId: number, weightKg: number | null, reps: number | null, rpeActual: number | null) {
+  const owner = await fetchSetOwner(setLogId);
+  if (!owner) return;
+  const wa = getData().workout_assignments.find((x) => x.id === owner.rowId);
+  await writeSets(
+    "w.set.update",
+    owner.clientId,
+    () => (wa ? progressReach(wa) : [owner.rowId]),
+    (box) => {
+      const log = box.logs.find((sl) => sl.id === setLogId);
+      if (!log) return null;
+      log.weight_kg = weightKg;
+      log.reps = reps;
+      log.rpe_actual = rpeActual;
+      markProgressRow(log.workout_assignment_id);
+      box.persist();
+      return log.workout_assignment_id;
+    },
+    { afterCommit: (rowId, view) => void (rowId != null && progressTargetFromLogs(view, rowId)) }
+  );
 }
 
 export type WeekLogGroup = { weekStart: string; logs: SetLog[] };
@@ -2637,8 +3058,9 @@ export type WeekLogGroup = { weekStart: string; logs: SetLog[] };
 // train — so a coach comparing "week 1 vs week 2" is really asking to group
 // the same assignment's logs by the calendar week they were logged in. Most
 // recent week first, so scrolling down goes further back in time.
-export function getLogsForAssignmentByWeek(workoutAssignmentId: number): WeekLogGroup[] {
-  const logs = getData().set_logs.filter((sl) => sl.workout_assignment_id === workoutAssignmentId);
+export function getLogsForAssignmentByWeek(sr: SetRows, workoutAssignmentId: number): WeekLogGroup[] {
+  sr.needRows("getLogsForAssignmentByWeek", [workoutAssignmentId]);
+  const logs = sr.logs.filter((sl) => sl.workout_assignment_id === workoutAssignmentId);
   const byWeek = new Map<string, SetLog[]>();
   logs.forEach((l) => {
     const week = weekStart(l.logged_at.slice(0, 10));
@@ -2920,36 +3342,6 @@ export function setAssignmentCustomValue(workoutAssignmentId: number, columnId: 
   persist();
 }
 
-// Everything a client has logged, most recent first — what the coach dashboard reads.
-export function getRecentLogsForClient(clientId: number, limit = 20) {
-  const data = getData();
-  const assignmentsForClient = new Map(
-    data.workout_assignments.map((wa) => [wa.id, wa] as const)
-  );
-  const daysById = new Map(data.program_days.map((pd) => [pd.id, pd] as const));
-  const exercisesById = new Map(data.exercises.map((e) => [e.id, e] as const));
-
-  return data.set_logs
-    .filter((sl) => {
-      const wa = assignmentsForClient.get(sl.workout_assignment_id);
-      const day = wa ? daysById.get(wa.program_day_id) : undefined;
-      return day?.client_id === clientId;
-    })
-    .sort((a, b) => (a.logged_at < b.logged_at ? 1 : -1))
-    .slice(0, limit)
-    .map((sl) => {
-      const wa = assignmentsForClient.get(sl.workout_assignment_id)!;
-      const day = daysById.get(wa.program_day_id)!;
-      const exercise = exercisesById.get(wa.exercise_id);
-      return {
-        ...sl,
-        exercise_name: exercise?.name ?? "Unknown exercise",
-        day_of_week: day.day_of_week,
-        week_number: day.week_number,
-      };
-    });
-}
-
 export type CompletedDay = {
   dayId: number;
   dayOfWeek: number;
@@ -2957,39 +3349,6 @@ export type CompletedDay = {
   weekNumber: number;
   completedAt: string;
 };
-
-// A day counts as "completed" once every one of its assignments has at
-// least as many logged sets as its target — this is the same doneAllSets
-// check the client's own Training tab uses to show "All sets logged for
-// today". completedAt is the most recent of those sets' timestamps, i.e.
-// the moment the day actually finished, not when it started. Rest days
-// (no assignments) never appear — there's nothing to complete.
-export function getCompletedDaysForClient(clientId: number, limit = 10): CompletedDay[] {
-  const data = getData();
-  const days = data.program_days.filter((d) => d.client_id === clientId);
-  const results: CompletedDay[] = [];
-
-  days.forEach((day) => {
-    const assignments = data.workout_assignments.filter((a) => a.program_day_id === day.id);
-    if (assignments.length === 0) return;
-
-    let completedAt: string | null = null;
-    const allDone = assignments.every((a) => {
-      const logs = data.set_logs.filter((l) => l.workout_assignment_id === a.id);
-      if (logs.length < setsDue(a)) return false;
-      logs.forEach((l) => {
-        if (!completedAt || l.logged_at > completedAt!) completedAt = l.logged_at;
-      });
-      return true;
-    });
-
-    if (allDone && completedAt) {
-      results.push({ dayId: day.id, dayOfWeek: day.day_of_week, label: day.label, weekNumber: day.week_number, completedAt });
-    }
-  });
-
-  return results.sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1)).slice(0, limit);
-}
 
 // Percent change in logged weight for one exercise, earliest log through
 // the given program week — a fast "is this number trending up" signal for
@@ -3002,12 +3361,14 @@ export function getCompletedDaysForClient(clientId: number, limit = 10): Complet
 // With gyms, pass the gym: another gym's machine is a different weight, so
 // mixing the two would read a gym switch as a drop. undefined is every set.
 export function getExerciseWeightTrendPct(
+  sr: SetRows,
   clientId: number,
   exerciseId: number,
   throughWeekNumber: number,
   gymId?: number | null
 ): number | null {
   const data = getData();
+  sr.need("getExerciseWeightTrendPct", clientId);
   const home = homeGymId(clientId);
   const atGym = (l: SetLog) => gymId === undefined || home == null || (l.gym_id ?? home) === (gymId ?? home);
   const assignmentIds = new Set(
@@ -3019,7 +3380,7 @@ export function getExerciseWeightTrendPct(
       })
       .map((wa) => wa.id)
   );
-  const logs = data.set_logs
+  const logs = sr.logs
     .filter((l) => assignmentIds.has(l.workout_assignment_id) && l.weight_kg != null && atGym(l))
     .sort((a, b) => (a.logged_at < b.logged_at ? -1 : 1));
   if (logs.length < 2) return null;
@@ -3067,13 +3428,6 @@ export function setInvoiceStatus(invoiceId: number, status: Invoice["status"]) {
     inv.updated_at = new Date().toISOString().replace("T", " ").slice(0, 19);
     persist();
   }
-}
-
-// "Last active" — most recent thing this client actually logged, across any
-// training week. Returns null if they haven't logged anything yet.
-export function getLastActive(clientId: number): string | null {
-  const recent = getRecentLogsForClient(clientId, 1);
-  return recent.length > 0 ? recent[0].logged_at : null;
 }
 
 // A quick client summary for the admin panel header row.
@@ -3138,7 +3492,7 @@ export type OverviewPanel = {
 };
 
 /** feedOf: the coach's feed, when the caller reads it too (loadHome): asked for here at the same moment, built once. */
-export function getOverviewPanel(clientId: number, feedOf: () => FeedEvent[], ck: CheckInRows): OverviewPanel {
+export function getOverviewPanel(clientId: number, feedOf: () => FeedEvent[], ck: CheckInRows, sr: SetRows): OverviewPanel {
   const client = getClient(clientId);
   const profile = getClientProfile(clientId);
   const nutrition = getNutritionGoalsSummary(clientId);
@@ -3206,7 +3560,7 @@ export function getOverviewPanel(clientId: number, feedOf: () => FeedEvent[], ck
   let planned = 0;
   if (liveWeek != null) {
     // Their rows read once, not the whole store per row (23 Oct, speed).
-    const ix = trainingIndex(clientId);
+    const ix = trainingIndex(sr, clientId);
     weekIn(ix, clientId, liveWeek).forEach((d) => {
       const assignments = assignmentsForDayIn(ix, d.id);
       if (assignments.length === 0) return;
@@ -3440,9 +3794,19 @@ const feedDay = dayMonth;
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const feedValue = (v: number) => String(Math.round(v * 10) / 10);
 
-/** Everything one coach's clients logged, newest first. The Feed page filters and pages it. */
-export function getActivityFeed(coachId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows): FeedEvent[] {
-  return activityFeeds([coachId], chat, food, ck).get(coachId) ?? [];
+/**
+ * What a feed's caller reads of it (21 Nov, the bounded slices of docs/database-plan.md): its clients (every client of
+ * the coach by default, or these alone: an action about one client) and how far back, which the food and check-in views
+ * are asked for (`need`): every event (`all`: the old admin, a client's own Activity), the events at or after an instant
+ * and each client's newest (`feedFrom`: the rail, Needs you, the marks), or each coach's newest n (`coachTop`: Coaches).
+ * Each event is built from its own client's rows alone, so a feed of fewer clients gives each of them what the coach's
+ * whole feed gives them; events older than what was asked may be missing or partial, and no caller reads them.
+ */
+export type FeedWant = { clients?: readonly number[]; span: "all" | { feedFrom: number } | { coachTop: number } };
+
+/** Everything one coach's clients logged, newest first, as far back as `want` (the Feed page filters and pages it). */
+export function getActivityFeed(coachId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, sr: SetRows, want: FeedWant): FeedEvent[] {
+  return activityFeeds([coachId], chat, food, ck, sr, want).get(coachId) ?? [];
 }
 
 /**
@@ -3451,12 +3815,17 @@ export function getActivityFeed(coachId: number, chat: ChatCoachView, food: Food
  * in the order the walk finds them, sorted the same way. The store's rows are filtered to the coaches' clients before
  * they are grouped, so a coach's feed no longer maps every other coach's sets, food, check-ins and chat.
  */
-function activityFeeds(coachIds: readonly number[], chat: ChatCoachView, food: FoodRows, ck: CheckInRows): Map<number, FeedEvent[]> {
+function activityFeeds(coachIds: readonly number[], chat: ChatCoachView, food: FoodRows, ck: CheckInRows, sr: SetRows, want: FeedWant): Map<number, FeedEvent[]> {
   const data = getData();
   chat.covers("activityFeeds", coachIds);
   const feeds = new Map<number, FeedEvent[]>(coachIds.map((id) => [id, []]));
   // Only these coaches' clients: an event for anyone else is dropped in add(), and their rows are left out before that.
-  const clientsById = new Map(data.clients.filter((c) => c.coach_id != null && feeds.has(c.coach_id)).map((c) => [c.id, c] as const));
+  // A caller about some of them alone (want.clients) has only theirs built.
+  const only = want.clients ? new Set(want.clients) : null;
+  const clientsById = new Map(data.clients.filter((c) => c.coach_id != null && feeds.has(c.coach_id) && (!only || only.has(c.id))).map((c) => [c.id, c] as const));
+  // What the food and check-in views are asked for (food/rows.ts FoodSpan, checkins/rows.ts CheckInSpan).
+  const foodSpan: FoodSpan = want.span === "all" ? "all" : want.span;
+  const ckSpan: CheckInSpan = want.span === "all" ? "all" : "coachTop" in want.span ? { coachTop: want.span.coachTop, of: "all" } : want.span;
   const assignmentsById = new Map(data.workout_assignments.map((wa) => [wa.id, wa] as const));
   // The sessions read below: the clients' own days.
   const ownDays = new Set<number>();
@@ -3492,8 +3861,10 @@ function activityFeeds(coachIds: readonly number[], chat: ChatCoachView, food: F
   // still open with a cardio ticked (or every set in and cardio left), done in part at its latest. A cardio tick is
   // never a row of its own. The same id whatever it is, so a session finished later is the one row.
   // Grouped for the clients' own days alone: only those are read (the loops below skip every other client's).
-  const logsByDay = new Map<number, typeof data.set_logs>();
-  data.set_logs.forEach((sl) => {
+  // The sets a view holds of them (sets/rows.ts: every session whose news may be in the span, whole).
+  sr.needFeed("activityFeeds", clientsById.keys(), want.span);
+  const logsByDay = new Map<number, SetLog[]>();
+  sr.logs.forEach((sl) => {
     const wa = assignmentsById.get(sl.workout_assignment_id);
     if (!wa || !ownDays.has(wa.program_day_id)) return;
     const list = logsByDay.get(wa.program_day_id) ?? [];
@@ -3514,7 +3885,8 @@ function activityFeeds(coachIds: readonly number[], chat: ChatCoachView, food: F
     if (list) list.push(c);
     else cardioByDay.set(c.program_day_id, [c]);
   }
-  const tickOf = new Map((data.cardio_logs ?? []).map((l) => [l.cardio_entry_id, l] as const));
+  // The ticks through the sets' door (with the sets since 22 Nov): the sessions the feed's asks resolved to (needFeed above).
+  const tickOf = new Map(sr.ticks.map((l) => [l.cardio_entry_id, l] as const));
   // Its note is the client's words on the row; the copy the app sends to the chat is left out of the logs (echo).
   const sessionNotes = new Map<number, string>();
   for (const day of data.program_days) {
@@ -3619,7 +3991,7 @@ function activityFeeds(coachIds: readonly number[], chat: ChatCoachView, food: F
   // (the diary's total pushed to it, or a figure typed) together, at the latest of them, the client's note on the day as
   // its words. A typed day with no diary is its own row, as before.
   const diary = new Map<string, { clientId: number; date: string; kcal: number; items: number; latest: string | null; note: string | null }>();
-  food.need("activityFeeds", [...clientsById.keys()], "all", ["entries", "calories"]);
+  food.need("activityFeeds", [...clientsById.keys()], foodSpan, ["entries", "calories"]);
   for (const f of food.entries) {
     if (!clientsById.has(f.client_id)) continue;
     const key = `${f.client_id}:${f.date}`;
@@ -3694,7 +4066,7 @@ function activityFeeds(coachIds: readonly number[], chat: ChatCoachView, food: F
 
   const metricDefs = new Map(data.metric_definitions.map((d) => [d.id, d] as const));
   // The check-ins through their door (quest 9): every figure and note of these coaches' clients.
-  ck.need("activityFeeds", [...clientsById.keys()], "all");
+  ck.need("activityFeeds", [...clientsById.keys()], ckSpan);
   for (const e of ck.entries) {
     const def = metricDefs.get(e.metric_definition_id);
     // Steps the phone filled in are no check-in the client did (13 Nov, Alex).
@@ -4063,13 +4435,14 @@ export function feedTimeLabel(at: number, timeKnown = true): string {
  * clients the coach has and when one of them last logged something. Nothing
  * about the clients themselves.
  */
-export function listCoachAccounts(chat: ChatCoachView, food: FoodRows, ck: CheckInRows) {
+export function listCoachAccounts(chat: ChatCoachView, food: FoodRows, ck: CheckInRows, sr: SetRows) {
   const data = getData();
   const coaches = data.users.filter((u) => u.role === "coach").sort((a, b) => a.id - b.id);
   // Every coach's feed in one walk (17 Nov, mission 2: it was built once per coach), each the list getActivityFeed gives.
   // Only its newest event is read: each client's newest message is in the view (Step 5).
   chat.need("clientTop", 1);
-  const feeds = activityFeeds(coaches.map((u) => u.id), chat, food, ck);
+  // Each coach's newest food and check-in event (21 Nov, the owner's aggregate): the views hold those, not every row.
+  const feeds = activityFeeds(coaches.map((u) => u.id), chat, food, ck, sr, { span: { coachTop: 1 } });
   return coaches
     .map((u) => {
       const latest = feeds.get(u.id)?.[0];
@@ -5996,90 +6369,6 @@ export function setClientUnits(clientId: number, units: "metric" | "imperial") {
   persist();
 }
 
-
-
-
-
-
-// Real data: daily training "volume" (sum of weight x reps across logged sets)
-// as a first-pass stand-in for a strength trend, until a real formula is defined.
-export function getStrengthSeries(clientId: number, days: number) {
-  const data = getData();
-  const assignmentIds = new Set(
-    data.workout_assignments
-      .filter((wa) => {
-        const day = data.program_days.find((pd) => pd.id === wa.program_day_id);
-        return day?.client_id === clientId;
-      })
-      .map((wa) => wa.id)
-  );
-
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - days);
-  const byDate = new Map<string, number>();
-
-  data.set_logs
-    .filter((sl) => assignmentIds.has(sl.workout_assignment_id))
-    .filter((sl) => new Date(sl.logged_at) >= cutoff)
-    .forEach((sl) => {
-      const date = sl.logged_at.slice(0, 10);
-      const volume = (sl.weight_kg ?? 0) * (sl.reps ?? 0);
-      byDate.set(date, (byDate.get(date) ?? 0) + volume);
-    });
-
-  return [...byDate.entries()]
-    .sort(([a], [b]) => (a < b ? -1 : 1))
-    .map(([date, value]) => ({ date, value }));
-}
-
-// Same volume calculation as getStrengthSeries, scoped to one exercise —
-// the per-exercise drilldown inside Training's Strength Progress section.
-export function getExerciseStrengthSeries(clientId: number, exerciseId: number, days: number) {
-  const data = getData();
-  const assignmentIds = new Set(
-    data.workout_assignments
-      .filter((wa) => {
-        if (wa.exercise_id !== exerciseId) return false;
-        const day = data.program_days.find((pd) => pd.id === wa.program_day_id);
-        return day?.client_id === clientId;
-      })
-      .map((wa) => wa.id)
-  );
-
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - days);
-  const byDate = new Map<string, number>();
-
-  data.set_logs
-    .filter((sl) => assignmentIds.has(sl.workout_assignment_id))
-    .filter((sl) => new Date(sl.logged_at) >= cutoff)
-    .forEach((sl) => {
-      const date = sl.logged_at.slice(0, 10);
-      const volume = (sl.weight_kg ?? 0) * (sl.reps ?? 0);
-      byDate.set(date, (byDate.get(date) ?? 0) + volume);
-    });
-
-  return [...byDate.entries()]
-    .sort(([a], [b]) => (a < b ? -1 : 1))
-    .map(([date, value]) => ({ date, value }));
-}
-
-// Every exercise this client has at least one logged set for, ordered by
-// name — populates the exercise picker in Strength Progress.
-export function listLoggedExercisesForClient(clientId: number): { id: number; name: string }[] {
-  const data = getData();
-  const dayIds = new Set(data.program_days.filter((pd) => pd.client_id === clientId).map((pd) => pd.id));
-  const assignments = data.workout_assignments.filter((wa) => dayIds.has(wa.program_day_id));
-  const loggedAssignmentIds = new Set(data.set_logs.map((sl) => sl.workout_assignment_id));
-  const exerciseIds = new Set(
-    assignments.filter((wa) => loggedAssignmentIds.has(wa.id)).map((wa) => wa.exercise_id)
-  );
-  return data.exercises
-    .filter((e) => exerciseIds.has(e.id))
-    .map((e) => ({ id: e.id, name: e.name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
-
 // ---- Start Page: the coach's "Startpagina" tab ----
 // Member info, coaching info, and short/long-term goals. Nutrition goals and
 // activity goals live here too, but nutrition figures are pulled live from
@@ -7741,13 +8030,13 @@ const STANDING_ACTIONS = new Set(["no-phase", "week", "program-ending", "quiet",
 const DISMISS_STANDING_MS = 14 * 86400000;
 
 /** The coach marked a Needs-you item as read (12 Oct): it leaves Home, the Feed and the rail's dot. */
-export function dismissHomeAction(clientId: number, actionId: string | string[], chat: ChatCoachView, food: FoodRows, ck: CheckInRows) {
+export function dismissHomeAction(clientId: number, actionId: string | string[], chat: ChatCoachView, food: FoodRows, ck: CheckInRows, sr: SetRows) {
   const client = getData().clients.find((c) => c.id === clientId);
   const ids = (Array.isArray(actionId) ? actionId : [actionId]).filter(Boolean);
   if (!client || !ids.length) return;
   // Kept small: only the items that still stand stay recorded. Every item, let go or not (2 Nov: the list after the
   // filter left out what was let go before, so each Done brought the one before it back).
-  const standing = new Set(getClientHome(clientId, chat, food, ck).allActionIds);
+  const standing = new Set(getClientHomeActions(clientId, chat, food, ck, sr).allActionIds);
   const next: Record<string, number> = {};
   for (const [id, at] of Object.entries(client.coach_dismissed ?? {})) if (standing.has(id)) next[id] = at;
   const now = Date.now();
@@ -7803,17 +8092,39 @@ export function clientHomeRows(clientIds: readonly number[]): ClientHomeRows {
  * video and call asks and invoices (clientHomeRows). `chat`: the coach's chat
  * view this client is in (fetchCoachChat).
  */
-export function getClientHome(clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, feed?: FeedEvent[], ix?: TrainingIndex, own?: ClientHomeRows): ClientHome {
+export function getClientHome(clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, sr: SetRows, feed?: FeedEvent[], ix?: TrainingIndex, own?: ClientHomeRows): ClientHome {
+  return clientHomeOf(true, clientId, chat, food, ck, sr, feed, ix, own);
+}
+
+/**
+ * A client's Home as Needs you, the rail, the dots and the to-do strip read it (21 Nov, the bounded slices): its items,
+ * the marks, nothing of the events list itself (`events`, `eventTotal`: the old admin's, which reads getClientHome on
+ * views holding everything). Its feed is the window of the last HOME_NEW_DAYS and the client's newest event: what the
+ * coach-wide views hold (food/rows.ts, checkins/rows.ts `feedFrom`), and all that any of these read.
+ */
+export type ClientHomeActions = Omit<ClientHome, "events" | "eventTotal">;
+export function getClientHomeActions(clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, sr: SetRows, feed?: FeedEvent[], ix?: TrainingIndex, own?: ClientHomeRows): ClientHomeActions {
+  const home: Partial<ClientHome> = clientHomeOf(false, clientId, chat, food, ck, sr, feed, ix, own);
+  delete home.events;
+  delete home.eventTotal;
+  return home as ClientHomeActions;
+}
+
+function clientHomeOf(full: boolean, clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, sr: SetRows, feed?: FeedEvent[], ix?: TrainingIndex, own?: ClientHomeRows): ClientHome {
   const data = getData();
   // Their training rows, read once when a check below needs them (23 Oct, speed: it scanned the store per row).
   let tix = ix;
-  const rows = () => (tix ??= trainingIndex(clientId));
+  const rows = () => (tix ??= trainingIndex(sr, clientId));
   const client = data.clients.find((c) => c.id === clientId);
   // A phone workout is the coach's logs alone (16 Nov): never news, a dot or a note to read here.
   // Its newest HOME_EVENTS: the chat's part of them in the view (Step 5: a coach view holds each client's newest).
   chat.need("clientTop", HOME_EVENTS, clientId);
-  const all = (feed ?? getActivityFeed(client?.coach_id ?? 0, chat, food, ck)).filter((e) => e.clientId === clientId && !e.health);
   const since = Date.now() - HOME_NEW_DAYS * 86400000;
+  // The food and check-ins read: everything (the events list), or the window and the newest (food/rows.ts FoodSpan).
+  const span = full ? ("all" as const) : { feedFrom: since };
+  food.need("getClientHome", clientId, span, ["entries", "calories"]);
+  ck.need("getClientHome", clientId, span);
+  const all = (feed ?? getActivityFeed(client?.coach_id ?? 0, chat, food, ck, sr, { clients: [clientId], span })).filter((e) => e.clientId === clientId && !e.health);
   const events = all.slice(0, HOME_EVENTS).map((e) => ({ ...e, when: feedTimeLabel(e.at, e.timeKnown), unseen: isUnseen(client?.coach_seen, e, since) }));
   const unseen = events.filter((e) => e.unseen);
 
@@ -7974,9 +8285,9 @@ export function getClientHome(clientId: number, chat: ChatCoachView, food: FoodR
   // then it stops (22 Oct: the clamped index re-reported its second-to-last week for good).
   const recent = deployed && programWeekNow(deployed) <= deployed.total_weeks + 1 ? deployed : null;
   if (recent) {
-    const program = recent;
-    const lastWeek = program.start_week + Math.max(1, programWeekNow(program)) - 2;
-    if (lastWeek >= program.start_week) {
+    // The week whose sets it reads (homeSetWeek: the coach-wide fetches take the same days, sets/rows.ts coachSpans).
+    const lastWeek = homeSetWeek(clientId) ?? recent.start_week - 1;
+    if (lastWeek >= recent.start_week) {
       const sessions = weekIn(rows(), clientId, lastWeek).filter((d) => assignmentsForDayIn(rows(), d.id).length > 0 || cardioForDayIn(rows(), d.id).length > 0);
       const missed = sessions.filter((d) => {
         const as = assignmentsForDayIn(rows(), d.id);
@@ -8112,10 +8423,11 @@ const plusDays = (iso: string, n: number) => {
  * which says a client doing half of what they are asked. Days before they
  * started are not days they missed.
  */
-export function clientStartDate(food: FoodRows, clientId: number, ck: CheckInRows): string | null {
+export function clientStartDate(food: FoodRows, clientId: number, ck: CheckInRows, sr: SetRows): string | null {
   const data = getData();
   food.need("clientStartDate", clientId, "all", ["entries", "calories"]);
   ck.need("clientStartDate", clientId, "all", ["entries"]);
+  sr.need("clientStartDate", clientId);
   let first: string | null = null;
   const see = (day: string | null | undefined) => {
     if (day && (first == null || day < first)) first = day;
@@ -8128,7 +8440,7 @@ export function clientStartDate(food: FoodRows, clientId: number, ck: CheckInRow
   for (const c of food.calories) if (c.client_id === clientId && c.source !== "health") see(c.date);
   const dayIds = new Set(data.program_days.filter((pd) => pd.client_id === clientId).map((pd) => pd.id));
   const assignmentIds = new Set(data.workout_assignments.filter((wa) => dayIds.has(wa.program_day_id)).map((wa) => wa.id));
-  for (const s of data.set_logs) if (assignmentIds.has(s.workout_assignment_id)) see(s.logged_at?.slice(0, 10));
+  for (const s of sr.logs) if (assignmentIds.has(s.workout_assignment_id)) see(s.logged_at?.slice(0, 10));
   if (first) return first;
   return data.users.find((u) => u.role === "client" && u.client_id === clientId)?.created_at?.slice(0, 10) ?? null;
 }
@@ -8143,7 +8455,7 @@ export function clientStartDate(food: FoodRows, clientId: number, ck: CheckInRow
 // altogether and lose eight points. Normalise first and the difference in
 // rhythm stops mattering — which is the whole reason a daily thing and a
 // weekly thing can sit in one score at all.
-function engagementWindow(food: FoodRows, ck: CheckInRows, clientId: number, days: number, back: number, since: string | null): { parts: EngagementPart[]; all: EngagementPart[]; overall: number | null } {
+function engagementWindow(food: FoodRows, ck: CheckInRows, sr: SetRows, clientId: number, days: number, back: number, since: string | null): { parts: EngagementPart[]; all: EngagementPart[]; overall: number | null } {
   const data = getData();
   const today = localDateStr();
   const to = plusDays(today, -days * back);
@@ -8209,7 +8521,7 @@ function engagementWindow(food: FoodRows, ck: CheckInRows, clientId: number, day
         const assignments = getAssignmentsForDay(day.id);
         if (assignments.length === 0) continue;
         sessionsAsked += 1;
-        if (assignments.some((a) => getLogsForAssignment(a.id).length > 0)) sessionsDone += 1;
+        if (assignments.some((a) => getLogsForAssignment(sr, a.id).length > 0)) sessionsDone += 1;
       }
     }
   }
@@ -8294,13 +8606,13 @@ function engagementWindow(food: FoodRows, ck: CheckInRows, clientId: number, day
   return { parts: counted, all: parts, overall: counted.length ? Math.round(counted.reduce((s, p) => s + p.pct, 0) / counted.length) : null };
 }
 
-export function getClientEngagement(food: FoodRows, ck: CheckInRows, clientId: number, days: number = ENGAGEMENT_DAYS): ClientEngagement {
-  const start = clientStartDate(food, clientId, ck);
-  const now = engagementWindow(food, ck, clientId, days, 0, start);
+export function getClientEngagement(food: FoodRows, ck: CheckInRows, sr: SetRows, clientId: number, days: number = ENGAGEMENT_DAYS): ClientEngagement {
+  const start = clientStartDate(food, clientId, ck, sr);
+  const now = engagementWindow(food, ck, sr, clientId, days, 0, start);
   // The same thirty days before those thirty. Null until there is anything
   // in them, so a new client is not told they are down on a month that never
   // happened.
-  const before = engagementWindow(food, ck, clientId, days, 1, start);
+  const before = engagementWindow(food, ck, sr, clientId, days, 1, start);
   const windowFrom = plusDays(localDateStr(), -(days - 1));
   const can = new Set(now.all.map((p) => p.id));
   const hasNutrition = !!getNutritionGoalsSummary(clientId).trainingKcal;
@@ -8377,7 +8689,7 @@ export function chatUnreadCount(thread: ChatThread): number {
   return thread.rows(clientId).filter((m) => m.client_id === clientId && m.sender === "client" && (m.text.trim() || m.media_path) && stampMs(m.created_at) >= since && !(`chat-${m.id}` in seen)).length;
 }
 
-export function markClientEventsSeen(clientId: number, which: { all: true } | { dayId: number } | { ids: string[] } | { tab: string }, chat: ChatCoachView, food: FoodRows, ck: CheckInRows) {
+export function markClientEventsSeen(clientId: number, which: { all: true } | { dayId: number } | { ids: string[] } | { tab: string }, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, sr: SetRows) {
   const data = getData();
   const client = data.clients.find((c) => c.id === clientId);
   if (!client) return;
@@ -8391,7 +8703,7 @@ export function markClientEventsSeen(clientId: number, which: { all: true } | { 
   const since = Date.now() - HOME_NEW_DAYS * 86400000;
   // The client's last 14 days of chat, whole: the marks are kept to them (Step 5).
   chat.need("recent", 0, clientId);
-  const recent = getActivityFeed(client.coach_id ?? 0, chat, food, ck).filter((e) => e.clientId === clientId && e.at >= since);
+  const recent = getActivityFeed(client.coach_id ?? 0, chat, food, ck, sr, { clients: [clientId], span: { feedFrom: since } }).filter((e) => e.clientId === clientId && e.at >= since);
   // A tab clears what is on the tab itself; news about one session waits
   // for that session to be opened.
   const hit = recent.filter((e) =>
@@ -8415,9 +8727,9 @@ export function markClientEventsSeen(clientId: number, which: { all: true } | { 
  * "who needs me", not "how many things".
  */
 /** The same, as the rail's reasons (14 Oct): one line a kind, in its colour, the most pressing first. */
-export function clientReasons(clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, feed?: FeedEvent[]): AttentionReason[] {
+export function clientReasons(clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, sr: SetRows, feed?: FeedEvent[]): AttentionReason[] {
   const out: AttentionReason[] = [];
-  for (const a of getClientHome(clientId, chat, food, ck, feed).actions) {
+  for (const a of getClientHomeActions(clientId, chat, food, ck, sr, feed).actions) {
     const since = a.at ?? 0;
     if (a.id.startsWith("reply-video-")) {
       const m = /^(Photo|Video) of (.+?) waiting/.exec(a.title);
@@ -8439,10 +8751,10 @@ export function clientReasons(clientId: number, chat: ChatCoachView, food: FoodR
   return sortReasons(out);
 }
 
-export function clientAttention(clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, feed?: FeedEvent[]): string | null {
+export function clientAttention(clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, sr: SetRows, feed?: FeedEvent[]): string | null {
   // The same list the client's Home spells out; the dot's title is the first
   // of them, and how many more there are.
-  const actions = getClientHome(clientId, chat, food, ck, feed).actions;
+  const actions = getClientHomeActions(clientId, chat, food, ck, sr, feed).actions;
   if (actions.length === 0) return null;
   return actions.length === 1 ? actions[0].title : `${actions[0].title} · and ${actions.length - 1} more`;
 }
@@ -9329,7 +9641,7 @@ function phaseSpanFor(start: string, end: string): { first: string; last: string
   return a <= b ? { first: a, last: b } : { first: b, last: a };
 }
 
-export function addClientPhase(clientId: number, track: PhaseTrack, name: string, startDate: string, endDate: string, programId: number | null = null): ClientPhase {
+export function addClientPhase(sr: SetRows, clientId: number, track: PhaseTrack, name: string, startDate: string, endDate: string, programId: number | null = null): ClientPhase {
   const data = getData();
   const { first, last } = phaseSpanFor(startDate, endDate);
   const phase: ClientPhase = {
@@ -9358,7 +9670,7 @@ export function addClientPhase(clientId: number, track: PhaseTrack, name: string
   }
   getData().client_phases.push(phase);
   persist();
-  if (track === "training" && programId != null) linkPhaseToProgram(phase.id, programId);
+  if (track === "training" && programId != null) linkPhaseToProgram(sr, phase.id, programId);
   return phase;
 }
 
@@ -9435,6 +9747,7 @@ export function setPhaseCoverPath(phaseId: number, cover: string | null): string
 // trailing weeks that have nothing logged in them. Without it the phase
 // keeps the coach's dates and the programme is left as it is.
 export function updateClientPhase(
+  sr: SetRows,
   phaseId: number,
   track: PhaseTrack,
   name: string,
@@ -9459,7 +9772,7 @@ export function updateClientPhase(
     const hm = (n: number) => String(n).padStart(2, "0");
     const onStart = (time = `${hm(was.getHours())}:${hm(was.getMinutes())}`) => new Date(`${start}T${time}:00`).toISOString();
     if (start !== anchored) {
-      if (programLoggedWeekIndexes(program.id).length > 0) start = anchored;
+      if (programLoggedWeekIndexes(sr, program.id).length > 0) start = anchored;
       else if (program.status === "deployed" && start > weekStart(localDateStr())) {
         // Moved into a later week: it is not running any more, it is
         // coming. Scheduled, so it goes live on that week by itself (from
@@ -9486,25 +9799,26 @@ export function updateClientPhase(
   if (!adjustProgram) return;
   const weeks = Math.max(1, Math.round((new Date(`${end}T00:00:00`).getTime() - new Date(`${start}T00:00:00`).getTime()) / (7 * 86400000)) + 1);
   if (weeks > program.total_weeks) {
-    updateProgramTotalWeeks(program.id, weeks);
+    updateProgramTotalWeeks(sr, program.id, weeks);
   } else if (weeks < program.total_weeks) {
     // Trailing weeks go one at a time from the end, stopping at the first
     // that has logged sets: a week the client trained is never deleted.
-    const logged = programLoggedWeekIndexes(program.id);
+    const logged = programLoggedWeekIndexes(sr, program.id);
     for (let i = program.total_weeks; i > weeks; i--) {
       if (logged.includes(i)) break;
-      removeProgramWeek(program.id, i);
+      removeProgramWeek(sr, program.id, i);
     }
     // The phase follows the programme only as far as it could be trimmed.
-    syncProgramPhase(program.id);
+    syncProgramPhase(sr, program.id);
   }
 }
 
 // 1-based indexes of the programme's weeks that have at least one logged set.
-export function programLoggedWeekIndexes(programId: number): number[] {
+export function programLoggedWeekIndexes(sr: SetRows, programId: number): number[] {
   const data = getData();
   const program = data.training_programs.find((p) => p.id === programId);
   if (!program) return [];
+  sr.needLogged("programLoggedWeekIndexes", program.client_id);
   // One pass over the sessions, rows and sets for every week (23 Oct, speed: it was three whole-store scans a week).
   const weeks = new Set<number>();
   for (let i = 1; i <= program.total_weeks; i++) weeks.add(program.start_week + i - 1);
@@ -9516,7 +9830,7 @@ export function programLoggedWeekIndexes(programId: number): number[] {
     if (week != null && !weekOfRow.has(wa.id)) weekOfRow.set(wa.id, week);
   }
   const logged = new Set<number>();
-  for (const sl of data.set_logs) {
+  for (const sl of sr.logs) {
     const week = weekOfRow.get(sl.workout_assignment_id);
     if (week != null) logged.add(week);
   }
@@ -9525,7 +9839,7 @@ export function programLoggedWeekIndexes(programId: number): number[] {
   return out;
 }
 
-export function removeClientPhase(phaseId: number) {
+export function removeClientPhase(sr: SetRows, phaseId: number) {
   const data = getData();
   const phase = data.client_phases.find((p) => p.id === phaseId);
   if (!phase) return;
@@ -9547,7 +9861,7 @@ export function removeClientPhase(phaseId: number) {
         Array.from({ length: program.total_weeks }, (_, i) => program.start_week + i).some((w) =>
           getWeek(program.client_id, w).some((d) => getAssignmentsForDay(d.id).length > 0)
         );
-      if (!built) removeProgram(program.id);
+      if (!built) removeProgram(sr, program.id);
     }
   }
 }
@@ -9559,7 +9873,7 @@ export function removeClientPhase(phaseId: number) {
 // `dates` false keeps the phase's dates as the coach set them and only
 // carries the name across (a rename); true re-derives them from the deploy
 // week and the programme's length (deploy, schedule, weeks added/removed).
-export function syncProgramPhase(programId: number, dates = true) {
+export function syncProgramPhase(sr: SetRows, programId: number, dates = true) {
   const data = getData();
   const program = data.training_programs.find((p) => p.id === programId);
   if (!program) return;
@@ -9591,7 +9905,7 @@ export function syncProgramPhase(programId: number, dates = true) {
   }
   // Scheduled from the Training tab too (27 Oct, Alex): an Indefinite programme running before it ends the week before,
   // its weeks filled up to then (endOpenPhaseBefore), as a phase added on the Plan does.
-  if (!phase.draft) endOpenPhaseBefore(program.client_id, "training", start, phase.id);
+  if (!phase.draft) endOpenPhaseBefore(sr, program.client_id, "training", start, phase.id);
   persist();
 }
 
@@ -9903,7 +10217,7 @@ export function homeGymId(clientId: number): number | null {
  * A training phase's length is its programme's, so its weeks come from the
  * builder rather than from here; the start is still the coach's to pick.
  */
-export function schedulePhase(phaseId: number, name: string, startDate: string, endDate: string): boolean {
+export function schedulePhase(sr: SetRows, phaseId: number, name: string, startDate: string, endDate: string): boolean {
   const data = getData();
   const phase = data.client_phases.find((p) => p.id === phaseId);
   if (!phase) return false;
@@ -9922,12 +10236,12 @@ export function schedulePhase(phaseId: number, name: string, startDate: string, 
       // A draft programme goes out with its phase: from its first Monday
       // when that is a later week, now when that week has come. Scheduling
       // only the phase left the programme a draft on the Training tab.
-      if (live) deployProgram(program.id);
-      else scheduleProgramDeploy(program.id, new Date(`${phase.start_week}T00:00:00`).toISOString());
+      if (live) deployProgram(sr, program.id);
+      else scheduleProgramDeploy(sr, program.id, new Date(`${phase.start_week}T00:00:00`).toISOString());
       return live;
     }
     // A programme keeps its length; what moves is when it begins.
-    syncProgramPhase(program.id, false);
+    syncProgramPhase(sr, program.id, false);
   }
   if (live) {
     const where = { nutrition: "nutrition", training: "training", lifestyle: "home" } as const;
@@ -9950,7 +10264,7 @@ export function schedulePhase(phaseId: number, name: string, startDate: string, 
  * which is deployed now (the programme running before becomes a past one:
  * its phase ends last week). Returns false for an unnamed programme.
  */
-export function deployPhaseNow(phaseId: number): boolean {
+export function deployPhaseNow(sr: SetRows, phaseId: number): boolean {
   const data = getData();
   const phase = data.client_phases.find((p) => p.id === phaseId);
   if (!phase) return false;
@@ -9977,7 +10291,7 @@ export function deployPhaseNow(phaseId: number): boolean {
   }
   if (program) {
     persist();
-    deployProgram(program.id);
+    deployProgram(sr, program.id);
     return true;
   }
   // Same length in whole weeks, up to the day before the next phase already set.
@@ -10078,7 +10392,7 @@ export function unschedulePhase(phaseId: number): boolean {
  * weights move into target_weight_kg. A new home that had no weight of its
  * own was already starting from that figure, so it keeps it.
  */
-export function setHomeGym(gymId: number) {
+export function setHomeGym(sr: SetRows, gymId: number) {
   const data = getData();
   const gym = data.client_gyms.find((g) => g.id === gymId && !g.archived);
   if (!gym) return;
@@ -10090,7 +10404,11 @@ export function setHomeGym(gymId: number) {
   const dayIds = new Set(data.program_days.filter((pd) => pd.client_id === clientId && !isRogue(pd)).map((pd) => pd.id));
   const assignments = data.workout_assignments.filter((wa) => dayIds.has(wa.program_day_id));
   const assignmentIds = new Set(assignments.map((wa) => wa.id));
-  for (const sl of data.set_logs) if (assignmentIds.has(sl.workout_assignment_id) && sl.gym_id == null) sl.gym_id = oldHome;
+  sr.need("setHomeGym", clientId);
+  // The sets' gyms through the door (quest 10, sets/rows.ts pinSetGyms): memory today's line on the store; pg the pin kept
+  // in memory with the rest of this change (every fetch reads it into the sets), its UPDATE on the client's chain after
+  // the save.
+  pinSetGyms("w.set.homeGym", clientId, assignmentIds, oldHome);
   for (const n of data.client_exercise_notes) if (n.client_id === clientId && n.gym_id == null) n.gym_id = oldHome;
   for (const g of data.client_goals) {
     if (g.client_id === clientId && g.tracked_by?.kind === "exercise" && g.tracked_by.gymId == null) g.tracked_by = { ...g.tracked_by, gymId: oldHome };
@@ -10113,7 +10431,7 @@ export function setHomeGym(gymId: number) {
     // its first visit there: what was lifted is that week's weight, or the
     // week would read as short of the old home's figure.
     const firstVisitBest = Math.max(
-      ...data.set_logs
+      ...sr.logs
         .filter((sl) => sl.workout_assignment_id === wa.id && sl.gym_id === gymId && sl.weight_kg != null)
         .map((sl) => sl.weight_kg as number)
     );
@@ -10165,7 +10483,7 @@ export function saveGymLogo(gymId: number, buffer: Buffer, mimeType: string): { 
 }
 
 /** Adds a gym, or brings back a removed one of the same name. */
-export function addClientGym(clientId: number, name: string, color?: string, kind?: ClientGym["kind"], once = false): ClientGym | null {
+export function addClientGym(sr: SetRows, clientId: number, name: string, color?: string, kind?: ClientGym["kind"], once = false): ClientGym | null {
   const clean = name.trim().replace(/\s+/g, " ").slice(0, 40);
   if (!clean) return null;
   const data = getData();
@@ -10176,7 +10494,7 @@ export function addClientGym(clientId: number, name: string, color?: string, kin
       same.archived = false;
       delete same.archived_at;
       same.once = true;
-    } else if (same.archived) restoreClientGym(same.id);
+    } else if (same.archived) restoreClientGym(sr, same.id);
     if (color) same.color = color;
     if (kind) same.kind = kind;
     // Added as a regular gym, a gym trained at once becomes one; picked once again, a regular gym stays one.
@@ -10186,7 +10504,7 @@ export function addClientGym(clientId: number, name: string, color?: string, kin
   }
   const gym: ClientGym = { id: allocId("client_gyms"), client_id: clientId, name: clean, created_at: new Date().toISOString(), last_used_at: null, archived: false, ...(color ? { color } : {}), ...(kind ? { kind } : {}), ...(once ? { once: true } : {}) };
   data.client_gyms.push(gym);
-  takeHomeFromDeleted(gym);
+  takeHomeFromDeleted(sr, gym);
   persist();
   return gym;
 }
@@ -10196,7 +10514,7 @@ export function addClientGym(clientId: number, name: string, color?: string, kin
  * the home gym hands home to the next gym first, so the Weight figure goes
  * on being a gym still in use and the removed gym keeps its own weights.
  */
-export function removeClientGym(gymId: number) {
+export function removeClientGym(sr: SetRows, gymId: number) {
   const gym = (getData().client_gyms ?? []).find((g) => g.id === gymId);
   if (!gym) return;
   // Never a gym trained at once (9 Nov): it is never planned for, so it can't be home.
@@ -10204,9 +10522,9 @@ export function removeClientGym(gymId: number) {
   // The home gym going: the most used of the rest takes over (15 Oct). It remembers who took over, so bringing it back
   // makes it home again (9 Nov, Alex: a slip on the main gym).
   if (homeGymId(gym.client_id) === gymId && others.length > 0) {
-    const stats = gymSessionStats(gym.client_id);
+    const stats = gymSessionStats(sr, gym.client_id);
     const next = [...others].sort((a, b) => (stats.get(b.id)?.sessions ?? 0) - (stats.get(a.id)?.sessions ?? 0) || a.id - b.id)[0];
-    setHomeGym(next.id);
+    setHomeGym(sr, next.id);
     gym.home_to = next.id;
   }
   gym.archived = true;
@@ -10220,15 +10538,15 @@ const GYM_KEPT_MS = 30 * 86400000;
 const gymGone = (g: ClientGym) => !!g.archived && !!g.archived_at && Date.now() - Date.parse(g.archived_at) > GYM_KEPT_MS;
 
 /** Home left on a deleted gym (it went with no regular gym to hand over to): the next regular gym takes it. */
-function takeHomeFromDeleted(gym: ClientGym) {
+function takeHomeFromDeleted(sr: SetRows, gym: ClientGym) {
   if (gym.once || gym.archived) return;
   const home = homeGymId(gym.client_id);
-  if (home != null && home !== gym.id && listClientGyms(gym.client_id, true).find((g) => g.id === home)?.archived) setHomeGym(gym.id);
+  if (home != null && home !== gym.id && listClientGyms(gym.client_id, true).find((g) => g.id === home)?.archived) setHomeGym(sr, gym.id);
 }
 
 /** A deleted gym back in the picker (9 Nov, Alex), with its weights, sets and picture as they were; home again when it was
  *  home and the gym that took over still is. */
-export function restoreClientGym(gymId: number): boolean {
+export function restoreClientGym(sr: SetRows, gymId: number): boolean {
   const gym = (getData().client_gyms ?? []).find((g) => g.id === gymId);
   if (!gym || gymGone(gym)) return false;
   gym.archived = false;
@@ -10236,7 +10554,7 @@ export function restoreClientGym(gymId: number): boolean {
   const handedTo = gym.home_to;
   delete gym.home_to;
   if (handedTo != null && homeGymId(gym.client_id) === handedTo) {
-    setHomeGym(gym.id);
+    setHomeGym(sr, gym.id);
     // The gym that stood in held the home weight only because it was home: where it is the same figure it follows home
     // again, so a slip undone leaves no frozen copies.
     const data = getData();
@@ -10249,19 +10567,19 @@ export function restoreClientGym(gymId: number): boolean {
       wa.gym_targets = rest;
     }
     markProgressClient(gym.client_id);
-  } else takeHomeFromDeleted(gym);
+  } else takeHomeFromDeleted(sr, gym);
   persist();
   return true;
 }
 
 /** The gym's name, colour and type, from its page in Settings (9 Nov, Alex). Back with why not, or null once saved. */
-export function updateClientGym(gymId: number, name: string, color?: ClientGym["color"], kind?: ClientGym["kind"]): string | null {
+export function updateClientGym(sr: SetRows, gymId: number, name: string, color?: ClientGym["color"], kind?: ClientGym["kind"]): string | null {
   const gym = (getData().client_gyms ?? []).find((g) => g.id === gymId);
   if (!gym) return "Couldn't save the gym.";
   const clean = name.trim().replace(/\s+/g, " ").slice(0, 40);
   if (clean.length < 2) return "Give the gym a name.";
   // A deleted gym that holds nothing isn't listed anywhere, so it holds no name either.
-  const stats = gymSessionStats(gym.client_id);
+  const stats = gymSessionStats(sr, gym.client_id);
   if (listClientGyms(gym.client_id, true).some((g) => g.id !== gymId && g.name.toLowerCase() === clean.toLowerCase() && !gymGone(g) && (!g.archived || (stats.get(g.id)?.sessions ?? 0) > 0))) return `You already have a gym called ${clean}`;
   gym.name = clean;
   if (color) gym.color = color;
@@ -10273,13 +10591,14 @@ export function updateClientGym(gymId: number, name: string, color?: ClientGym["
 /** Which gym each of a client's sessions was at: the gym of its first set (no gym on a set is the home gym's), else, for a
  *  finished session with only cardio done, the gym picked for it. A rogue session counts at the gym it was at (9 Nov, Alex),
  *  and one from before it asked which gym, at none. */
-function sessionGyms(clientId: number) {
+function sessionGyms(sr: SetRows, clientId: number) {
   const data = getData();
+  sr.need("sessionGyms", clientId);
   const home = homeGymId(clientId);
   const days = new Map(data.program_days.filter((pd) => pd.client_id === clientId).map((pd) => [pd.id, pd]));
   const dayOf = new Map(data.workout_assignments.filter((wa) => days.has(wa.program_day_id)).map((wa) => [wa.id, wa.program_day_id]));
   const dayGym = new Map<number, number>();
-  for (const sl of data.set_logs) {
+  for (const sl of sr.logs) {
     const d = dayOf.get(sl.workout_assignment_id);
     if (d == null || dayGym.has(d)) continue;
     const pd = days.get(d)!;
@@ -10287,7 +10606,7 @@ function sessionGyms(clientId: number) {
     if (g != null) dayGym.set(d, g);
   }
   const entryDay = new Map((data.cardio_entries ?? []).filter((c) => days.has(c.program_day_id)).map((c) => [c.id, c.program_day_id]));
-  const cardioDone = new Set((data.cardio_logs ?? []).flatMap((l) => (entryDay.has(l.cardio_entry_id) ? [entryDay.get(l.cardio_entry_id)!] : [])));
+  const cardioDone = new Set(sr.ticks.flatMap((l) => (entryDay.has(l.cardio_entry_id) ? [entryDay.get(l.cardio_entry_id)!] : [])));
   for (const pd of days.values()) if (!dayGym.has(pd.id) && pd.gym_id != null && pd.session_ended_at && cardioDone.has(pd.id)) dayGym.set(pd.id, pd.gym_id);
   return { home, days, dayGym };
 }
@@ -10319,9 +10638,9 @@ const LONGEST_SESSION_MIN = 6 * 60;
 
 /** Every gym for Settings: home first, then the most trained at; those trained at once, then deleted, after them. A deleted
  *  or once-only gym with nothing trained there is left out. */
-export function gymDashboards(clientId: number): GymDashboard[] {
+export function gymDashboards(sr: SetRows, clientId: number): GymDashboard[] {
   const data = getData();
-  const { home, days, dayGym } = sessionGyms(clientId);
+  const { home, days, dayGym } = sessionGyms(sr, clientId);
   const gyms = listClientGyms(clientId, true);
   const rows = new Map(data.workout_assignments.filter((wa) => days.has(wa.program_day_id)).map((wa) => [wa.id, wa]));
   const library = new Map(data.exercises.map((e) => [e.id, e.name]));
@@ -10333,7 +10652,7 @@ export function gymDashboards(clientId: number): GymDashboard[] {
   const sets = new Map<number, number>();
   const byExercise = new Map<number, Map<string, number>>();
   const firstLog = new Map<number, string>();
-  for (const sl of data.set_logs) {
+  for (const sl of sr.logs) {
     const wa = rows.get(sl.workout_assignment_id);
     if (!wa) continue;
     const had = firstLog.get(wa.program_day_id);
@@ -10410,9 +10729,9 @@ export function gymDashboards(clientId: number): GymDashboard[] {
 }
 
 /** For the picker's rows (13 Oct): sessions trained at each gym, and when the last was. A day counts for the gym of its sets. */
-export function gymSessionStats(clientId: number): Map<number, { sessions: number; lastUsedAt: string | null; /** Sessions in the last 56 days (15 Oct, the coach's gyms pop-up). */ sessions8w: number }> {
+export function gymSessionStats(sr: SetRows, clientId: number): Map<number, { sessions: number; lastUsedAt: string | null; /** Sessions in the last 56 days (15 Oct, the coach's gyms pop-up). */ sessions8w: number }> {
   const since = new Date(Date.now() - 56 * 86400000).toISOString();
-  const { days, dayGym } = sessionGyms(clientId);
+  const { days, dayGym } = sessionGyms(sr, clientId);
   const out = new Map<number, { sessions: number; lastUsedAt: string | null; sessions8w: number }>();
   for (const [d, g] of dayGym) {
     const pd = days.get(d)!;
@@ -10442,14 +10761,15 @@ export function currentGymId(clientId: number): number | null {
 }
 
 /** Where a day was trained: the gym of its sets, else the current gym. */
-export function dayGymId(programDayId: number): number | null {
+export function dayGymId(sr: SetRows, programDayId: number): number | null {
   const data = getData();
   const day = data.program_days.find((pd) => pd.id === programDayId);
   if (!day) return null;
   const home = homeGymId(day.client_id);
   if (home == null) return null;
   const ids = new Set(data.workout_assignments.filter((wa) => wa.program_day_id === day.id).map((wa) => wa.id));
-  const log = data.set_logs.find((sl) => ids.has(sl.workout_assignment_id));
+  sr.needRows("dayGymId", ids);
+  const log = sr.logs.find((sl) => ids.has(sl.workout_assignment_id));
   // Picked and nothing logged yet: the gym picked, so a gym trained at once holds for its own session (6 Nov, Alex).
   const picked = day.gym_id != null && (data.client_gyms ?? []).some((g) => g.id === day.gym_id && !g.archived) ? day.gym_id : null;
   return log ? log.gym_id ?? home : picked ?? currentGymId(day.client_id);
@@ -10466,25 +10786,54 @@ export function targetAtGym(wa: WorkoutAssignment, gymId: number | null, home: n
  * start on, and sets already logged that day move to it (a wrong pick is
  * usually noticed after the first set), with the weights worked out again.
  */
-export function pickGymForDay(programDayId: number, gymId: number) {
+export async function pickGymForDay(programDayId: number, gymId: number): Promise<void> {
   const data = getData();
   const day = data.program_days.find((pd) => pd.id === programDayId);
   const gym = (data.client_gyms ?? []).find((g) => g.id === gymId);
   if (!day || !gym || gym.client_id !== day.client_id) return;
-  gym.last_used_at = new Date().toISOString();
-  day.gym_id = gymId;
-  // Sets moving gym move lanes: the rule reads the client's exercises again on its next pass (runProgressPass).
-  markProgressClient(day.client_id);
+  const memoryPart = () => {
+    gym.last_used_at = new Date().toISOString();
+    day.gym_id = gymId;
+    // Sets moving gym move lanes: the rule reads the client's exercises again on its next pass (runProgressPass).
+    markProgressClient(day.client_id);
+  };
   const ids = data.workout_assignments.filter((wa) => wa.program_day_id === day.id).map((wa) => wa.id);
-  const moved = new Set<number>();
-  for (const sl of data.set_logs) {
-    if (ids.includes(sl.workout_assignment_id) && sl.gym_id !== gymId) {
-      sl.gym_id = gymId;
-      moved.add(sl.workout_assignment_id);
+  // The day's sets through the door (quest 10): memory today's lines in order; pg the sets' gym first, then the day's gym
+  // and the rule after the commit (the phone sends the pick again on a crash between; a value, so it lands once).
+  const reach = () => {
+    const rows = new Set(ids);
+    for (const id of ids) {
+      const wa = data.workout_assignments.find((x) => x.id === id);
+      if (wa) for (const r of progressReach(wa)) rows.add(r);
     }
-  }
-  persist();
-  moved.forEach((id) => progressTargetFromLogs(id));
+    return [...rows];
+  };
+  await writeSets(
+    "w.set.gym",
+    day.client_id,
+    reach,
+    (box) => {
+      if (!SETS_PG) memoryPart();
+      const moved = new Set<number>();
+      for (const sl of box.logs) {
+        if (ids.includes(sl.workout_assignment_id) && sl.gym_id !== gymId) {
+          sl.gym_id = gymId;
+          moved.add(sl.workout_assignment_id);
+        }
+      }
+      box.persist();
+      return moved;
+    },
+    {
+      afterCommit: (moved, view) => {
+        if (SETS_PG) {
+          memoryPart();
+          persist();
+        }
+        moved.forEach((id) => progressTargetFromLogs(view, id));
+      },
+    }
+  );
 }
 
 /**
@@ -10548,12 +10897,14 @@ const STALE_SESSION_MS = 12 * 3600000;
 
 /** What a session holds, each as epoch ms (the stamps are the server's local time, stampMs): its start, its sets, its
     cardio ticked and its photos or videos sent. One rule for the 12 h end and the "still going" reminder (19 Nov, Alex). */
-function sessionStamps(day: ProgramDay) {
+function sessionStamps(sr: SetRows, day: ProgramDay) {
   const data = getData();
   const ids = new Set(data.workout_assignments.filter((wa) => wa.program_day_id === day.id).map((wa) => wa.id));
-  const sets = data.set_logs.filter((sl) => ids.has(sl.workout_assignment_id)).map((sl) => stampMs(sl.logged_at)).filter(Number.isFinite);
+  sr.needRows("sessionStamps", ids);
+  const sets = sr.logs.filter((sl) => ids.has(sl.workout_assignment_id)).map((sl) => stampMs(sl.logged_at)).filter(Number.isFinite);
   const cardioIds = new Set(listCardioForDay(day.id).map((c) => c.id));
-  const cardio = (data.cardio_logs ?? []).filter((l) => cardioIds.has(l.cardio_entry_id)).map((l) => stampMs(l.done_at));
+  sr.needTicks("sessionStamps", [day.id]);
+  const cardio = sr.ticks.filter((l) => cardioIds.has(l.cardio_entry_id)).map((l) => stampMs(l.done_at));
   const media = (data.video_requests ?? []).filter((r) => ids.has(r.assignment_id) && !!r.file_path);
   const clips = media.map((r) => (r.submitted_at ? stampMs(r.submitted_at) : NaN)).filter(Number.isFinite);
   return { started: day.session_started_at ? stampMs(day.session_started_at) : NaN, sets, cardio, cardioDone: cardio.length > 0, sentMedia: media.length > 0, clips };
@@ -10561,8 +10912,8 @@ function sessionStamps(day: ProgramDay) {
 
 /** The last thing done in a session (19 Nov, Alex: "I forget to complete the workout"): the latest of its start, its last
     set, its last cardio ticked and its last clip sent, as epoch ms; NaN when it has no start. With the set count. */
-export function sessionLastActivityMs(day: ProgramDay): { lastMs: number; lastSetMs: number; sets: number } {
-  const s = sessionStamps(day);
+export function sessionLastActivityMs(sr: SetRows, day: ProgramDay): { lastMs: number; lastSetMs: number; sets: number } {
+  const s = sessionStamps(sr, day);
   const lastSetMs = s.sets.length ? Math.max(...s.sets) : NaN;
   if (!Number.isFinite(s.started)) return { lastMs: NaN, lastSetMs, sets: s.sets.length };
   return { lastMs: Math.max(s.started, ...s.sets, ...s.cardio.filter(Number.isFinite), ...s.clips), lastSetMs, sets: s.sets.length };
@@ -10573,22 +10924,34 @@ export function liveSessionDays(): Data["program_days"] {
   return getData().program_days.filter((pd) => pd.client_id != null && !!pd.session_started_at && !pd.session_ended_at);
 }
 
-export function endStaleSessions() {
+/**
+ * `sr`: every live session's sets (sets/rows.ts fetchLiveSessionSets). Memory mode runs every line at once, as before (the
+ * promise is done when it is handed back). With SETS_STORE=pg an empty session's discard is one transaction each, after
+ * the loop, that looks again under the client's lock and does nothing when a set came in meanwhile (the promise waits).
+ */
+export function endStaleSessions(sr: SetRows): Promise<void> {
   const data = getData();
   const now = Date.now();
+  const later: number[] = [];
   for (const day of [...data.program_days]) {
     if (!day.session_started_at || day.session_ended_at) continue;
     const started = stampMs(day.session_started_at);
     if (!Number.isFinite(started) || now - started < STALE_SESSION_MS) continue;
     // A photo or video sent from it is something done: the session ends rather than vanishing with it.
-    const { sets: logged, cardioDone, sentMedia } = sessionStamps(day);
+    const { sets: logged, cardioDone, sentMedia } = sessionStamps(sr, day);
     if (logged.length === 0 && !cardioDone && !sentMedia) {
-      discardSession(day.id);
+      if (SETS_PG) later.push(day.id);
+      // Memory mode: every line of it runs at once, as before (a throw in it is said, not left unhandled).
+      else void discardSession(day.id).catch((e) => console.error("[sessions] the 12 h discard failed:", e instanceof Error ? e.message : e));
       continue;
     }
     const endedAt = new Date(Math.max(started, ...logged)).toISOString();
-    endSession(day.id, endedAt, day.session_note ?? "", sessionAnswers(day).map((a) => ({ id: a.id, value: a.text ?? a.value ?? null })));
+    endSession(sr, day.id, endedAt, day.session_note ?? "", sessionAnswers(day).map((a) => ({ id: a.id, value: a.text ?? a.value ?? null })));
   }
+  if (!later.length) return Promise.resolve();
+  return (async () => {
+    for (const id of later) await discardSession(id, { onlyIfNoSets: true });
+  })();
 }
 
 /** The client began the session: its clock starts. One live session per
@@ -10728,20 +11091,60 @@ export function setFreeCardio(cardioId: number, v: { time?: string; pace?: strin
 }
 
 /** A free session taken away whole: left with nothing in it, or discarded. */
-export function removeFreeSession(programDayId: number) {
+export async function removeFreeSession(programDayId: number, opts: { onlyIfNoSets?: boolean } = {}): Promise<void> {
   const data = getData();
   const day = data.program_days.find((pd) => pd.id === programDayId);
   if (!day?.free) return;
   const ids = new Set(data.workout_assignments.filter((wa) => wa.program_day_id === day.id).map((wa) => wa.id));
-  data.set_logs = data.set_logs.filter((sl) => !ids.has(sl.workout_assignment_id));
-  // Its video asks and anything sent on it go with its rows, files too, so nothing is left waiting on a row that isn't there.
-  for (const r of data.video_requests.filter((x) => ids.has(x.assignment_id))) for (const file of removeVideoRequest(r.id)) void deleteUpload(file).catch(() => {});
-  data.workout_assignments = data.workout_assignments.filter((wa) => wa.program_day_id !== day.id);
-  const cardio = new Set((data.cardio_entries ?? []).filter((c) => c.program_day_id === day.id).map((c) => c.id));
-  data.cardio_logs = (data.cardio_logs ?? []).filter((c) => !cardio.has(c.cardio_entry_id));
-  data.cardio_entries = (data.cardio_entries ?? []).filter((c) => c.program_day_id !== day.id);
-  data.program_days = data.program_days.filter((pd) => pd.id !== day.id);
-  persist();
+  const cardioOfDay = () => new Set((data.cardio_entries ?? []).filter((c) => c.program_day_id === day.id).map((c) => c.id));
+  // `box` in memory mode (its ticks the store's own list, today's line in its place); null in pg, where the body took
+  // the ticks out in the sets' transaction.
+  const rest = (files: boolean, box: SetBox | null) => {
+    // Its video asks and anything sent on it go with its rows, files too, so nothing is left waiting on a row that isn't there.
+    const gone: string[] = [];
+    for (const r of data.video_requests.filter((x) => ids.has(x.assignment_id)))
+      for (const file of removeVideoRequest(r.id)) {
+        gone.push(file);
+        if (files) void deleteUpload(file).catch(() => {});
+      }
+    data.workout_assignments = data.workout_assignments.filter((wa) => wa.program_day_id !== day.id);
+    const cardio = cardioOfDay();
+    if (box) box.ticks = box.ticks.filter((c) => !cardio.has(c.cardio_entry_id));
+    data.cardio_entries = (data.cardio_entries ?? []).filter((c) => c.program_day_id !== day.id);
+    data.program_days = data.program_days.filter((pd) => pd.id !== day.id);
+    persist();
+    return gone;
+  };
+  // The sets through the door (quest 10): memory today's lines in order; pg the sets' DELETE first (its cardio ticks in
+  // the same transaction), then the session whole, and its files only once the store's save holds it gone.
+  await writeSets(
+    opts.onlyIfNoSets ? "w.session.staleDiscard" : "w.session.freeRemove",
+    day.client_id,
+    () => [...ids],
+    (box) => {
+      if (opts.onlyIfNoSets && SETS_PG && (box.logs.some((sl) => ids.has(sl.workout_assignment_id)) || box.ticks.length > 0)) return false;
+      box.logs = box.logs.filter((sl) => !ids.has(sl.workout_assignment_id));
+      if (!SETS_PG) rest(true, box);
+      else {
+        const cardio = cardioOfDay();
+        box.ticks = box.ticks.filter((c) => !cardio.has(c.cardio_entry_id));
+      }
+      return true;
+    },
+    {
+      ticks: () => [day.id],
+      afterCommit: (done) => {
+        if (!SETS_PG || !done) return;
+        const gone = rest(false, null);
+        markProgressClient(day.client_id);
+        void persistNow()
+          .then(() => {
+            for (const file of gone) void deleteUpload(file).catch(() => {});
+          })
+          .catch(() => {});
+      },
+    }
+  );
 }
 
 export function startSession(programDayId: number, at: string): { ok: true } | { ok: false; other: string } {
@@ -10827,7 +11230,7 @@ export function workoutFed(_clientId: number, _name: string): boolean {
 }
 
 /** The client ended the session, with a word to the coach or not, and the questionnaire's answers. */
-export function endSession(programDayId: number, at: string, note: string, answers: { id: string; value: number | string | null }[] = []) {
+export function endSession(sr: SetRows, programDayId: number, at: string, note: string, answers: { id: string; value: number | string | null }[] = []) {
   const data = getData();
   const day = data.program_days.find((pd) => pd.id === programDayId);
   if (!day) return;
@@ -10835,7 +11238,8 @@ export function endSession(programDayId: number, at: string, note: string, answe
   if (isRogue(day)) {
     for (const wa of data.workout_assignments) {
       if (wa.program_day_id !== day.id) continue;
-      const done = data.set_logs.filter((sl) => sl.workout_assignment_id === wa.id).length;
+      sr.needRows("endSession", [wa.id]);
+      const done = sr.logs.filter((sl) => sl.workout_assignment_id === wa.id).length;
       wa.sets = Math.max(1, done);
     }
   }
@@ -10890,32 +11294,63 @@ export function reopenSession(programDayId: number): { ok: true } | { ok: false;
 
 /** The client threw the session away: its sets, warm-ups and swaps go, and
     it reads as never begun. */
-export function discardSession(programDayId: number) {
+export async function discardSession(programDayId: number, opts: { onlyIfNoSets?: boolean } = {}): Promise<void> {
   const data = getData();
   const day = data.program_days.find((pd) => pd.id === programDayId);
   if (!day) return;
   // A free session discarded is gone altogether: it only ever was the client's workout.
   if (day.free) {
-    removeFreeSession(programDayId);
+    await removeFreeSession(programDayId, opts);
     return;
   }
   const ids = new Set(data.workout_assignments.filter((wa) => wa.program_day_id === day.id).map((wa) => wa.id));
-  data.set_logs = data.set_logs.filter((sl) => !ids.has(sl.workout_assignment_id));
-  for (const wa of data.workout_assignments) {
-    if (!ids.has(wa.id)) continue;
-    delete wa.warmup_sets;
-    delete wa.swap;
-    delete wa.sets_removed;
-  }
-  const cardioIds = new Set(listCardioForDay(day.id).map((c) => c.id));
-  data.cardio_logs = (data.cardio_logs ?? []).filter((c) => !cardioIds.has(c.cardio_entry_id));
-  delete day.session_started_at;
-  delete day.session_ended_at;
-  delete day.session_note;
-  delete day.session_enjoyment;
-  delete day.session_adherence;
-  delete day.session_answers;
-  persist();
+  // `box` in memory mode (its ticks the store's own list, today's line in its place); null in pg, where the body took
+  // the ticks out in the sets' transaction.
+  const rest = (box: SetBox | null) => {
+    for (const wa of data.workout_assignments) {
+      if (!ids.has(wa.id)) continue;
+      delete wa.warmup_sets;
+      delete wa.swap;
+      delete wa.sets_removed;
+    }
+    const cardioIds = new Set(listCardioForDay(day.id).map((c) => c.id));
+    if (box) box.ticks = box.ticks.filter((c) => !cardioIds.has(c.cardio_entry_id));
+    delete day.session_started_at;
+    delete day.session_ended_at;
+    delete day.session_note;
+    delete day.session_enjoyment;
+    delete day.session_adherence;
+    delete day.session_answers;
+    persist();
+  };
+  // The sets through the door (quest 10): memory today's lines in order; pg the sets' DELETE first, then the day and its
+  // rows (the phone sends the discard again on a crash between, and it finds the session begun with no sets). The 12 h
+  // job's discard of an empty session looks again under the lock and keeps a session a set came into meanwhile.
+  await writeSets(
+    opts.onlyIfNoSets ? "w.session.staleDiscard" : "w.session.discard",
+    day.client_id,
+    () => [...ids],
+    (box) => {
+      // The 12 h job's discard of an empty session: a set, or a cardio ticked, come in meanwhile keeps it (pg; memory
+      // decided at once, endStaleSessions).
+      if (opts.onlyIfNoSets && SETS_PG && (box.logs.some((sl) => ids.has(sl.workout_assignment_id)) || box.ticks.length > 0)) return false;
+      box.logs = box.logs.filter((sl) => !ids.has(sl.workout_assignment_id));
+      if (!SETS_PG) rest(box);
+      else {
+        const cardioIds = new Set(listCardioForDay(day.id).map((c) => c.id));
+        box.ticks = box.ticks.filter((c) => !cardioIds.has(c.cardio_entry_id));
+      }
+      return true;
+    },
+    {
+      ticks: () => [day.id],
+      afterCommit: (done) => {
+        if (!SETS_PG || !done) return;
+        rest(null);
+        markProgressClient(day.client_id);
+      },
+    }
+  );
 }
 
 /** The client did another exercise instead of the prescribed one. Null clears it. */
@@ -11145,11 +11580,12 @@ export type ExerciseHistoryEntry = { date: string; gym: string | null; sets: Las
     the exercise's earlier assignments for this client, with their logs,
     most recent day first. A swapped assignment looks up the swap's library
     exercise; a typed swap has no history. */
-function exerciseHistoryFor(assignmentId: number): { day: ProgramDay; logs: SetLog[] }[] {
+function exerciseHistoryFor(sr: SetRows, assignmentId: number): { day: ProgramDay; logs: SetLog[] }[] {
   const data = getData();
   const wa = data.workout_assignments.find((x) => x.id === assignmentId);
   const day = wa && data.program_days.find((pd) => pd.id === wa.program_day_id);
   if (!wa || !day) return [];
+  sr.need("exerciseHistoryFor", day.client_id);
   // A substitute is for the day (14 Oct, Alex): a swapped session has no
   // "last time" of its own, and its sets are nobody's history, neither the
   // prescribed exercise's nor the substitute's.
@@ -11173,7 +11609,7 @@ function exerciseHistoryFor(assignmentId: number): { day: ProgramDay; logs: SetL
     if ((other.variation_id ?? null) !== (wa.variation_id ?? null)) continue;
     const pd = days.get(other.program_day_id);
     if (!pd || !inPhase(pd) || at(pd) >= at(day)) continue;
-    const logs = data.set_logs.filter((sl) => sl.workout_assignment_id === other.id).sort((a, b) => a.set_number - b.set_number);
+    const logs = sr.logs.filter((sl) => sl.workout_assignment_id === other.id).sort((a, b) => a.set_number - b.set_number);
     if (!logs.length) continue;
     out.push({ day: pd, logs });
   }
@@ -11185,18 +11621,18 @@ const dayDate = (pd: ProgramDay, logs: SetLog[]) => (pd.session_ended_at ?? logs
 
 /** The sets from the last time the client did this exercise: the same gym
     when there is a session there, else the most recent anywhere. */
-export function getLastSets(assignmentId: number, gymId: number | null): { date: string; sets: LastSet[] } | null {
-  return lastSetsPicker(assignmentId)(gymId);
+export function getLastSets(sr: SetRows, assignmentId: number, gymId: number | null): { date: string; sets: LastSet[] } | null {
+  return lastSetsPicker(sr, assignmentId)(gymId);
 }
 
 /** Last time at each of these gyms, the history read once: a session switched to another gym has its numbers already. */
-export function getLastSetsByGym(assignmentId: number, gymIds: number[]): Record<number, { date: string; sets: LastSet[] } | null> {
-  const pick = lastSetsPicker(assignmentId);
+export function getLastSetsByGym(sr: SetRows, assignmentId: number, gymIds: number[]): Record<number, { date: string; sets: LastSet[] } | null> {
+  const pick = lastSetsPicker(sr, assignmentId);
   return Object.fromEntries(gymIds.map((id) => [id, pick(id)]));
 }
 
-function lastSetsPicker(assignmentId: number): (gymId: number | null) => { date: string; sets: LastSet[] } | null {
-  const history = exerciseHistoryFor(assignmentId);
+function lastSetsPicker(sr: SetRows, assignmentId: number): (gymId: number | null) => { date: string; sets: LastSet[] } | null {
+  const history = exerciseHistoryFor(sr, assignmentId);
   if (!history.length) return () => null;
   const data = getData();
   const wa = data.workout_assignments.find((x) => x.id === assignmentId);
@@ -11225,11 +11661,11 @@ function lastSetsPicker(assignmentId: number): (gymId: number | null) => { date:
     session's own sets first, then the last time at the same gym (a machine
     is marked one way or the other), then the last time anywhere. Null when
     no set of it says (none logged, or all from before units were kept). */
-export function getExerciseUnit(assignmentId: number): "kg" | "lb" | null {
+export function getExerciseUnit(sr: SetRows, assignmentId: number): "kg" | "lb" | null {
   // This session's own sets only (13 Oct, Alex): every exercise starts in kg;
   // a set already logged in lbs here keeps the exercise in lbs on return.
-  const own = getData()
-    .set_logs.filter((sl) => sl.workout_assignment_id === assignmentId && sl.unit)
+  sr.needRows("getExerciseUnit", [assignmentId]);
+  const own = sr.logs.filter((sl) => sl.workout_assignment_id === assignmentId && sl.unit)
     .sort((a, b) => (a.logged_at < b.logged_at ? 1 : -1))[0];
   return own?.unit ?? null;
 }
@@ -11237,10 +11673,10 @@ export function getExerciseUnit(assignmentId: number): "kg" | "lb" | null {
 /** The coach's latest reply on this exercise from an earlier session of the
  *  phase (9 Oct), so it lands on the next time the client does it; null
  *  when this session has its own request, or there is none. */
-export function carriedVideoReply(assignmentId: number): VideoRequest | null {
+export function carriedVideoReply(sr: SetRows, assignmentId: number): VideoRequest | null {
   const data = getData();
   if (data.video_requests.some((r) => r.assignment_id === assignmentId)) return null;
-  const earlier = exerciseHistoryFor(assignmentId).map((h) => h.logs[0]?.workout_assignment_id).filter((x): x is number => x != null);
+  const earlier = exerciseHistoryFor(sr, assignmentId).map((h) => h.logs[0]?.workout_assignment_id).filter((x): x is number => x != null);
   const wa = data.workout_assignments.find((x) => x.id === assignmentId);
   const day = wa && data.program_days.find((pd) => pd.id === wa.program_day_id);
   if (!wa || !day || wa.exercise_id === 0 || isRogue(day)) return null;
@@ -11266,10 +11702,10 @@ export function carriedVideoReply(assignmentId: number): VideoRequest | null {
 }
 
 /** The last few sessions of this exercise, most recent first. */
-export function getExerciseHistory(assignmentId: number, limit = 3): ExerciseHistoryEntry[] {
+export function getExerciseHistory(sr: SetRows, assignmentId: number, limit = 3): ExerciseHistoryEntry[] {
   const data = getData();
   const gyms = new Map(data.client_gyms.map((g) => [g.id, g.name] as const));
-  return exerciseHistoryFor(assignmentId)
+  return exerciseHistoryFor(sr, assignmentId)
     .slice(0, limit)
     .map((h) => ({ date: dayDate(h.day, h.logs), gym: h.logs[0]?.gym_id != null ? gyms.get(h.logs[0].gym_id!) ?? null : null, sets: h.logs.map(setView) }));
 }
@@ -11296,12 +11732,14 @@ export function setSessionSkipReason(programDayId: number, text: string, at: Dat
  * against, since last week may have been at the other gym.
  */
 export function getLastVisitAtGym(
+  sr: SetRows,
   clientId: number,
   exerciseId: number,
   gymId: number | null,
   before: { week: number; dayOfWeek: number }
 ): { assignment: WorkoutAssignment; weekNumber: number; logs: SetLog[] } | null {
   const data = getData();
+  sr.need("getLastVisitAtGym", clientId);
   const home = homeGymId(clientId);
   const want = gymId ?? home;
   const days = data.program_days
@@ -11313,7 +11751,7 @@ export function getLastVisitAtGym(
     .sort((a, b) => b.week_number - a.week_number || b.day_of_week - a.day_of_week);
   for (const pd of days) {
     for (const wa of data.workout_assignments.filter((x) => x.program_day_id === pd.id && x.exercise_id === exerciseId)) {
-      const logs = data.set_logs
+      const logs = sr.logs
         .filter((sl) => sl.workout_assignment_id === wa.id && (sl.gym_id ?? home) === want)
         .sort((a, b) => a.set_number - b.set_number);
       if (logs.length) return { assignment: wa, weekNumber: pd.week_number, logs };
@@ -11342,12 +11780,12 @@ export function getClientProgramNoteMeta(clientId: number, programId: number): {
 }
 
 /** The coach opened the client's note on a programme: it is not new again until the client writes. */
-export function markProgramNoteSeen(programId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows) {
+export function markProgramNoteSeen(programId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, sr: SetRows) {
   const n = (getData().client_program_notes ?? []).find((x) => x.program_id === programId);
   if (!n || n.coach_seen_at === n.updated_at) return;
   n.coach_seen_at = n.updated_at;
   persist();
-  markClientEventsSeen(n.client_id, { ids: [`program-note-${n.id}`] }, chat, food, ck);
+  markClientEventsSeen(n.client_id, { ids: [`program-note-${n.id}`] }, chat, food, ck, sr);
 }
 
 export function getClientIdForProgram(programId: number): number | null {
@@ -11445,7 +11883,8 @@ export function copyProgramDay(fromDayId: number, toDayId: number) {
   // Cardio is part of the session too; the target's own goes, ticks and all.
   data.cardio_entries = data.cardio_entries ?? [];
   const replacedCardio = new Set(data.cardio_entries.filter((c) => c.program_day_id === dest.id).map((c) => c.id));
-  data.cardio_logs = (data.cardio_logs ?? []).filter((l) => !replacedCardio.has(l.cardio_entry_id));
+  // Their ticks through the sets' door (dropTicksOfEntries): memory as before; pg a tombstone, the DELETE after the save.
+  dropTicksOfEntries("w.remove.copyOver", dest.client_id, replacedCardio);
   data.cardio_entries = data.cardio_entries.filter((c) => c.program_day_id !== dest.id);
   for (const c of data.cardio_entries.filter((c) => c.program_day_id === src.id)) {
     data.cardio_entries.push({ ...c, id: allocId("cardio_entries"), program_day_id: dest.id });
@@ -11513,10 +11952,11 @@ export function saveLibraryVideoUpload(exerciseId: number, buffer: Buffer, mimeT
  * copyProgramDayToLaterWeeks matches them), for deleting it from the rest of
  * the programme (20 Oct). One the client has logged anything on is left out.
  */
-export function laterSameSlotSessions(programDayId: number): number[] {
+export function laterSameSlotSessions(sr: SetRows, programDayId: number): number[] {
   const data = getData();
   const day = data.program_days.find((d) => d.id === programDayId);
   if (!day) return [];
+  sr.needLogged("laterSameSlotSessions", day.client_id);
   const program = listPrograms(day.client_id).find((p) => day.week_number >= p.start_week && day.week_number < p.start_week + p.total_weeks);
   if (!program) return [];
   const out: number[] = [];
@@ -11525,7 +11965,7 @@ export function laterSameSlotSessions(programDayId: number): number[] {
     if (!target) continue;
     const rows = new Set(data.workout_assignments.filter((wa) => wa.program_day_id === target.id).map((wa) => wa.id));
     const cardio = new Set((data.cardio_entries ?? []).filter((c) => c.program_day_id === target.id).map((c) => c.id));
-    const logged = data.set_logs.some((l) => rows.has(l.workout_assignment_id)) || (data.cardio_logs ?? []).some((l) => cardio.has(l.cardio_entry_id));
+    const logged = sr.logs.some((l) => rows.has(l.workout_assignment_id)) || sr.ticks.some((l) => cardio.has(l.cardio_entry_id));
     if (!logged) out.push(target.id);
   }
   return out;
@@ -11552,12 +11992,12 @@ export function copyProgramDayToLaterWeeks(fromDayId: number, toDayId: number): 
 // Empties a day in one go: every exercise on it, with the sets logged
 // against them and their custom-column values. The day itself stays, with
 // its label, so it can be rebuilt or marked rest.
-export function clearProgramDay(programDayId: number) {
+export function clearProgramDay(sr: SetRows, programDayId: number) {
   const data = getData();
   const ids = data.workout_assignments.filter((wa) => wa.program_day_id === programDayId).map((wa) => wa.id);
   if (ids.length === 0) return;
-  keepSessions([programDayId]);
-  data.set_logs = data.set_logs.filter((sl) => !ids.includes(sl.workout_assignment_id));
+  keepSessions(sr, [programDayId]);
+  dropSetsOfRows("w.remove.day", data.program_days.find((pd) => pd.id === programDayId)?.client_id ?? 0, ids);
   data.assignment_custom_values = data.assignment_custom_values.filter((v) => !ids.includes(v.workout_assignment_id));
   data.workout_assignments = data.workout_assignments.filter((wa) => !ids.includes(wa.id));
   persist();
@@ -11627,21 +12067,46 @@ export function getClientIdForCardio(entryId: number): number | null {
   return data.program_days.find((pd) => pd.id === entry.program_day_id)?.client_id ?? null;
 }
 
-export function isCardioDone(entryId: number): boolean {
-  return (getData().cardio_logs ?? []).some((l) => l.cardio_entry_id === entryId);
+export function isCardioDone(sr: SetRows, entryId: number): boolean {
+  // The ticks through the sets' door (quest 10, with the sets since 22 Nov): the entry's session's, said first.
+  const day = (getData().cardio_entries ?? []).find((c) => c.id === entryId)?.program_day_id;
+  if (day != null) sr.needTicks("isCardioDone", [day]);
+  return sr.ticks.some((l) => l.cardio_entry_id === entryId);
 }
 
-// Tick or untick a cardio entry. A double tap is idempotent either way.
-export function setCardioDone(entryId: number, done: boolean, at: Date | string | null = null) {
-  const data = getData();
-  data.cardio_logs = data.cardio_logs ?? [];
+/**
+ * Tick or untick a cardio entry. A double tap is idempotent either way. Through the sets' door (quest 10): memory today's
+ * lines on the store; with SETS_STORE=pg one transaction under the client's lock beside their sets. `stillOn` (the
+ * outbox's "still the session it was ticked in") is looked at again inside it: false leaves it untouched (false back).
+ */
+export async function setCardioDone(entryId: number, done: boolean, at: Date | string | null = null, stillOn?: () => boolean): Promise<boolean> {
   const clientId = getClientIdForCardio(entryId);
-  if (clientId == null) return;
-  const has = data.cardio_logs.some((l) => l.cardio_entry_id === entryId);
-  if (done && !has) data.cardio_logs.push({ id: allocId("cardio_logs"), cardio_entry_id: entryId, client_id: clientId, done_at: localStamp(stampDate(at)) });
-  else if (!done && has) data.cardio_logs = data.cardio_logs.filter((l) => l.cardio_entry_id !== entryId);
-  else return;
-  persist();
+  const dayId = (getData().cardio_entries ?? []).find((c) => c.id === entryId)?.program_day_id;
+  if (clientId == null || dayId == null) {
+    // As before: the store's list made sure of first, then nothing.
+    if (!SETS_PG) await writeSets("w.cardio.tick", 0, () => [], (box) => void (box.ticks = box.ticks));
+    return true;
+  }
+  return writeSets(
+    "w.cardio.tick",
+    clientId,
+    () => [],
+    (box) => {
+      if (stillOn && !stillOn()) return false;
+      // With SETS_STORE=pg the coach may have taken the cardio out while this waited on the client's chain: nothing to
+      // do, as memory mode's tap on a gone cardio (memory mode: the same answer as the look just above, nothing between).
+      if (getClientIdForCardio(entryId) !== clientId) return true;
+      const ticks = box.ticks;
+      box.ticks = ticks;
+      const has = ticks.some((l) => l.cardio_entry_id === entryId);
+      if (done && !has) ticks.push({ id: box.allocTick(), cardio_entry_id: entryId, client_id: clientId, done_at: localStamp(stampDate(at)) });
+      else if (!done && has) box.ticks = ticks.filter((l) => l.cardio_entry_id !== entryId);
+      else return true;
+      box.persist();
+      return true;
+    },
+    { ticks: () => [dayId] }
+  );
 }
 
 export function listCardioForDay(programDayId: number): CardioEntry[] {
@@ -11688,10 +12153,11 @@ function typedDayFields(raw: DayFieldValues) {
   return out;
 }
 
-export function applyDayChanges(changes: DayChanges): { skipped: string[] } {
+export function applyDayChanges(sr: SetRows, changes: DayChanges): { skipped: string[] } {
   const data = getData();
   const src = data.program_days.find((d) => d.id === changes.programDayId);
   if (!src) return { skipped: [] };
+  sr.need("applyDayChanges", src.client_id);
 
   // Only rows on this day can be removed from it. Without this a removed id
   // from anywhere (another day, another client) was deleted with its logged
@@ -11722,8 +12188,8 @@ export function applyDayChanges(changes: DayChanges): { skipped: string[] } {
       ? rows().filter((wa) => removedExerciseIds.includes(wa.exercise_id)).map((wa) => wa.id)
       : removed;
     if (dropIds.length) {
-      keepSessions([day.id]);
-      data.set_logs = data.set_logs.filter((sl) => !dropIds.includes(sl.workout_assignment_id));
+      keepSessions(sr, [day.id]);
+      dropSetsOfRows("w.remove.applyTo", day.client_id, dropIds);
       data.assignment_custom_values = data.assignment_custom_values.filter((v) => !dropIds.includes(v.workout_assignment_id));
       data.workout_assignments = data.workout_assignments.filter((wa) => !dropIds.includes(wa.id));
     }
@@ -11751,7 +12217,7 @@ export function applyDayChanges(changes: DayChanges): { skipped: string[] } {
       Object.assign(target, typed);
       // A weight the coach types is theirs, and on a running plan a reset (a later week's copy of the edit its carry):
       // see typeWeight.
-      if (weighed) typeWeight(target, null, target.target_weight_kg, mirror);
+      if (weighed) typeWeight(sr, target, null, target.target_weight_kg, mirror);
     }
 
     for (const [idStr, cols] of Object.entries(changes.custom)) {
@@ -11790,7 +12256,7 @@ export function applyDayChanges(changes: DayChanges): { skipped: string[] } {
         // The same figure sent again changes nothing (as the Weight column's own).
         if (kg != null && entry?.kg === kg) continue;
         if (kg == null && !entry) continue;
-        typeWeight(target, Number(gymStr), kg, mirror);
+        typeWeight(sr, target, Number(gymStr), kg, mirror);
       }
     }
 
@@ -11854,7 +12320,7 @@ export function applyDayChanges(changes: DayChanges): { skipped: string[] } {
       return mirror ? cardioRows().find((c) => c.name.trim().toLowerCase() === srcRow.name.trim().toLowerCase()) : srcRow;
     };
     const dropCardio = changes.cardio.removed.map((id) => cardioTarget(id)?.id).filter((x): x is number => typeof x === "number");
-    if (dropCardio.length) keepSessions([day.id]);
+    if (dropCardio.length) keepSessions(sr, [day.id]);
     if (dropCardio.length) data.cardio_entries = data.cardio_entries.filter((c) => !dropCardio.includes(c.id));
     for (const [idStr, raw] of Object.entries(changes.cardio.fields)) {
       const target = cardioTarget(Number(idStr));
@@ -11921,7 +12387,7 @@ export function applyDayChanges(changes: DayChanges): { skipped: string[] } {
         const day = sessionAt(src.client_id, week, src.day_of_week, true);
         if (!day) continue;
         const ids = data.workout_assignments.filter((wa) => wa.program_day_id === day.id).map((wa) => wa.id);
-        if (data.set_logs.some((sl) => ids.includes(sl.workout_assignment_id))) {
+        if (sr.logs.some((sl) => ids.includes(sl.workout_assignment_id))) {
           skipped.push(`W${week - program.start_week + 1}`);
           continue;
         }
@@ -12006,7 +12472,7 @@ function macroSeries(food: FoodRows, clientId: number, which: keyof typeof MACRO
     return localDateStr(d);
   })();
   const name = which === "protein" ? "Protein logged" : which === "carbs" ? "Carbs logged" : "Fat logged";
-  return { name, unit: "g", series: getLoggedDays(food, clientId, from, today, "no-comments").days.map((d) => ({ date: d.date, value: d[which] })).sort((a, b) => (a.date < b.date ? -1 : 1)) };
+  return { name, unit: "g", series: getLoggedDays(food, clientId, from, today, "no-comments", null).days.map((d) => ({ date: d.date, value: d[which] })).sort((a, b) => (a.date < b.date ? -1 : 1)) };
 }
 const macroKey = (key: string): keyof typeof MACRO_GOAL_KEYS | null => (key === "protein" || key === "carbs" || key === "fat" ? key : null);
 
@@ -12037,14 +12503,15 @@ export function listClientExercises(clientId: number): { id: number; name: strin
  * Every set the client has logged on one exercise, across every week. With a
  * gym given, only that gym's (null: the home gym's); undefined is every gym.
  */
-export function loggedSetsForExercise(clientId: number, exerciseId: number, gymId?: number | null): LoggedSet[] {
+export function loggedSetsForExercise(sr: SetRows, clientId: number, exerciseId: number, gymId?: number | null): LoggedSet[] {
   const data = getData();
+  sr.need("loggedSetsForExercise", clientId);
   const home = homeGymId(clientId);
   const dayIds = new Set(data.program_days.filter((pd) => pd.client_id === clientId).map((pd) => pd.id));
   const waIds = new Set(
     data.workout_assignments.filter((wa) => dayIds.has(wa.program_day_id) && wa.exercise_id === exerciseId).map((wa) => wa.id)
   );
-  return data.set_logs
+  return sr.logs
     .filter((sl) => waIds.has(sl.workout_assignment_id))
     .filter((sl) => gymId === undefined || home == null || (sl.gym_id ?? home) === (gymId ?? home))
     .map((sl) => ({ weight: sl.weight_kg, reps: sl.reps, rpe: sl.rpe_actual, date: sl.logged_at.slice(0, 10), gymId: home == null ? null : sl.gym_id ?? home }));
@@ -12070,7 +12537,7 @@ function habitWeekValues(ck: CheckInRows, metricId: number, today: string): Seri
   return getMetricSeries(ck, metricId).filter((p) => p.date >= monday && p.date <= sunday);
 }
 
-export function goalContext(food: FoodRows, clientId: number, goal: ClientGoal, ck: CheckInRows): GoalContext {
+export function goalContext(food: FoodRows, clientId: number, goal: ClientGoal, ck: CheckInRows, sr: SetRows): GoalContext {
   const today = localDateStr();
   const ctx: GoalContext = { today, createdAt: goal.created_at ?? today };
   const t = goal.tracked_by ?? null;
@@ -12079,7 +12546,7 @@ export function goalContext(food: FoodRows, clientId: number, goal: ClientGoal, 
     if (s) ctx.metric = s;
   } else if (t?.kind === "exercise") {
     const name = getData().exercises.find((e) => e.id === t.exerciseId)?.name ?? "Exercise";
-    ctx.exercise = { name, sets: loggedSetsForExercise(clientId, t.exerciseId, t.gymId ?? null), gymName: goalGymName(clientId, t) };
+    ctx.exercise = { name, sets: loggedSetsForExercise(sr, clientId, t.exerciseId, t.gymId ?? null), gymName: goalGymName(clientId, t) };
   } else if (t?.kind === "habit") {
     const name = getData().metric_definitions.find((m) => m.id === t.metricId)?.name ?? "Check-in";
     ctx.habit = { name, weekValues: habitWeekValues(ck, t.metricId, today) };
@@ -12088,7 +12555,7 @@ export function goalContext(food: FoodRows, clientId: number, goal: ClientGoal, 
 }
 
 /** The coach's list: every goal the client sees, with its tracking in words. */
-export function getGoalSummaries(food: FoodRows, clientId: number, ck: CheckInRows): { goal: ClientGoal; view: GoalView; tracking: string }[] {
+export function getGoalSummaries(food: FoodRows, clientId: number, ck: CheckInRows, sr: SetRows): { goal: ClientGoal; view: GoalView; tracking: string }[] {
   return listClientGoals(clientId).map((g) => {
     const t = g.tracked_by ?? null;
     const names: { metric?: string; unit?: string; exercise?: string; habit?: string; gym?: string | null } = {};
@@ -12103,7 +12570,7 @@ export function getGoalSummaries(food: FoodRows, clientId: number, ck: CheckInRo
     else if (t?.kind === "habit") names.habit = getData().metric_definitions.find((m) => m.id === t.metricId)?.name;
     return {
       goal: g,
-      view: computeGoalView({ id: g.id, text: g.text, done: g.done, tracking: t }, goalContext(food, clientId, g, ck)),
+      view: computeGoalView({ id: g.id, text: g.text, done: g.done, tracking: t }, goalContext(food, clientId, g, ck, sr)),
       tracking: describeTracking(t, names),
     };
   });
@@ -12122,7 +12589,7 @@ export type GoalEditorOptions = {
   gyms: { id: number; name: string; removed: boolean }[];
 };
 
-export function getGoalEditorOptions(food: FoodRows, clientId: number, ck: CheckInRows): GoalEditorOptions {
+export function getGoalEditorOptions(food: FoodRows, clientId: number, ck: CheckInRows, sr: SetRows): GoalEditorOptions {
   const today = localDateStr();
   const phase = getCurrentPhase(clientId, "nutrition") ?? getCurrentPhase(clientId, "training");
   const phaseEnd = phase
@@ -12149,7 +12616,7 @@ export function getGoalEditorOptions(food: FoodRows, clientId: number, ck: Check
         series: c.kind === "field" ? getMeasurementSeries(c.id) : getMetricSeries(ck, c.id),
       })),
     ],
-    exercises: listClientExercises(clientId).map((e) => ({ ...e, sets: loggedSetsForExercise(clientId, e.id) })),
+    exercises: listClientExercises(clientId).map((e) => ({ ...e, sets: loggedSetsForExercise(sr, clientId, e.id) })),
     habits: listMetricDefinitions(clientId, "daily").map((m) => ({ id: m.id, name: m.name, weekValues: habitWeekValues(ck, m.id, today) })),
     gyms: (() => {
       const home = homeGymId(clientId);
@@ -12225,7 +12692,7 @@ export type UpNextSession = {
 // fully logged. Deliberately the same rule the Training tab opens on, and
 // deliberately not keyed to the weekday — a client who misses Tuesday
 // trains it on Wednesday and this still points at the right session.
-export function getUpNextSession(clientId: number): UpNextSession | null {
+export function getUpNextSession(sr: SetRows, clientId: number): UpNextSession | null {
   const week = getCurrentWeekNumber(clientId);
   const days = getPublishedWeek(clientId, week)
     .map((day) => ({ day, assignments: getAssignmentsForDay(day.id) }))
@@ -12234,7 +12701,7 @@ export function getUpNextSession(clientId: number): UpNextSession | null {
   // settled, as a fully logged one is: Home moves on to the next. One begun
   // and not ended is the one to come back to.
   const index = days.findIndex(({ day, assignments }) =>
-    !day.skip_reason && !day.session_ended_at && !assignments.every((a) => getLogsForAssignment(a.id).length >= setsDue(a))
+    !day.skip_reason && !day.session_ended_at && !assignments.every((a) => getLogsForAssignment(sr, a.id).length >= setsDue(a))
   );
   if (index < 0) return null;
   const { day, assignments } = days[index];
@@ -12436,7 +12903,7 @@ function programStatus(p: TrainingProgram): PlanProgramStatus {
 
 /** The Plan's dates, phases and programmes alone, as getPlanData has them: what the New phase dialog on the other tabs
     needs (planCtxOf), without the goals table, which they never show (23 Oct, speed). */
-export function getPlanPhases(clientId: number) {
+export function getPlanPhases(sr: SetRows, clientId: number) {
   const today = localDateStr();
   const thisWeek = weekStart(today);
   const programs = listPrograms(clientId);
@@ -12450,7 +12917,7 @@ export function getPlanPhases(clientId: number) {
       end_week: p.end_week,
       draft: !!p.draft,
       program: program
-        ? { id: program.id, status: programStatus(program), totalWeeks: program.total_weeks, loggedWeeks: programLoggedWeekIndexes(program.id) }
+        ? { id: program.id, status: programStatus(program), totalWeeks: program.total_weeks, loggedWeeks: programLoggedWeekIndexes(sr, program.id) }
         : null,
       emptyReason: phaseEmptyReason(p.id),
       gap: phaseContentGap(p.id),
@@ -12469,13 +12936,13 @@ export function getPlanPhases(clientId: number) {
   return { today, thisWeek, phases, programs: programOptions };
 }
 
-export function getPlanData(food: FoodRows, clientId: number, ck: CheckInRows) {
-  const { today, thisWeek, phases, programs: programOptions } = getPlanPhases(clientId);
+export function getPlanData(food: FoodRows, clientId: number, ck: CheckInRows, sr: SetRows) {
+  const { today, thisWeek, phases, programs: programOptions } = getPlanPhases(sr, clientId);
 
   // The goals table.
   const fmtShort = dayMonth;
   const meetingsById = new Map(listMeetings(clientId).map((m) => [m.id, m] as const));
-  const goals: PlanGoalRow[] = getGoalSummaries(food, clientId, ck).map(({ goal, view }) => {
+  const goals: PlanGoalRow[] = getGoalSummaries(food, clientId, ck, sr).map(({ goal, view }) => {
     const t = goal.tracked_by ?? null;
     let live = "";
     let pct = goal.done ? 100 : 0;
@@ -12498,7 +12965,7 @@ export function getPlanData(food: FoodRows, clientId: number, ck: CheckInRows) {
     } else if (view.kind === "exercise" && t?.kind === "exercise") {
       live = (view.right ?? "").replace(/^best /, "").split(" · ")[0];
       const name = getData().exercises.find((e) => e.id === t.exerciseId)?.name ?? "Exercise";
-      const sets = loggedSetsForExercise(clientId, t.exerciseId, t.gymId ?? null).filter((s) => s.weight != null);
+      const sets = loggedSetsForExercise(sr, clientId, t.exerciseId, t.gymId ?? null).filter((s) => s.weight != null);
       const best = sets.length ? Math.max(...sets.map((s) => s.weight as number)) : 0;
       pct = view.reached ? 100 : Math.max(0, Math.min(99, Math.round((best / t.weight) * 100)));
       const gym = goalGymName(clientId, t);
@@ -12547,7 +13014,7 @@ export function getPlanData(food: FoodRows, clientId: number, ck: CheckInRows) {
     programs: programOptions,
     goals,
     nextReview: next ? { id: next.id, date: next.date, topic: next.topic || "Check-in call" } : null,
-    goalOptions: getGoalEditorOptions(food, clientId, ck),
+    goalOptions: getGoalEditorOptions(food, clientId, ck, sr),
     mainGoal: getClientProfile(clientId).main_goal ?? "",
     mainGoalSavedAt: getClientProfile(clientId).main_goal_saved_at ?? null,
   };
@@ -12558,7 +13025,7 @@ function fmtNumber(n: number) {
 }
 
 /** Links a training phase to an existing programme instead of a new draft. */
-export function linkPhaseToProgram(phaseId: number, programId: number) {
+export function linkPhaseToProgram(sr: SetRows, phaseId: number, programId: number) {
   const data = getData();
   const phase = data.client_phases.find((p) => p.id === phaseId);
   const program = data.training_programs.find((p) => p.id === programId);
@@ -12566,13 +13033,13 @@ export function linkPhaseToProgram(phaseId: number, programId: number) {
   // The old draft made for this phase, if any, has no other reason to exist.
   if (phase.program_id && phase.program_id !== programId) {
     const old = data.training_programs.find((p) => p.id === phase.program_id);
-    if (old && old.status === "draft" && !old.scheduled_at) removeProgram(old.id);
+    if (old && old.status === "draft" && !old.scheduled_at) removeProgram(sr, old.id);
   }
   phase.program_id = programId;
   phase.track = "training";
   persist();
   // A live or scheduled programme dictates the dates; a draft follows the phase.
-  if (program.status === "deployed" || program.scheduled_at) syncProgramPhase(programId);
+  if (program.status === "deployed" || program.scheduled_at) syncProgramPhase(sr, programId);
   else if (program.name?.trim()) {
     phase.name = phase.name || program.name;
     persist();
@@ -13773,15 +14240,15 @@ export function mealPhotosOn(rows: FoodRows, clientId: number, date: string): Ma
  * A session the client has finished, as their app counts it: every planned
  * set logged and every cardio ticked. An empty session is not finished.
  */
-export function isSessionComplete(programDayId: number): boolean {
+export function isSessionComplete(sr: SetRows, programDayId: number): boolean {
   const assignments = getAssignmentsForDay(programDayId);
   const cardio = listCardioForDay(programDayId);
   if (assignments.length === 0 && cardio.length === 0) return false;
   return (
     assignments.every((a) => {
-      const logged = new Set(getLogsForAssignment(a.id).map((l) => l.set_number));
+      const logged = new Set(getLogsForAssignment(sr, a.id).map((l) => l.set_number));
       return Array.from({ length: setsDue(a) }, (_, i) => i + 1).every((n) => logged.has(n));
-    }) && cardio.every((c) => isCardioDone(c.id))
+    }) && cardio.every((c) => isCardioDone(sr, c.id))
   );
 }
 
@@ -14307,12 +14774,13 @@ export type LoggedDaysView = {
 };
 
 /** The days a client logged food on, newest first, inside a date range. */
-export function getLoggedDays(food: FoodRows, clientId: number, from: string, to: string, comments: ChatThread | "no-comments"): LoggedDaysView {
+export function getLoggedDays(food: FoodRows, clientId: number, from: string, to: string, comments: ChatThread | "no-comments", sr: SetRows | null): LoggedDaysView {
   // The calorie logs whole (the day-type map keeps the last of each date), the rest over the window.
   food.need("getLoggedDays", clientId, "all", ["calories"]);
   food.need("getLoggedDays", clientId, { from, to }, ["entries", "meals", "photos"]);
   const derived = getNutritionGoalsSummary(clientId);
-  const trainedOn = trainingDates(clientId);
+  // null: a reader of the eaten figures alone (macroSeries), never the training days.
+  const trainedOn = sr ? trainingDates(sr, clientId) : new Set<string>();
   const dayType = new Map(food.calories.filter((c) => c.client_id === clientId).map((c) => [c.date, c] as const));
   const entries = food.entries.filter((e) => e.client_id === clientId && e.date >= from && e.date <= to);
 
@@ -15126,14 +15594,15 @@ export type WorkoutDay = { date: string; sessions: { title: string; minutes: num
  * the app (its day, how many minutes it ran, whether every set was in), or
  * one logged in full without being begun on the app (no minutes then).
  */
-export function getWorkoutCalendar(clientId: number): WorkoutDay[] {
+export function getWorkoutCalendar(sr: SetRows, clientId: number): WorkoutDay[] {
   const byDate = new Map<string, WorkoutDay["sessions"]>();
-  for (const { date, title, minutes, finished } of trainedSessions(clientId)) byDate.set(date, [...(byDate.get(date) ?? []), { title, minutes, finished }]);
+  for (const { date, title, minutes, finished } of trainedSessions(sr, clientId)) byDate.set(date, [...(byDate.get(date) ?? []), { title, minutes, finished }]);
   return [...byDate.entries()].map(([date, sessions]) => ({ date, sessions })).sort((a, b) => (a.date < b.date ? 1 : -1));
 }
 
 /** getWorkoutCalendar's sessions one by one, with the session they are. */
-function trainedSessions(clientId: number, ix: TrainingIndex = trainingIndex(clientId)): { date: string; dayId: number; title: string; minutes: number | null; finished: boolean }[] {
+function trainedSessions(sr: SetRows, clientId: number, ix: TrainingIndex = trainingIndex(sr, clientId)): { date: string; dayId: number; title: string; minutes: number | null; finished: boolean }[] {
+  ix.sr.need("trainedSessions", clientId);
   const out: { date: string; dayId: number; title: string; minutes: number | null; finished: boolean }[] = [];
   const title = (d: { label: string | null; day_of_week: number; free?: boolean; copy_of?: number }) => (isRogue(d) ? "Rogue session" : d.label?.trim() || `Session ${d.day_of_week}`);
   // Their sessions read once (trainingIndex), not the whole store per session (23 Oct, speed).
@@ -15171,7 +15640,7 @@ export type ActivityDay = {
  * training, the food and the check-ins, each a third of the day's ring. A
  * record of what was done, not a score.
  */
-export function getActivityCalendar(food: FoodRows, clientId: number, ck: CheckInRows): ActivityDay[] {
+export function getActivityCalendar(food: FoodRows, clientId: number, ck: CheckInRows, sr: SetRows): ActivityDay[] {
   const data = getData();
   food.need("getActivityCalendar", clientId, "all", ["entries", "calories"]);
   ck.need("getActivityCalendar", clientId, "all", ["entries"]);
@@ -15186,7 +15655,7 @@ export function getActivityCalendar(food: FoodRows, clientId: number, ck: CheckI
   // changed or removed as they were when done (the kept one wins).
   const kept = getClient(clientId)?.kept_activity ?? [];
   const keptDays = new Set(kept.flatMap((k) => (k.kind === "training" ? [k.day_id] : [])));
-  for (const s of [...sessionRecords(clientId).filter((s) => !keptDays.has(s.day_id)), ...kept.filter((k) => k.kind === "training")]) {
+  for (const s of [...sessionRecords(sr, clientId).filter((s) => !keptDays.has(s.day_id)), ...kept.filter((k) => k.kind === "training")]) {
     day(s.date).sessions.push({ title: s.title, minutes: s.minutes, finished: s.finished, exercises: s.exercises, gym: s.gym, dayId: s.day_id });
   }
 
@@ -15278,11 +15747,11 @@ export function dailyAskedOn(ck: CheckInRows, clientId: number): (date: string) 
 type SessionRecord = Extract<KeptActivity, { kind: "training" }>;
 
 /** Each trained session (trainedSessions) as the calendar shows it: its exercises, and its gym when there are several. */
-function sessionRecords(clientId: number, only?: Set<number>): SessionRecord[] {
+function sessionRecords(sr: SetRows, clientId: number, only?: Set<number>): SessionRecord[] {
   const gyms = listClientGyms(clientId, true);
   const gymName = gyms.filter((g) => !g.archived).length > 1 ? (id: number | null | undefined) => (id != null ? gyms.find((g) => g.id === id) : gyms.find((g) => g.is_home) ?? gyms[0])?.name ?? null : () => null;
-  const ix = trainingIndex(clientId);
-  return trainedSessions(clientId, ix)
+  const ix = trainingIndex(sr, clientId);
+  return trainedSessions(sr, clientId, ix)
     .filter((s) => !only || only.has(s.dayId))
     .map(({ date, dayId, title, minutes, finished }) => {
       // Its rows and its first logged set, as stored.
@@ -15304,11 +15773,11 @@ function keep(clientId: number, rows: KeptActivity[]) {
 }
 
 /** Before sessions are removed or emptied: those the client did, as they were. */
-export function keepSessions(dayIds: Iterable<number>) {
+export function keepSessions(sr: SetRows, dayIds: Iterable<number>) {
   const ids = new Set(dayIds);
   const byClient = new Map<number, number[]>();
   for (const d of getData().program_days) if (ids.has(d.id)) byClient.set(d.client_id, [...(byClient.get(d.client_id) ?? []), d.id]);
-  for (const [clientId, days] of byClient) keep(clientId, sessionRecords(clientId, new Set(days)));
+  for (const [clientId, days] of byClient) keep(clientId, sessionRecords(sr, clientId, new Set(days)));
 }
 
 /** Before a metric goes: the days it was checked in (its figures as the removal read them: checkins/rows.ts). */
@@ -15344,15 +15813,45 @@ function keepMeasurements(values: MeasurementValue[]) {
  * they did also ticks the entry off: they did their cardio, so the session
  * can still come out complete. Null takes the swap back (the tick stays).
  */
-export function setCardioSwap(entryId: number, name: string | null) {
+export async function setCardioSwap(entryId: number, name: string | null, stillOn?: () => boolean): Promise<boolean> {
   const data = getData();
   const entry = (data.cardio_entries ?? []).find((c) => c.id === entryId);
-  if (!entry) return;
+  if (!entry) return true;
   const clean = name?.trim().slice(0, 80) || null;
+  const was = entry.swap;
   if (clean) entry.swap = { name: clean, at: new Date().toISOString() };
   else delete entry.swap;
   persist();
-  if (clean) setCardioDone(entryId, true);
+  if (!clean) return true;
+  // The tick through the sets' door (quest 10): memory at once, as before. With SETS_STORE=pg the tick commits on its
+  // own, so the swap's name is saved first (a crash between never keeps the tick without what was done instead), and
+  // `stillOn` (the outbox's "still the session it was swapped in") is looked at again inside the tick's write: a discard
+  // committed ahead of it leaves neither the tick nor the swap (false back).
+  const takeBack = () => {
+    if (was) entry.swap = was;
+    else delete entry.swap;
+    persist();
+  };
+  if (SETS_PG) {
+    try {
+      await persistNow();
+    } catch {
+      // Neither half (verify pass, 22 Nov): the swap's name taken back with the tick never sent; the phone sends both again.
+      takeBack();
+      throw Object.assign(new Error("[sets] the store (its save before a cardio swap's tick) is not saved yet"), { name: "NotYetSaved" });
+    }
+  }
+  let went: boolean;
+  try {
+    went = await setCardioDone(entryId, true, null, stillOn);
+  } catch (error) {
+    // SETS_STORE=pg (verify pass, 22 Nov): the tick's transaction failed, so the swap's name is taken back too and the entry
+    // is all or nothing (a batch answering "Couldn't save" kept the name with no tick). Memory mode as before.
+    if (SETS_PG) takeBack();
+    throw error;
+  }
+  if (!went) takeBack();
+  return went;
 }
 
 /**

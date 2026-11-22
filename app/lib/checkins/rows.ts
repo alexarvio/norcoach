@@ -24,13 +24,17 @@
 
 import { getTableColumns, sql, type Column, type SQL } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
-import { allocId, getData, persist, persistNow, type CheckInEntry, type CheckInNote } from "../db";
+import { allocId, getData, persist, persistNow, type CheckInEntry, type CheckInNote, type Data } from "../db";
 import { check_in_notes, metric_entries } from "../pg/schema";
 import { cleanText, fromRecord, recordForWrite } from "../pg/store";
 import { CHECKINS_PG, CHECKINS_REMOVING, CHECKINS_TABLES, type CheckInTable } from "./mode";
 import type { CheckInReadPath, CheckInWritePath } from "./paths";
 import { checkInChainsSettled, checkinRead, checkinWriteRaw, throwIfFaultBeforeCommit, type Q, type Row } from "./pg";
-import { noteCheckInsMissed, noteCheckInsSeen, noteCheckInsWrite, onCheckInsFetch } from "./shadow";
+import { checkInsShadowReads, noteCheckInsMissed, noteCheckInsSeen, noteCheckInsWrite, onCheckInsFetch } from "./shadow";
+import { CHECKINS_SHAPE } from "./paths";
+import { listCheckInSource, resolveCheckIns, sqlCheckInSource, type CheckInAsk, type CheckInSource, type DefsAtFetch, type MeasuresAtFetch } from "./slices";
+import { oddFigure, oddNote, SQL_ODD_FIGURE, SQL_ODD_NOTE } from "../pg/feedSlices";
+import { FEED_KIND_ROWS, HOME_NEW_DAYS } from "../chat/pick";
 
 export { CHECKINS_TABLES };
 
@@ -61,18 +65,64 @@ export class CheckInViewMiss extends Error {
  * The periods a reader reads: every period, some, or a run of them (compared as strings, as the readers compare them);
  * or one of two answers the minute job and the locked app ask, never rows: `latest`, each metric's newest period as
  * listMetricPeriods(ids, 1) reads it (its newest dated row, and every row whose period is no day), and `logged`, whether
- * a metric holds a figure the client typed (its first such row).
+ * a metric holds a figure the client typed (its first such row). Or what a coach-wide reader reads of a client's feed
+ * (21 Nov, the bounded slices; checkins/slices.ts resolves each into periods): `{ feedFrom: T }` every check-in of the
+ * client at or after T (an instant) and their newest; `{ coachTop: n, of }` the client's coach's newest n check-ins with
+ * a figure in (`figures`), or of notes alone (`notesOnly`), or of any kind (`all`); `{ since: prev }` the figures the
+ * Feed's Since may count as sent after the coach's last visit.
  */
-export type CheckInSpan = "all" | { periods: readonly string[] } | { from: string; to: string } | "latest" | "logged" | { latestOf: readonly number[] };
+export type CheckInSpan =
+  | "all"
+  | { periods: readonly string[] }
+  | { from: string; to: string }
+  | "latest"
+  | "logged"
+  | { latestOf: readonly number[] }
+  | { feedFrom: number }
+  | { coachTop: number; of: "figures" | "notesOnly" | "all" }
+  | { since: number };
 
 /**
  * `latest` of every metric of the client (`latestAll`), or of these metrics alone (`latestDefs`, `{ latestOf }`: the
  * minute job, which asks only the metrics a check-in asks now, so it never probes every metric a client ever had).
  */
-type ClientScope = { all: boolean; periods: Set<string>; ranges: { from: string; to: string }[]; latest: boolean; latestAll: boolean; latestDefs: Set<number>; logged: boolean };
-type Scope = { clients: Map<number, ClientScope>; lists: ReadonlySet<CheckInShort>; defsAtFetch?: ReadonlyMap<number, readonly number[]> };
+type ClientScope = {
+  all: boolean;
+  periods: Set<string>;
+  ranges: { from: string; to: string }[];
+  latest: boolean;
+  latestAll: boolean;
+  latestDefs: Set<number>;
+  logged: boolean;
+  /** What coach-wide readers asked (checkins/slices.ts CheckInAsk), and what the fetch resolved it to. */
+  ask: CheckInAsk;
+  coach: number | null;
+  keys: Set<string>;
+  odd: boolean;
+};
+type Scope = {
+  clients: Map<number, ClientScope>;
+  lists: ReadonlySet<CheckInShort>;
+  defsAtFetch?: ReadonlyMap<number, readonly number[]>;
+  /** The fetch's clock, metrics and measurements: what its asks are resolved at, the same on both sides of the shadow. */
+  now?: number;
+  defInfo?: DefsAtFetch;
+  measures?: MeasuresAtFetch;
+};
 
-const emptyClientScope = (): ClientScope => ({ all: false, periods: new Set(), ranges: [], latest: false, latestAll: false, latestDefs: new Set(), logged: false });
+const emptyClientScope = (): ClientScope => ({
+  all: false,
+  periods: new Set(),
+  ranges: [],
+  latest: false,
+  latestAll: false,
+  latestDefs: new Set(),
+  logged: false,
+  ask: { feed: null, top: null, since: null },
+  coach: null,
+  keys: new Set(),
+  odd: false,
+});
 function addSpan(s: ClientScope, span: CheckInSpan) {
   if (span === "all") s.all = true;
   else if (span === "latest") s.latest = s.latestAll = true;
@@ -81,14 +131,23 @@ function addSpan(s: ClientScope, span: CheckInSpan) {
     s.latest = true;
     for (const id of span.latestOf) s.latestDefs.add(id);
   } else if ("periods" in span) for (const p of span.periods) s.periods.add(p);
+  else if ("feedFrom" in span) s.ask.feed = Math.min(s.ask.feed ?? Infinity, span.feedFrom);
+  else if ("coachTop" in span) {
+    const t = s.ask.top ?? { coach: s.coach ?? 0, figures: 0, notes: 0, any: 0 };
+    const key = span.of === "figures" ? "figures" : span.of === "notesOnly" ? "notes" : "any";
+    t[key] = Math.max(t[key], span.coachTop);
+    s.ask.top = t;
+  } else if ("since" in span) s.ask.since = s.ask.since == null ? span.since : Math.min(s.ask.since, span.since);
   else s.ranges.push({ from: span.from, to: span.to });
 }
 /** The metrics of these ids whose `latest` the scope takes. */
 const latestIdsOf = (s: ClientScope, ids: readonly number[]) => (s.latestAll ? ids : ids.filter((id) => s.latestDefs.has(id)));
 function makeScope(spansByClient: Iterable<readonly [number, readonly CheckInSpan[]]>, lists: readonly CheckInShort[] = SHORTS): Scope {
   const clients = new Map<number, ClientScope>();
+  const coachOf = new Map(getData().clients.map((c) => [c.id, c.coach_id ?? null] as const));
   for (const [id, spans] of spansByClient) {
     const s = clients.get(id) ?? emptyClientScope();
+    s.coach ??= coachOf.get(id) ?? null;
     for (const span of spans) addSpan(s, span);
     clients.set(id, s);
   }
@@ -99,7 +158,7 @@ const scopeOf = (clientIds: readonly number[], spans: readonly CheckInSpan[], li
     [...new Set(clientIds)].map((id) => [id, spans] as const),
     lists
   );
-const inPeriod = (s: ClientScope, period: unknown) => s.all || (typeof period === "string" && (s.periods.has(period) || s.ranges.some((r) => period >= r.from && period <= r.to)));
+const inPeriod = (s: ClientScope, period: unknown) => s.all || (typeof period === "string" && (s.periods.has(period) || s.keys.has(period) || s.ranges.some((r) => period >= r.from && period <= r.to)));
 
 /** Each metric definition's client, as memory holds them now (a figure belongs to its client through its metric). */
 function clientOfDefs(): Map<number, number> {
@@ -171,13 +230,13 @@ function cutRows(scope: Scope, lists: Lists, defClient: ReadonlyMap<number, numb
       if (extra.has(e)) return true;
       const c = defClient.get(e.metric_definition_id);
       const s = c == null ? undefined : scope.clients.get(c);
-      return !!s && inPeriod(s, e.period);
+      return !!s && (inPeriod(s, e.period) || (s.odd && oddFigure(e as never)));
     });
   }
   const notes = scope.lists.has("notes")
     ? lists.notes.filter((n) => {
         const s = scope.clients.get(n.client_id);
-        return !!s && inPeriod(s, n.period);
+        return !!s && (inPeriod(s, n.period) || (s.odd && oddNote(n as never)));
       })
     : [];
   return { entries, notes };
@@ -200,6 +259,12 @@ function covers(scope: Scope, clientId: number, span: CheckInSpan, lists: readon
     return out.length ? `the newest periods of ${out.length} metric(s) of client ${clientId} were not fetched` : null;
   }
   if (span === "logged") return s.logged ? null : `whether client ${clientId} logged a figure was not fetched`;
+  if ("feedFrom" in span) return s.ask.feed != null && s.ask.feed <= span.feedFrom ? null : `client ${clientId}'s check-in feed from ${span.feedFrom} was not fetched (held ${s.ask.feed ?? "none"})`;
+  if ("coachTop" in span) {
+    const held = s.ask.top?.[span.of === "figures" ? "figures" : span.of === "notesOnly" ? "notes" : "any"] ?? 0;
+    return held >= span.coachTop ? null : `the coach's newest ${span.coachTop} check-ins (${span.of}) were not fetched for client ${clientId}`;
+  }
+  if ("since" in span) return s.ask.since != null && s.ask.since === span.since ? null : `client ${clientId}'s figures since ${span.since} were not fetched (held ${s.ask.since ?? "none"})`;
   if ("periods" in span) {
     const out = span.periods.filter((p) => !inPeriod(s, p));
     return out.length ? `${out.length} period(s) of client ${clientId} were not fetched` : null;
@@ -428,39 +493,198 @@ async function loadScope(q: Q, scope: Scope, defs: ReadonlyMap<number, readonly 
   if (scope.lists.has("notes")) {
     for (const part of chunks(wholeClients)) for (const r of await q(sql`SELECT * FROM check_in_notes WHERE client_id = ANY(${ints(part)}::int[]) ORDER BY id`)) notes.push(decodeN(r) as unknown as CheckInNote);
   }
+  // What a coach-wide fetch resolved (checkins/slices.ts): each period whole by its client (the figures' def_client_id,
+  // filtered to the client's metrics at the fetch; the notes' client_id), the odd rows on their partial indexes; a few
+  // statements in chunks, never one a client.
+  const keyed: { c: number; p: string; d: readonly number[] }[] = [];
+  const odd: number[] = [];
+  for (const [clientId, s] of scope.clients) {
+    if (s.all) continue;
+    for (const p of s.keys) if (!s.periods.has(p)) keyed.push({ c: clientId, p, d: defs.get(clientId) ?? [] });
+    if (s.odd) odd.push(clientId);
+  }
+  for (const part of chunks(keyed)) {
+    const json = JSON.stringify(part);
+    if (scope.lists.has("entries"))
+      take(await q(sql`SELECT e.* FROM jsonb_to_recordset(${json}::jsonb) AS k(c int, p text, d jsonb) CROSS JOIN LATERAL (SELECT e.* FROM metric_entries e WHERE e.def_client_id = k.c AND (e.period COLLATE "C") = k.p AND (k.d @> to_jsonb(e.metric_definition_id))) e`));
+    if (scope.lists.has("notes")) for (const r of await q(sql`SELECT n.* FROM jsonb_to_recordset(${json}::jsonb) AS k(c int, p text, d jsonb) CROSS JOIN LATERAL (SELECT n.* FROM check_in_notes n WHERE n.client_id = k.c AND (n.period COLLATE "C") = k.p) n`)) notes.push(decodeN(r) as unknown as CheckInNote);
+  }
+  for (const part of chunks(odd)) {
+    const ids = part.flatMap((c) => defs.get(c) ?? []);
+    if (scope.lists.has("entries") && ids.length) take(await q(sql`SELECT * FROM metric_entries WHERE def_client_id = ANY(${ints(part)}::int[]) AND metric_definition_id = ANY(${ints(ids)}::int[]) AND ${sql.raw(SQL_ODD_FIGURE())}`));
+    if (scope.lists.has("notes")) for (const r of await q(sql`SELECT * FROM check_in_notes WHERE client_id = ANY(${ints(part)}::int[]) AND ${sql.raw(SQL_ODD_NOTE())}`)) notes.push(decodeN(r) as unknown as CheckInNote);
+  }
   const seen = new Set<number>();
   return { entries: [...entries.values()].sort(byId), notes: notes.filter((n) => (seen.has(n.id) ? false : (seen.add(n.id), true))).sort(byId) };
 }
+
+// ---- The coach-wide asks resolved (checkins/slices.ts) ----------------------------------------------------------------
+
+/** The clients whose asks are to resolve: not a client taken whole (the whole holds every answer). */
+function asksOf(scope: Scope): Map<number, CheckInAsk> {
+  const out = new Map<number, CheckInAsk>();
+  for (const [c, s] of scope.clients) {
+    if (s.all) continue;
+    const a = s.ask;
+    if (a.feed != null || a.top != null || a.since != null) out.set(c, { ...a, top: a.top ? { ...a.top, coach: s.coach ?? 0 } : null });
+  }
+  return out;
+}
+/** The metrics and the measurements' values (both in memory) at the fetch, for the asks' clients. */
+function factsAtFetch(scope: Scope, defs: ReadonlyMap<number, readonly number[]>): void {
+  const want = new Set(asksOf(scope).keys());
+  if (!want.size) return;
+  const idx = factIndex();
+  const info = new Map<number, { client: number; frequency: string }>();
+  for (const [c, ids] of defs) for (const d of idx.defsOf.get(c) ?? []) if (ids.includes(d.id)) info.set(d.id, { client: d.client_id, frequency: d.frequency });
+  scope.defInfo = { ofClient: defs, info };
+  // A field's client as a walk of the asks' clients' fields gives it (the last in store order, should two share an id).
+  const fieldAt = new Map<number, { c: number; i: number }>();
+  for (const c of want) {
+    for (const { f, i } of idx.fieldsOf.get(c) ?? []) {
+      const had = fieldAt.get(f.id);
+      if (!had || had.i < i) fieldAt.set(f.id, { c, i });
+    }
+  }
+  const measures = new Map<number, { date: unknown; logged_at: unknown }[]>();
+  const held = new Map<number, { i: number; v: MeasureValue }[]>();
+  for (const [id, { c }] of fieldAt) {
+    const list = held.get(c) ?? [];
+    list.push(...(idx.valuesOf.get(id) ?? []));
+    held.set(c, list);
+  }
+  for (const [c, list] of held) {
+    for (const { v } of list.sort((a, b) => a.i - b.i)) {
+      if (v.value == null) continue;
+      const out = measures.get(c) ?? [];
+      out.push({ date: v.date, logged_at: v.logged_at });
+      measures.set(c, out);
+    }
+  }
+  scope.measures = measures;
+}
+
+/**
+ * Each client's metric definitions and measurement values (references, in store order), built once per state of the three
+ * lists (21 Nov: factsAtFetch walked every definition and value of every coach on each coach-wide fetch). A list's state is
+ * itself, its length and its last row (rows are added by a push, taken out by a new list); a row's own fields are read
+ * at the fetch, so a value changed in place is read as it is.
+ */
+type MetricDef = Data["metric_definitions"][number];
+type MeasureField = Data["measurement_fields"][number];
+type MeasureValue = Data["measurement_values"][number];
+type FactIndex = {
+  state: unknown[];
+  defsOf: Map<number, MetricDef[]>;
+  /** Each client's fields with their place in the list. */
+  fieldsOf: Map<number, { f: MeasureField; i: number }[]>;
+  /** Each field's values with their place in the list. */
+  valuesOf: Map<number, { i: number; v: MeasureValue }[]>;
+};
+let factCache: FactIndex | null = null;
+function factIndex(): FactIndex {
+  const data = getData();
+  const lists = [data.metric_definitions, data.measurement_fields, data.measurement_values] as unknown[][];
+  const state = lists.flatMap((l) => [l, l.length, l[l.length - 1]]);
+  if (factCache && factCache.state.length === state.length && factCache.state.every((v, i) => v === state[i])) return factCache;
+  const defsOf = new Map<number, MetricDef[]>();
+  for (const d of data.metric_definitions) {
+    const list = defsOf.get(d.client_id) ?? [];
+    list.push(d);
+    defsOf.set(d.client_id, list);
+  }
+  const fieldsOf = new Map<number, { f: MeasureField; i: number }[]>();
+  data.measurement_fields.forEach((f, i) => {
+    const list = fieldsOf.get(f.client_id) ?? [];
+    list.push({ f, i });
+    fieldsOf.set(f.client_id, list);
+  });
+  const valuesOf = new Map<number, { i: number; v: MeasureValue }[]>();
+  data.measurement_values.forEach((v, i) => {
+    const list = valuesOf.get(v.field_id) ?? [];
+    list.push({ i, v });
+    valuesOf.set(v.field_id, list);
+  });
+  factCache = { state, defsOf, fieldsOf, valuesOf };
+  return factCache;
+}
+/** What the fetch resolved, onto the scope: the periods whole, the odd rows. */
+async function resolveScope(scope: Scope, src: CheckInSource): Promise<void> {
+  const asks = asksOf(scope);
+  if (!asks.size || !scope.defInfo) return;
+  const got = await resolveCheckIns(asks, src, scope.defInfo, scope.measures ?? new Map(), scope.now ?? Date.now());
+  for (const [c, r] of got) {
+    const s = scope.clients.get(c);
+    if (!s) continue;
+    for (const p of r.keys) s.keys.add(p);
+    s.odd ||= r.odd;
+  }
+}
+/** The scope as asked, nothing resolved: the shadow resolves its own copy each side (SQL, and the rows committed). */
+function unresolvedCopy(scope: Scope): Scope {
+  const clients = new Map<number, ClientScope>();
+  for (const [c, s] of scope.clients) clients.set(c, { ...s, keys: new Set(), odd: false });
+  return { ...scope, clients };
+}
+/** What a resolved scope holds, as one line to compare (the shadow's keys check): client ids and periods, never a value. */
+function resolvedLine(scope: Scope): string {
+  const parts: string[] = [];
+  for (const [c, s] of [...scope.clients].sort((a, b) => a[0] - b[0])) if (s.keys.size || s.odd) parts.push(`${c}:${[...s.keys].sort().join(",")}|${s.odd ? 1 : 0}`);
+  return parts.join(";");
+}
+const decodeLists = { entry: (r: Row) => decodeOf("metric_entries")(r) as unknown as CheckInEntry, note: (r: Row) => decodeOf("check_in_notes")(r) as unknown as CheckInNote };
 
 async function fetchScope(path: CheckInReadPath, scope: Scope): Promise<CheckInRows> {
   noteCheckInsSeen(path);
   const defs = defsOfClients(scope.clients.keys());
   scope.defsAtFetch = defs;
+  scope.now ??= Date.now();
+  // The metrics and measurements the asks resolve against, read once here only where something resolves them (pg, narrow
+  // views, the shadow sampling): a wide view in memory answers from the store and reads none of it.
+  if (CHECKINS_PG || MODE === "narrow" || checkInsShadowReads) factsAtFetch(scope, defs);
   if (CHECKINS_PG) {
-    const got = await checkinRead((q) => loadScope(q, scope, defs));
+    const got = await checkinRead(async (q) => {
+      await resolveScope(scope, sqlCheckInSource(q, decodeLists));
+      return loadScope(q, scope, defs);
+    });
     return new CheckInRows(MINT, path, listHolder(got), scope);
   }
   // The shadow (CHECKINS_SHADOW=read): the same scope's SQL, compared with what the last save committed, cut to the
-  // same scope. Behind the answer, never awaited.
+  // same scope. Behind the answer, never awaited; on its own copies of the scope: the SQL side resolves its asks in SQL,
+  // the committed side over the rows committed, and the two resolutions are compared.
+  const hasAsks = asksOf(scope).size > 0;
+  const sqlScope = hasAsks ? unresolvedCopy(scope) : scope;
+  const committedScope = hasAsks ? unresolvedCopy(scope) : scope;
+  const defClient = new Map<number, number>();
+  for (const [c, ids] of defs) for (const id of ids) defClient.set(id, c);
   onCheckInsFetch(path, {
     lists: SHORTS.filter((s) => scope.lists.has(s)).map((s) => CHECKIN_SHORT[s]),
     sqlRows: async (q) => {
-      const lists = await loadScope(q, scope, defs);
+      if (hasAsks) await resolveScope(sqlScope, sqlCheckInSource(q, decodeLists));
+      const lists = await loadScope(q, sqlScope, defs);
       return { metric_entries: lists.entries as unknown as Row[], check_in_notes: lists.notes as unknown as Row[] };
     },
     defs,
     clients: [...scope.clients.keys()],
+    prepare: hasAsks
+      ? async (committed) => {
+          await resolveScope(committedScope, listCheckInSource(committed.entries.filter((e) => defClient.has(Number(e.metric_definition_id))) as unknown as CheckInEntry[], committed.notes as unknown as CheckInNote[]));
+          return { sql: resolvedLine(sqlScope), committed: resolvedLine(committedScope) };
+        }
+      : undefined,
     cut: (committed) => {
-      const defClient = new Map<number, number>();
-      for (const [c, ids] of defs) for (const id of ids) defClient.set(id, c);
-      const got = cutRows(scope, { entries: committed.entries as unknown as CheckInEntry[], notes: committed.notes as unknown as CheckInNote[] }, defClient);
+      const got = cutRows(committedScope, { entries: committed.entries as unknown as CheckInEntry[], notes: committed.notes as unknown as CheckInNote[] }, defClient);
       return { metric_entries: got.entries as unknown as Row[], check_in_notes: got.notes as unknown as Row[] };
     },
     latestDefs: [...scope.clients].filter(([, s]) => s.latest && !s.all).flatMap(([c, s]) => latestIdsOf(s, defs.get(c) ?? [])),
     loggedClients: [...scope.clients].filter(([, s]) => s.logged && !s.all).map(([c]) => c),
     decode: (t, record) => decodeOf(t)(record),
   });
-  if (MODE === "narrow") return new CheckInRows(MINT, path, listHolder(cutRows(scope, storeLists(), clientOfDefs())), scope);
+  if (MODE === "narrow") {
+    const store = storeLists();
+    await resolveScope(scope, listCheckInSource(store.entries, store.notes));
+    return new CheckInRows(MINT, path, listHolder(cutRows(scope, store, clientOfDefs())), scope);
+  }
   return new CheckInRows(MINT, path, storeHolder, scope);
 }
 
@@ -475,6 +699,30 @@ const coachClients = (coachIds: Iterable<number>) => {
     .clients.filter((c) => c.coach_id != null && coaches.has(c.coach_id))
     .map((c) => c.id);
 };
+/**
+ * The moment the coach-wide readers' window starts (getClientHome's unseen marks, Needs you, markClientEventsSeen:
+ * HOME_NEW_DAYS back), an hour more for the clock between the fetch and the read, as the chat's views take it.
+ */
+const feedWindow = () => Date.now() - HOME_NEW_DAYS * 86_400_000 - 3_600_000;
+/** The coach's previous visit to the Feed (its Since), as the chat's view reads it; null on a first visit. */
+function feedPrev(coachId: number): number | null {
+  const prev = getData().users.find((u) => u.id === coachId && u.role === "coach")?.feed_looked?.prev;
+  return typeof prev === "number" && Number.isFinite(prev) ? prev : null;
+}
+/** What a coach-wide page reads of these coaches' clients, by the page (checkins/paths.ts CHECKINS_SHAPE). */
+function coachSpans(coachIds: readonly number[], path: CheckInReadPath): CheckInSpan[] {
+  const shape = CHECKINS_SHAPE[path as keyof typeof CHECKINS_SHAPE] ?? "all";
+  if (shape === "all") return ["all"];
+  if (shape === "accounts") return [{ coachTop: 1, of: "all" }];
+  // The rail's window, and every metric's newest period (getCheckInStatus, the daily gap: listMetricPeriods(ids, 1)).
+  const spans: CheckInSpan[] = [{ feedFrom: feedWindow() }, "latest"];
+  if (shape === "feed") {
+    spans.push({ coachTop: FEED_KIND_ROWS, of: "figures" }, { coachTop: FEED_KIND_ROWS, of: "notesOnly" });
+    const prev = coachIds.length === 1 ? feedPrev(coachIds[0]) : null;
+    if (prev != null) spans.push({ since: prev });
+  }
+  return spans;
+}
 
 /** One client's figures and notes over these periods (every period by default): an action, a route, the coach's goal. */
 export function fetchClientCheckIns(clientId: number, path: CheckInReadPath, spans: CheckInSpan | readonly CheckInSpan[] = "all"): Promise<CheckInRows> {
@@ -489,38 +737,57 @@ export function fetchClientPageCheckIns(clientId: number, path: CheckInReadPath)
 
 /**
  * A client's tab in the admin: one view for the rail, the dots and Home's feed (the coach's clients, and the client's
- * own coach's should the owner open another coach's client) and for every tab's reading of the client (their whole
- * history), and whether each client still unopened logged anything (the locked app's sweep). As fetchClientTabFood.
+ * own coach's should the owner open another coach's client: their window and every metric's newest period) and for
+ * every tab's reading of the client (their whole history), and whether each client still unopened logged anything (the
+ * locked app's sweep). As fetchClientTabFood.
  */
 export function fetchClientTabCheckIns(coachId: number, clientId: number, path: CheckInReadPath): Promise<CheckInRows> {
   const own = getData().clients.find((c) => c.id === clientId)?.coach_id ?? 0;
-  const whole = new Set([...coachClients(own !== coachId ? [coachId, own] : [coachId]), clientId]);
-  const swept = unsweptClients().filter((id) => !whole.has(id));
-  return fetchScope(path, makeScope([...[...whole].map((id) => [id, ["all"]] as const), ...swept.map((id) => [id, ["logged"]] as const)]));
+  const coaches = own !== coachId ? [coachId, own] : [coachId];
+  const swept = unsweptClients().filter((id) => id !== clientId);
+  const rail = coachSpans(coaches, path);
+  return fetchScope(
+    path,
+    makeScope([...coachClients(coaches).filter((id) => id !== clientId).map((id) => [id, rail] as const), [clientId, ["all"]] as const, ...swept.map((id) => [id, ["logged"]] as const)])
+  );
 }
 
-/** Every client of these coaches whole (the rail, the Feed, every other admin page), and the client in focus. */
+/**
+ * What a coach-wide page reads of every client of these coaches (checkins/paths.ts CHECKINS_SHAPE: the rail's window and
+ * newest periods, the Feed's newest 200 of each kind and its Since, Coaches' newest per coach, or the old admin's whole),
+ * the client in focus whole, and whether each client still unopened logged anything; with a focus on an action's path
+ * (its marks, its Needs you), that client's window and newest periods alone.
+ */
 export function fetchCoachCheckIns(coachIds: readonly number[], path: CheckInReadPath, focus?: number | null): Promise<CheckInRows> {
+  if (focus != null && CHECKINS_SHAPE[path as keyof typeof CHECKINS_SHAPE] === "focus") return fetchScope(path, makeScope([[focus, [{ feedFrom: feedWindow() }, "latest"]]]));
   const ids = coachClients(coachIds);
-  if (focus != null) ids.push(focus);
-  const whole = new Set(ids);
-  const swept = unsweptClients().filter((id) => !whole.has(id));
-  return fetchScope(path, makeScope([...[...whole].map((id) => [id, ["all"]] as const), ...swept.map((id) => [id, ["logged"]] as const)]));
+  const spans = coachSpans(coachIds, path);
+  const swept = unsweptClients().filter((id) => id !== focus);
+  return fetchScope(
+    path,
+    makeScope([...ids.filter((id) => id !== focus).map((id) => [id, spans] as const), ...(focus != null ? [[focus, ["all"]] as const] : []), ...swept.map((id) => [id, ["logged"]] as const)])
+  );
 }
 
 /** The old admin: every client of these coaches and the client in focus, whole. */
 export const fetchCoachClientsCheckIns = fetchCoachCheckIns;
 
-/** The coach's view of the client's coach (an action about one client). */
+/** The coach's view of the client's coach (an action about one client): that client's window alone (CHECKINS_SHAPE). */
 export function fetchCoachCheckInsOfClient(clientId: number, path: CheckInReadPath): Promise<CheckInRows> {
   return fetchCoachCheckIns([getData().clients.find((c) => c.id === clientId)?.coach_id ?? 0], path, clientId);
 }
 
-/** Every client whole: the owner's Coaches list (each coach's last activity). */
+/**
+ * The owner's Coaches list (each coach's last activity): each coach's newest check-in, by each client's newest (one
+ * probe a client and table) and every check-in of the coach's clients from the newest of those on (21 Nov, the owner's
+ * aggregate). Clients with no coach are not read: listCoachAccounts never reads them.
+ */
 export function fetchEveryCheckIn(path: CheckInReadPath): Promise<CheckInRows> {
-  return fetchScope(path, scopeOf(getData().clients.map((c) => c.id), ["all"]));
+  const ids = getData()
+    .clients.filter((c) => c.coach_id != null)
+    .map((c) => c.id);
+  return fetchScope(path, scopeOf(ids, coachSpans([], path)));
 }
-
 /**
  * The minute job's answer (getDueItems): each asked metric's newest period, for these clients; no notes. `asked` is
  * each client's metrics a check-in asks now (queries.ts dueCheckInDefIds), so the job never probes every metric a client

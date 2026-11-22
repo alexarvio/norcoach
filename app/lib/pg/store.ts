@@ -8,6 +8,7 @@ import { CHAT_PG } from "../chat/mode";
 import { NOTES_PG } from "../notes/mode";
 import { FOOD_PG, FOOD_TABLES } from "../food/mode";
 import { CHECKINS_PG, CHECKINS_TABLES } from "../checkins/mode";
+import { SETS_PG, SETS_TABLES } from "../sets/mode";
 
 // Loads the whole store from Postgres and saves changes back (phase 1).
 //
@@ -50,8 +51,86 @@ type Derived = (typeof DERIVED)[number];
 const DERIVED_OF = new Map<PgTable, Derived[]>();
 for (const d of DERIVED) DERIVED_OF.set(d.table, [...(DERIVED_OF.get(d.table) ?? []), d]);
 
-/** The value a derived column holds for this row (ISO text), or null. */
-const derivedValue = (d: Derived, row: Row) => (d.kind === "ms" ? msInstant(row[d.from]) : stampInstant(row[d.from]));
+/**
+ * The client of a metric definition as memory holds the definitions now (21 Nov, migration 0024: metric_entries'
+ * def_client_id), or null. The boot hands over where the definitions are (setDefClientSource, pg/runtime.ts: the store
+ * once installed, the rows being loaded before that); never a read of the store from here, so no import cycle. Cached by
+ * the list and its length, and read again on an id it doesn't know.
+ */
+type DefList = readonly { id: number; client_id: number }[] | undefined;
+let defSource: (() => DefList) | null = null;
+// The list's state: itself, its length and its last id (a definition is added by a push, taken out by a new list).
+let defCache: { list: DefList; n: number; last: unknown; map: Map<number, number>; rechecked: boolean } | null = null;
+export function setDefClientSource(fn: () => DefList) {
+  defSource = fn;
+  defCache = null;
+}
+function defMap(fresh: boolean): Map<number, number> | null {
+  const list = defSource?.();
+  if (!Array.isArray(list)) return null;
+  const last = list.length ? list[list.length - 1]?.id : undefined;
+  if (fresh || !defCache || defCache.list !== list || defCache.n !== list.length || defCache.last !== last)
+    defCache = { list, n: list.length, last, map: new Map(list.map((d) => [d.id, d.client_id] as const)), rechecked: fresh };
+  return defCache.map;
+}
+function defClientOf(defId: unknown, defs?: ReadonlyMap<number, number>): number | null {
+  if (typeof defId !== "number") return null;
+  if (defs) return defs.get(defId) ?? null;
+  const got = defMap(false)?.get(defId);
+  if (got !== undefined) return got;
+  // An id the map doesn't know (a figure of a metric memory doesn't hold): built again once for the list as it is, never
+  // once per such figure (thousands of them would each walk every definition).
+  if (defCache?.rechecked) return null;
+  return defMap(true)?.get(defId) ?? null;
+}
+
+/**
+ * The client of a plan row (a workout assignment) as memory holds the rows and the days now (22 Nov, migration 0025:
+ * set_logs' client_id), its day's client, or null: the first row of an id and the first day of an id, as find reads
+ * them. The boot hands over where they are (setSetClientSource, pg/runtime.ts), as for the definitions above. Cached by
+ * the two lists, their lengths and their last ids, and built again once on a row id it doesn't know.
+ */
+type SetSrc = { rows: readonly { id: number; program_day_id: number }[] | undefined; days: readonly { id: number; client_id: number }[] | undefined } | undefined;
+let setSource: (() => SetSrc) | null = null;
+let setCache: { state: unknown[]; map: Map<number, number>; rechecked: boolean } | null = null;
+export function setSetClientSource(fn: () => SetSrc) {
+  setSource = fn;
+  setCache = null;
+}
+/** Each plan row's client from lists of rows and days (the first of each id). */
+export function setClientMapOf(rows: readonly { id: number; program_day_id: number }[] = [], days: readonly { id: number; client_id: number }[] = []): Map<number, number> {
+  const dayClient = new Map<number, number>();
+  for (const d of days) if (!dayClient.has(d.id)) dayClient.set(d.id, d.client_id);
+  const out = new Map<number, number>();
+  for (const r of rows) {
+    if (out.has(r.id)) continue;
+    const c = dayClient.get(r.program_day_id);
+    if (c !== undefined) out.set(r.id, c);
+  }
+  return out;
+}
+function setMap(fresh: boolean): Map<number, number> | null {
+  const src = setSource?.();
+  if (!src || !Array.isArray(src.rows) || !Array.isArray(src.days)) return null;
+  const state = [src.rows, src.rows.length, src.rows[src.rows.length - 1]?.id, src.days, src.days.length, src.days[src.days.length - 1]?.id];
+  if (fresh || !setCache || setCache.state.some((v, i) => v !== state[i])) setCache = { state, map: setClientMapOf(src.rows, src.days), rechecked: fresh };
+  return setCache.map;
+}
+function setClientOf(rowId: unknown, map?: ReadonlyMap<number, number>): number | null {
+  if (typeof rowId !== "number") return null;
+  if (map) return map.get(rowId) ?? null;
+  const got = setMap(false)?.get(rowId);
+  if (got !== undefined) return got;
+  if (setCache?.rechecked) return null;
+  return setMap(true)?.get(rowId) ?? null;
+}
+
+/** The value a derived column holds for this row (ISO text, or a client's id), or null. */
+const derivedValue = (d: Derived, row: Row) =>
+  d.kind === "ms" ? msInstant(row[d.from]) : d.kind === "defClient" ? defClientOf(row[d.from]) : d.kind === "setClient" ? setClientOf(row[d.from]) : stampInstant(row[d.from]);
+/** derivedValue as derivedStale compares it (ms, or the id). */
+const derivedWant = (d: Derived, row: Row, defs?: ReadonlyMap<number, number>, sets?: ReadonlyMap<number, number>) =>
+  d.kind === "ms" ? msInstantMs(row[d.from]) : d.kind === "defClient" ? defClientOf(row[d.from], defs) : d.kind === "setClient" ? setClientOf(row[d.from], sets) : stampInstantMs(row[d.from]);
 
 const FIELDS = new WeakMap<PgTable, Record<string, Column>>();
 /** The columns that are fields of the row: every column but the derived ones. */
@@ -225,13 +304,18 @@ export async function loadStore(db: AnyDb, moved: string[] = []): Promise<Row> {
  */
 export async function derivedStale(db: AnyDb, data: Row): Promise<Map<string, Set<string>>> {
   const stale = new Map<string, Set<string>>();
+  // The figures' client from the definitions as loaded (def_client_id, 21 Nov), not the store (not installed yet).
+  const defList = Array.isArray(data.metric_definitions) ? (data.metric_definitions as { id: number; client_id: number }[]) : [];
+  const defs = new Map(defList.map((d) => [d.id, d.client_id] as const));
+  // The sets' client from the rows and days as loaded (client_id, 22 Nov), the same way.
+  const sets = setClientMapOf(Array.isArray(data.workout_assignments) ? (data.workout_assignments as { id: number; program_day_id: number }[]) : [], Array.isArray(data.program_days) ? (data.program_days as { id: number; client_id: number }[]) : []);
   for (const c of WRITER_COLLECTIONS) {
     const derived = DERIVED_OF.get(c.table);
     if (!derived || c.key.length !== 1) continue;
     const keyColumn = columnsOf(c.table)[c.key[0]].name;
     const columns = derived.map((d) => columnsOf(c.table)[d.column].name);
     const read = await db.execute(
-      sql.raw(`SELECT "${keyColumn}" AS k, ${columns.map((col, i) => `(EXTRACT(EPOCH FROM "${col}") * 1000)::float8 AS d${i}`).join(", ")} FROM "${getTableName(c.table)}"`)
+      sql.raw(`SELECT "${keyColumn}" AS k, ${columns.map((col, i) => (derived[i].kind === "defClient" || derived[i].kind === "setClient" ? `"${col}"::float8 AS d${i}` : `(EXTRACT(EPOCH FROM "${col}") * 1000)::float8 AS d${i}`)).join(", ")} FROM "${getTableName(c.table)}"`)
     );
     const held = new Map<string, (number | null)[]>();
     for (const r of ((read as { rows?: Row[] }).rows ?? []) as Row[]) {
@@ -244,13 +328,91 @@ export async function derivedStale(db: AnyDb, data: Row): Promise<Map<string, Se
       const have = held.get(key);
       if (!have) continue; // not in the table: written by the next save anyway
       derived.forEach((d, i) => {
-        const want = d.kind === "ms" ? msInstantMs(row[d.from]) : stampInstantMs(row[d.from]);
+        const want = derivedWant(d, row, defs, sets);
         if (want !== have[i]) keys.add(key);
       });
     }
     if (keys.size) stale.set(c.name, keys);
   }
   return stale;
+}
+
+/**
+ * A door table's derived columns put right in Postgres itself (21 Nov, the bounded slices: the doors' pg boots, under the
+ * lease). With the door's rows out of memory derivedStale never sees them, so a row a build that didn't fill them wrote
+ * (a rollback past migration 0024, the old instance still saving during a deploy: a figure with no def_client_id, a
+ * calorie log or note edited and its instant left as it was) would stay out of every coach-wide slice. Here every row
+ * is looked at from its own columns (the stamp's text, the metric's id: what recordForWrite derives from) and each
+ * derived column written again where it isn't what the writer would write, compared as derivedStale compares:
+ *   - a figure's client by one statement each way in SQL against memory's definitions (`defs`, the map derivedStale
+ *     builds: the last of an id), a figure of a metric memory doesn't hold getting none;
+ *   - an instant read in JS (stampInstantMs, the writer's own reading) on the rows SQL can't vouch for: SQL passes a row
+ *     only when its instant written back in the stamp's own shape is the stamp itself (toISOString's "…T…:SS.mmmZ" in
+ *     UTC, or localStamp's "YYYY-MM-DD HH:MM:SS" in Amsterdam outside the nights the clocks change, where a wall time is
+ *     one instant), or the stamp is empty and the instant none; every other row is read (21 Nov: the full read in JS
+ *     took 30 s at 1000 coaches in pglite, this a fraction of it).
+ * How many rows were written.
+ */
+export async function repairDerivedPg(db: AnyDb, name: string, defs?: readonly { id: number; client_id: number }[]): Promise<number> {
+  // The sets' client (quest 10): `defs` is then each plan row's client (setClientMapOf: id = the row, client_id its day's).
+  const c = COLLECTIONS.find((x) => x.name === name);
+  const derived = c ? DERIVED_OF.get(c.table) : undefined;
+  if (!c || !derived || c.key.length !== 1) return 0;
+  // With no definitions every figure's client would read as none and be written so.
+  if (!defs && derived.some((d) => d.kind === "defClient" || d.kind === "setClient")) throw new Error(`repairDerivedPg: ${name} needs the metric definitions`);
+  const cols = columnsOf(c.table);
+  const T = sql.raw(`"${getTableName(c.table)}"`);
+  const K = sql.raw(`"${cols[c.key[0]].name}"`);
+  const rowsIn = (r: unknown) => ((r as { rows?: Row[] })?.rows ?? []) as Row[];
+  const written = new Set<number>();
+  for (const d of derived) {
+    const col = sql.raw(`"${cols[d.column].name}"`);
+    const from = sql.raw(`"${cols[d.from].name}"`);
+    if (d.kind === "defClient" || d.kind === "setClient") {
+      const map = new Map((defs ?? []).map((x) => [x.id, x.client_id] as const));
+      const ids = `{${[...map.keys()].join(",")}}`;
+      const clients = `{${[...map.values()].map((v) => (Number.isInteger(v) ? String(v) : "NULL")).join(",")}}`;
+      for (const r of rowsIn(await db.execute(sql`UPDATE ${T} x SET ${col} = v.c FROM unnest(${ids}::int[], ${clients}::int[]) AS v(id, c) WHERE x.${from} = v.id AND x.${col} IS DISTINCT FROM v.c RETURNING x.${K} AS k`)))
+        written.add(Number(r.k));
+      for (const r of rowsIn(
+        await db.execute(sql`UPDATE ${T} x SET ${col} = NULL WHERE x.${col} IS NOT NULL AND NOT EXISTS (SELECT 1 FROM unnest(${ids}::int[]) AS v(id) WHERE v.id = x.${from}) RETURNING x.${K} AS k`)
+      ))
+        written.add(Number(r.k));
+      continue;
+    }
+    // The rows SQL can vouch for (above); the clocks change at 01:00 UTC on the last Sundays of March and October.
+    const vouched =
+      d.kind === "stamp"
+        ? sql`((${from} IS NULL OR ${from} = '') AND ${col} IS NULL)
+            OR (${from} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$' AND date_trunc('milliseconds', ${col}) = ${col}
+              AND to_char(${col} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') = ${from})
+            OR (${from} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$' AND NOT (substr(${from}, 6, 2) IN ('03', '10') AND substr(${from}, 9, 2) >= '25' AND substr(${from}, 12, 2) IN ('00', '01', '02', '03', '04'))
+              AND date_trunc('second', ${col}) = ${col} AND to_char(${col} AT TIME ZONE 'Europe/Amsterdam', 'YYYY-MM-DD HH24:MI:SS') = ${from})`
+        : sql`false`;
+    for (let after = Number.MIN_SAFE_INTEGER; ; ) {
+      const page = rowsIn(
+        await db.execute(
+          sql`SELECT ${K} AS k, ${from} AS f, (EXTRACT(EPOCH FROM ${col}) * 1000)::float8 AS d FROM ${T} WHERE ${K} > ${after}::bigint AND NOT COALESCE(${vouched}, false) ORDER BY ${K} LIMIT 5000`
+        )
+      );
+      if (!page.length) break;
+      const fix: { k: number; v: number | null }[] = [];
+      for (const r of page) {
+        const want = derivedWant(d, { [d.from]: r.f });
+        const have = r.d == null ? null : Math.round(Number(r.d));
+        if (want !== have) fix.push({ k: Number(r.k), v: want });
+      }
+      for (let j = 0; j < fix.length; j += 500) {
+        const part = fix.slice(j, j + 500);
+        const ks = `{${part.map((p) => p.k).join(",")}}`;
+        const vs = `{${part.map((p) => (p.v == null ? "NULL" : `"${new Date(p.v).toISOString()}"`)).join(",")}}`;
+        await db.execute(sql`UPDATE ${T} x SET ${col} = v.v FROM unnest(${ks}::int[], ${vs}::timestamptz[]) AS v(k, v) WHERE x.${K} = v.k`);
+        for (const p of part) written.add(p.k);
+      }
+      after = Number(page[page.length - 1].k);
+    }
+  }
+  return written.size;
 }
 
 /**
@@ -358,6 +520,12 @@ function chatTripwire(next: Snapshot, last: Snapshot) {
   if (CHECKINS_PG) {
     for (const t of CHECKINS_TABLES) {
       if (next.rows.has(t) || last.rows.has(t)) throw new Error(`[store] !!! ${t} reached the store's writer with CHECKINS_STORE=pg: the save is refused`);
+    }
+  }
+  // The logged sets the same with SETS_STORE=pg (quest 10).
+  if (SETS_PG) {
+    for (const t of SETS_TABLES) {
+      if (next.rows.has(t) || last.rows.has(t)) throw new Error(`[store] !!! ${t} reached the store's writer with SETS_STORE=pg: the save is refused`);
     }
   }
 }

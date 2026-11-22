@@ -169,6 +169,27 @@
       "when": 1795153312108,
       "tag": "0023_checkins",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795235364841,
+      "tag": "0024_feed_slices",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1795328229375,
+      "tag": "0025_sets",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1795350201442,
+      "tag": "0026_cardio_ticks",
+      "breakpoints": true
     }
   ]
 }

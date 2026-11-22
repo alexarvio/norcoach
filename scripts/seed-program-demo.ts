@@ -13,6 +13,8 @@
    the JSON store and would overwrite this script's writes on its next save.
 */
 import { getData, persist, allocId } from "../app/lib/db";
+// sets-door: the seeds write the store's own sets list through the door's memory-mode box (scripts only).
+import { storeSetBox, storeSetRows } from "../app/lib/sets/rows";
 import { ensureMeasurementField } from "../app/lib/queries";
 import {
   addExerciseToDay,
@@ -55,7 +57,7 @@ function findExerciseId(name: string): number {
 
 function logSetAt(assignmentId: number, setNumber: number, weightKg: number, reps: number, rpe: number, daysBack: number) {
   const data = getData();
-  data.set_logs.push({
+  storeSetBox("w.set.seed").logs.push({
     id: allocId("set_logs"),
     workout_assignment_id: assignmentId,
     set_number: setNumber,
@@ -70,7 +72,7 @@ function logSetAt(assignmentId: number, setNumber: number, weightKg: number, rep
 // ---- Wipe Nithit's pre-existing empty draft (week 1, zero exercises) so
 // this script's own programs start clean at week 1 instead of leaving two
 // draft programs behind (the model expects at most one). ----
-removeProgram(3);
+removeProgram(storeSetRows("backup"), 3);
 
 // ---- Profile / Start Page ----
 saveClientProfile({

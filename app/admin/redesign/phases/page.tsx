@@ -4,6 +4,7 @@ import { loadChatDock, loadPhaseNeeds, loadRail } from "../loaders";
 import { fetchCoachPageChat } from "../../../lib/chat/rows";
 import { fetchCoachFood } from "../../../lib/food/rows";
 import { fetchCoachCheckIns } from "../../../lib/checkins/rows";
+import { fetchCoachSets } from "../../../lib/sets/rows";
 import RedesignRail from "../RedesignRail";
 import ChatDock from "../ChatDock";
 import "../messages/messages.css";
@@ -37,12 +38,14 @@ export default async function PhasesPage() {
   const food = await t.time("food", () => fetchCoachFood([coach.id], "page.phases"));
   // The check-in figures the rail's feed reads (quest 9, app/lib/checkins/rows.ts), fetched first as the food is.
   const ck = await t.time("checkins", () => fetchCoachCheckIns([coach.id], "page.phases"));
+  // The logged sets (quest 10, app/lib/sets/rows.ts), fetched first as the check-ins are.
+  const sr = await t.time("sets", () => fetchCoachSets("page.phases", [coach.id]));
   return t.end(
     <div className="rd-frame">
-      <RedesignRail rail={t.time("rail", () => loadRail(coach, chat.coach, food, ck))} clientId={0} />
+      <RedesignRail rail={t.time("rail", () => loadRail(coach, chat.coach, food, ck, sr))} clientId={0} />
       <ChatDock chats={t.time("chatDock", () => loadChatDock(coach, chat.dock))} />
       <div className="rd-page">
-        <PhasesOverview data={t.time("phasesOverview", () => loadPhasesOverview(coach.id))} needs={t.time("phaseNeeds", () => loadPhaseNeeds(coach.id, chat.coach, food, ck))} now={Date.now()} />
+        <PhasesOverview data={t.time("phasesOverview", () => loadPhasesOverview(coach.id, sr))} needs={t.time("phaseNeeds", () => loadPhaseNeeds(coach.id, chat.coach, food, ck, sr))} now={Date.now()} />
       </div>
     </div>
   );

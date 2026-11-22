@@ -5,6 +5,7 @@ import { getData } from "../../../lib/db";
 import { clientIdForProgramDay } from "../../../lib/tenancy";
 import { getProgramForWeek, listPrograms } from "../../../lib/queries";
 import { applyReader } from "./applyPreviewData";
+import { fetchClientSets } from "../../../lib/sets/rows";
 import type { ApplyPreview } from "./applyShape";
 
 // The confirms' read (ApplyChanges.tsx) of what Apply to the rest and a session's Apply to remaining weeks would change
@@ -15,7 +16,7 @@ export async function previewApplyWeekAction(clientId: number, fromWeek: number,
   if (!(await coachForClient(clientId))) return null;
   const program = getProgramForWeek(clientId, fromWeek);
   if (!program) return null;
-  return applyReader(clientId).week(program, fromWeek, toWeeks);
+  return applyReader(await fetchClientSets("action.applyPreview", clientId), clientId).week(program, fromWeek, toWeeks);
 }
 
 /** A session's Apply to remaining weeks: it, as it is, into the same slot of every later week (copyProgramDayToLaterWeeks). */
@@ -26,5 +27,5 @@ export async function previewApplySessionAction(programDayId: number): Promise<A
   if (!src) return null;
   const program = listPrograms(clientId).find((p) => src.week_number >= p.start_week && src.week_number < p.start_week + p.total_weeks);
   if (!program) return null;
-  return applyReader(clientId).session(src, program);
+  return applyReader(await fetchClientSets("action.applyPreview", clientId), clientId).session(src, program);
 }

@@ -99,6 +99,8 @@ async function main() {
   const food = await import("../app/lib/food/rows");
   const appLock = await import("../app/lib/appLock");
   const ck = await import("../app/lib/checkins/rows");
+  // The logged sets' views (quest 10), fetched as each page fetches them.
+  const sets = await import("../app/lib/sets/rows");
   const data = db.getData();
   const out: Record<string, unknown> = {};
   const errors: string[] = [];
@@ -122,17 +124,19 @@ async function main() {
   const allChat = await chat.fetchCoachChat(everyCoach, "page.coaches.accounts");
   const allFood = await food.fetchCoachFood(everyCoach, "page.coaches.accounts");
   const every = await ck.fetchEveryCheckIn("page.coaches.accounts");
+  const everySet = await sets.fetchEverySet("page.coaches.accounts");
   const due = await ck.fetchDueCheckIns(data.clients.map((c) => c.id), "job.reminders", q.dueCheckInDefIds);
-  await safe("accounts", () => q.listCoachAccounts(allChat, allFood, every));
+  await safe("accounts", () => q.listCoachAccounts(allChat, allFood, every, everySet));
   for (const c of data.clients) await safe(`due:${c.id}`, () => q.getDueItems(due, c.id));
   for (const coach of coaches) {
     const pageChat = await chat.fetchCoachPageChat(coach.id, "page.feed");
     const coachFood = await food.fetchCoachFood([coach.id], "page.feed");
     const coachV = await ck.fetchCoachCheckIns([coach.id], "page.feed");
-    await safe(`feed:${coach.id}`, () => q.getActivityFeed(coach.id, pageChat.coach, coachFood, coachV));
-    await safe(`feedBoard:${coach.id}`, () => feedBoard.getFeedBoard(coach.id, pageChat.coach, coachFood, coachV));
-    await safe(`rail:${coach.id}`, () => loaders.loadRail(coach, pageChat.coach, coachFood, coachV));
-    await safe(`phaseNeeds:${coach.id}`, () => loaders.loadPhaseNeeds(coach.id, pageChat.coach, coachFood, coachV));
+    const coachS = await sets.fetchCoachSets("page.feed", [coach.id]);
+    await safe(`feed:${coach.id}`, () => q.getActivityFeed(coach.id, pageChat.coach, coachFood, coachV, coachS, { span: { feedFrom: Date.now() - 14 * 86400000 } }).filter((e: { at: number }) => e.at >= Date.now() - 14 * 86400000));
+    await safe(`feedBoard:${coach.id}`, () => feedBoard.getFeedBoard(coach.id, pageChat.coach, coachFood, coachV, coachS));
+    await safe(`rail:${coach.id}`, () => loaders.loadRail(coach, pageChat.coach, coachFood, coachV, coachS));
+    await safe(`phaseNeeds:${coach.id}`, () => loaders.loadPhaseNeeds(coach.id, pageChat.coach, coachFood, coachV, coachS));
   }
   for (const c of data.clients) {
     const cid = c.id;
@@ -145,6 +149,9 @@ async function main() {
     const page = await ck.fetchClientPageCheckIns(cid, "page.client");
     const tab = await ck.fetchClientTabCheckIns(coachId, cid, "page.tab.measurements");
     const lockCk = await appLock.fetchAppLockCheckIns([cid], "action.appLock");
+    const pageS = await sets.fetchClientPageSets("page.client", cid);
+    const tabS = await sets.fetchClientTabSets("page.tab.measurements", coachId, cid);
+    const lockS = await appLock.fetchAppLockSets([cid], "action.appLock");
     const k = `c${cid}`;
     const sections = q.getCheckInSections(page, cid);
     await safe(`${k}.sections`, () => sections);
@@ -153,26 +160,26 @@ async function main() {
     await safe(`${k}.monthlyAsked`, () => q.monthlyCheckInAskedToday(page, cid, sections.sections));
     await safe(`${k}.history`, () => q.getCheckInHistory(page, cid));
     await safe(`${k}.streak`, () => q.getCheckInStreak(page, cid));
-    await safe(`${k}.calendar`, () => q.getActivityCalendar(foodPage, cid, page));
+    await safe(`${k}.calendar`, () => q.getActivityCalendar(foodPage, cid, page, pageS));
     await safe(`${k}.bodyWeight`, () => [q.bodyWeightReadings(page, cid), q.bodyWeightKg(page, cid), q.getLatestWeight(page, cid)]);
     await safe(`${k}.goalViews`, () => q.getWeightGoalViews(page, cid, today));
     for (const cad of ["daily", "weekly", "monthly"] as const) await safe(`${k}.logged.${cad}`, () => [q.getLoggedValues(tab, cid, cad, 8), q.getLoggedValues(tab, cid, cad, 730)]);
     await safe(`${k}.notes`, () => q.listCheckInNotes(tab, cid, 500));
     await safe(`${k}.series`, () => data.metric_definitions.filter((m) => m.client_id === cid).map((m) => q.getMetricSeries(tab, m.id)));
     await safe(`${k}.graphChoices`, () => q.listGraphChoices(tab, cid));
-    await safe(`${k}.goals`, () => [q.getGoalSummaries(foodTab, cid, tab), q.getGoalEditorOptions(foodTab, cid, tab), q.getPlanData(foodTab, cid, tab)]);
+    await safe(`${k}.goals`, () => [q.getGoalSummaries(foodTab, cid, tab, tabS), q.getGoalEditorOptions(foodTab, cid, tab, tabS), q.getPlanData(foodTab, cid, tab, tabS)]);
     await safe(`${k}.askedOn`, () => {
       const f = q.dailyAskedOn(tab, cid);
       return Array.from({ length: 40 }, (_, i) => f(day(-i)));
     });
-    await safe(`${k}.engagement`, () => q.getClientEngagement(foodTab, tab, cid));
-    await safe(`${k}.home`, () => [q.getClientHome(cid, tabChat.coach, foodTab, tab), q.clientAttention(cid, tabChat.coach, foodTab, tab)]);
-    await safe(`${k}.loadHome`, () => loaders.loadHome(cid, tabChat, foodTab, tab));
-    await safe(`${k}.loadMeasurements`, () => loaders.loadMeasurements(cid, {}, tab));
-    await safe(`${k}.loadPlan`, () => [loaders.loadPlan(cid, foodTab, tab), loaders.loadMeetings(cid, foodTab, tab)]);
-    await safe(`${k}.dots`, () => loaders.loadDots(cid, tabChat.coach, foodTab, tab));
-    await safe(`${k}.training`, () => [hb.exerciseTrends(tab, cid), hb.personalBests(tab, cid), hb.trainingBests(page, cid).bests]);
-    await safe(`${k}.appLocked`, () => appLock.appLocked(cid, lockFood, lockCk));
+    await safe(`${k}.engagement`, () => q.getClientEngagement(foodTab, tab, tabS, cid));
+    await safe(`${k}.home`, () => [q.getClientHome(cid, tabChat.coach, foodTab, tab, tabS), q.clientAttention(cid, tabChat.coach, foodTab, tab, tabS)]);
+    await safe(`${k}.loadHome`, () => loaders.loadHome(cid, tabChat, foodTab, tab, tabS));
+    await safe(`${k}.loadMeasurements`, () => loaders.loadMeasurements(cid, {}, tab, tabS));
+    await safe(`${k}.loadPlan`, () => [loaders.loadPlan(cid, foodTab, tab, tabS), loaders.loadMeetings(cid, foodTab, tab, tabS)]);
+    await safe(`${k}.dots`, () => loaders.loadDots(cid, tabChat.coach, foodTab, tab, tabS));
+    await safe(`${k}.training`, () => [hb.exerciseTrends(tab, tabS, cid), hb.personalBests(tab, tabS, cid), hb.trainingBests(page, pageS, cid).bests]);
+    await safe(`${k}.appLocked`, () => appLock.appLocked(cid, lockFood, lockCk, lockS));
   }
   out._errors = errors;
   fs.writeFileSync(process.env.OUT!, JSON.stringify(out));

@@ -8,7 +8,8 @@
 //        then taken out of memory (the boot's save writes that); after prepareStore's rename, as memory mode merges;
 //     3. impossible step counts (over 200,000) kept aside in checkin_twins and out of the table, as memory drops them;
 //     4. figures whose metric is gone (orphans) counted and said, never moved: they were invisible before, and a
-//        definition loadStore skipped as unreadable must never lose its live readings;
+//        definition loadStore skipped as unreadable must never lose its live readings; then (21 Nov) the derived columns
+//        (each figure's client, the instants) put right in the tables, as a memory boot's derivedStale would;
 //     5. where a unique rule is missing (a memory boot dropped it, or the first pg boot): twins kept aside, the rule made
 //        (a figure: one per metric and period, the client's own before the phone's, then the lowest id; a note: one per
 //        client, kind and period, the lowest id);
@@ -20,7 +21,7 @@
 import { sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import { isStepsMetric, MAX_DAY_STEPS, mergeDuplicateMetricDefinitions, type CheckInEntry, type Data } from "../db";
-import { fromRecord, insertRowsOnce } from "../pg/store";
+import { fromRecord, insertRowsOnce, repairDerivedPg } from "../pg/store";
 import { metric_entries } from "../pg/schema";
 import { CHECKINS_PG_MARK, CHECKINS_REMOVING, CHECKINS_TABLES } from "./mode";
 
@@ -53,7 +54,20 @@ const RULES: { name: string; table: string; on: string; partition: string; notNu
   },
 ];
 
-const NEEDED_INDEXES = ["metric_entries_def_period_idx", "metric_entries_logged_idx", "metric_entries_odd_period_idx", "check_in_notes_client_idx"];
+const NEEDED_INDEXES = [
+  "metric_entries_def_period_idx",
+  "metric_entries_logged_idx",
+  "metric_entries_odd_period_idx",
+  "check_in_notes_client_idx",
+  // Migration 0024 (21 Nov): the coach-wide slices (checkins/slices.ts).
+  "metric_entries_client_tz_idx",
+  "metric_entries_client_period_idx",
+  "metric_entries_client_odd_idx",
+  "metric_entries_client_blank_idx",
+  "check_in_notes_client_tz_idx",
+  "check_in_notes_client_period_idx",
+  "check_in_notes_odd_idx",
+];
 
 /** What CHECKINS_STORE=pg leans on and is missing: migration 0023's objects (and, with `unique`, the pg boot's rules). */
 export async function checkInsProblems(db: AnyDb, opts: { unique: boolean }): Promise<string[]> {
@@ -175,6 +189,12 @@ export async function checkInsBootPg(db: AnyDb, data: Data): Promise<boolean> {
   const clients = data.clients.map((c) => c.id);
   const lostNotes = Number(rowsOf(await db.execute(sql`SELECT count(*)::int AS n FROM check_in_notes WHERE client_id IS NULL OR NOT (client_id = ANY(${ints(clients)}::int[]))`))[0]?.n ?? 0);
   if (orphans || lostNotes) say("checkins-orphans", `Check-in rows of no metric or client: ${orphans} figure(s), ${lostNotes} note(s) (kept, invisible as before; look at them)`);
+  // 4b. The derived columns the coach-wide slices lean on (21 Nov, migration 0024): each figure's client and real instant,
+  // each note's instant, put right in the tables from memory's definitions, as a memory boot's derivedStale would (a
+  // figure an older build wrote with no def_client_id would be in no slice; pg/store.ts repairDerivedPg).
+  const fixedFigures = await repairDerivedPg(db, "metric_entries", data.metric_definitions);
+  const fixedNotes = await repairDerivedPg(db, "check_in_notes");
+  log(`pg: derived columns written again on ${fixedFigures} figure(s) and ${fixedNotes} note(s)`);
   // 5. The unique rules, where missing.
   for (const r of RULES) {
     const there = rowsOf(await db.execute(sql`SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE c.relname = ${r.name} AND i.indisvalid`)).length > 0;

@@ -12,6 +12,8 @@
 //   npx tsx scripts/seed-sam-demo.ts   (dev server STOPPED)
 import { storeCheckInBox } from "../app/lib/checkins/rows";
 import { allocId, getData, persist } from "../app/lib/db";
+// sets-door: the seeds write the store's own sets list through the door's memory-mode box (scripts only).
+import { storeSetBox, storeSetRows } from "../app/lib/sets/rows";
 import { createUser, getUserForClient } from "../app/lib/auth";
 import {
   addClientGoal,
@@ -85,7 +87,7 @@ saveClientProfile({
   const data = getData();
   const dayIds = new Set(data.program_days.filter((d) => d.client_id === clientId).map((d) => d.id));
   const waIds = new Set(data.workout_assignments.filter((w) => dayIds.has(w.program_day_id)).map((w) => w.id));
-  data.set_logs = data.set_logs.filter((s) => !waIds.has(s.workout_assignment_id));
+  storeSetBox("w.set.seed").logs = storeSetBox("w.set.seed").logs.filter((s) => !waIds.has(s.workout_assignment_id));
   data.assignment_custom_values = data.assignment_custom_values.filter((v) => !waIds.has(v.workout_assignment_id));
   data.workout_assignments = data.workout_assignments.filter((w) => !waIds.has(w.id));
   data.program_days = data.program_days.filter((d) => !dayIds.has(d.id));
@@ -170,7 +172,7 @@ for (let w = 1; w <= TOTAL_WEEKS; w++) {
   }
 }
 
-deployProgram(program.id);
+deployProgram(storeSetRows("backup"), program.id);
 {
   // Deployed two Mondays ago at 09:00, so week 3 is the live week.
   const data = getData();
@@ -194,7 +196,7 @@ function logDay(week: number, dow: number, variance: number) {
       const under = (ai + s + week) % 7 === 0;
       const weight = a.target_weight_kg == null ? null : under ? a.target_weight_kg - 2.5 : a.target_weight_kg + variance;
       const reps = under ? Math.max(1, baseReps - 2) : baseReps + (s === 1 ? 2 : 0);
-      data.set_logs.push({
+      storeSetBox("w.set.seed").logs.push({
         id: allocId("set_logs"),
         workout_assignment_id: a.id,
         set_number: s,

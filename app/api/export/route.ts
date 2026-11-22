@@ -5,6 +5,7 @@ import { CHAT_TABLE, fetchChatExport, withChatKey } from "../../lib/chat/rows";
 import { fetchNotesExport, NOTES_TABLE, withNotesKey } from "../../lib/notes/rows";
 import { fetchFoodExport, withFoodKeys } from "../../lib/food/rows";
 import { fetchCheckInsExport, withCheckInKeys } from "../../lib/checkins/rows";
+import { fetchTicksOfClients, withTickKey } from "../../lib/sets/rows";
 
 // Settings, Your data (27 Oct, Alex): everything a coach's coaching holds, as one file they keep. Every row of every
 // table that belongs to one of their clients (by client_id), their own rows (by coach_id: the library, programmes,
@@ -37,13 +38,19 @@ export async function GET(request: Request) {
   // filter below leaves them out in both modes, as it always has (a question for Alex: docs/database-plan.md), so with
   // CHECKINS_STORE=pg only the notes are read.
   const checkIns = await fetchCheckInsExport([...clientIds], "export", ["notes"]);
+  // The cardio ticks through the sets' door (quest 10, with the sets since 22 Nov): a tick carries its client_id, so the
+  // filter below keeps these clients' as it always has; with SETS_STORE=pg their rows put in their key's place (withTickKey).
+  const ticks = await fetchTicksOfClients("export", [...clientIds]);
   const out: Record<string, unknown> = {};
   // chat-door: chat rows come from fetchChatExport
   // notes-door: the notifications from fetchNotesExport, their key put in its place with NOTES_STORE=pg (withNotesKey)
   // With CHAT_STORE=pg the store has no chat key: withChatKey puts it where it would be, so the file reads as before.
   // food-door: the food diary's keys from fetchFoodExport (withFoodKeys; the store's own in memory mode).
   // checkins-door: the check-in keys from fetchCheckInsExport (withCheckInKeys; the store's own in memory mode).
-  for (const [table, stored] of Object.entries(withCheckInKeys(withFoodKeys(withNotesKey(withChatKey(data, exported.rows), notes), food), checkIns))) {
+  // sets-door: the logged sets have no client_id or coach_id, so this filter leaves every one out in both modes, as it
+  // always has (a question for Alex: docs/database-plan.md); with SETS_STORE=pg the store holds no set_logs key at all.
+  // The cardio ticks from fetchTicksOfClients (withTickKey; the store's own in memory mode).
+  for (const [table, stored] of Object.entries(withTickKey(withCheckInKeys(withFoodKeys(withNotesKey(withChatKey(data, exported.rows), notes), food), checkIns), ticks))) {
     const rows = table === CHAT_TABLE ? exported.rows : table === NOTES_TABLE ? notes : stored;
     if (LEFT_OUT.has(table) || !Array.isArray(rows)) continue;
     const mine = rows.filter((r) => {

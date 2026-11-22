@@ -1,13 +1,13 @@
 import path from "path";
 import { eq, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
-import { installIdSource, installStore, prepareStore, readJsonFile, STORE_MODE, type Data } from "../db";
+import { getData, installIdSource, installStore, prepareStore, readJsonFile, STORE_MODE, type Data } from "../db";
 import { errorReason, health, reportSkipped, toSentry } from "./health";
 import { IdPools } from "./ids";
 import { onceKeysFromKvCopy } from "./onceKeys";
 import { healthWorkoutsFromKvCopy, healthWorkoutsKept } from "./healthWorkouts";
 import { COLLECTIONS, kv } from "./schema";
-import { derivedStale, insertRowsOnce, loadStore, PgStoreWriter } from "./store";
+import { derivedStale, insertRowsOnce, loadStore, PgStoreWriter, setDefClientSource, setSetClientSource } from "./store";
 import { startChatShadow } from "../chat/shadow";
 import { CHAT_ONCE_PREFIX_SQL, CHAT_PG, CHAT_STORE_ASKED } from "../chat/mode";
 import { startChatPg } from "../chat/pg";
@@ -31,6 +31,10 @@ import { CHECKINS_PG, CHECKINS_STORE_ASKED } from "../checkins/mode";
 import { checkCheckInsJson, checkInsBootMemory, checkInsBootPg, checkInsMaxIds, checkInsProblems, importCheckIns, kvHoldsCheckInsMark } from "../checkins/boot";
 import { startCheckInsPg } from "../checkins/pg";
 import { startCheckInsShadow } from "../checkins/shadow";
+import { SETS_PG, SETS_STORE_ASKED } from "../sets/mode";
+import { checkSetsJson, importSets, kvHoldsSetsMark, setsBootMemory, setsBootPg, setsMaxIds, setsProblems } from "../sets/boot";
+import { startSetsPg } from "../sets/pg";
+import { startSetsShadow } from "../sets/shadow";
 
 // Starts the Postgres store (STORE=postgres). Called once from
 // instrumentation.ts, which Next awaits before the server takes requests:
@@ -179,6 +183,9 @@ async function start() {
   // the mark a pg instance left, or a unique rule is there without it (it may still commit a write; this boot drops the
   // unique rules only once it is gone).
   const checkinsLeftover = !CHECKINS_PG && (await kvHoldsCheckInsMark(db));
+  // The logged sets (quest 10) the same with SETS_STORE=pg; and a memory boot of this build waits too when kv holds the
+  // mark a pg instance left, or the unique rule is there without it.
+  const setsLeftover = !SETS_PG && (await kvHoldsSetsMark(db));
   const why =
     [
       CHAT_PG && "CHAT_STORE=pg",
@@ -188,10 +195,12 @@ async function start() {
       foodLeftover && "a Postgres food store left by the last boot",
       CHECKINS_PG && "CHECKINS_STORE=pg",
       checkinsLeftover && "Postgres check-in figures left by the last boot",
+      SETS_PG && "SETS_STORE=pg",
+      setsLeftover && "Postgres logged sets left by the last boot",
     ]
       .filter(Boolean)
       .join(" and ") || undefined;
-  await takeLease(process.env.DATABASE_URL!, { mustHold: CHAT_PG || NOTES_PG || notesLeftover || FOOD_PG || foodLeftover || CHECKINS_PG || checkinsLeftover, name: `norcoach-lease-${BOOT_ID}`, why });
+  await takeLease(process.env.DATABASE_URL!, { mustHold: CHAT_PG || NOTES_PG || notesLeftover || FOOD_PG || foodLeftover || CHECKINS_PG || checkinsLeftover || SETS_PG || setsLeftover, name: `norcoach-lease-${BOOT_ID}`, why });
   // With the chat in Postgres alone (CHAT_STORE=pg, Step 5's cut-over): what its SQL leans on is there and runs, or the
   // boot stops here with nothing changed.
   if (CHAT_PG) await chatPreflight(db);
@@ -224,7 +233,33 @@ async function start() {
     const problems = await checkInsProblems(db, { unique: false });
     if (problems.length) throw new Error(`[checkins] Refusing to start with CHECKINS_STORE=pg: ${problems.join("; ")}`);
   }
+  // The logged sets the same with SETS_STORE=pg (quest 10): migration 0025's objects there; their boot work runs on the
+  // prepared store, below (sets/boot.ts).
+  if (SETS_PG) {
+    const problems = await setsProblems(db, { unique: false });
+    if (problems.length) throw new Error(`[sets] Refusing to start with SETS_STORE=pg: ${problems.join("; ")}`);
+  }
   let raw: Partial<Data>;
+  // metric_entries' def_client_id (21 Nov, migration 0024): each figure's client from the definitions, the rows being
+  // loaded until the store is installed, the store after.
+  setDefClientSource(() => {
+    try {
+      return getData().metric_definitions;
+    } catch {
+      return (raw as Partial<Data> | undefined)?.metric_definitions;
+    }
+  });
+  // set_logs' client_id (22 Nov, migration 0025): each set's client from its row's day, the rows being loaded until the
+  // store is installed, the store after.
+  setSetClientSource(() => {
+    try {
+      const d = getData();
+      return { rows: d.workout_assignments, days: d.program_days };
+    } catch {
+      const r = raw as Partial<Data> | undefined;
+      return { rows: r?.workout_assignments, days: r?.program_days };
+    }
+  });
   // Lists still kept in kv under a collection's name while its table is empty: moved into the table by the first save.
   const moved: string[] = [];
   // Rows whose instant columns are to be written again (step 4C).
@@ -237,6 +272,8 @@ async function start() {
   let foodChanged = false;
   // The check-in figures' mark, tombstones and merged metrics (quest 9): the boot's save writes them.
   let checkinsChanged = false;
+  // The logged sets' mark, tombstones and pins (quest 10): the boot's save writes them.
+  let setsChanged = false;
   if (hasData) {
     // The saves taken once, as the last build to save left them (step 4B: a build before it writes only the kv copy).
     const onceKeys = await onceKeysFromKvCopy(db);
@@ -268,6 +305,9 @@ async function start() {
     // The check-in figures the same (quest 9): a memory boot drops the unique rules and the pg boot's mark, and finishes
     // a removal a pg instance left (its tombstone).
     if (!CHECKINS_PG) checkinsChanged = await checkInsBootMemory(db, raw, { marked: checkinsLeftover });
+    // The logged sets the same (quest 10): a memory boot drops the unique rule and the pg boot's mark, and finishes a
+    // removal or a home-gym pin a pg instance left.
+    if (!SETS_PG) setsChanged = await setsBootMemory(db, raw, { marked: setsLeftover });
     const stale = await derivedStale(db, raw as Row);
     for (const [name, keys] of stale) {
       log(`${name}: ${keys.size} row${keys.size === 1 ? "" : "s"} with an instant column to write again`);
@@ -304,6 +344,9 @@ async function start() {
     // The check-in figures the same with CHECKINS_STORE=pg (quest 9); their boot work on the prepared store, below.
     if (CHECKINS_PG) await importCheckIns(db, raw);
     else checkCheckInsJson(raw);
+    // The logged sets the same with SETS_STORE=pg (quest 10).
+    if (SETS_PG) await importSets(db, raw);
+    else checkSetsJson(raw);
   }
   // The chat's own boot checks (CHAT_STORE=pg): its stamps' instants put right, its strays, its highest id.
   const chat = CHAT_PG ? await chatBoot(db) : null;
@@ -313,6 +356,9 @@ async function start() {
   // The check-in figures' pg boot (quest 9), under the lease, on the prepared store (after its one-time rename, as memory
   // mode merges twin metrics), before the boot's save: tombstones, the merge, step counts, orphans, the unique rules.
   if (CHECKINS_PG && (await checkInsBootPg(db, data))) checkinsChanged = true;
+  // The logged sets' pg boot (quest 10), under the lease, on the prepared store, before the boot's save: tombstones and
+  // pins, the twin pass (memory's keeper) and the unique rule, orphans, the client column.
+  if (SETS_PG && (await setsBootPg(db, data))) setsChanged = true;
   // Always run, even when a tidy already changed something: a counter left behind its table hands out ids twice.
   const raised = raiseCounters(data);
   // The chat's counter at least its table's highest id (raiseCounters no longer sees chat rows, CHAT_STORE=pg).
@@ -363,11 +409,23 @@ async function start() {
       }
     }
   }
+  // The logged sets' counter at least their table's highest id (SETS_STORE=pg: raiseCounters no longer sees the rows).
+  let setsRaised = false;
+  if (SETS_PG) {
+    // The sets' and the cardio ticks' (quest 10, the ticks with the sets since 22 Nov).
+    for (const [t, top] of Object.entries(await setsMaxIds(db))) {
+      if (top > (data._seq[t] ?? 0)) {
+        setsRaised = true;
+        log(`raised the id counter of ${t} from ${data._seq[t] ?? "none"} to ${top}, its highest id`);
+        data._seq[t] = top;
+      }
+    }
+  }
   // Ids from Postgres for the tables that will move (step 4A), before anything can take one; the counters as raised.
   const ids = new IdPools(db, () => (data._seq ??= {}));
   await ids.start();
   (globalThis as unknown as { _pgIds?: IdPools })._pgIds = ids;
-  const changed = prepared.changed || raised > 0 || chatRaised || moved.length > 0 || restamped > 0 || healthDirty || notesChanged || notesRaised || foodChanged || foodRaised || checkinsChanged || checkinsRaised;
+  const changed = prepared.changed || raised > 0 || chatRaised || moved.length > 0 || restamped > 0 || healthDirty || notesChanged || notesRaised || foodChanged || foodRaised || checkinsChanged || checkinsRaised || setsChanged || setsRaised;
   // The import, or a tidy's changes, are written before any request arrives,
   // so a failure stops the boot instead of surfacing later.
   if (!hasData || changed) await writer.save(() => data as unknown as Row);
@@ -382,6 +440,13 @@ async function start() {
   await startFoodShadow({ db, url: process.env.DATABASE_URL!, writer }).catch(() => {});
   // The check-in figures' shadow (quest 9, app/lib/checkins/shadow.ts; CHECKINS_SHADOW, off by default), the same way.
   await startCheckInsShadow({ db, url: process.env.DATABASE_URL!, writer }).catch(() => {});
+  // The logged sets' shadow (quest 10, app/lib/sets/shadow.ts; SETS_SHADOW, off by default), the same way.
+  await startSetsShadow({ db, url: process.env.DATABASE_URL!, writer }).catch(() => {});
+  // The logged sets' own connection (SETS_STORE=pg), before any request.
+  if (SETS_PG) {
+    await startSetsPg({ db, url: process.env.DATABASE_URL! });
+    console.log("[sets] pg: the logged sets are in Postgres alone");
+  }
   // The check-in figures' own connection (CHECKINS_STORE=pg), before any request.
   if (CHECKINS_PG) {
     await startCheckInsPg({ db, url: process.env.DATABASE_URL! });
@@ -512,6 +577,11 @@ export function initStore(): Promise<void> {
   if (!["", "memory", "pg"].includes(CHECKINS_STORE_ASKED)) return Promise.reject(new Error(`[store] Refusing to start: CHECKINS_STORE=${CHECKINS_STORE_ASKED} is not memory or pg`));
   if (CHECKINS_STORE_ASKED === "pg" && STORE_MODE !== "postgres" && process.env.NEXT_PHASE !== "phase-production-build") {
     return Promise.reject(new Error("[store] Refusing to start: CHECKINS_STORE=pg needs the Postgres store (STORE=postgres and DATABASE_URL)"));
+  }
+  // SETS_STORE (sets/mode.ts) the same (quest 10).
+  if (!["", "memory", "pg"].includes(SETS_STORE_ASKED)) return Promise.reject(new Error(`[store] Refusing to start: SETS_STORE=${SETS_STORE_ASKED} is not memory or pg`));
+  if (SETS_STORE_ASKED === "pg" && STORE_MODE !== "postgres" && process.env.NEXT_PHASE !== "phase-production-build") {
+    return Promise.reject(new Error("[store] Refusing to start: SETS_STORE=pg needs the Postgres store (STORE=postgres and DATABASE_URL)"));
   }
   if (STORE_MODE !== "postgres") return Promise.resolve();
   const g = globalThis as unknown as { _pgInit?: Promise<void> };

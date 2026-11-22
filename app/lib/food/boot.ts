@@ -3,14 +3,15 @@
 //
 //   pg boot (under the lease): what migration 0021 makes is checked; calorie_logs' twins on (client_id, date) are moved
 //   to food_twins and the unique rule made, only where the rule is missing (a memory boot dropped it, or the first pg
-//   boot); kv's `food_pg` mark is set by the boot's own save; the JSON import's food goes into the tables first.
+//   boot); kv's `food_pg` mark is set by the boot's own save; the JSON import's food goes into the tables first; the
+//   entries' and calorie logs' real instants are put right in the tables first (21 Nov, pg/store.ts repairDerivedPg).
 //   memory boot: when kv holds `food_pg` (a pg instance before it), the unique rule is dropped (a twin a memory-mode save
 //   might make must never fail it) and the mark taken out by the boot's save. The lease is waited for (pg/runtime.ts).
 
 import { sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { Data } from "../db";
-import { insertRowsOnce } from "../pg/store";
+import { insertRowsOnce, repairDerivedPg } from "../pg/store";
 import { FOOD_PG_MARK, FOOD_TABLES } from "./mode";
 import { FOOD_ORDER_STAMPS, putOnClient, readOrders, reconcileOrders, restampAll, stampsOf, type OrderClient } from "./orders";
 
@@ -35,6 +36,16 @@ const NEEDED_INDEXES = [
   "saved_meals_client_idx",
   "saved_meals_picture_idx",
   "food_ops_at_idx",
+  // Migration 0024 (21 Nov): the coach-wide slices (food/slices.ts).
+  "food_entries_client_tz_idx",
+  "food_entries_odd_idx",
+  "food_entries_blank_idx",
+  "calorie_logs_client_tz_idx",
+  "calorie_logs_odd_idx",
+  "calorie_logs_blank_idx",
+  "calorie_logs_typed_idx",
+  "meal_photos_nolook_idx",
+  "saved_meals_nolook_idx",
 ];
 
 /** What FOOD_STORE=pg leans on and is missing: migration 0021's objects (and, with `unique`, the pg boot's rule). */
@@ -63,7 +74,11 @@ export async function kvHoldsFoodMark(db: AnyDb): Promise<boolean> {
  * missing. Answers what it did, counts only.
  */
 export async function foodBootPg(db: AnyDb): Promise<{ twins: number; unique: "made" | "there" }> {
-  const there = rowsOf(await db.execute(sql`SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE c.relname = ${FOOD_CALORIE_UNIQUE} AND i.indisvalid`)).length > 0;
+  // The real instants beside the stamps (21 Nov, the bounded slices lean on them): put right in the tables, as memory
+  // mode's derivedStale would at its boot (pg/store.ts repairDerivedPg).
+  const restamped = { entries: await repairDerivedPg(db, "food_entries"), calories: await repairDerivedPg(db, "calorie_logs") };
+  log(`pg: instants written again on ${restamped.entries} entr${restamped.entries === 1 ? "y" : "ies"} and ${restamped.calories} calorie log${restamped.calories === 1 ? "" : "s"}`);
+  const there =rowsOf(await db.execute(sql`SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE c.relname = ${FOOD_CALORIE_UNIQUE} AND i.indisvalid`)).length > 0;
   if (there) return { twins: 0, unique: "there" };
   let twins = 0;
   await db.transaction(async (tx) => {

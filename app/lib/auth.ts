@@ -12,6 +12,8 @@ import { wipeFoodPhotos } from "./food/rows";
 import { FOOD_PG } from "./food/mode";
 import { CHECKINS_PG } from "./checkins/mode";
 import { wipeAllCheckIns } from "./checkins/rows";
+import { SETS_PG } from "./sets/mode";
+import { wipeAllSets } from "./sets/rows";
 import { clearLockoutsFor } from "./loginLockout";
 import { coachOwnsClient, seedCoachLibrary } from "./tenancy";
 import { clerkOn, clerkUserIdFromRequest, clerkUserRow, deleteClerkUser } from "./clerk";
@@ -464,13 +466,16 @@ async function resetWorkspaceOnce(): Promise<void> {
   if (FOOD_PG) await wipeFoodPhotos();
   // Every check-in figure the same with CHECKINS_STORE=pg (quest 9; the notes stay, as the reset always left them).
   if (CHECKINS_PG) await wipeAllCheckIns();
+  // Every logged set the same with SETS_STORE=pg (quest 10).
+  if (SETS_PG) await wipeAllSets();
 
   const before = data.clients.length;
   data.users = data.users.filter((u) => u.role === "coach");
   data.clients = [];
   data.program_days = [];
   data.workout_assignments = [];
-  data.set_logs = [];
+  // Memory mode: the store's list emptied here, at once (the body runs before the call returns).
+  if (!SETS_PG) void wipeAllSets();
   data.invoices = [];
   data.nutrition_plans = [];
   data.measurement_fields = [];
@@ -507,6 +512,9 @@ async function resetWorkspaceOnce(): Promise<void> {
   // ran commits after it. Safe to repeat; a failure leaves at most such rows, which the boot's orphan report names.
   if (CHAT_PG) await wipeAllChat("w.wipe").catch((error) => console.error("[workspace-reset] the second chat sweep failed:", error instanceof Error ? error.message : error));
   if (NOTES_PG) await wipeAllNotes("w.wipe").catch((error) => console.error("[workspace-reset] the second notes sweep failed:", error instanceof Error ? error.message : error));
+  // The logged sets the same (quest 10): a set write past its client check when the wipe ran commits after it; every
+  // write queued now finds no client and writes nothing.
+  if (SETS_PG) await wipeAllSets().catch((error) => console.error("[workspace-reset] the second sets sweep failed:", error instanceof Error ? error.message : error));
   console.log(`[workspace-reset ${token}] applied: removed ${before} client(s) and their data; kept coach logins, exercises, templates`);
 }
 

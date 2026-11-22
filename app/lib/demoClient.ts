@@ -11,6 +11,7 @@
 import { getData, persist, allocId } from "./db";
 import { writeFood } from "./food/rows";
 import { writeCheckIns } from "./checkins/rows";
+import { fetchClientSets, writeSets } from "./sets/rows";
 import {
   addExerciseToDay,
   addClientGym,
@@ -73,15 +74,17 @@ export async function buildDemoClient(coachId: number, name: string): Promise<nu
   };
 
   // Gyms: two, so the per-gym weight columns show.
-  addClientGym(id, "Muscle Factory");
-  addClientGym(id, "TrainMore");
+  // The client's sets through their door (quest 10): none yet, a view for the readers below.
+  const sr = await fetchClientSets("action.training", id);
+  addClientGym(sr, id, "Muscle Factory");
+  addClientGym(sr, id, "TrainMore");
   const gyms = data.client_gyms.filter((g) => g.client_id === id).map((g) => g.id);
 
   // A 12-week programme that started 8 weeks ago: weeks 1-8 trained, week 9
   // (this week) half done, 10-12 ahead, so a month of trend has something
   // behind it. Phase first, which makes the programme.
   const TRAINED = 8;
-  const phase = addClientPhase(id, "training", "Hypertrophy Block", monday(-TRAINED), monday(12 - TRAINED - 1));
+  const phase = addClientPhase(sr, id, "training", "Hypertrophy Block", monday(-TRAINED), monday(12 - TRAINED - 1));
   const programId = phase.program_id!;
   const program = data.training_programs.find((p) => p.id === programId)!;
   const startWeek = program.start_week;
@@ -143,7 +146,7 @@ export async function buildDemoClient(coachId: number, name: string): Promise<nu
     });
   }
   persist();
-  deployProgram(programId);
+  deployProgram(sr, programId);
   // Deployed when it started, so "started" reads back then.
   program.deployed_at = new Date(`${monday(-TRAINED)}T09:00:00`).toISOString();
   phase.draft = false;
@@ -172,12 +175,15 @@ export async function buildDemoClient(coachId: number, name: string): Promise<nu
           // Mostly on target, a wobble now and then; the last set a rep short sometimes.
           const kg = rand() < 0.15 ? target - 2.5 : target;
           const reps = n === a.sets && rand() < 0.35 ? low - 1 : low + Math.floor(rand() * 2);
-          logSet(a.id, n, kg, reps, a.rpe_target ? Math.min(10, a.rpe_target + (rand() < 0.3 ? 1 : 0)) : null, gym);
-          const row = data.set_logs.find((l) => l.workout_assignment_id === a.id && l.set_number === n);
-          if (row) row.logged_at = stamp;
+          await logSet(a.id, n, kg, reps, a.rpe_target ? Math.min(10, a.rpe_target + (rand() < 0.3 ? 1 : 0)) : null, gym);
+          // The set's time rewritten in place, through the door (memory: the store's row, as before).
+          await writeSets("w.set.demo", id, () => [a.id], (box) => {
+            const row = box.logs.find((l) => l.workout_assignment_id === a.id && l.set_number === n);
+            if (row) row.logged_at = stamp;
+          });
         }
       }
-      for (const c of data.cardio_entries.filter((c) => c.program_day_id === d.id)) setCardioDone(c.id, true);
+      for (const c of data.cardio_entries.filter((c) => c.program_day_id === d.id)) await setCardioDone(c.id, true);
     }
   }
   persist();
