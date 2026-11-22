@@ -32,7 +32,7 @@
 .rd.rco .rco-act:disabled { cursor: default; }
 .rd.rco .rco-act:focus-visible { outline: none; text-decoration: underline; text-decoration-color: #c5ccd8; text-underline-offset: 4px; }
 .rd.rls.rco .rls-row:hover .rco-act, .rd.rls.rco .rls-row:focus-within .rco-act { opacity: 1; }
-@media (hover: none) { .rd.rco .rco-act { opacity: 1; } }
+@media (any-hover: none) { .rd.rco .rco-act { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .rd.rco .rco-act { transition: none; } }
 
 /* ---- Add coach and Reset password: the .dlh card (portaled, so never under .rd); the form keeps its column. */

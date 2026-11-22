@@ -189,5 +189,5 @@
 .rd .nd-groups.owed .nd-act:hover, .rd .nd-groups.owed .nd-act[data-state="open"] { background: #fff; box-shadow: inset 0 0 0 1px #141a24; }
 .rd .nd-row.still .nd-act { opacity: 0; transition: opacity 0.12s; }
 .rd .nd-row.still:hover .nd-act, .rd .nd-row.still:focus-within .nd-act, .rd .nd-row.still .nd-act[data-state="open"] { opacity: 1; }
-@media (hover: none) { .rd .nd-row .nd-act { opacity: 1; } }
+@media (any-hover: none) { .rd .nd-row .nd-act { opacity: 1; } }
 .rd .rfd-titled > span.nd-count { align-self: center; display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px rgba(184, 71, 31, 0.35); font-size: 12px; font-weight: 600; color: #b8471f; }

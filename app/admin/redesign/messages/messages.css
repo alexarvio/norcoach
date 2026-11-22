@@ -242,7 +242,7 @@ html:has(.rd-frame) { scrollbar-gutter: stable; }
 .rm-bubble-row.mine .rm-replybtn { left: -38px; }
 .rm-bubble-row:hover .rm-replybtn, .rm-replybtn:focus-visible { opacity: 1; }
 .rm-replybtn:hover { background: #f5f6f8; color: #141a24; }
-@media (hover: none) { .rm-replybtn { opacity: 1; } }
+@media (any-hover: none) { .rm-replybtn { opacity: 1; } }
 
 /* ---- The chat's tab on the right edge (2 Oct): Messages is no longer a tab
    of its own; this sticks out from behind the window on every client screen
@@ -398,7 +398,7 @@ html.look-hl .rd-chattab.rd-phonetab.on:hover, html.look-hl .rd-chattab.rd-phone
    phone keep it showing (no hover there). */
 .rm .cmg-file .cmg-act { opacity: 0; transition: opacity 0.12s; }
 .rm .cmg-file:hover .cmg-act, .rm .cmg-file:focus-within .cmg-act { opacity: 1; }
-@media (hover: none) { .rm .cmg-file .cmg-act { opacity: 1; } }
+@media (any-hover: none) { .rm .cmg-file .cmg-act { opacity: 1; } }
 
 /* The file picked, waiting for Send (4 Nov, Alex; ChatAttachment.tsx, the chat-att block at the end of globals.css):
    the bar's gap is its air, and it starts where the box does, past the 40px + and the row's 8px gap. */

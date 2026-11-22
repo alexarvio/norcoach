@@ -58,7 +58,7 @@
 .rd.rpf .rpf-in::placeholder { color: #98a2b3; }
 .rd.rpf .rpf-x { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 999px; background: none; font-size: 11px; color: #8b93a1; cursor: pointer; opacity: 0; transition: opacity 0.12s; }
 .rd.rpf .rpf-row:hover .rpf-x, .rd.rpf .rpf-row:focus-within .rpf-x, .rd.rpf .rpf-x:focus-visible { opacity: 1; }
-@media (hover: none) { .rd.rpf .rpf-x { opacity: 1; } }
+@media (any-hover: none) { .rd.rpf .rpf-x { opacity: 1; } }
 .rd.rpf .rpf-x:hover { background: #f5f6f8; color: #141a24; }
 /* + Study, + Role: words with the plus, no pill (as + Metric). */
 .rd.rls.rpf .rls-add.rpf-add { align-self: flex-start; margin: 6px 0 0 14px; }
