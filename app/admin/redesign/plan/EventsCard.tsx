@@ -129,6 +129,9 @@ export default function EventsCard({ clientId, events: serverEvents, categories:
   };
   // ‹ › step back into the past a month at a time, Today comes back, as the Phases card above (22 Oct, Alex).
   const [back, setBack] = useState(0);
+  // The timeline scrolled later inside its card wakes Today too; Today brings it back (22 Nov, Alex).
+  const [away, setAway] = useState(false);
+  const [home, setHome] = useState(0);
   const grid = gridFor(win, thisWeek, intoWeek, back);
   const { count, weeks } = grid;
   // Every save goes to the server in the Plan's line, which re-reads the page once it is empty; one that fails stays
@@ -272,7 +275,7 @@ export default function EventsCard({ clientId, events: serverEvents, categories:
               <ChevronLeftIcon />
             </button>
             {/* Always there, so the arrows never move under the pointer; at today it rests, greyed. */}
-            <button type="button" className="rd-btn ghost rq-today" disabled={back === 0} onClick={() => setBack(0)}>
+            <button type="button" className="rd-btn ghost rq-today" disabled={back === 0 && !away} onClick={() => { setBack(0); setHome((h) => h + 1); }}>
               Today
             </button>
             <button type="button" className="rd-btn ghost" disabled={back === 0} onClick={() => setBack((b) => Math.max(0, b - 4))} aria-label="Later" title="Later">
@@ -302,7 +305,7 @@ export default function EventsCard({ clientId, events: serverEvents, categories:
 
       <div className="pln-card">
       {/* The same grid as the phases (timelineParts.tsx): months, the Mondays, and a row of lanes an event kind. */}
-      <Timeline grid={grid} minWidth={Math.round(win * 63)} weekNumbers={false} onStep={(n) => setBack((b) => Math.max(0, b - n))}>
+      <Timeline grid={grid} onAway={setAway} home={home} minWidth={Math.round(win * 63)} weekNumbers={false} onStep={(n) => setBack((b) => Math.max(0, b - n))}>
         {/* Weight goals first, a lane of their own (2 Nov, Alex): the target in lifestyle beige, the planned path dashed
             along its middle, a pin on each goal's date. Never the events' lanesRef: the events keep their own. */}
         {goalsOnGrid.length > 0 && (

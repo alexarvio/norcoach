@@ -193,8 +193,30 @@ export function useSideScroll(onStep?: (weeks: number) => void) {
   return ref;
 }
 
-export function Timeline({ grid, minWidth = Math.round(grid.count * 63), weeksRef, weekNumbers, onStep, children }: { grid: Grid; minWidth?: number; weeksRef?: React.Ref<HTMLDivElement>; weekNumbers?: boolean; /** Sideways scrolling: weeks later (+) or earlier (−). */ onStep?: (weeks: number) => void; children: React.ReactNode }) {
+export function Timeline({ grid, minWidth = Math.round(grid.count * 63), weeksRef, weekNumbers, onStep, onAway, home, children }: { grid: Grid; minWidth?: number; weeksRef?: React.Ref<HTMLDivElement>; weekNumbers?: boolean; /** Sideways scrolling: weeks later (+) or earlier (−). */ onStep?: (weeks: number) => void; /** Its own sideways scroll left where it starts (a wide window scrolled later), so Today can wake (22 Nov, Alex: "only seems to work… if i go into the past not the future"). */ onAway?: (away: boolean) => void; /** Changed by Today: the scroll goes back to where it starts. */ home?: number; children: React.ReactNode }) {
   const scroll = useSideScroll(onStep);
+  const away = useRef(onAway);
+  useEffect(() => {
+    away.current = onAway;
+  });
+  useEffect(() => {
+    const el = scroll.current;
+    if (!el) return;
+    const said = { v: false };
+    const tell = () => {
+      const now = el.scrollLeft > 8;
+      if (now !== said.v) {
+        said.v = now;
+        away.current?.(now);
+      }
+    };
+    el.addEventListener("scroll", tell, { passive: true });
+    return () => el.removeEventListener("scroll", tell);
+  }, [scroll]);
+  useEffect(() => {
+    if (!home) return;
+    scroll.current?.scrollTo({ left: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }, [home, scroll]);
   return (
     <div className="rq-tl-scroll" ref={scroll}>
       <div className="rq-tl" style={{ minWidth }}>
