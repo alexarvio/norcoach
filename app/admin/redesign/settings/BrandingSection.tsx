@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import type { PhaseTrack } from "../../../lib/db";
 import type { TrackPictures } from "../../../lib/phaseCovers";
@@ -10,7 +10,7 @@ import { BRAND_SWATCHES, brandColour } from "../../../lib/brandColour";
 import { fitJpeg } from "../../../lib/coverJpeg";
 import { pic } from "../../../lib/pic";
 import { NorCoachLogo } from "../../../components/NorCoachLogo";
-import { Dialog } from "../../../components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogTitle } from "../../../components/ui/dialog";
 import { TRACK_ACCENT, TRACK_LABEL } from "../../phaseChrome";
 import { TrackIcon } from "../plan/PlanDraft";
 import { ConfirmDialog } from "../training/TrainingDraft";
@@ -239,6 +239,7 @@ function CardPictures({ cards, cardsDefault, stock }: { cards: TrackPictures; ca
     setDef(cardsDefault);
   }
   const [error, setError] = useState("");
+  const [view, setView] = useState<{ track: PhaseTrack; pictures: string[]; at: number } | null>(null);
   const choose = (on: boolean) => {
     if (on === def) return;
     setDef(on);
@@ -268,10 +269,151 @@ function CardPictures({ cards, cardsDefault, stock }: { cards: TrackPictures; ca
         </div>
       </div>
       {error && <small className="rbr-err">{error}</small>}
-      <div className="rbr-pics-card">
-        {TRACKS.map((t) => (def ? <StockTrack key={t} track={t} pictures={stock[t] ?? []} /> : <OwnTrack key={t} track={t} saved={cards[t] ?? []} />))}
+      {/* Both lists are drawn from the start, the other one hidden, so their tiles are in before a switch (22 Nov, Alex:
+          "when I toggle to default pictures, they also took maybe a second to load"). */}
+      <div className="rbr-pics-card" hidden={!def}>
+        {TRACKS.map((t) => (
+          <StockTrack key={t} track={t} pictures={stock[t] ?? []} onOpen={(at) => setView({ track: t, pictures: stock[t] ?? [], at })} />
+        ))}
       </div>
+      <div className="rbr-pics-card" hidden={def}>
+        {TRACKS.map((t) => (
+          <OwnTrack key={t} track={t} saved={cards[t] ?? []} onOpen={(pictures, at) => setView({ track: t, pictures, at })} />
+        ))}
+      </div>
+      <Dialog open={!!view} onOpenChange={(o) => !o && setView(null)}>
+        {view && <PictureViewer key={view.track} track={view.track} pictures={view.pictures} start={view.at} />}
+      </Dialog>
     </section>
+  );
+}
+
+/** A tile's picture: an upload's 480 copy (lib/pic; a 60px tile is 120 px on a 2× screen, and the browser has it
+ *  cached already), a stock file as it is (30–360 KB). Eager, and both lists are
+ *  mounted from the start, so the hidden one is fetched with the page. Not next/image for the stock files: the
+ *  optimizer fetches /img/… with no cookie and proxy.ts sends that to sign-in, so /_next/image answers 400. */
+/** A stock picture's small copy for a tile (scripts/stock-thumbs.mjs: public/img/thumb/<name>.webp, 240×320, a few KB),
+ *  so Default shows at once (22 Nov, Alex: "they also took maybe a second to load"); the original only in the viewer. */
+const stockThumb = (src: string) => {
+  const m = /^\/img\/((?:lifestyle|training|nutrition)-[\w-]+)\.jpg$/.exec(src);
+  return m ? `/img/thumb/${m[1]}.webp` : src;
+};
+
+function Thumb({ src }: { src: string }) {
+  // eslint-disable-next-line @next/next/no-img-element -- see above
+  return <img src={src.startsWith("/uploads/") ? pic(src, 480) : stockThumb(src)} alt="" loading="eager" decoding="async" draggable={false} />;
+}
+
+/** The picture at full size: an upload's 1080 copy, a stock file as it is. */
+const big = (src: string) => (src.startsWith("/uploads/") ? pic(src, 1080) : src);
+
+// ---- The viewer (22 Nov, Alex: "since they're quite small… clicking on them and being able to like see them expanded…
+// an arrow or something that I can go to the next one"): the dark head (never the coach's colour: a dark media stage, DESIGN-RULES-ADMIN §2), the track and `2 of 5`,
+// the picture whole on a dark stage, ‹ › stepping through the track's pictures (round), ← → and a sideways swipe, Esc
+// and the ✕. Nothing to change in it: a tile's × removes.
+function PictureViewer({ track, pictures, start }: { track: PhaseTrack; pictures: string[]; start: number }) {
+  const n = pictures.length;
+  const [at, setAt] = useState(Math.min(Math.max(0, start), Math.max(0, n - 1)));
+  const [dir, setDir] = useState<"l" | "r" | "">("");
+  const press = useRef<{ x: number; y: number } | null>(null);
+  const step = (by: number) => {
+    if (n < 2) return;
+    setDir(by > 0 ? "r" : "l");
+    setAt((i) => (i + by + n) % n);
+  };
+
+  // Every picture of the track fetched as the viewer opens (five at most), so a step never waits.
+  useEffect(() => {
+    for (const p of pictures) {
+      const img = new window.Image();
+      img.decoding = "async";
+      img.src = big(p);
+    }
+  }, [pictures]);
+
+  // The full picture shows once in; a stable ref, so it runs only as each picture's img mounts.
+  const bigIn = useCallback((el: HTMLImageElement | null) => {
+    if (el?.complete && el.naturalWidth) el.dataset.in = "1";
+  }, []);
+
+  const src = pictures[at];
+  return (
+    <DialogContent
+      className="rbv"
+      aria-describedby={undefined}
+      onKeyDown={(e) => {
+        if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+        e.preventDefault();
+        step(e.key === "ArrowRight" ? 1 : -1);
+      }}
+    >
+      <div className="rbv-head">
+        <DialogTitle className="rbv-title">
+          <TrackIcon track={track} size={14} />
+          {TRACK_LABEL[track]}
+        </DialogTitle>
+        {n > 1 && (
+          <>
+            <Sep />
+            <span className="rbv-count">
+              {at + 1} of {n}
+            </span>
+          </>
+        )}
+        <DialogClose className="rbv-x" aria-label="Close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+            <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
+        </DialogClose>
+      </div>
+      <div
+        className="rbv-stage"
+        onPointerDown={(e) => {
+          if ((e.target as Element).closest("button")) return;
+          press.current = { x: e.clientX, y: e.clientY };
+          // A mouse swipe let go outside the stage still steps (a touch is captured already).
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }}
+        onPointerUp={(e) => {
+          const from = press.current;
+          press.current = null;
+          if (!from) return;
+          const dx = e.clientX - from.x;
+          if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(e.clientY - from.y)) step(dx < 0 ? 1 : -1);
+        }}
+        onPointerCancel={() => (press.current = null)}
+      >
+        {src && (
+          <div key={`${at}-${src}`} className={`rbv-frame${dir ? ` in-${dir}` : ""}`}>
+            {/* the tile's small copy, already in, under the full one while it comes */}
+            <Thumb src={src} />
+            {/* eslint-disable-next-line @next/next/no-img-element -- the picture at full size */}
+            <img
+              className="rbv-big"
+              src={big(src)}
+              alt={`${TRACK_LABEL[track]} picture ${at + 1}`}
+              draggable={false}
+              ref={bigIn}
+              onLoad={(e) => (e.currentTarget.dataset.in = "1")}
+            />
+          </div>
+        )}
+        {n > 1 && (
+          <>
+            <button type="button" className="rbv-nav l" onClick={() => step(-1)} aria-label="Previous picture" title="Previous">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <button type="button" className="rbv-nav r" onClick={() => step(1)} aria-label="Next picture" title="Next">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M6 3.5 10.5 8 6 12.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </>
+        )}
+      </div>
+    </DialogContent>
   );
 }
 
@@ -284,17 +426,16 @@ function TrackName({ track }: { track: PhaseTrack }) {
   );
 }
 
-function StockTrack({ track, pictures }: { track: PhaseTrack; pictures: string[] }) {
+function StockTrack({ track, pictures, onOpen }: { track: PhaseTrack; pictures: string[]; onOpen: (at: number) => void }) {
   return (
     <div className="rbr-track">
       <div className="rbr-track-row">
         <TrackName track={track} />
         <div className="rbr-tiles">
-          {pictures.map((p) => (
-            <span key={p} className="rbr-pic">
-              {/* eslint-disable-next-line @next/next/no-img-element -- Norcoach's stock picture */}
-              <img src={pic(p, 480)} alt="" loading="lazy" decoding="async" />
-            </span>
+          {pictures.map((p, i) => (
+            <button key={p} type="button" className="rbr-pic open" onClick={() => onOpen(i)} aria-label={`Open ${TRACK_LABEL[track].toLowerCase()} picture ${i + 1}`}>
+              <Thumb src={p} />
+            </button>
           ))}
         </div>
       </div>
@@ -307,7 +448,7 @@ type Pending = { key: string; preview: string };
 
 // The tile logic of CardPicturesSettings' TrackCards (the computer's picker, uploads one after another, Remove asking
 // in place), drawn as option A's row.
-function OwnTrack({ track, saved }: { track: PhaseTrack; saved: string[] }) {
+function OwnTrack({ track, saved, onOpen }: { track: PhaseTrack; saved: string[]; onOpen: (pictures: string[], at: number) => void }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [list, setList] = useState(saved);
@@ -388,10 +529,17 @@ function OwnTrack({ track, saved }: { track: PhaseTrack; saved: string[] }) {
       <div className="rbr-track-row">
         <TrackName track={track} />
         <div className="rbr-tiles">
-          {list.map((p) => (
+          {list.map((p, i) => (
             <span key={p} className={`rbr-pic${asking === p ? " asking" : ""}`}>
-              {/* eslint-disable-next-line @next/next/no-img-element -- the coach's own upload */}
-              <img src={pic(p, 480)} alt="" loading="lazy" decoding="async" />
+              <button
+                type="button"
+                className="rbr-pic-open"
+                onClick={() => onOpen(list, i)}
+                disabled={asking === p}
+                aria-label={`Open ${TRACK_LABEL[track].toLowerCase()} picture ${i + 1}`}
+              >
+                <Thumb src={p} />
+              </button>
               {asking === p ? (
                 <span className="rbr-pic-ask">
                   <b>Remove?</b>
