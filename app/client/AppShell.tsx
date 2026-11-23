@@ -798,7 +798,7 @@ export default function AppShell({
   return (
     <CoachIdentityProvider value={{ name: coachMessages.coachName, photoPath: coachAvatarPath }}>
       <LinkProvider value={openLink}>
-      {!readOnly && <HealthAutoSync />}
+      {!readOnly && <HealthAutoSync sessionStartedMs={liveNow?.session?.startedMs ?? null} />}
       <MarkAnchor />
       <StableInset />
       {!readOnly && <NativeStatusBar />}

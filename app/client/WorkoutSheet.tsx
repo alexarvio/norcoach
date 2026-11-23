@@ -8,13 +8,13 @@ import { useOpenMessages } from "./CheckInContext";
 import type { GymOption } from "./GymPickerDialog";
 import GymPickerDialog, { BadgeFace } from "./GymPickerDialog";
 import { gymColor } from "../lib/gymColors";
-import RestTimerPill, { useRestTimer } from "./RestTimer";
+import { RestTimerDock } from "./RestTimer";
 import SheetAdd from "./workout/SheetAdd";
 import { SwapLibrary } from "./workout/SwapExerciseDialog";
 import { Bars } from "./Bars";
 import { MenuIcon } from "./WorkoutScreen";
 import { landOnSoon } from "../lib/landOn";
-import { clock, elapsedMs, isDone, loggedCount, shownName, useTicker, type LibraryPick, type SessionDay, type SessionExercise } from "./workoutShared";
+import { ElapsedClock, isDone, loggedCount, shownName, type LibraryPick, type SessionDay, type SessionExercise } from "./workoutShared";
 import SheetExercise from "./workout/SheetExercise";
 import SheetCardio from "./workout/SheetCardio";
 import FinishSheet from "./workout/FinishSheet";
@@ -90,9 +90,6 @@ export default function WorkoutSheet({
   const free = !!day.free;
   const ended = day.endedAt != null;
   const locked = ended && !editing;
-  const now = useTicker(!ended);
-  const ms = elapsedMs(day.startedAt, day.endedAt, now);
-  const rest = useRestTimer();
   const openMessages = useOpenMessages();
   const gym = day.gyms.find((g) => g.id === gymId) ?? null;
   const gymName = gym?.name ?? null;
@@ -292,7 +289,7 @@ export default function WorkoutSheet({
                 onClick={(e) => day.gyms.length > 0 && (gymId == null ? setGymOpen(true) : toggleGymDrop(e))}
                 aria-expanded={gymDrop ? true : undefined}
                 disabled={day.gyms.length === 0}
-                aria-label={`${gymName ?? (editing ? `Editing ${day.title}` : day.title)},${clock(ms)} elapsed${day.gyms.length > 0 ? ". Switch gym" : ""}`}
+                aria-label={`${gymName ?? (editing ? `Editing ${day.title}` : day.title)}${day.gyms.length > 0 ? ". Switch gym" : ""}`}
               >
                 {gym && (
                   <span className="wo-pill-face" style={{ background: gymColor(gym.color).hex }} aria-hidden="true">
@@ -307,7 +304,7 @@ export default function WorkoutSheet({
                 )}
                 <span className="wo-pill-clock">
                   <i className="wo-pill-dot" aria-hidden="true" />
-                  {clock(ms)}
+                  <ElapsedClock startedAt={day.startedAt} endedAt={day.endedAt} />
                 </span>
               </button>
               <div className="wo-head-right">
@@ -477,7 +474,7 @@ export default function WorkoutSheet({
 
           {/* The dock: the rest timer and Finish (Save changes when editing), no line over it. */}
           <div className="wo-dock ws-dock">
-            <RestTimerPill timer={rest} />
+            <RestTimerDock />
             <button type="button" className="ws-finish-pill" onClick={() => setFinishOpen(true)}>
               {editing ? "Save changes" : "Finish"}
             </button>

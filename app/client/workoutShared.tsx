@@ -256,6 +256,12 @@ export function useTicker(active: boolean) {
   }, [active]);
   return now;
 }
+/** The session's clock, ticking on its own (23 Nov, Alex: the app lagged mid-workout): a ticker at the workout's root drew
+ *  every exercise again once a second; here only these few figures are drawn again. */
+export function ElapsedClock({ startedAt, endedAt }: { startedAt: string | null; endedAt: string | null }) {
+  const now = useTicker(endedAt == null);
+  return <>{clock(elapsedMs(startedAt, endedAt, now))}</>;
+}
 export const elapsedMs = (startedAt: string | null, endedAt: string | null, now: number | null) => {
   if (!startedAt) return 0;
   const start = Date.parse(startedAt);

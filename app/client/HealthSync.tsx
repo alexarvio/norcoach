@@ -266,20 +266,43 @@ async function syncHealth(): Promise<HealthSyncResult | null> {
 
 // Mounted once in the client app: syncs on opening and on coming back to the
 // app, at most every ten minutes.
-export function HealthAutoSync() {
+// Never while a session is going (23 Nov, Alex: "I'm working out and the app lags if I go away from it and back in"):
+// mid-session the step count has always moved, so every return read the phone's health store, saved, and read the whole
+// app again from the server, in the one queue the workout's own saves wait in. It waits for the session to end, then
+// goes; and on coming back it lets the app settle a few seconds first, the workout's saves going before it.
+const SETTLE_MS = 4000;
+export function HealthAutoSync({ sessionStartedMs = null }: { /** The start of a workout going on now (epoch ms): the sync waits for its end. */ sessionStartedMs?: number | null }) {
   const router = useRouter();
   const last = useRef(0);
+  const started = useRef(sessionStartedMs);
+  useEffect(() => {
+    started.current = sessionStartedMs;
+  }, [sessionStartedMs]);
+  // A session left running past six hours (forgotten, as the gyms count it) holds nothing back.
+  const isLive = () => started.current != null && Date.now() - started.current < 6 * 60 * 60_000;
+  const runRef = useRef<(soon?: boolean) => void>(() => {});
   useEffect(() => {
     if (!cap()) return;
-    const run = () => {
-      if (document.visibilityState !== "visible" || !readOn() || Date.now() - last.current < 10 * 60_000) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const go = () => {
+      timer = undefined;
+      if (document.visibilityState !== "visible" || isLive() || !readOn() || Date.now() - last.current < 10 * 60_000) return;
       last.current = Date.now();
       syncHealth()
         .then((r) => {
-          if (r?.saved) router.refresh();
+          // The figures read again only when nothing is going: a session started meanwhile is left alone.
+          if (r?.saved && !isLive()) router.refresh();
         })
         .catch(() => {});
     };
+    const run = (soon = false) => {
+      if (timer) clearTimeout(timer);
+      timer = undefined;
+      if (document.visibilityState !== "visible" || isLive()) return;
+      timer = setTimeout(go, soon ? 0 : SETTLE_MS);
+    };
+    runRef.current = run;
+    const onVisible = () => run();
     // On this phone and the mark gone: on again when the server says it was on (the web storage wiped, the phone's
     // permission kept), else as it was. Once a session; a phone that had it on before the server kept it notes it.
     let gone = false;
@@ -293,14 +316,23 @@ export function HealthAutoSync() {
           /* offline: as it was */
         }
       }
-      if (!gone) run();
+      if (!gone) run(true);
     })();
-    document.addEventListener("visibilitychange", run);
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       gone = true;
-      document.removeEventListener("visibilitychange", run);
+      if (timer) clearTimeout(timer);
+      runRef.current = () => {};
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [router]);
+  // The session over: the sync it held back goes now (after the app settles).
+  const sessionLive = sessionStartedMs != null;
+  const wasLive = useRef(sessionLive);
+  useEffect(() => {
+    if (wasLive.current && !sessionLive) runRef.current();
+    wasLive.current = sessionLive;
+  }, [sessionLive]);
   return null;
 }
 

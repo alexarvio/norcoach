@@ -165,6 +165,7 @@ import {
   HomeIcon,
 } from "../components/icons";
 import { trainingBests } from "../lib/homeBoardData";
+import { cache } from "react";
 import { workoutSheetOn } from "../lib/workoutSheet";
 import { coachBrandInline, coachMarkInline } from "../lib/brandMark";
 
@@ -658,6 +659,13 @@ function bannerPictures(clientId: number, track: "training" | "nutrition" | "lif
   return cover ? [cover] : trackPictures(track, coachCardsForClient(clientId));
 }
 
+// Read once a render, not once a week (23 Nov, Alex: the app lagged mid-workout): every week of the programme is drawn on
+// the server (TrainingTab, below), and these walk the client's whole history; the same answer for every week, so one read
+// serves them all. React's cache() holds it for the one render and no longer (the sets and check-ins are its keys).
+const bestsOnce = cache((ck: CheckInRows, sr: SetRows, clientId: number) => trainingBests(ck, sr, clientId));
+const gymStatsOnce = cache(gymSessionStats);
+const repliesOnce = cache(listVideoReplies);
+
 function TrainingTab({
   CLIENT_ID,
   week,
@@ -792,7 +800,7 @@ function TrainingTab({
           const gyms = listClientGyms(CLIENT_ID);
           const allGyms = listClientGyms(CLIENT_ID, true);
           // The picker's rows (13 Oct): colour, type, sessions there and the last visit.
-          const gymStats = gymSessionStats(sr, CLIENT_ID);
+          const gymStats = gymStatsOnce(sr, CLIENT_ID);
           const lastGymId = currentGymId(CLIENT_ID);
           const home = homeGymId(CLIENT_ID);
           const notesByGym = new Map(
@@ -801,13 +809,13 @@ function TrainingTab({
           const coachId = getClient(CLIENT_ID)?.coach_id ?? null;
           const library = new Map(coachId != null ? listExercises(coachId).map((e) => [e.id, e] as const) : []);
           const libraryName = new Map([...library].map(([id, e]) => [id, e.name] as const));
-          const videoReplies = listVideoReplies(CLIENT_ID);
+          const videoReplies = repliesOnce(CLIENT_ID);
           // Each exercise's personal bests, as the coach's rows mark them (13 Nov, Alex: the marks on a finished session).
           // And, for the workout sheet (15 Nov), what each row's next set has to beat: the same read, the same rule.
           let bests: ReturnType<typeof trainingBests>["bests"] = new Map();
           let barOf: ReturnType<typeof trainingBests>["barOf"] = () => null;
           try {
-            ({ bests, barOf } = trainingBests(ck, sr, CLIENT_ID));
+            ({ bests, barOf } = bestsOnce(ck, sr, CLIENT_ID));
           } catch {
             /* none shown */
           }
@@ -1181,7 +1189,7 @@ function SettingsTab({ CLIENT_ID, own = false, passwordsHint = null, sr }: { CLI
 // messages stay out (Home and the chat tab have them).
 function NotificationsPanel({ CLIENT_ID, notes, phoneTz = null }: { CLIENT_ID: number; notes: ClientNotes; phoneTz?: string | null }) {
   const coachFirst = getCoachFirstName(CLIENT_ID);
-  const videoReplies = listVideoReplies(CLIENT_ID);
+  const videoReplies = repliesOnce(CLIENT_ID);
   // A call-notes notification from before 10 Oct carries no meeting: it is read as the latest call with a recap on or before its day.
   const recapped = listMeetings(CLIENT_ID)
     .filter((m) => (m.summary ?? "").trim())
