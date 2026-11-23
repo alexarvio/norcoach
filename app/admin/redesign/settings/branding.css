@@ -142,3 +142,6 @@
 @media (hover: hover) { .rbv.rbv .rbv-nav:hover, .rbv.rbv .rbv-x:hover { background: #F5F6F8; } }
 .rbv.rbv .rbv-nav:focus-visible, .rbv.rbv .rbv-x:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 @media (max-width: 560px) { .rbv.rbv { --nav: 36px; --gap: 8px; } }
+/* A colour darkened so words on it read (23 Nov, Alex): the picked code, a faint arrow and the one it shows as, on the row's own line, never a line of its own under the picker. */
+.rbr.rbr .rbr-colourshift { white-space: nowrap; }
+.rbr.rbr .rbr-colourshift > i { margin: 0 5px; font-style: normal; color: #c9cfd8; }

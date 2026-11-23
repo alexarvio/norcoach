@@ -409,6 +409,13 @@ export function BrandColourSettings({ picked }: { picked: string | null }) {
       gone = true;
     };
   }, [used.hex, ink]);
+  // The colour as picked, while it shows darkened (the narrow middle where neither white nor ink words read): on the body
+  // for the row's name line to say both, live as the picker moves.
+  useEffect(() => {
+    const d = document.body.dataset;
+    if (used.changed) d.brandPicked = shown;
+    else delete d.brandPicked;
+  }, [shown, used.changed]);
   const save = (hex: string | null) => {
     if (timer.current) clearTimeout(timer.current);
     // Ink is today's look: none kept.
@@ -467,11 +474,9 @@ export function BrandColourSettings({ picked }: { picked: string | null }) {
             }}
           />
         )}
-        {used.changed && (
-          <span className="rst-brand-fact">
-            {shown.toUpperCase()} shows as {used.hex.toUpperCase()}
-          </span>
-        )}
+        {/* A colour darkened to be read is said on the row's own name line (ColourName, BrandingSection.tsx), never a
+            line of its own here (23 Nov, Alex: "it creates a new line below the color picker… it rearranges the whole
+            screen"). */}
         {error && <small className="rst-err">{error}</small>}
       </div>
     </Section>
