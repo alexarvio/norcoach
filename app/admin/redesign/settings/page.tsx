@@ -3,7 +3,7 @@ import { clerkOn } from "../../../lib/clerk";
 import { getCoachProfile, getCoachProfileView, getCoachSettings, listCoachEmails } from "../../../lib/queries";
 import { fetchChatDock } from "../../../lib/chat/rows";
 import { getData } from "../../../lib/db";
-import { COUNTRIES, countryOf, invoicingFor } from "../../../lib/countries";
+import { COUNTRIES, countryOf, invoicingFor, taxFact } from "../../../lib/countries";
 import { nameParts } from "../../../lib/coachNames";
 import { LEGAL } from "../../../lib/legal";
 import { paymentsState, refreshCoachStripe, type PaymentsState } from "../../../lib/payments";
@@ -31,6 +31,8 @@ import { ensureJoinCode } from "../../../lib/joinRequests";
 import ProfileEditor from "../profile/ProfileEditor";
 import SettingsBoard, { type SettingsSection } from "./SettingsBoard";
 import { SepJoin } from "../Sep";
+import { getInvoiceAuto } from "../../../lib/invoiceAuto";
+import { stripeConfigured } from "../../../lib/stripe";
 import "../../../components/ui/ui.css";
 import "../training/draft.css";
 import "../training/trn.css";
@@ -40,12 +42,14 @@ import "./settings.css";
 import "../profile/profile.css";
 
 // Settings in the redesign, opened from the coach at the foot of the rail: the sections listed on the left, each with
-// one fact, and the one picked on the right (27 Oct, Alex: mockup B; SettingsBoard). The rail keeps its own look here. Profile (the form and the client's view beside it; the
-// owner opens any coach's with ?coachId=), Account & security, Business details, Invoicing & payments, Privacy &
-// legal, and for a coach (not the owner) Support. One bar at the foot saves every section changed (SaveHost). #<key>
-// opens a section, and the rail's Settings rows open theirs. The old addresses redirect here (settings/[section],
-// /admin/redesign/profile).
-//   /admin/redesign/settings#profile | account | business | plans | invoicing | privacy | support
+// one fact, and the one picked on the right (27 Oct, Alex: mockup B; SettingsBoard). The rail keeps its own look here.
+// Nine sections since 23 Nov (Alex: docs/boards/settings-harmony-mockup.html): Profile (the owner opens any coach's
+// with ?coachId=), Account (sign-in and what the coach pays Norcoach), Business details, Branding, Plans, Invoicing &
+// payments, Preferences (units, the time zone, then notifications), Data & privacy (the export, then the legal), and
+// for a coach (not the owner) Support. One bar at the foot saves every section changed (SaveHost). #<key> opens a
+// section; the old #billing, #notifications and #data land on the part of the section that holds them now
+// (settingsNav's SETTINGS_ALIASES). The old addresses redirect here (settings/[section], /admin/redesign/profile).
+//   /admin/redesign/settings#profile | account | business | branding | plans | invoicing | preferences | privacy | support
 export const dynamic = "force-dynamic";
 
 /** When Stripe was last asked about a coach's unfinished account (the page's own memory, per server). */
@@ -126,26 +130,35 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const plans = listCoachPlans(coach.id, true).map((p) => ({ id: p.id, name: p.name, price: p.price ?? null, every: p.every ?? null, archived: !!p.archived, clients: planCounts.get(p.id) ?? 0 }));
   const eff = invoicingFor(business, invoicing);
   const livePlans = plans.filter((p) => !p.archived).length;
+  // Plans' tax line follows the business country (23 Nov, Alex, decision d; taxFact): none for the US or before a
+  // country is set, Canada's GST/HST without a rate (the province's).
+  const planTax = eff.rate > 0 ? taxFact(eff.country, eff.rate) : null;
 
   // The list's quiet fact under each name (27 Oct, Alex: mockup B), parts parted by the drawn bar (3 Nov, Alex: was a typed "|").
   const billing = t.time("billing", () => billingView(coach.id, owner));
   const join = (parts: (string | null | undefined | false)[]) => (parts.some(Boolean) ? <SepJoin parts={parts} /> : null);
   const land = business.country_code ? countryOf(business.country_code) : null;
+  // What they pay Norcoach (28 Oct): its state in a word, in Account's fact while subscriptions are on (not the owner's).
+  const billingOn = billing.on && !owner;
+  const billingWord = billing.status === "free" ? "Free" : billing.access.state === "readonly" ? "Read-only" : billing.status === "trialing" ? "Trial" : billing.status === "active" ? "Active" : billing.access.state === "grace" ? "Payment failed" : "Not started";
   const facts = {
     profile: profile ? (profile.published ? "Published" : "Not published") : null,
+    // Account (23 Nov, Alex: Account & security and Billing, one section).
+    account: join([coach.email, security?.logins.some((l) => l.provider === "google") ? "Google" : null, billingOn ? billingWord : null]),
     business: join([business.business_name, land?.name ?? business.country]) ?? "Not set",
     // Branding's fact: the colour by its name (or its hex), then what is uploaded.
     branding: join([settings.brand?.color ? BRAND_SWATCHES.find((s) => s.hex === settings.brand?.color)?.name ?? settings.brand.color.toUpperCase() : null, settings.brand?.mark ? "Logo" : null, brandNow.banner ? "Banner" : null]) ?? "Not set",
     plans: livePlans === 0 ? "None yet" : `${livePlans} plan${livePlans === 1 ? "" : "s"}`,
-    invoicing: join([invoicing.currency ?? land?.currency ?? "EUR", invoicing.vat_rate != null ? `${invoicing.vat_rate}% ${land?.tax ?? "tax"}` : null, payments.status === "active" ? "Stripe" : null]),
-    privacy: `Policy updated ${legalDate(LEGAL.updated)}`,
-    account: join([coach.email, security?.logins.some((l) => l.provider === "google") ? "Google" : null]),
-    notifications: join([notify.chat === false && notify.video === false ? "Phone off" : "Phone on", notify.quiet ? `quiet ${notify.quietFrom ?? "22:00"}–${notify.quietTo ?? "07:00"}` : null]),
-    preferences: join([units, timezone]),
-    data: "Export",
-    // What they pay Norcoach (28 Oct): the plan and its state in a word.
-    billing: billing.status === "free" ? "Free" : join([billing.interval === "year" ? "Yearly" : billing.interval ? "Monthly" : null, billing.access.state === "readonly" ? "Read-only" : billing.status === "trialing" ? "Trial" : billing.status === "active" ? "Active" : billing.access.state === "grace" ? "Payment failed" : "Not started"]),
+    // The tax as the business country names it (taxFact): none for the US or before a country is set.
+    invoicing: join([invoicing.currency ?? land?.currency ?? "EUR", invoicing.vat_rate != null && invoicing.vat_rate > 0 ? taxFact(eff.country, invoicing.vat_rate) : null, payments.status === "active" ? "Stripe" : null]),
+    // Preferences (23 Nov, Alex: Preferences and Notifications, one section).
+    preferences: join([units, timezone, notify.quiet ? `quiet ${notify.quietFrom ?? "22:00"}–${notify.quietTo ?? "07:00"}` : null]),
+    // Data & privacy (23 Nov, Alex: Your data and Privacy & legal, one section).
+    privacy: join(["Export", `Policy updated ${legalDate(LEGAL.updated)}`]),
   };
+  // Invoicing's two switches (lib/invoiceAuto.ts) and whether card payments through Stripe are on at all here.
+  const auto = getInvoiceAuto(coach.id);
+  const stripeReady = stripeConfigured();
 
   // In the rail's order, a section a line (its label from settingsNav's SETTINGS unless given; no body, left out).
   const sections: SettingsSection[] = [
@@ -157,7 +170,22 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       tag: profile && <span className={`trn-state${profile.published ? " good" : ""}`}>{profile.published ? "Published" : "Not published"}</span>,
       body: profile ? <ProfileEditor key={coachId} profile={profile} coaches={coaches} details={details} countries={countries} joinCode={ensureJoinCode(coachId)} /> : <p className="rpf-empty">No coach profile</p>,
     },
-    { key: "account", fact: facts.account, body: <AccountSettings email={coach.email} passwordless={clerkOn()} security={security} passwordsHint={passwordsHint} /> },
+    {
+      // Sign-in, then what the coach pays Norcoach (23 Nov, Alex: Billing joined Account; off until subscriptions are set
+      // up on the server, and the owner has none). Its part is `billing`: #billing lands on it.
+      key: "account",
+      fact: facts.account,
+      body: (
+        <>
+          <AccountSettings email={coach.email} passwordless={clerkOn()} security={security} passwordsHint={passwordsHint} />
+          {billingOn && (
+            <div id="rst-part-billing" className="rst-stack">
+              <BillingSettings view={billing} />
+            </div>
+          )}
+        </>
+      ),
+    },
     {
       key: "business",
       fact: facts.business,
@@ -182,15 +210,38 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         />
       ),
     },
-    { key: "plans", fact: facts.plans, body: <PlansSettings plans={plans} currency={eff.currency} vatFact={eff.rate > 0 ? `Prices ${eff.pricesIncludeVat ? "include" : "exclude"} ${eff.rate}% ${eff.taxLabel}` : null} /> },
+    { key: "plans", fact: facts.plans, body: <PlansSettings plans={plans} currency={eff.currency} vatFact={planTax ? `Prices ${eff.pricesIncludeVat ? "include" : "exclude"} ${planTax}` : null} /> },
     // Keyed on the business's country too: a new one there brings its own defaults here.
-    { key: "invoicing", fact: facts.invoicing, body: <InvoicingSettings key={JSON.stringify([invoicing, business.country_code ?? null, business.country ?? null])} initial={invoicing} business={business} payments={payments} /> },
-    // Off until subscriptions are set up on the server; the owner has none (settingsFor).
-    { key: "billing", fact: facts.billing, body: billing.on && !owner ? <BillingSettings view={billing} /> : null },
-    { key: "notifications", fact: facts.notifications, body: <NotificationsSettings key={JSON.stringify(notify)} initial={notify} /> },
-    { key: "preferences", fact: facts.preferences, body: <PreferencesSettings key={`${units}|${timezone}`} units={units} timezone={timezone} /> },
-    { key: "data", fact: facts.data, body: <DataSettings clients={clientCount} /> },
-    { key: "privacy", fact: facts.privacy, body: <PrivacySettings company={LEGAL.company} country={LEGAL.country} contactEmail={LEGAL.contactEmail} updated={legalDate(LEGAL.updated)} /> },
+    // auto: Invoices by email and When a plan is assigned (lib/invoiceAuto.ts); stripeReady: card payments are offered.
+    { key: "invoicing", fact: facts.invoicing, body: <InvoicingSettings key={JSON.stringify([invoicing, business.country_code ?? null, business.country ?? null])} initial={invoicing} business={business} payments={payments} auto={auto} stripeReady={stripeReady} coachEmail={coach.email ?? undefined} /> },
+    {
+      // Units and the time zone, then notifications (23 Nov, Alex: Notifications joined Preferences). Its part
+      // `notifications`: #notifications lands on it.
+      key: "preferences",
+      fact: facts.preferences,
+      body: (
+        <>
+          <PreferencesSettings key={`${units}|${timezone}`} units={units} timezone={timezone} />
+          <div id="rst-part-notifications" className="rst-stack">
+            <NotificationsSettings key={JSON.stringify(notify)} initial={notify} timezone={timezone} />
+          </div>
+        </>
+      ),
+    },
+    {
+      // The export, then the legal (23 Nov, Alex: Your data and Privacy & legal, one section). Its part `data`: #data
+      // lands on it.
+      key: "privacy",
+      fact: facts.privacy,
+      body: (
+        <>
+          <div id="rst-part-data" className="rst-stack">
+            <DataSettings clients={clientCount} />
+          </div>
+          <PrivacySettings company={LEGAL.company} country={LEGAL.country} contactEmail={LEGAL.contactEmail} updated={legalDate(LEGAL.updated)} />
+        </>
+      ),
+    },
     // A coach's thread with the company; the owner answers from Coaches and has none (null leaves it out).
     { key: "support", label: "Support", body: support && <SupportSection {...support} /> },
   ];

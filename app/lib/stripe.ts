@@ -41,7 +41,7 @@ function encode(params: Params, prefix = ""): string[] {
   return out;
 }
 
-async function call<T>(method: "GET" | "POST" | "DELETE", path: string, params: Params = {}, account?: string): Promise<T> {
+async function call<T>(method: "GET" | "POST" | "DELETE", path: string, params: Params = {}, account?: string, idempotencyKey?: string): Promise<T> {
   const key = process.env.STRIPE_SECRET_KEY?.trim();
   if (!key) throw new Error("Stripe isn't set up on this server.");
   const body = encode(params).join("&");
@@ -51,6 +51,8 @@ async function call<T>(method: "GET" | "POST" | "DELETE", path: string, params: 
       Authorization: `Bearer ${key}`,
       "Content-Type": "application/x-www-form-urlencoded",
       ...(account ? { "Stripe-Account": account } : {}),
+      // A create sent twice with one key (a retry, a double tap) gives back the first one made, never a second.
+      ...(idempotencyKey && method === "POST" ? { "Idempotency-Key": idempotencyKey } : {}),
     },
     body: method === "GET" ? undefined : body,
     cache: "no-store",
@@ -86,8 +88,8 @@ export function minorUnits(amount: number, currency: string): number {
 }
 
 /** A checkout for one invoice, on the coach's account; answers with the page to send the client to. */
-export async function invoiceCheckout(account: string, v: { invoiceId: number; number: string; amount: number; currency: string; seller: string; email?: string; successUrl: string; cancelUrl: string }): Promise<{ id: string; url: string }> {
-  const s = await call<{ id: string; url: string }>(
+export async function invoiceCheckout(account: string, v: { invoiceId: number; number: string; amount: number; currency: string; seller: string; email?: string; successUrl: string; cancelUrl: string; idempotencyKey?: string }): Promise<{ id: string; url: string; expiresAt: number | null }> {
+  const s = await call<{ id: string; url: string; expires_at?: number }>(
     "POST",
     "/checkout/sessions",
     {
@@ -101,8 +103,21 @@ export async function invoiceCheckout(account: string, v: { invoiceId: number; n
       cancel_url: v.cancelUrl,
     },
     account,
+    v.idempotencyKey,
   );
-  return { id: s.id, url: s.url };
+  return { id: s.id, url: s.url, expiresAt: typeof s.expires_at === "number" ? s.expires_at : null };
+}
+
+/** An invoice's checkout as Stripe has it now, on the coach's account: still open, paid, or expired. */
+export type InvoiceCheckoutState = { id: string; url: string | null; status: "open" | "complete" | "expired" | string; paymentStatus: string; metadata: Record<string, string>; expiresAt: number | null };
+export async function readInvoiceCheckout(account: string, id: string): Promise<InvoiceCheckoutState> {
+  const s = await call<{ id: string; url?: string | null; status?: string; payment_status?: string; metadata?: Record<string, string>; expires_at?: number }>("GET", `/checkout/sessions/${encodeURIComponent(id)}`, {}, account);
+  return { id: s.id, url: s.url ?? null, status: s.status ?? "", paymentStatus: s.payment_status ?? "", metadata: s.metadata ?? {}, expiresAt: typeof s.expires_at === "number" ? s.expires_at : null };
+}
+
+/** Closes an invoice's checkout left open (its amount changed), so the old page can't be paid as well. */
+export async function expireInvoiceCheckout(account: string, id: string): Promise<void> {
+  await call("POST", `/checkout/sessions/${encodeURIComponent(id)}/expire`, {}, account);
 }
 
 // ---- What coaches pay Norcoach (28 Oct, Alex; lib/billing.ts): a subscription on the platform's own account, so

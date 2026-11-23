@@ -1,18 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { SETTINGS } from "../settingsNav";
+import { SETTINGS, resolveSetting, sectionOf } from "../settingsNav";
 import { logoutAction } from "../../../lib/auth-actions";
 import { SaveHost, useUnsaved } from "./SaveHost";
 import { onGoToSetting, sayOpen } from "./settingsScroll";
 import { Toaster } from "../../../components/ui/toast";
+import { SectionShell } from "./Rows";
 
 // The Settings page (27 Oct, Alex: mockup B, "go for b"; before, one page of folding sections): Training's bare
 // header, then the sections as a list on the left, each its name over one quiet fact ("EUR | 21% VAT"), and the one
 // picked on the right, its title (20px/600) and its parts. One section shows at a time, the others kept mounted and
 // hidden, so what was typed in one stays on the page's one bar (SaveHost) and an ink dot after its name in the list
 // says so. A section is its key: #invoicing on arrival picks it, the rail's Settings rows pick theirs
-// (settingsScroll.ts), and the address follows the pick. Profile first when none is asked for.
+// (settingsScroll.ts), and the address follows the pick. Profile first when none is asked for. An old key merged into
+// another section on 23 Nov (#billing, #notifications, #data; settingsNav's SETTINGS_ALIASES) picks the section that
+// holds it and brings its part (`rst-part-<key>`, Rows.tsx's `Part id`) to the top.
 
 export type SettingsSection = {
   /** Its id and the address's #key; the rail's row when SETTINGS has one. */
@@ -23,6 +26,9 @@ export type SettingsSection = {
   fact?: ReactNode;
   /** A state tag after its title (Profile: Published). */
   tag?: ReactNode;
+  /** On the right of its title (Plans' + Plan). A body that holds the state its action needs puts it there itself
+   *  (`SectionActions`, Rows.tsx). */
+  actions?: ReactNode;
   /** Its content; none (null) leaves the section out, as Support for the owner. */
   body: ReactNode;
 };
@@ -63,19 +69,34 @@ function Sections({ sections }: { sections: SettingsSection[] }) {
   const unsaved = useUnsaved();
   const keys = useRef<string[]>([]);
   const content = useRef<HTMLDivElement>(null);
+  // A part to land on once its section shows (an old key: #billing is Account's Norcoach part).
+  const [part, setPart] = useState<{ id: string; n: number } | null>(null);
   useEffect(() => {
     keys.current = sections.map((s) => s.key);
   });
 
   // From the list, the rail, a link on the page or the address: show it, the page back at the top of it.
-  const pick = useRef((key: string, fromList = false) => {
-    if (!keys.current.includes(key)) return;
+  const pick = useRef((asked: string, fromList = false) => {
+    const to = resolveSetting(asked);
+    if (!to || !keys.current.includes(to.key)) return;
+    const key = to.key;
     setPicked(key);
     follow(key);
     const top = content.current?.getBoundingClientRect().top ?? 0;
     if (top < 0) window.scrollBy(0, top - 24);
     if (!fromList) document.getElementById(`rst-${key}-tab`)?.focus({ preventScroll: true });
+    // A pick with no part lets the last one go, so a later section (or this one again from the list) opens at its top.
+    const at = to.part;
+    setPart((p) => (at ? { id: at, n: (p?.n ?? 0) + 1 } : null));
   });
+
+  // The part asked for, once its section is drawn: its top 24px under the window's; nothing when the section has no
+  // such part (Billing, off for the owner and until subscriptions are switched on).
+  useEffect(() => {
+    if (!part) return;
+    const el = document.getElementById(`rst-part-${part.id}`);
+    if (el) window.scrollBy(0, el.getBoundingClientRect().top - 24);
+  }, [part, picked]);
 
   useEffect(() => {
     const fromHash = () => window.location.hash.slice(1);
@@ -105,7 +126,7 @@ function Sections({ sections }: { sections: SettingsSection[] }) {
       <nav className="rst-list" aria-label="Settings sections">
         {sections.map((s) => {
           const on = picked === s.key;
-          const held = unsaved.some((k) => k.split(":")[0] === s.key);
+          const held = unsaved.some((k) => sectionOf(k) === s.key);
           return (
             <button
               key={s.key}
@@ -132,11 +153,10 @@ function Sections({ sections }: { sections: SettingsSection[] }) {
       <div className="rst-shown" ref={content}>
         {sections.map((s) => (
           <section key={s.key} id={`rst-${s.key}`} className="rst-sec" hidden={picked !== s.key} aria-labelledby={`rst-${s.key}-title`}>
-            <h2 className="rst-sechead" id={`rst-${s.key}-title`}>
-              <span className="rst-sectitle">{labelOf(s)}</span>
-              {s.tag}
-            </h2>
-            <div className="rst-content">{s.body}</div>
+            {/* Its actions on the right of its title: the page's (s.actions) and the body's own (SectionActions). */}
+            <SectionShell titleId={`rst-${s.key}-title`} title={labelOf(s)} tag={s.tag} actions={s.actions}>
+              {s.body}
+            </SectionShell>
           </section>
         ))}
       </div>

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { renameClientAction, saveClientCardAction } from "../lib/actions";
 import { addClientPlanAction, setClientPlanAction } from "../lib/planActions";
+import { billPlanIfAutoAction } from "../lib/planBillingActions";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { ChevronDownIcon } from "../components/icons";
 import type { InvoiceEvery } from "../lib/db";
@@ -385,7 +386,10 @@ function PlanPicker({ clientId, plans, planId, currency, billedNext }: { clientI
     close();
     setShown(id);
     startSaving(async () => {
-      await setClientPlanAction(clientId, id);
+      const ok = await setClientPlanAction(clientId, id);
+      // Start billing when a client gets a plan (23 Nov, Alex: Settings, Invoicing & payments): the coach's switch
+      // decides on the server, and only while nothing bills the client yet.
+      if (ok && id != null) await billPlanIfAutoAction(clientId).catch(() => null);
       router.refresh();
     });
   };
@@ -405,6 +409,7 @@ function PlanPicker({ clientId, plans, planId, currency, billedNext }: { clientI
       if (made) {
         setAdded((a) => [...a, made]);
         setShown(made.id);
+        await billPlanIfAutoAction(clientId).catch(() => null);
       }
       router.refresh();
     });

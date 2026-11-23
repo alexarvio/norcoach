@@ -4,12 +4,15 @@ import { useState, useTransition } from "react";
 import { openBillingPortalAction } from "../../../lib/billingActions";
 import type { BillingView } from "../../../lib/billing";
 import { dayMonth } from "../../../lib/dayMonth";
-import { Section } from "./SettingsForms";
+import { Part, Pill, Row, State } from "./Rows";
 
-// Settings, Billing (28 Oct, Alex; lib/billing.ts): what the coach pays Norcoach. One card: Norcoach with Monthly or
-// Yearly after it and the state as its pill (Trial ink, Active green, Payment failed rust, Read-only red, Cancelled and
-// Free grey), the date that matters under it (the trial's end, the next charge, the plan's end, read-only from);
-// Manage billing, a white pill, opens Stripe's own page for the card, the plan, receipts and cancelling.
+// What the coach pays Norcoach (28 Oct, Alex; lib/billing.ts), a part of Account since 23 Nov (Alex:
+// docs/boards/settings-harmony-mockup.html; #billing lands on it). One row: Monthly or Yearly, the date that matters
+// under it (the trial's end, the next charge, the plan's end, read-only from), the state as its pill (Trial ink, Active
+// green, Payment failed rust, Read-only red, Cancelled and Free grey), then at its end Manage billing, a white pill
+// opening Stripe's own page for the card, the plan, receipts and cancelling, or Subscribe with no live plan.
+
+const TONE = { live: "ink", good: "good", warn: "rust", bad: "bad" } as const;
 
 export default function BillingSettings({ view }: { view: BillingView }) {
   const [busy, start] = useTransition();
@@ -31,36 +34,26 @@ export default function BillingSettings({ view }: { view: BillingView }) {
           ? `${view.cancelAtPeriodEnd ? "Ends" : "Renews"} ${dayMonth(view.periodEnd)}`
           : null;
   return (
-    <Section
-      title="Norcoach"
-      actions={
-        <>
-          {/* No live plan (never, or one that ended): Subscribe; Stripe's page can't start a new one. */}
-          {view.canSubscribe && (
-            <a className="trn-pill rst-pill" href="/auth/subscribe">
-              Subscribe
-            </a>
-          )}
-          {view.hasCustomer && (
-            <button type="button" className="trn-pill rst-pill" onClick={manage} disabled={busy}>
-              {busy ? "Opening Stripe…" : "Manage billing"}
-            </button>
-          )}
-        </>
-      }
-    >
-      <div className="rls-card rst-card">
-        <div className="rst-rows">
-          <div className="rst-row">
-            <span className="rst-row-main">
-              <b>{view.status === "free" ? "Norcoach" : view.interval === "year" ? "Yearly" : "Monthly"}</b>
-              {when && <small>{when}</small>}
-            </span>
-            <span className={`trn-state${pill.tone ? ` ${pill.tone}` : ""}`}>{pill.word}</span>
-          </div>
-        </div>
-      </div>
-      {error && <small className="rst-err">{error}</small>}
-    </Section>
+    <Part label="Norcoach">
+      <Row name={view.status === "free" ? "Norcoach" : view.interval === "year" ? "Yearly" : "Monthly"} fact={when}>
+        {error && (
+          <span className="rst-err" role="alert">
+            {error}
+          </span>
+        )}
+        <State tone={pill.tone ? TONE[pill.tone] : undefined}>{pill.word}</State>
+        {/* No live plan (never, or one that ended): Subscribe; Stripe's page can't start a new one. */}
+        {view.canSubscribe && (
+          <a className="rsr-pill" href="/auth/subscribe">
+            Subscribe
+          </a>
+        )}
+        {view.hasCustomer && (
+          <Pill onClick={manage} disabled={busy}>
+            {busy ? "Opening Stripe…" : "Manage billing"}
+          </Pill>
+        )}
+      </Row>
+    </Part>
   );
 }

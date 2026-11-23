@@ -153,6 +153,20 @@ export async function register() {
     setInterval(make, 10 * 60_000).unref?.();
     setTimeout(make, 60_000).unref?.();
   }
+  // Invoices by email (23 Nov, Alex: Settings, Invoicing & payments; app/lib/invoiceEmails.ts): every invoice that has
+  // reached its client and isn't emailed yet goes, a minute at a time, by hand, by a series or by Start billing alike.
+  // Only where mail is set up and on the live server (INVOICE_EMAILS, as the reminders); one sweep at a time.
+  if (process.env.NEXT_PHASE !== "phase-production-build") {
+    const { invoiceEmailsOn, sweepInvoiceEmails } = await import("./app/lib/invoiceEmails");
+    if (invoiceEmailsOn()) {
+      const sweep = () =>
+        void sweepInvoiceEmails()
+          .then((n) => n && console.log(`[invoices] emailed ${n}`))
+          .catch((e) => console.error("[invoices] emailing failed:", e instanceof Error ? e.message : e));
+      setInterval(sweep, 60_000).unref?.();
+      setTimeout(sweep, 75_000).unref?.();
+    }
+  }
   const { runBackup, msUntilNextRun, backupConfigured } = await import("./app/lib/backup");
   // Deleted uploads wait in trash for 30 days (18 Nov, step 4D, lib/storage.ts): every night at the backup's hour the
   // days past that go, with or without a backup; a few minutes after boot, what the disk's trash holds goes up to the

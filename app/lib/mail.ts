@@ -1,4 +1,4 @@
-// Outgoing email: the client's invite, for now.
+// Outgoing email: the client's invite, a password reset, and since 23 Nov each invoice as it reaches the client.
 //
 // Sent through Resend's HTTP API with a plain fetch, so there is no SDK to
 // keep up to date. Off until two variables are set on the server:
@@ -87,6 +87,82 @@ export async function sendInviteEmail({ coachEmail, ...details }: { to: string; 
   if (!mailConfigured()) return false;
   const { subject, text, html } = inviteEmail(details);
   return send(details.to, subject, text, html, "invite", { fromName: details.coachName, replyTo: coachEmail });
+}
+
+/** What an invoice email says (23 Nov, Alex: Settings, Invoicing & payments, "Invoices by email"). Every figure as the
+    invoice has it: the money and the dates already written for the client (lib/invoiceEmails.ts). */
+export type InvoiceMail = {
+  seller: string;
+  number: string;
+  what: string;
+  amount: string;
+  issued: string;
+  due: string | null;
+  viewUrl: string | null;
+  /** Card payment through the coach's own Stripe; null when it isn't on. */
+  payUrl: string | null;
+  /** How to pay by bank: a label and its value a row ("IBAN", "NL91 ABNA 0417 1643 00"), or the coach's own words. */
+  bank: { label: string; value: string }[];
+  bankWords: string | null;
+  /** The coach's brand colour and the words on it, for the one pill (docs/DESIGN-RULES.md §4); ink with none. */
+  brand: { hex: string; ink: string } | null;
+};
+
+/** The invoice email's words, as text and as HTML: facts, the money big, one pill (Pay, else View invoice). */
+export function invoiceEmail(m: InvoiceMail) {
+  const subject = `Invoice ${m.number} from ${m.seller}`;
+  const facts: [string, string][] = [["Invoice", m.number], ["For", m.what], ["Issued", m.issued], ...(m.due ? ([["Due", m.due]] as [string, string][]) : [])];
+  const text = [
+    m.seller,
+    "",
+    `${m.amount}`,
+    ...facts.map(([k, v]) => `${k}: ${v}`),
+    "",
+    ...(m.payUrl ? [`Pay: ${m.payUrl}`] : []),
+    ...(m.viewUrl ? [`View invoice: ${m.viewUrl}`] : []),
+    ...(m.bank.length || m.bankWords ? ["", "Bank transfer", ...m.bank.map((b) => `${b.label}: ${b.value}`), ...(m.bankWords ? [m.bankWords] : []), `Reference: ${m.number}`] : []),
+    "",
+    "Norcoach",
+  ].join("\n");
+
+  const font = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+  const label = `${font};font-size:11px;line-height:16px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#5b6474`;
+  const pillBg = m.brand?.hex ?? "#141a24";
+  const pillInk = m.brand?.ink ?? "#ffffff";
+  const pill = (href: string, words: string, main: boolean) =>
+    `<a href="${escape(href)}" style="display:inline-block;${font};font-size:15px;line-height:20px;font-weight:600;text-decoration:none;border-radius:999px;padding:12px 22px;${main ? `background:${pillBg};color:${pillInk}` : "background:#ffffff;color:#141a24;border:1px solid #DCE1E8"}">${escape(words)}</a>`;
+  const row = (k: string, v: string, mono = false) =>
+    `<tr><td style="${font};font-size:14px;line-height:20px;font-weight:500;color:#8b93a1;padding:5px 16px 5px 0;vertical-align:top;white-space:nowrap">${escape(k)}</td><td style="${font};font-size:14px;line-height:20px;font-weight:500;color:#141a24;padding:5px 0;vertical-align:top;${mono ? "font-variant-numeric:tabular-nums;" : ""}">${escape(v)}</td></tr>`;
+  const buttons = [m.payUrl ? pill(m.payUrl, `Pay ${m.amount}`, true) : "", m.viewUrl ? pill(m.viewUrl, "View invoice", !m.payUrl) : ""].filter(Boolean);
+  const bank = m.bank.length || m.bankWords;
+  const html = `<!doctype html><html><body style="margin:0;padding:0;background:#F5F6F8">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F5F6F8"><tr><td align="center" style="padding:32px 16px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border:1px solid #E1E5EB;border-radius:20px">
+<tr><td style="padding:28px 28px 0">
+<div style="${label}">Invoice</div>
+<div style="${font};font-size:16px;line-height:22px;font-weight:600;color:#141a24;padding-top:6px">${escape(m.seller)}</div>
+<div style="${font};font-size:34px;line-height:40px;font-weight:600;color:#141a24;padding-top:18px;font-variant-numeric:tabular-nums">${escape(m.amount)}</div>
+</td></tr>
+<tr><td style="padding:14px 28px 0"><table role="presentation" cellpadding="0" cellspacing="0">${facts.map(([k, v]) => row(k, v, k !== "For")).join("")}</table></td></tr>
+${buttons.length ? `<tr><td style="padding:24px 28px 0">${buttons.join('<span style="display:inline-block;width:8px"></span>')}</td></tr>` : ""}
+${
+  bank
+    ? `<tr><td style="padding:28px 28px 0"><div style="${label}">Bank transfer</div><table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:8px">${m.bank.map((b) => row(b.label, b.value, true)).join("")}${row("Reference", m.number, true)}</table>${m.bankWords ? `<div style="${font};font-size:14px;line-height:20px;font-weight:500;color:#3a4250;padding-top:6px;white-space:pre-wrap">${escape(m.bankWords)}</div>` : ""}</td></tr>`
+    : ""
+}
+<tr><td style="padding:28px"></td></tr>
+</table>
+<div style="${font};font-size:12px;line-height:16px;font-weight:500;color:#98A2B3;padding-top:16px">Norcoach</div>
+</td></tr></table>
+</body></html>`;
+  return { subject, text, html };
+}
+
+/** One invoice to the client, from the coach by name, answered to the coach. Resolves false rather than throwing. */
+export async function sendInvoiceEmail({ to, replyTo, ...m }: InvoiceMail & { to: string; replyTo: string | null }): Promise<boolean> {
+  if (!mailConfigured()) return false;
+  const { subject, text, html } = invoiceEmail(m);
+  return send(to, subject, text, html, "invoice", { fromName: m.seller, replyTo });
 }
 
 /** Where the website's applications go (28 Oct, Alex: "email me"): APPLY_TO_EMAIL, else the owner's. */
