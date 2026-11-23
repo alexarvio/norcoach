@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   testflight:
-    runs-on: macos-15
+    runs-on: xcode-27
     timeout-minutes: 60
     defaults:
       run:
@@ -33,7 +33,8 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/package-lock.json
 
-      # The newest Xcode on the machine: the App Store takes builds from the current SDK only.
+      # The newest Xcode on the machine: the App Store takes builds from the current SDK only. GitHub names its Mac images by
+      # Xcode version (23 Nov, Apple: iOS 27 SDK required from April 2027), so xcode-27 above carries the iOS 27 SDK.
       - name: Pick the newest Xcode
         run: |
           XC=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
