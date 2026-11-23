@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 import { createPasswordlessUser, findUserByEmail, getSessionUser, isOwner, requireCoach, requireCoachAccount } from "./auth";
 import { clerkIdentity, clerkOn } from "./clerk";
 import { letCoachIn } from "./coachSignUp";
+import { withNames } from "./coachNames";
 import { getData, persist, persistNow } from "./db";
 import { billingAccess } from "./billing";
 import { latestRequestFor, withdrawJoinRequest } from "./joinRequests";
@@ -116,7 +117,8 @@ export async function saveCoachAboutAction(form: FormData): Promise<{ ok: boolea
   });
   const user = getData().users.find((u) => u.id === coachId && u.role === "coach");
   if (user) {
-    user.coach_settings = { ...(user.coach_settings ?? {}), birthdate };
+    // The two names as typed, so Settings, Profile reads a first name of two words back whole (coachNames.ts).
+    user.coach_settings = { ...withNames(user.coach_settings, first, last), birthdate };
     persist();
   }
   // The photo clients see (shrunk in the browser already; fitted again here, as every coach picture is).

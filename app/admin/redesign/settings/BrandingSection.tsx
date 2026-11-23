@@ -22,8 +22,8 @@ import "./branding.css";
 // Settings, Branding (22 Nov, Alex: "i really like c. have the branding like in c and the card pictures like in a";
 // docs/boards/_branding-opt-C.html and _branding-opt-A.html). One identity card drawn the way the brand shows: the band
 // in the coach's colour (--brand, which BrandColourSettings sets on the body the moment a colour is picked, so the band
-// follows live), their logo faint in it, the banner and the logo changed right where they show, their face and name;
-// the paper rising over the band's foot holds the brand colour. Under the card the card pictures, a row a track, Default
+// follows live), their logo faint in it, the banner and the logo changed right where they show (their face and name went
+// to Profile, 23 Nov, Alex); the paper rising over the band's foot holds the brand colour. Under the card the card pictures, a row a track, Default
 // (Norcoach's stock pictures, read only) or Your own (up to five a track). Every change saved at once; only a failure
 // speaks. Scoped under .rbr (branding.css).
 
@@ -39,16 +39,13 @@ type Props = {
   cards: TrackPictures;
   cardsDefault: boolean;
   stock: TrackPictures;
-  business: string;
-  coach: { name: string; photo: string | null };
 };
 
-export default function BrandingSection({ mark, banner, bannerRatio, colour, cards, cardsDefault, stock, business, coach }: Props) {
+export default function BrandingSection({ mark, banner, bannerRatio, colour, cards, cardsDefault, stock }: Props) {
   const logo = useBrandFile(uploadCoachLogoAction, removeCoachLogoAction);
   const ban = useBrandFile(uploadCoachBannerAction, removeCoachBannerAction);
   const shape = banner ? ({ "--banner-ratio": bannerRatio && bannerRatio > 0 ? bannerRatio : 4, WebkitMaskImage: `url("${banner}")`, maskImage: `url("${banner}")` } as CSSProperties) : undefined;
   const error = logo.error || ban.error;
-  const initial = coach.name.trim().charAt(0).toUpperCase() || "?";
 
   return (
     <div className="rbr">
@@ -96,21 +93,6 @@ export default function BrandingSection({ mark, banner, bannerRatio, colour, car
                 </button>
               )}
               <FilePill file={logo} has={!!mark} />
-            </div>
-          </div>
-
-          <div className="rbr-who">
-            {coach.photo ? (
-              // eslint-disable-next-line @next/next/no-img-element -- the coach's own face
-              <img className="rbr-face" src={pic(coach.photo, 96)} alt="" />
-            ) : (
-              <span className="rbr-face none" aria-hidden="true">
-                {initial}
-              </span>
-            )}
-            <div className="rbr-who-words">
-              <b>{coach.name}</b>
-              {business && <span>{business}</span>}
             </div>
           </div>
         </div>

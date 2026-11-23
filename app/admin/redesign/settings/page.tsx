@@ -1,9 +1,10 @@
 import { isOwner, requireCoach } from "../../../lib/auth";
 import { clerkOn } from "../../../lib/clerk";
-import { getCoachProfileView, getCoachSettings, listCoachEmails } from "../../../lib/queries";
+import { getCoachProfile, getCoachProfileView, getCoachSettings, listCoachEmails } from "../../../lib/queries";
 import { fetchChatDock } from "../../../lib/chat/rows";
 import { getData } from "../../../lib/db";
 import { COUNTRIES, countryOf, invoicingFor } from "../../../lib/countries";
+import { nameParts } from "../../../lib/coachNames";
 import { LEGAL } from "../../../lib/legal";
 import { paymentsState, refreshCoachStripe, type PaymentsState } from "../../../lib/payments";
 import { dayMonth } from "../../../lib/dayMonth";
@@ -82,13 +83,20 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const asked = Number(params.coachId);
   const coachId = owner && Number.isInteger(asked) && asked > 0 && t.time("profileView", () => getCoachProfileView(asked)) ? asked : coach.id;
   const profile = t.time("profileView", () => getCoachProfileView(coachId));
-  // The coach signed in, for their own Branding card (the owner may be looking at another coach's profile).
-  const me = coachId === coach.id ? profile : getCoachProfileView(coach.id);
   // Their ids and emails alone (Step 5: no coach's feed built for them).
   const coaches = owner ? t.time("coachAccounts", () => listCoachEmails()) : [];
-  // Your details: the account basics, beside the public profile.
-  const contact = t.time("coachSettings", () => getCoachSettings(coachId)).contact ?? {};
+  // Your details (23 Nov, Alex: A of docs/boards/settings-profile-mockup.html): who they are, the account basics and the
+  // address; the name split back into first and last (as the sign-up's About you asked them), only a name they gave.
+  const whose = t.time("coachSettings", () => getCoachSettings(coachId));
+  const contact = whose.contact ?? {};
+  // As typed (a first name of two words stays one), else the display name cut at its first space (coachNames.ts).
+  const given = nameParts(whose, getCoachProfile(coachId)?.display_name);
   const details = {
+    first: given.first,
+    last: given.last,
+    birthdate: whose.birthdate ?? "",
+    title: profile?.title ?? "",
+    business: whose.business?.business_name?.trim() ?? "",
     email: getData().users.find((u) => u.id === coachId)?.email ?? "",
     phoneCode: contact.phone_code ?? "",
     phone: contact.phone ?? "",
@@ -171,8 +179,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           cards={coachCardPictures(coach.id)}
           cardsDefault={coachCardsDefault(coach.id)}
           stock={PHASE_COVERS}
-          business={business.business_name?.trim() ?? ""}
-          coach={{ name: me?.displayName ?? coach.email, photo: me?.avatarPath ?? null }}
         />
       ),
     },
