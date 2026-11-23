@@ -207,11 +207,17 @@ function FilePill({ file, has }: { file: ReturnType<typeof useBrandFile>; has: b
 function ColourName({ picked }: { picked: string | null }) {
   const fromProp = (picked && brandColour(picked)?.hex) || INK;
   const [hex, setHex] = useState(fromProp.toLowerCase());
+  // The colour as picked when it shows darkened (BrandColourSettings puts it on the body), so the line says both on its
+  // own room (23 Nov, Alex: the line under the picker "rearranges the whole screen").
+  const [picked2, setPicked] = useState<string | null>(null);
   useEffect(() => {
-    const read = () => setHex((document.body.style.getPropertyValue("--brand").trim() || INK).toLowerCase());
+    const read = () => {
+      setHex((document.body.style.getPropertyValue("--brand").trim() || INK).toLowerCase());
+      setPicked(document.body.dataset.brandPicked ?? null);
+    };
     read();
     const watch = new MutationObserver(read);
-    watch.observe(document.body, { attributes: true, attributeFilter: ["style"] });
+    watch.observe(document.body, { attributes: true, attributeFilter: ["style", "data-brand-picked"] });
     return () => watch.disconnect();
   }, []);
   const name = BRAND_SWATCHES.find((s) => s.hex.toLowerCase() === hex)?.name ?? "Custom";
@@ -221,7 +227,15 @@ function ColourName({ picked }: { picked: string | null }) {
       <span>
         {name}
         <Sep />
-        {hex.toUpperCase()}
+        {picked2 && picked2.toLowerCase() !== hex ? (
+          <span className="rbr-colourshift" title={`${picked2.toUpperCase()} is darkened to ${hex.toUpperCase()} so words on it read`}>
+            {picked2.toUpperCase()}
+            <i aria-hidden="true">→</i>
+            {hex.toUpperCase()}
+          </span>
+        ) : (
+          hex.toUpperCase()
+        )}
       </span>
     </div>
   );
