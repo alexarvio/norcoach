@@ -13,8 +13,9 @@ import { useState } from "react";
 const parse = (d: string) => new Date(`${d}T00:00:00`);
 const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const shown = (iso: string) => (iso ? parse(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }) : "");
-/** The day typed, once it is a whole real date; null until then. */
-export const typedDate = (raw: string): string | null => {
+/** The day typed, once it is a whole real date; null until then. From 2000 on unless `earliest` says another year (a
+ *  date of birth, 23 Nov). */
+export const typedDate = (raw: string, earliest = 2000): string | null => {
   const s = raw.trim();
   let d: number, m: number, y: number;
   let r = /^([0-9]{1,2})[/.\- ]([0-9]{1,2})[/.\- ]([0-9]{4})$/.exec(s);
@@ -23,7 +24,7 @@ export const typedDate = (raw: string): string | null => {
   else if ((r = /^([0-9]{4})-([0-9]{1,2})-([0-9]{1,2})$/.exec(s))) [y, m, d] = [Number(r[1]), Number(r[2]), Number(r[3])];
   else return null;
   const date = new Date(y, m - 1, d);
-  if (y < 2000 || y > 2100 || date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) return null;
+  if (y < earliest || y > 2100 || date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) return null;
   return isoOf(date);
 };
 
@@ -44,16 +45,16 @@ export const maskDate = (raw: string, previous: string): string => {
   return out;
 };
 
-export default function DateText({ value, onChange, label, disabled = false, onFocus, min, placeholder = "dd/mm/yyyy" }: { value: string; onChange: (iso: string) => void; label: string; disabled?: boolean; /** Arms this end in the calendar beside it. */ onFocus?: () => void; /** The earliest day it takes (yyyy-mm-dd); an earlier one reads as wrong and isn't handed on. */ min?: string; /** What an empty field says ("No end" for a repeat with no last day). */ placeholder?: string }) {
+export default function DateText({ value, onChange, label, disabled = false, onFocus, min, placeholder = "dd/mm/yyyy", fromYear = 2000, className = "" }: { value: string; onChange: (iso: string) => void; label: string; disabled?: boolean; /** Arms this end in the calendar beside it. */ onFocus?: () => void; /** The earliest day it takes (yyyy-mm-dd); an earlier one reads as wrong and isn't handed on. */ min?: string; /** What an empty field says ("No end" for a repeat with no last day). */ placeholder?: string; /** The earliest year it reads (a date of birth goes back past 2000). */ fromYear?: number; /** Added to its own classes (a clean line in a form). */ className?: string }) {
   // What is being typed; null shows the day the field holds.
   const [typing, setTyping] = useState<string | null>(null);
   const text = typing ?? shown(value);
   const complete = typing != null && typing.replace(/[^0-9]/g, "").length >= 8;
   const okDay = (d: string | null) => !!d && (!min || d >= min);
-  const bad = complete && !okDay(typedDate(typing));
+  const bad = complete && !okDay(typedDate(typing, fromYear));
   return (
     <input
-      className={`rd-input rdt${bad ? " bad" : ""}`}
+      className={`rd-input rdt${bad ? " bad" : ""}${className ? ` ${className}` : ""}`}
       value={text}
       disabled={disabled}
       inputMode="numeric"
@@ -64,7 +65,7 @@ export default function DateText({ value, onChange, label, disabled = false, onF
       onChange={(e) => {
         const next = maskDate(e.target.value, text);
         setTyping(next);
-        const day = typedDate(next);
+        const day = typedDate(next, fromYear);
         if (day && okDay(day)) onChange(day);
       }}
       onBlur={() => setTyping(null)}

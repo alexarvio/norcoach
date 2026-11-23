@@ -7,7 +7,9 @@ import CoachProfileScreen from "../../../client/CoachProfileScreen";
 import AvatarCropDialog from "../../AvatarCropDialog";
 import { PlusIcon } from "../../../components/icons";
 import ProfileDetails, { type ProfileDetailsData } from "./ProfileDetails";
-import JoinCode from "./JoinCode";
+
+/** Public profile, built and locked for now (23 Nov, Alex): its capsule option shows a lock and its panel never shows. */
+const PUBLIC_LOCKED = true;
 import { publishCoachProfileAction, removeCoachPhotoAction, saveCoachProfileAction, uploadCoachPhotoAction } from "../../../lib/actions";
 import { COACH_PROFILE_LIMITS as LIMIT, type CoachProfileView, type CoachRole, type CoachStudy } from "../../../lib/coachProfileView";
 import Picker from "../Picker";
@@ -189,12 +191,25 @@ export default function ProfileEditor({ profile, coaches, details, countries, jo
           hidden, so what is typed in one waits on the page's bar while the other is open. Whose profile (the owner)
           on the right of the same row. */}
       <div className="rpf-top">
+        {/* Public profile is built and locked for now (23 Nov, Alex: "build it as well, but just keep it locked for now"):
+            its option shows a lock, can't be picked, and its panel never shows, for every coach and the owner. */}
         <div className="rd-btn-group rpf-tabs" role="tablist" aria-label="Profile">
-          {(["details", "public"] as const).map((t) => (
-            <button key={t} type="button" role="tab" id={`rpf-tab-${t}`} aria-controls={`rpf-panel-${t}`} aria-selected={tab === t} data-state={tab === t ? "active" : "inactive"} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
-              {t === "details" ? "Your details" : "Public profile"}
-            </button>
-          ))}
+          {(["details", "public"] as const).map((t) =>
+            t === "public" && PUBLIC_LOCKED ? (
+              <button key={t} type="button" role="tab" id={`rpf-tab-${t}`} aria-controls={`rpf-panel-${t}`} aria-selected={false} aria-disabled="true" data-state="inactive" className="rpf-locked" title="Soon">
+                Public profile
+                {/* The lock at 1.6, as every icon here (the shared LockIcon draws 1.7). */}
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <rect x="4" y="11" width="16" height="10" rx="2" />
+                  <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                </svg>
+              </button>
+            ) : (
+              <button key={t} type="button" role="tab" id={`rpf-tab-${t}`} aria-controls={`rpf-panel-${t}`} aria-selected={tab === t} data-state={tab === t ? "active" : "inactive"} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
+                {t === "details" ? "Your details" : "Public profile"}
+              </button>
+            ),
+          )}
         </div>
         {coaches.length > 1 && (
           <Picker value={String(profile.coachId)} onChange={(v) => router.push(settingsHref("profile", { coachId: v }))} label="Whose profile" className="rpf-who" options={coaches.map((c) => ({ value: String(c.id), label: c.email }))} />
@@ -202,15 +217,15 @@ export default function ProfileEditor({ profile, coaches, details, countries, jo
       </div>
 
       <div role="tabpanel" id="rpf-panel-details" aria-labelledby="rpf-tab-details" hidden={tab !== "details"}>
-        <JoinCode code={joinCode} />
-        <ProfileDetails coachId={profile.coachId} data={details} countries={countries} />
+        <ProfileDetails coachId={profile.coachId} data={details} countries={countries} joinCode={joinCode} photo={profile.avatarPath} fallbackName={profile.displayName} />
       </div>
-      <div role="tabpanel" id="rpf-panel-public" aria-labelledby="rpf-tab-public" hidden={tab !== "public"}>
+      <div role="tabpanel" id="rpf-panel-public" aria-labelledby="rpf-tab-public" hidden={tab !== "public" || PUBLIC_LOCKED}>
         <div className="rpf-cols">
           <div className="rpf-form">
+            {/* The profile picture is changed on Your details' card since 23 Nov (Alex: A of
+                docs/boards/settings-profile-mockup.html), where it shows. */}
             <Section title="Photos">
               <div className="rst-rows">
-                <PhotoSlot coachId={profile.coachId} kind="avatar" label="Profile picture" fact="Up to 6 MB" path={profile.avatarPath} />
                 <PhotoSlot coachId={profile.coachId} kind="hero" label="Hero photo" fact={<>Portrait, 1200 px tall or more<Sep />up to 6 MB</>} path={profile.heroPath} />
                 <PhotoSlot coachId={profile.coachId} kind="candid" label="Candid photo" fact="Up to 6 MB" path={profile.candidPath} />
               </div>

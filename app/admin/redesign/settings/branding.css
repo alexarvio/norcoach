@@ -8,8 +8,9 @@
 
 /* the band in the coach's colour, white type (dark on a bright colour: --brand-ink, 22 Nov) */
 .rbr.rbr .rbr-band { position: relative; overflow: hidden; padding: 24px 24px 44px; background: var(--brand, #1c1c1e); color: var(--brand-ink, #fff); transition: background-color 0.25s ease; }
-/* their logo, else the star, a white shape at 13%, a third past the band's right edge */
-.rbr.rbr .rbr-band-mark { position: absolute; top: 50%; right: -76px; width: 228px; height: 228px; margin-top: -124px; background: var(--brand-ink, #fff); opacity: 0.13; pointer-events: none;
+/* their logo, else the star, a white shape at 13%, a third past the band's right edge; centred on the band above the
+   paper (the coach's row went to Profile, 23 Nov, so the band is the banner's and the logo's alone) */
+.rbr.rbr .rbr-band-mark { position: absolute; top: 50%; right: -56px; width: 168px; height: 168px; margin-top: -94px; background: var(--brand-ink, #fff); opacity: 0.13; pointer-events: none;
   -webkit-mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; mask: var(--bg-mark, url("/brand/mark.svg")) center / contain no-repeat; }
 .rbr.rbr .rbr-band-grid { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px; }
 
@@ -36,14 +37,6 @@
 .rbr.rbr .rbr-gword { flex: none; height: 32px; padding: 0 4px; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: color-mix(in srgb, var(--brand-ink, #fff) 78%, transparent); cursor: pointer; }
 @media (hover: hover) { .rbr.rbr .rbr-gword:hover:not(:disabled) { color: var(--brand-ink, #fff); } }
 .rbr.rbr .rbr-gword:disabled { cursor: default; opacity: 0.6; }
-
-/* the coach */
-.rbr.rbr .rbr-who { position: relative; display: flex; align-items: center; gap: 12px; margin-top: 36px; }
-.rbr.rbr .rbr-face { display: block; flex: none; width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: #fff; box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--brand-ink, #fff) 85%, transparent); }
-.rbr.rbr .rbr-face.none { display: inline-flex; align-items: center; justify-content: center; box-shadow: inset 0 0 0 1px #E1E5EB, 0 0 0 1.5px color-mix(in srgb, var(--brand-ink, #fff) 85%, transparent); font-size: 18px; font-weight: 600; line-height: 1; color: #141a24; }
-.rbr.rbr .rbr-who-words { min-width: 0; }
-.rbr.rbr .rbr-who-words b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; font-weight: 600; line-height: 22px; }
-.rbr.rbr .rbr-who-words > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; line-height: 18px; color: color-mix(in srgb, var(--brand-ink, #fff) 78%, transparent); }
 
 /* the paper rising over the band's foot */
 .rbr.rbr .rbr-paper { position: relative; display: flex; flex-direction: column; gap: 12px; margin-top: -20px; padding: 22px 24px 24px; border-radius: 20px 20px 0 0; background: #fff; }
