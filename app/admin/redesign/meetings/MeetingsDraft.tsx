@@ -350,7 +350,12 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
     const n = Math.round((parse(date).getTime() - parse(today).getTime()) / 86400000);
     return n <= 0 ? "Today" : n === 1 ? "Tomorrow" : `In ${n} days`;
   };
-  const toCome = (m: DraftMeeting) => m.status === "scheduled" && !(m.over ?? m.date < today);
+  // A call stays on top until it is marked completed (23 Nov, Alex: "I want it to always be there until I completed it";
+  // a call that had ended dropped to Past calls before Finlay could set its goals). Over and not marked, it is the next
+  // call, `To complete` in rust where how soon would be, Mark completed on it, for the week it is owed (toComplete,
+  // callToComplete; Alex: "only the last week"); after that, or let go from the Feed, it goes to Past calls as Not completed.
+  const isOver = (m: DraftMeeting) => m.over ?? m.date < today;
+  const toCome = (m: DraftMeeting) => m.status === "scheduled" && (!isOver(m) || !!m.toComplete);
   const scheduled = meetings.filter(toCome).sort((a, b) => (a.date === b.date ? (a.time < b.time ? -1 : 1) : a.date < b.date ? -1 : 1));
   // A repeating call shows its next two (11 Nov, Alex: "they can check when the next call is", never six months of them):
   // the next one, and the one after it under Also scheduled, each moving up once the one before is completed or over.
@@ -552,7 +557,7 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
                 </>
               )}
               <Sep />
-              {soonWords(m.date)}
+              {isOver(m) ? <span className="rt-due">To complete</span> : soonWords(m.date)}
             </span>
           </span>
         </span>
