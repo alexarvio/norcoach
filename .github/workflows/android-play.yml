@@ -1,0 +1,101 @@
+# The Android app to Google Play's internal testing (23 Nov, Alex: "how do we do test flight but for android?"), built on
+# GitHub's own machines. The app is a shell that loads the live site (mobile/capacitor.config.json), so a new build is
+# only needed for native changes: run it from GitHub, Actions > Android to Google Play > Run workflow.
+#
+# Each run builds the signed app bundle (.aab) and keeps it as the run's artifact. Google Play takes a new app's very
+# first bundle only by hand (Play Console > Testing > Internal testing > Create new release > upload it); from then on,
+# with PLAY_SERVICE_ACCOUNT_JSON set, every run uploads it to internal testing by itself.
+#
+# Repository secrets it reads (Settings > Secrets and variables > Actions):
+#   ANDROID_KEYSTORE_BASE64    the upload key (.jks), base64
+#   ANDROID_KEYSTORE_PASSWORD  its store password
+#   ANDROID_KEY_ALIAS          the key's alias in it
+#   ANDROID_KEY_PASSWORD       the key's password
+#   GOOGLE_SERVICES_JSON       Firebase's google-services.json for com.arvio.norcoach (push), the whole text; optional
+#   PLAY_SERVICE_ACCOUNT_JSON  a Google Cloud service account's key with release rights in Play Console; optional
+name: Android to Google Play
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: android-play
+  cancel-in-progress: false
+
+jobs:
+  play:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      BUILD_NUMBER: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install and sync the shell
+        run: |
+          npm ci
+          npx cap sync android
+
+      - name: Firebase for push
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          else
+            echo "No GOOGLE_SERVICES_JSON: built without push"
+            rm -f android/app/google-services.json
+          fi
+
+      - name: The upload key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then echo "ANDROID_KEYSTORE_BASE64 is not set"; exit 1; fi
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+
+      - name: Build the signed bundle
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        working-directory: mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon bundleRelease
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: norcoach-${{ github.run_number }}.aab
+          path: mobile/android/app/build/outputs/bundle/release/app-release.aab
+
+      - name: Has a Play key
+        id: play
+        env:
+          PLAY_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: echo "on=$([ -n "$PLAY_JSON" ] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to internal testing
+        if: steps.play.outputs.on == 'yes'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.arvio.norcoach
+          releaseFiles: mobile/android/app/build/outputs/bundle/release/app-release.aab
+          track: internal
+          status: completed
