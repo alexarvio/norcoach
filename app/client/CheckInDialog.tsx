@@ -13,6 +13,7 @@ import { Bars } from "./Bars";
 import { dayWords } from "../lib/clientDates";
 import { nativePlatform } from "../lib/native";
 import { connectHealth, useHealthConnected } from "./HealthSync";
+import "./health-block.css";
 
 // A day's check-in as a centred pop-up (13 Oct, "Rows"): the gym pop-up's
 // language, a sand glow at the top, one bordered row a metric, one navy
@@ -141,6 +142,13 @@ export default function CheckInDialog({
   const month = form.monthlyOpen ? rowsOf(form.sections.find((s) => s.id === "monthly"), "monthly") : [];
   if (month.length) groups.push({ id: "month", label: form.monthLabel ?? "This month", rows: month });
   const rows = groups.flatMap((g) => g.rows);
+  // Apple Health connected in the app (23 Nov, Alex: "can we still have it show with 0 steps on our app", "with all the
+  // metrics"): every metric the phone could fill sits in the From Apple Health block, not only the ones it filled. Steps
+  // reads 0 until the phone counts some (nothing saved for it, so the phone's figure takes it when it comes); weight,
+  // sleep and heart rate stay typeable in the block until the phone has a figure, which then takes their place.
+  const healthOn = useHealthConnected() && nativePlatform() != null;
+  const inBlock = (r: Row) => !!r.metric.live || (healthOn && !!r.metric.phone);
+  const stepsWait = (r: Row) => healthOn && !!r.metric.phone && !r.metric.live && r.source === "daily" && /\bsteps?\b/i.test(r.metric.name);
   const { source: noteSource, saved: savedNote } = noteOf(form.sections, rows);
 
   const [typed, setValues] = useState<Record<string, string>>(() => seedOf(rows));
@@ -162,7 +170,7 @@ export default function CheckInDialog({
     if (r.metric.scaleMax) return n >= 1 && n <= r.metric.scaleMax ? null : `Between 1 and ${r.metric.scaleMax}`;
     return n >= 0 ? null : "Can't be below 0";
   };
-  const isFilled = (r: Row) => (values[r.key] ?? "").trim() !== "" && problem(r) == null;
+  const isFilled = (r: Row) => stepsWait(r) || ((values[r.key] ?? "").trim() !== "" && problem(r) == null);
   const filled = rows.filter(isFilled);
   const total = rows.length;
   const allIn = total > 0 && filled.length === total;
@@ -350,7 +358,7 @@ export default function CheckInDialog({
                 phone's figures sit apart under it, read-only. */}
             {/* The phone could fill some of these and isn't connected yet (17 Nov, Alex): one line, first, with Connect. */}
             {rows.some((r) => r.metric.phone && !r.metric.live) && <HealthOff onSynced={(saved) => saved && router.refresh()} />}
-            {groups.map((g) => ({ ...g, rows: g.rows.filter((r) => !r.metric.live) })).filter((g) => g.rows.length > 0).map((g) => (
+            {groups.map((g) => ({ ...g, rows: g.rows.filter((r) => !inBlock(r)) })).filter((g) => g.rows.length > 0).map((g) => (
               <div key={g.id} className="cki-group">
                 {g.label && <div className="cki-group-label">{g.label}</div>}
                 <div className="cki-rows">
@@ -370,7 +378,44 @@ export default function CheckInDialog({
                 </div>
               </div>
             ))}
-            {rows.some((r) => r.metric.live) && <AutoBlock rows={rows.filter((r) => r.metric.live)} values={values} />}
+            {rows.some(inBlock) && (
+              <AutoBlock
+                rows={rows.filter(inBlock)}
+                values={values}
+                waiting={stepsWait}
+                field={(r) => {
+                  const whole = isWholeMetric(r.metric);
+                  const bad = problem(r);
+                  return (
+                    <label className={`cki-auto-fig cki-auto-in${bad ? " bad" : ""}${isFilled(r) ? " filled" : ""}`}>
+                      <input
+                        ref={(el) => {
+                          inputs.current[r.key] = el;
+                        }}
+                        type="text"
+                        inputMode={whole ? "numeric" : "decimal"}
+                        enterKeyHint="next"
+                        autoComplete="off"
+                        value={values[r.key] ?? ""}
+                        onFocus={(e) => e.currentTarget.select()}
+                        onChange={(e) => {
+                          const v = cleanNumeric(e.target.value, whole);
+                          setValues((prev) => ({ ...prev, [r.key]: v }));
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter") return;
+                          e.preventDefault();
+                          focusNextEmpty(r.key);
+                        }}
+                        aria-label={`${r.metric.name}${r.metric.unit ? ` in ${r.metric.unit}` : ""}`}
+                        aria-invalid={!!bad || undefined}
+                      />
+                      <span className="cki-unit">{r.metric.unit}</span>
+                    </label>
+                  );
+                }}
+              />
+            )}
             <div className="cki-group">
               <div className="cki-group-label">Note for {coachName}</div>
               <label className={`cki-note-box${note.trim() ? " has" : ""}`}>
@@ -461,7 +506,7 @@ function HealthOff({ onSynced }: { onSynced: (saved: boolean) => void }) {
  * inside it the heart and the names start where the form's names start, the figures end where the form's figures end
  * and the units sit in the form's unit column.
  */
-function AutoBlock({ rows, values }: { rows: Row[]; values: Record<string, string> }) {
+function AutoBlock({ rows, values, waiting, field }: { rows: Row[]; values: Record<string, string>; /** Steps the phone hasn't counted yet: 0. */ waiting: (r: Row) => boolean; /** A metric the phone could fill and hasn't: typed here until it does. */ field: (r: Row) => React.ReactNode }) {
   const store = nativePlatform() === "android" ? "Health Connect" : "Apple Health";
   return (
     <div className="cki-auto" role="group" aria-label={`From ${store}`}>
@@ -484,10 +529,14 @@ function AutoBlock({ rows, values }: { rows: Row[]; values: Record<string, strin
         return (
           <div key={r.key} className="cki-auto-row">
             <span className="cki-auto-name">{m.name}</span>
-            <span className="cki-auto-fig">
-              <b>{shown}</b>
-              <span className="cki-unit">{unit}</span>
-            </span>
+            {m.live || waiting(r) ? (
+              <span className="cki-auto-fig">
+                <b>{m.live ? shown : "0"}</b>
+                <span className="cki-unit">{unit}</span>
+              </span>
+            ) : (
+              field(r)
+            )}
           </div>
         );
       })}
