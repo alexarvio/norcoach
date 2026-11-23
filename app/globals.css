@@ -19427,6 +19427,9 @@ button.ts-circle:focus-visible { outline: 2px solid #00897B; outline-offset: 2px
 .tr-toast-facts { font-size: 13px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
 @keyframes tr-toast-pill-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translateX(-50%); } }
 @keyframes tr-toast-pill-out { from { opacity: 1; } to { opacity: 0; } }
+/* Above the floating tab bar on every phone (23 Nov, Alex: in the iPhone app the pill sat on the bar): the bar stands on the
+   home bar's room (safe+14px, 70px tall), so the pill and the saved toast stand 12px over it, never a fixed 96px. */
+.tr-resume, .tr-toast { bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); }
 /* ---- Training tab blend (16 Oct): the done box stays; numbers and the week ring back to navy (green once done), Up next as a navy-tinted chip. */
 .tr-row-tile, .tr-row-tile.live, .tr-row-tile.next { color: #1E3A5F; }
 .tr-row-pill.next { background: rgba(30, 58, 95, 0.1); box-shadow: none; color: #1E3A5F; }

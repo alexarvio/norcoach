@@ -1378,10 +1378,10 @@ export async function logMetricPeriodAction(formData: FormData) {
 export async function syncHealthAction(input: HealthSyncInput): Promise<HealthSyncResult> {
   const { clientId } = await requireClient();
   const r = await syncHealthForClient(clientId, input && typeof input === "object" ? input : {});
-  if (r.saved || r.workoutsChanged) {
-    revalidatePath("/admin");
-    revalidatePath("/client");
-  }
+  // No revalidatePath (23 Nov, Alex: the app lagged on coming back mid-workout): any revalidatePath in an action makes its
+  // answer a whole new render of the screen that called it, sent to the phone. Each caller reads the page again itself
+  // when something was saved and nothing is in the way (HealthAutoSync, the Settings switch, the check-in's Connect), and
+  // the coach's screens read the store fresh on their next request.
   return { tracked: r.tracked, saved: r.saved, workouts: r.workouts, calories: r.calories ?? 0 };
 }
 

@@ -69,6 +69,13 @@ export function useRestTimer() {
   return { running: !!saved && !done, done: done && !stale, remainingMs, duration: saved?.duration ?? null, begin, stop };
 }
 
+/** The dock's rest timer with its own clock (23 Nov, Alex: the app lagged mid-workout): held at the workout's root, its
+ *  quarter-second count drew every exercise again four times a second while resting. */
+export function RestTimerDock() {
+  const timer = useRestTimer();
+  return <RestTimerPill timer={timer} />;
+}
+
 export default function RestTimerPill({ timer }: { timer: ReturnType<typeof useRestTimer> }) {
   const [open, setOpen] = useState(false);
   // One buzz as it reaches zero.

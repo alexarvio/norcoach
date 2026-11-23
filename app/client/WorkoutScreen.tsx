@@ -10,7 +10,7 @@ import type { GymOption } from "./GymPickerDialog";
 import ExercisePage, { type ExerciseRequest } from "./ExercisePage";
 import GymPickerDialog, { BadgeFace } from "./GymPickerDialog";
 import { gymColor } from "../lib/gymColors";
-import RestTimerPill, { useRestTimer } from "./RestTimer";
+import { RestTimerDock } from "./RestTimer";
 import SwipeToEnd from "./SwipeToEnd";
 import FreeAddPage from "./FreeAddPage";
 import ExerciseMarks from "./ExerciseMarks";
@@ -20,15 +20,13 @@ import RingEdge from "../components/RingEdge";
 import type { LibraryPick, WeightUnit } from "./workoutShared";
 import {
   CardioCard,
-  clock,
-  elapsedMs,
+  ElapsedClock,
   isDone,
   loggedCount,
 
 
   shownName,
   tidyDecimal,
-  useTicker,
 
 
   type SessionDay,
@@ -182,11 +180,8 @@ export default function WorkoutScreen({
   const ended = day.endedAt != null;
   // The wrap up's answers and note lock once it is ended, unless editing.
   const locked = ended && !editing;
-  const now = useTicker(!ended);
-  const ms = elapsedMs(day.startedAt, day.endedAt, now);
 
   // Dock: the rest timer, restarted on a ticked set when the client wants that.
-  const rest = useRestTimer();
   const current = pages[Math.min(page, pages.length - 1)];
 
   // The line shown as an exercise completes, gone again after a moment.
@@ -376,7 +371,7 @@ export default function WorkoutScreen({
             onClick={(e) => day.gyms.length > 0 && (gymId == null ? setGymOpen(true) : toggleGymDrop(e))}
             aria-expanded={gymDrop ? true : undefined}
             disabled={day.gyms.length === 0}
-            aria-label={`${gymName ?? (editing ? `Editing ${day.title}` : day.title)},${clock(ms)} elapsed${day.gyms.length > 0 ? ". Switch gym" : ""}`}
+            aria-label={`${gymName ?? (editing ? `Editing ${day.title}` : day.title)}${day.gyms.length > 0 ? ". Switch gym" : ""}`}
           >
             {gym && (
               <span className="wo-pill-face" style={{ background: gymColor(gym.color).hex }} aria-hidden="true">
@@ -391,7 +386,7 @@ export default function WorkoutScreen({
             )}
             <span className="wo-pill-clock">
               <i className="wo-pill-dot" aria-hidden="true" />
-              {clock(ms)}
+              <ElapsedClock startedAt={day.startedAt} endedAt={day.endedAt} />
             </span>
           </button>
           {/* On an exercise the chat and ⋯ sit by its name (ExercisePage's
@@ -662,7 +657,7 @@ export default function WorkoutScreen({
           On the wrap up (19 Oct, Alex) there is nothing to rest for: the swipe to end takes its place, or Save when editing. */}
       <div className={`wo-dock${current.kind === "wrap" ? " end" : ""}`}>
         {current.kind !== "wrap" ? (
-          <RestTimerPill timer={rest} />
+          <RestTimerDock />
         ) : editing ? (
           <button type="button" className="wo-save-edit" onClick={saveEdit} disabled={ending}>
             {ending ? "Saving…" : "Save changes"}
