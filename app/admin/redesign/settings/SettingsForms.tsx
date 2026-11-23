@@ -13,7 +13,7 @@ import { ArrowRightIcon } from "../../../components/icons";
 import { businessCountries, businessNumbers, CURRENCIES, countryCodeFromName, countryOf, currencyName, hasBankDetails, invoicingFor, REGIONS, taxFact, type BusinessNumber } from "../../../lib/countries";
 import { setInvoiceAutoAction } from "../../../lib/invoiceAutoActions";
 import { dialOfCountry } from "../../../lib/phone";
-import { Capsule, Card, Cells, Fields, InlineLine, Line, OpenRow, Part, Pill, Row, State, Switch, Two, Word } from "./Rows";
+import { Capsule, Card, Fields, InlineLine, Line, OpenRow, Part, Pill, Row, State, Switch, Two, Word } from "./Rows";
 import Picker from "../Picker";
 import { Sep, SepJoin } from "../Sep";
 import { useSaveSlot, useUnsaved } from "./SaveHost";
@@ -1072,8 +1072,9 @@ export function InvoicingSettings({
 }
 
 // ---- Privacy (Data & privacy's second part, 23 Nov, Alex: docs/boards/settings-harmony-mockup.html): the documents
-// clients see beside what happens to their data, then who is behind the app, its two facts across one card.
-export function PrivacySettings({ company, country, contactEmail, updated }: { company: string; country: string; contactEmail: string; updated: string }) {
+// alone. What happens to the clients' data and who is behind the app are the privacy policy's to say (23 Nov, Alex: "why
+// not just have the privacy policy and let them open it and figure it out? Why do we need to say that?").
+export function PrivacySettings({ updated }: { updated: string }) {
   // A document: the whole row opens it in a new tab (Open shows on hover); one still to come wears a grey Soon.
   const doc = (label: string, href: string | null, fact?: ReactNode) =>
     href ? (
@@ -1092,28 +1093,11 @@ export function PrivacySettings({ company, country, contactEmail, updated }: { c
       </Row>
     );
   return (
-    <>
-      <Two top>
-        <Part label="Documents">
-          {doc("Privacy policy", "/privacy", `Updated ${updated}`)}
-          {doc("Support page", "/support")}
-          {doc("Terms of service", null)}
-          {doc("Data processing agreement", null)}
-        </Part>
-        <Part label={<>Your clients&rsquo; data</>}>
-          <Row name="Clients delete their own account" fact="Their data goes straight away" />
-          <Row name="Invoices stay" fact={<>Up to 7 years, the client&rsquo;s name alone</>} />
-          <Row name="Backups" fact={<SepJoin parts={["Nightly", "a deleted account gone within 30 days"]} />} />
-        </Part>
-      </Two>
-      <Part label="Who is behind the app">
-        <Cells>
-          <Row name={company} fact={`Registered in ${country}`} />
-          <Row name="Privacy contact" fact={contactEmail || undefined}>
-            {!contactEmail && <State>Missing</State>}
-          </Row>
-        </Cells>
-      </Part>
-    </>
+    <Part label="Documents">
+      {doc("Privacy policy", "/privacy", `Updated ${updated}`)}
+      {doc("Support page", "/support")}
+      {doc("Terms of service", null)}
+      {doc("Data processing agreement", null)}
+    </Part>
   );
 }

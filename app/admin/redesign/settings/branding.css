@@ -138,3 +138,5 @@
 /* A colour darkened so words on it read (23 Nov, Alex): the picked code, a faint arrow and the one it shows as, on the row's own line, never a line of its own under the picker. */
 .rbr.rbr .rbr-colourshift { white-space: nowrap; }
 .rbr.rbr .rbr-colourshift > i { margin: 0 5px; font-style: normal; color: #c9cfd8; }
+/* The ? beside Default | Your own, saying what a client sees (23 Nov, Alex). */
+.rbr-pics-tools { display: inline-flex; align-items: center; gap: 10px; }
