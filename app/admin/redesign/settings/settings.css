@@ -173,7 +173,7 @@ body:has(.rd.rst) .rd-picker-menu [data-slot="dropdown-menu-item"] small { font-
 .rd.rst .rst-custom { position: relative; display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px 0 8px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; cursor: pointer; }
 .rd.rst .rst-custom.open { box-shadow: inset 0 0 0 1px var(--brand, #141a24); } /* the brand (19 Nov, Alex: "the toggles, the pop-ups, everything should be in that color") */
 .rd.rst .rst-custom-dot { width: 22px; height: 22px; border-radius: 50%; background: conic-gradient(#e53935, #fdd835, #43a047, #00acc1, #1e88e5, #8e24aa, #e53935); }
-.rd.rst .rst-custom.on::after { content: ""; position: absolute; left: 4px; top: 50%; width: 30px; height: 30px; margin-top: -15px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--brand, #141a24); pointer-events: none; }
+/* No ring round the Custom pill's dot (23 Nov, Alex: "can you take that outer circle from the dot"): the pill's own edge says it is picked. */
 .rd.rst .rst-picker { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 320px; }
 .rd.rst .rst-picker-sv { position: relative; height: 160px; border-radius: 12px; background-image: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent); cursor: crosshair; touch-action: none; }
 .rd.rst .rst-picker-hue { position: relative; height: 14px; border-radius: 999px; background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); cursor: pointer; touch-action: none; }
