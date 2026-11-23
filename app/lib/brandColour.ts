@@ -116,6 +116,11 @@ export function brandVars(input: string | null | undefined): Record<string, stri
   const c = input ? brandColour(input) : null;
   if (!c) return {};
   const vars: Record<string, string> = { "--brand": c.hex };
+  // How strong the big faint logo behind the admin's page is, drawn in the colour itself (23 Nov, Alex: "match the color
+  // selected in branding a bit better, its too little intensity"): a light colour needs more of it than a dark one to show
+  // as much against the paper, so its strength rises as the colour lightens (ink and navy about 10%, a lime 30%).
+  const rgb = parse(c.hex);
+  if (rgb) vars["--brand-mark-o"] = String(Math.round(Math.min(0.3, Math.max(0.1, 0.1 / Math.max(0.05, 0.93 - luminance(rgb)))) * 1000) / 1000);
   if (c.ink === "#141a24") {
     vars["--brand-ink"] = "#141a24";
     vars["--brand-pill"] = "#141a24";
