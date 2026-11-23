@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { syncHealthAction } from "../lib/actions";
+import { healthWasOnAction, setHealthOnAction } from "./healthActions";
 import type { HealthSyncInput, HealthSyncResult, HealthWorkoutIn } from "../lib/healthSync";
 import { callNative, nativeApp as cap, nativePlatform as platformOf } from "../lib/native";
 import SettingsFold from "./SettingsFold";
@@ -25,7 +26,11 @@ const readOn = () => {
     return false;
   }
 };
-const writeOn = (on: boolean) => {
+const storeKind = (): "apple" | "google" => (platformOf() === "android" ? "google" : "apple");
+const writeOn = (on: boolean, tellServer = true) => {
+  // Kept on the server too (23 Nov, Alex: "my apple health got disconnected from the app"): iOS may wipe this web
+  // storage, the phone's own permission staying, so the app turns it back on from there (HealthAutoSync).
+  if (tellServer) void setHealthOnAction(storeKind(), on).catch(() => {});
   try {
     if (on) window.localStorage.setItem(KEY, "on");
     else window.localStorage.removeItem(KEY);
@@ -275,9 +280,26 @@ export function HealthAutoSync() {
         })
         .catch(() => {});
     };
-    run();
+    // On this phone and the mark gone: on again when the server says it was on (the web storage wiped, the phone's
+    // permission kept), else as it was. Once a session; a phone that had it on before the server kept it notes it.
+    let gone = false;
+    (async () => {
+      if (readOn()) {
+        void setHealthOnAction(storeKind(), true).catch(() => {});
+      } else {
+        try {
+          if (await healthWasOnAction(storeKind())) writeOn(true, false);
+        } catch {
+          /* offline: as it was */
+        }
+      }
+      if (!gone) run();
+    })();
     document.addEventListener("visibilitychange", run);
-    return () => document.removeEventListener("visibilitychange", run);
+    return () => {
+      gone = true;
+      document.removeEventListener("visibilitychange", run);
+    };
   }, [router]);
   return null;
 }
