@@ -84,10 +84,51 @@ export function NotificationsSettings({ initial, timezone }: { initial: CoachNot
   );
 }
 
+/** The time zones offered (23 Nov, Alex: "reduce the amount of options… just have a couple examples with the initials of
+ *  the timezone and the + or -"): one a zone coaches are in, by its initials, standard and summer, and its offset now. */
+const ZONES: { value: string; std: string; dst?: string }[] = [
+  { value: "Pacific/Honolulu", std: "HST" },
+  { value: "America/Anchorage", std: "AKST", dst: "AKDT" },
+  { value: "America/Los_Angeles", std: "PST", dst: "PDT" },
+  { value: "America/Denver", std: "MST", dst: "MDT" },
+  { value: "America/Chicago", std: "CST", dst: "CDT" },
+  { value: "America/New_York", std: "EST", dst: "EDT" },
+  { value: "America/Sao_Paulo", std: "BRT" },
+  { value: "Europe/London", std: "GMT", dst: "BST" },
+  { value: "Europe/Amsterdam", std: "CET", dst: "CEST" },
+  { value: "Europe/Athens", std: "EET", dst: "EEST" },
+  { value: "Asia/Dubai", std: "GST" },
+  { value: "Asia/Kolkata", std: "IST" },
+  { value: "Asia/Bangkok", std: "ICT" },
+  { value: "Asia/Singapore", std: "SGT" },
+  { value: "Asia/Tokyo", std: "JST" },
+  { value: "Australia/Sydney", std: "AEST", dst: "AEDT" },
+  { value: "Pacific/Auckland", std: "NZST", dst: "NZDT" },
+];
+
+/** Minutes ahead of GMT for a zone at a moment; null when the browser can't say. */
+function minutesAhead(zone: string, at: Date): number | null {
+  const o = offsetOf(zone, at);
+  const m = /^GMT(?:([+-])(\d{1,2})(?::(\d{2}))?)?$/.exec(o);
+  if (!m) return null;
+  return m[1] ? (m[1] === "-" ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3] ?? 0)) : 0;
+}
+
+/** A zone's initials now: its summer ones while its clocks are ahead of January's and July's lesser offset. */
+function initialsOf(z: { value: string; std: string; dst?: string }): string {
+  if (!z.dst) return z.std;
+  const year = new Date().getFullYear();
+  const now = minutesAhead(z.value, new Date());
+  const jan = minutesAhead(z.value, new Date(year, 0, 1));
+  const jul = minutesAhead(z.value, new Date(year, 6, 1));
+  if (now == null || jan == null || jul == null) return z.std;
+  return now > Math.min(jan, jul) ? z.dst : z.std;
+}
+
 /** "GMT+1" for a zone now; "" when the browser can't say. */
-function offsetOf(zone: string): string {
+function offsetOf(zone: string, at: Date = new Date()): string {
   try {
-    return new Intl.DateTimeFormat("en-GB", { timeZone: zone, timeZoneName: "shortOffset" }).formatToParts(new Date()).find((p) => p.type === "timeZoneName")?.value ?? "";
+    return new Intl.DateTimeFormat("en-GB", { timeZone: zone, timeZoneName: "shortOffset" }).formatToParts(at).find((p) => p.type === "timeZoneName")?.value ?? "";
   } catch {
     return "";
   }
@@ -97,16 +138,15 @@ function offsetOf(zone: string): string {
 export function PreferencesSettings({ units, timezone }: { units: "kg" | "lbs"; timezone: string }) {
   const d = useDraft({ units, timezone }, (v) => saveCoachPreferencesAction(v));
   useSaveSlot("preferences", { dirty: d.dirty, count: d.count, save: d.commit, cancel: d.discard });
-  // Every time zone the browser knows, its city as the label (Europe/Amsterdam → Amsterdam, Europe).
+  // A short list, west to east: the initials, and the offset grey on the right. The coach's own zone, when it is none of
+  // them (set from the computer at sign-up), first, by its city.
   const zones = useMemo(() => {
-    const all = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.("timeZone") ?? [timezone];
-    const list = all.includes(timezone) ? all : [timezone, ...all];
-    return list.map((z) => {
-      const [region, ...rest] = z.split("/");
-      return { value: z, label: rest.length ? `${rest.join(" / ").replace(/_/g, " ")}` : z, hint: rest.length ? region : undefined };
-    });
+    const list = ZONES.map((z) => ({ value: z.value, label: initialsOf(z), hint: offsetOf(z.value) || undefined }));
+    if (ZONES.some((z) => z.value === timezone)) return list;
+    const city = timezone.split("/").pop()?.replace(/_/g, " ") ?? timezone;
+    return [{ value: timezone, label: city, hint: offsetOf(timezone) || undefined }, ...list];
   }, [timezone]);
-  const region = d.v.timezone.includes("/") ? d.v.timezone.split("/")[0] : null;
+  const city = d.v.timezone.split("/").pop()?.replace(/_/g, " ") ?? d.v.timezone;
   return (
     <Two top>
       <Part label="Weights">
@@ -123,8 +163,8 @@ export function PreferencesSettings({ units, timezone }: { units: "kg" | "lbs"; 
         </Row>
       </Part>
       <Part label="Time zone">
-        <Row name="Your time zone" fact={<SepJoin parts={[region, offsetOf(d.v.timezone)]} />}>
-          <Picker value={d.v.timezone} onChange={(v) => d.set("timezone", v)} label="Time zone" className="rsr-pick" options={zones} />
+        <Row name="Your time zone" fact={<SepJoin parts={[city, offsetOf(d.v.timezone)]} />}>
+          <Picker value={d.v.timezone} onChange={(v) => d.set("timezone", v)} label="Time zone" className="rsr-pick" options={zones} align="end" />
         </Row>
       </Part>
     </Two>
