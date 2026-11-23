@@ -109,6 +109,12 @@ export type RedesignShellProps = {
 export default function RedesignShell({ clientId, clientName, firstName, units, clientPhoto, initialTab, visitRoute, home, training, nutrition, measurements, pictures, meetings, plan, messages, invoices, dots }: RedesignShellProps) {
   const pageTab = (t: RedesignTab): PageTab => (t === "messages" ? "home" : t);
   const [tab, setTab] = useState<PageTab>(pageTab(initialTab));
+  // The tabs drawn so far for this client (23 Nov, Alex: "0.5 to 1 second while changing screens… from client to
+  // client"; live, the browser drew all eight tabs on every switch, seven of them hidden): a tab is drawn the first time
+  // it shows and kept from then on, so what was typed on it survives a switch as before; another client starts afresh.
+  const [drawn, setDrawn] = useState<{ id: number; tabs: PageTab[] }>(() => ({ id: clientId, tabs: [pageTab(initialTab)] }));
+  if (drawn.id === clientId && !drawn.tabs.includes(tab)) setDrawn({ id: clientId, tabs: [...drawn.tabs, tab] });
+  const isDrawn = (t: PageTab) => drawn.id === clientId && drawn.tabs.includes(t);
   // The client this page shows, for the rail to mark (a client picked by default has no ?client= to read; RailFrame).
   useReportHere(clientId);
   // The visit (22 Nov): where the coach is (the presence board) and the look Home's Since counts from, written once the
@@ -295,6 +301,7 @@ export default function RedesignShell({ clientId, clientName, firstName, units, 
   if (seenClient !== clientId) {
     setSeenClient(clientId);
     setTab(pageTab(initialTab));
+    setDrawn({ id: clientId, tabs: [pageTab(initialTab)] });
     setChat({ mounted: false, open: false, about: null, opened: 0, focus: null });
     setView("own");
     setOther(null);
@@ -393,10 +400,16 @@ export default function RedesignShell({ clientId, clientName, firstName, units, 
         </nav>
         <PopupWhoProvider id={clientId} name={clientName} photo={clientPhoto}>
         <PopupTabZone tab="home" hidden={tab !== "home"}>
+          {isDrawn("home") && (
+            <>
           {/* Keyed per client: Home's own state (What counts, rows marked read, the filter) is one client's. */}
           <HomeTab key={clientId} clientId={clientId} firstName={firstName} home={home} onOpenTab={openTab} dueUnlock={dots.unlock} />
+            </>
+          )}
         </PopupTabZone>
         <PopupTabZone tab="training" hidden={tab !== "training"}>
+          {isDrawn("training") && (
+            <>
           {training.draft ? (
             <TrainingTab key={training.draft.id} clientId={clientId} firstName={firstName} lbsFirst={units === "lbs"} program={training.draft} library={training.library} cardioMoves={training.cardioMoves} coachVideos={training.videos} dots={dots} />
           ) : hasPhase("training") ? (
@@ -404,24 +417,50 @@ export default function RedesignShell({ clientId, clientName, firstName, units, 
           ) : (
             <NoPhase clientId={clientId} firstName={firstName} track="training" plan={plan} />
           )}
+            </>
+          )}
         </PopupTabZone>
         <PopupTabZone tab="nutrition" hidden={tab !== "nutrition"}>
+          {isDrawn("nutrition") && (
+            <>
           {nutritionBlank ? <NoPhase clientId={clientId} firstName={firstName} track="nutrition" plan={plan} /> : <NutritionTab key={`${clientId}:${nutrition.id}`} clientId={clientId} firstName={firstName} plan={nutrition} dueFood={dots.food} />}
+            </>
+          )}
         </PopupTabZone>
         <PopupTabZone tab="measurements" hidden={tab !== "measurements"}>
+          {isDrawn("measurements") && (
+            <>
           {measurementsBlank ? <NoPhase clientId={clientId} firstName={firstName} track="lifestyle" plan={plan} /> : <MeasurementsTab key={`${clientId}:${measurements.id}`} clientId={clientId} firstName={firstName} plan={measurements} />}
+            </>
+          )}
         </PopupTabZone>
         <PopupTabZone tab="pictures" hidden={tab !== "pictures"}>
+          {isDrawn("pictures") && (
+            <>
           <PicturesTab clientId={clientId} firstName={firstName} plan={pictures} />
+            </>
+          )}
         </PopupTabZone>
         <PopupTabZone tab="meetings" hidden={tab !== "meetings"}>
+          {isDrawn("meetings") && (
+            <>
           <MeetingsTab clientId={clientId} firstName={firstName} plan={meetings} />
+            </>
+          )}
         </PopupTabZone>
         <PopupTabZone tab="plan" hidden={tab !== "plan"}>
+          {isDrawn("plan") && (
+            <>
           <PlanTab clientId={clientId} firstName={firstName} plan={plan} />
+            </>
+          )}
         </PopupTabZone>
         <PopupTabZone tab="invoices" hidden={tab !== "invoices"}>
+          {isDrawn("invoices") && (
+            <>
           <InvoicesTab clientId={clientId} firstName={firstName} clientName={clientName} plan={invoices} />
+            </>
+          )}
         </PopupTabZone>
         </PopupWhoProvider>
       </div>
