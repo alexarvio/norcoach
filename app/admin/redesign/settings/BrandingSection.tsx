@@ -255,14 +255,21 @@ function CardPictures({ cards, cardsDefault, stock }: { cards: TrackPictures; ca
           <Sep />
           <span>{def ? "Default pictures" : "Your own"}</span>
         </span>
-        <div className="rd-btn-group" role="group" aria-label="Card pictures">
-          <button type="button" className={def ? "on" : undefined} aria-pressed={def} onClick={() => choose(true)}>
-            Default
-          </button>
-          <button type="button" className={def ? undefined : "on"} aria-pressed={!def} onClick={() => choose(false)}>
-            Your own
-          </button>
-        </div>
+        {/* What a client sees (23 Nov, Alex: "the moment the client sets their own in their app, it overrides anything"). */}
+        <span className="rbr-pics-tools">
+          <HelpTip title="Card pictures">
+            <p>Your pictures show on every client’s cards, in place of the default ones.</p>
+            <p>A client can add their own in their app. Once they add even one picture to a card, they see only their own there, never yours or the default ones.</p>
+          </HelpTip>
+          <div className="rd-btn-group" role="group" aria-label="Card pictures">
+            <button type="button" className={def ? "on" : undefined} aria-pressed={def} onClick={() => choose(true)}>
+              Default
+            </button>
+            <button type="button" className={def ? undefined : "on"} aria-pressed={!def} onClick={() => choose(false)}>
+              Your own
+            </button>
+          </div>
+        </span>
       </div>
       {error && <small className="rbr-err">{error}</small>}
       {/* Both lists are drawn from the start, the other one hidden, so their tiles are in before a switch (22 Nov, Alex:

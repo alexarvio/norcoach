@@ -238,7 +238,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <div id="rst-part-data" className="rst-stack">
             <DataSettings clients={clientCount} />
           </div>
-          <PrivacySettings company={LEGAL.company} country={LEGAL.country} contactEmail={LEGAL.contactEmail} updated={legalDate(LEGAL.updated)} />
+          <PrivacySettings updated={legalDate(LEGAL.updated)} />
         </>
       ),
     },
