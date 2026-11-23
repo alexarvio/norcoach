@@ -80,7 +80,7 @@ export function Part({ label, fact, action, id, bare = false, className, cardCla
  *  shown on hover. `faded`: the name and fact at half strength (an archived plan, a deleted gym). */
 export function Row({ name, fact, hover = false, faded = false, className, id, children }: { name: ReactNode; fact?: ReactNode; hover?: boolean; faded?: boolean; className?: string; id?: string; children?: ReactNode }) {
   return (
-    <div className={`rsr-row${hover ? " hl" : ""}${faded ? " faded" : ""}${className ? ` ${className}` : ""}`} id={id}>
+    <div className={`rsr-row${hover ? " rsr-hov" : ""}${faded ? " faded" : ""}${className ? ` ${className}` : ""}`} id={id}>
       <div className="rsr-rm">
         <b>{name}</b>
         {fact != null && fact !== false && fact !== "" && <span>{fact}</span>}
