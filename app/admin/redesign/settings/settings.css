@@ -269,12 +269,12 @@ body:has(.rd.rst) .rd-picker-menu [data-slot="dropdown-menu-item"] small { font-
 
 /* A row: the name and its fact on the left, its value or control on the right. */
 .rd.rst .rsr-row { display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 9px 16px 9px 20px; box-sizing: border-box; color: inherit; text-decoration: none; }
-.rd.rst .rsr-row.hl { transition: background-color 0.15s; }
-.rd.rst .rsr-row.hl:hover { background-color: #fafbfd; }
-.rd.rst .rsr-row.hl:hover .rst-act, .rd.rst .rsr-row.hl:hover .rst-danger { background: #F5F6F8; }
+.rd.rst .rsr-row.rsr-hov { transition: background-color 0.15s; }
+.rd.rst .rsr-row.rsr-hov:hover { background-color: #fafbfd; }
+.rd.rst .rsr-row.rsr-hov:hover .rst-act, .rd.rst .rsr-row.rsr-hov:hover .rst-danger { background: #F5F6F8; }
 /* A row that is a link (Privacy policy, Support page) keeps the card's white: a shared link style elsewhere filled it dark (23 Nov). */
 .rd.rst a.rsr-row.rsr-row { background-color: transparent; color: inherit; text-decoration: none; }
-.rd.rst a.rsr-row.rsr-row.hl:hover { background-color: #fafbfd; }
+.rd.rst a.rsr-row.rsr-row.rsr-hov:hover { background-color: #fafbfd; }
 .rd.rst .rsr-row:hover .rst-hover, .rd.rst .rsr-row:focus-within .rst-hover { opacity: 1; }
 .rd.rst .rsr-rm { flex: 1; min-width: 0; }
 .rd.rst .rsr-rm > b { display: block; overflow: hidden; font-size: 15px; font-weight: 600; line-height: 20px; color: #141a24; text-overflow: ellipsis; white-space: nowrap; }
@@ -357,4 +357,4 @@ body:has(.rd.rst) .rd-picker-menu [data-slot="dropdown-menu-item"] small { font-
 .rd.rst .rsr-lined:focus-within { border-bottom-color: #141a24; }
 .rd.rst .rsr-lined .dlh-line { flex: 1; min-width: 0; height: 29px; border-bottom: 0; }
 .rd.rst .rsr-pre { flex: none; padding-right: 8px; border-right: 1px solid #E1E5EB; font-size: 15px; font-style: normal; font-weight: 500; line-height: 18px; color: #8b93a1; }
-@media (prefers-reduced-motion: reduce) { .rd.rst .rsr-row.hl, .rd.rst .rd-picker.rsr-pick, .rd.rst .rsr-iline, .rd.rst .rsr-tbox, .rd.rst .rsr-pill, .rd.rst .rd-picker.rsr-sel, .rd.rst .rsr-lined { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .rd.rst .rsr-row.rsr-hov, .rd.rst .rd-picker.rsr-pick, .rd.rst .rsr-iline, .rd.rst .rsr-tbox, .rd.rst .rsr-pill, .rd.rst .rd-picker.rsr-sel, .rd.rst .rsr-lined { transition: none; } }

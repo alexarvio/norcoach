@@ -1077,7 +1077,7 @@ export function PrivacySettings({ company, country, contactEmail, updated }: { c
   // A document: the whole row opens it in a new tab (Open shows on hover); one still to come wears a grey Soon.
   const doc = (label: string, href: string | null, fact?: ReactNode) =>
     href ? (
-      <Link href={href} target="_blank" className="rsr-row hl rst-row opens">
+      <Link href={href} target="_blank" className="rsr-row rsr-hov rst-row opens">
         <span className="rsr-rm">
           <b>{label}</b>
           {fact && <span>{fact}</span>}
