@@ -5,6 +5,7 @@ import { removeClient } from "./queries";
 import { deleteTrashOf, deleteUploadFolder } from "./storage";
 import { deleteClerkUser } from "./clerk";
 import { clientStartDay } from "./businessBoardData";
+import { dropHealthOn } from "./healthOn";
 
 // Erasing a client: everything of theirs, wherever it lives. Their rows in the
 // store (removeClient), their files on the disk, in the uploads bucket and in
@@ -39,6 +40,8 @@ export async function eraseClient(clientId: number, opts: { selfDeleted: boolean
     { id: allocId("client_departures"), coach_id: client.coach_id ?? null, client_id: clientId, name: client.name, start: clientStartDay(clientId), at, by: opts.selfDeleted ? "client" : "coach" },
   ];
   persist();
+  // Their phone's health switch (lib/healthOn.ts, 23 Nov) goes with them.
+  dropHealthOn(clientId);
   // The rows first: from here the client is gone from the app, whatever
   // happens to the file clean-up below.
   // Invoices are business records the coach must keep (7 years in the
