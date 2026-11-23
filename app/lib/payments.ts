@@ -36,8 +36,17 @@ export function canPayOnline(coachId: number | null): boolean {
   return coachId != null && paymentsState(coachId).status === "active";
 }
 
+/** This checkout has already marked this invoice Paid once. */
+export function checkoutUsed(invoiceId: number, sessionId: string): boolean {
+  return getData().invoices.find((i) => i.id === invoiceId)?.stripe_session_id === sessionId;
+}
+
 /** Stripe told us (webhook) that a checkout for an invoice went through. */
 export function invoicePaidByStripe(invoiceId: number, sessionId: string, account: string | undefined) {
+  // A checkout pays an invoice once (23 Nov, review): one that already marked it Paid, the invoice since set back by
+  // the coach (a refund, paid by bank after all), never marks it again, from a webhook retried, the email's old Pay
+  // or the way back from Stripe opened again.
+  if (checkoutUsed(invoiceId, sessionId)) return;
   const inv = markInvoicePaidOnline(invoiceId, sessionId, account);
   if (!inv) return;
   const name = inv.number ?? "your invoice";

@@ -6,6 +6,8 @@ import { deleteTrashOf, deleteUploadFolder } from "./storage";
 import { deleteClerkUser } from "./clerk";
 import { clientStartDay } from "./businessBoardData";
 import { dropHealthOn } from "./healthOn";
+import { dropInvoiceEmails, forgetInvoiceRecipients } from "./invoiceEmails";
+import { dropInvoiceCheckout } from "./invoiceCheckouts";
 
 // Erasing a client: everything of theirs, wherever it lives. Their rows in the
 // store (removeClient), their files on the disk, in the uploads bucket and in
@@ -46,7 +48,15 @@ export async function eraseClient(clientId: number, opts: { selfDeleted: boolean
   // happens to the file clean-up below.
   // Invoices are business records the coach must keep (7 years in the
   // Netherlands): a self-delete keeps them, and so does the redesign's delete.
+  const invoiceIds = data.invoices.filter((i) => i.client_id === clientId).map((i) => i.id);
   await removeClient(clientId, { keepInvoices: opts.selfDeleted || !!opts.keepInvoices });
+  // Their invoices' email and card-checkout rows (lib/invoiceEmails.ts, lib/invoiceCheckouts.ts, 23 Nov): gone with the
+  // invoices; with invoices kept, the address an email went to goes and the row stays, so it is never emailed again.
+  const left = new Set(getData().invoices.map((i) => i.id));
+  const goneInvoices = invoiceIds.filter((id) => !left.has(id));
+  dropInvoiceEmails(goneInvoices);
+  for (const id of goneInvoices) dropInvoiceCheckout(id);
+  forgetInvoiceRecipients(invoiceIds.filter((id) => left.has(id)));
   for (const id of clerkIds) await deleteClerkUser(id);
 
   const failures: unknown[] = [];

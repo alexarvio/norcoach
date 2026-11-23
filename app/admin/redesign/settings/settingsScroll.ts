@@ -2,10 +2,12 @@
 
 import { useSyncExternalStore } from "react";
 
-// Settings is one page of folding sections, one open at a time (23 Oct, Alex). The page (SettingsBoard) says which
-// section is open (sayOpen) and takes the rail's clicks while it is there (onGoToSetting); the rail marks the open
-// section (useOpenSetting) and hands a click on a row to the page (goToSetting), which opens that section and brings
-// it into view. On any other page the rail's rows are plain links to /admin/redesign/settings#<key>.
+// Settings is one page, one section showing at a time (23 Oct, Alex; the list on the left since 27 Oct). The page
+// (SettingsBoard) says which section is showing (sayOpen) and takes clicks to a section while it is there
+// (onGoToSetting); a link on the page hands its key over (goToSetting), which shows that section and brings it into
+// view. Any address key goes: a section's, or an old one merged into another (#billing, #notifications, #data), which
+// shows the section holding it at that part (settingsNav's resolveSetting). On any other page such a link is a plain
+// /admin/redesign/settings#<key>.
 
 const GO = "rst:go";
 const OPEN = "rst:open";

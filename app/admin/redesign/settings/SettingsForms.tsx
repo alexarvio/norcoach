@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, useTransition, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -10,7 +10,10 @@ import type { PaymentsState } from "../../../lib/payments";
 import { changeOwnEmailAction, changeOwnPasswordAction, logoutAction } from "../../../lib/auth-actions";
 import type { CoachBusiness, CoachInvoicing } from "../../../lib/db";
 import { ArrowRightIcon } from "../../../components/icons";
-import { COUNTRIES, CURRENCIES, countryCodeFromName, countryOf, currencyName, invoicingFor } from "../../../lib/countries";
+import { businessCountries, businessNumbers, CURRENCIES, countryCodeFromName, countryOf, currencyName, hasBankDetails, invoicingFor, REGIONS, taxFact, type BusinessNumber } from "../../../lib/countries";
+import { setInvoiceAutoAction } from "../../../lib/invoiceAutoActions";
+import { dialOfCountry } from "../../../lib/phone";
+import { Capsule, Card, Cells, Fields, InlineLine, Line, OpenRow, Part, Pill, Row, State, Switch, Two, Word } from "./Rows";
 import Picker from "../Picker";
 import { Sep, SepJoin } from "../Sep";
 import { useSaveSlot, useUnsaved } from "./SaveHost";
@@ -21,10 +24,11 @@ import type { AccountSecurity } from "../../../lib/accountSecurity";
 import ClerkAccount from "./ClerkAccount";
 import HelpTip from "../HelpTip";
 
-// Settings' sections on the admin rules (22 Oct; docs/DESIGN-RULES-ADMIN.md), each a folding section of the one
-// Settings page (23 Oct, Alex; SettingsBoard.tsx): its parts as small caps labels over one white hairline card each,
-// fields as small caps labels over clean lines (.dlh-label, .dlh-line), a choice of two as the capsule, lists as the
-// floating Picker. A form that saves on Save puts its changes on the page's one bar (useSaveSlot, SaveHost.tsx), and
+// Settings' sections on the admin rules (22 Oct; docs/DESIGN-RULES-ADMIN.md), each a section of the one Settings page
+// (SettingsBoard.tsx). Since 23 Nov (Alex: docs/boards/settings-harmony-mockup.html) Account, Business details,
+// Invoicing & payments and Privacy are drawn in the one row system (Rows.tsx): parts as small caps labels over one
+// white hairline card each, settings as rows, real forms as small caps labels over clean lines, every field empty until
+// typed with no sample in it. Field and Section are the older parts' (Logo, Banner, Brand colour and other files). A form that saves on Save puts its changes on the page's one bar (useSaveSlot, SaveHost.tsx), and
 // keeps them while its section is folded. Each form is keyed on what was saved (the page does it), so a save that
 // comes back unchanged never throws away what is being typed.
 
@@ -74,138 +78,106 @@ export function useDraft<T extends Record<string, unknown>>(initial: T, save: (v
   return { v, set, dirty, count, commit: async () => void (await save(v)), discard: () => setV(initial) };
 }
 
-// ---- Account & security
+// ---- Account (23 Nov, Alex: docs/boards/settings-harmony-mockup.html; Account & security and Billing, one section):
+// how the coach signs in, as rows (Rows.tsx). The email and the password each a row with its word, opening its fields
+// under itself; with Clerk, the linked logins beside them and the devices under (ClerkAccount.tsx). What the coach pays
+// Norcoach comes after, from the page (BillingSettings).
 export function AccountSettings({ email, passwordless = false, security = null, passwordsHint = null }: { email: string; /** Sign-in through Clerk (26 Oct): no password here, and the email can be changed. */ passwordless?: boolean; /** The linked logins and devices, from Clerk (27 Oct). */ security?: AccountSecurity | null; /** Whether Clerk takes passwords, read with the page (lib/clerkPasswords.ts). */ passwordsHint?: boolean | null }) {
   if (passwordless) return <ClerkAccount email={email} security={security} passwordsHint={passwordsHint} />;
   return <AccountPassword email={email} />;
 }
 
-/** The account's email with the sign-in through Clerk: where clients' replies to invites go, changed in place. Signing
- *  in is Clerk's (Google, or a code to the email), so no password. */
-export function AccountEmail({ email, bare = false }: { email: string; /** Inside a card of the caller's (27 Oct: Account & security's Sign-in card). */ bare?: boolean }) {
-  const [value, setValue] = useState(email);
-  const [busy, start] = useTransition();
+/** Presses the Save of the opened row a form sits in (Enter in its fields), as a click on it would. */
+export function pressSave(from: HTMLElement) {
+  from.closest(".rsr-unfold")?.querySelector<HTMLButtonElement>(".rsr-pill.go:not(:disabled)")?.click();
+}
+
+/** The account's email with the sign-in through Clerk: where clients' replies to invites go. A row, `Change` opening a
+ *  New email line under it; saved at once (not on the page's bar). Signing in is Clerk's (Google, a password, or a code
+ *  to the email). */
+export function AccountEmail({ email }: { email: string }) {
+  const router = useRouter();
+  const [shown, setShown] = useState(email);
+  const [value, setValue] = useState("");
   const [error, setError] = useState("");
-  const changed = value.trim().toLowerCase() !== email;
-  const save = () =>
-    start(async () => {
-      const r = await changeOwnEmailAction(value);
-      if (!r.ok) return setError(r.error ?? "Couldn't change it.");
-      setError("");
-      toast.success("Email changed");
-    });
-  // The email line alone, for the caller's card.
-  if (bare)
-    return (
-      <div className="rst-grid">
-        <Field label="Email" wide>
-          <input className="dlh-line" type="email" value={value} onChange={(e) => setValue(e.target.value)} autoComplete="email" />
-        </Field>
-        {changed && (
-          <div className="rst-foot wide">
-            <span className="rst-err">{error}</span>
-            <button type="button" className="dlh-go" onClick={save} disabled={busy}>
-              {busy ? "Saving…" : "Save"}
-            </button>
-          </div>
-        )}
-      </div>
-    );
+  const ready = !!value.trim() && value.trim().toLowerCase() !== shown.toLowerCase();
+  const clear = () => (setValue(""), setError(""));
+  const save = async () => {
+    const r = await changeOwnEmailAction(value).catch(() => ({ ok: false, error: "Not saved. Try again." }));
+    if (!r.ok) {
+      setError(r.error ?? "Couldn't change it.");
+      return false;
+    }
+    setShown(value.trim().toLowerCase());
+    clear();
+    toast.success("Email changed");
+    router.refresh();
+  };
   return (
-    <>
-      <Section title="Sign-in">
-      <div className="rls-card rst-card">
-        <div className="rst-grid">
-          <Field label="Email" wide>
-            <input className="dlh-line" type="email" value={value} onChange={(e) => setValue(e.target.value)} autoComplete="email" />
-          </Field>
-          {changed && (
-            <div className="rst-foot wide">
-              <span className="rst-err">{error}</span>
-              <button type="button" className="dlh-go" onClick={save} disabled={busy}>
-                {busy ? "Saving…" : "Save"}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-      </Section>
-      <Section
-        title="This device"
-        actions={
-          <button type="button" className="trn-pill rst-pill" onClick={() => logoutAction()}>
-            Sign out
-          </button>
-        }
-      />
-    </>
+    <OpenRow name="Email" fact={shown} word="Change" onSave={save} onCancel={clear} canSave={ready} error={error}>
+      <form onSubmit={(e) => (e.preventDefault(), ready && pressSave(e.currentTarget))}>
+        <Fields cols={1}>
+          <Line label="New email">
+            <input className="dlh-line" type="email" value={value} onChange={(e) => (setValue(e.target.value), setError(""))} autoComplete="email" />
+          </Line>
+        </Fields>
+      </form>
+    </OpenRow>
   );
 }
 
+/** With nothing read of the devices: this one alone, Sign out on its row. */
+export function ThisDevice() {
+  return (
+    <Part label="Devices">
+      <Row name="This device">
+        <Word onClick={() => logoutAction()}>Sign out</Word>
+      </Row>
+    </Part>
+  );
+}
+
+/** The old sign-in (an email and a password of ours): the email as it is, the password changed under its row. */
 function AccountPassword({ email }: { email: string }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [again, setAgain] = useState("");
-  const [busy, start] = useTransition();
   const [error, setError] = useState("");
   const problem = next && next.length < 8 ? "At least 8 characters." : again && next !== again ? "The two new passwords differ." : "";
   const ok = !!current && next.length >= 8 && next === again;
-  const change = () =>
-    start(async () => {
-      const r = await changeOwnPasswordAction(current, next);
-      if (!r.ok) {
-        setError(r.error ?? "Couldn't change it.");
-        return;
-      }
-      setError("");
-      setCurrent("");
-      setNext("");
-      setAgain("");
-      toast.success("Password changed");
-    });
+  const clear = () => (setCurrent(""), setNext(""), setAgain(""), setError(""));
+  const change = async () => {
+    const r = await changeOwnPasswordAction(current, next).catch(() => ({ ok: false, error: "Not saved. Try again." }));
+    if (!r.ok) {
+      setError(r.error ?? "Couldn't change it.");
+      return false;
+    }
+    clear();
+    toast.success("Password changed");
+  };
   return (
     <>
-      <Section title="Sign-in">
-        <div className="rls-card rst-card">
-          <div className="rst-grid">
-            <div className="rst-field wide">
-              <span className="dlh-label">Email</span>
-              <span className="rst-static">{email}</span>
-            </div>
-          </div>
-        </div>
-      </Section>
-
-      <Section title="Password">
-        <div className="rls-card rst-card">
-          <div className="rst-grid">
-            <Field label="Current password" wide>
-              <input className="dlh-line" type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" />
-            </Field>
-            <Field label="New password">
-              <input className="dlh-line" type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" aria-invalid={!!problem && next.length < 8} />
-            </Field>
-            <Field label="New password again">
-              <input className="dlh-line" type="password" value={again} onChange={(e) => setAgain(e.target.value)} autoComplete="new-password" aria-invalid={!!again && next !== again} />
-            </Field>
-            <div className="rst-foot wide">
-              <span className="rst-err">{problem || error}</span>
-              <button type="button" className="dlh-go" onClick={change} disabled={!ok || busy}>
-                {busy ? "Changing…" : "Change"}
-              </button>
-            </div>
-          </div>
-        </div>
-      </Section>
-
-      <Section
-        title="This device"
-        actions={
-          <button type="button" className="trn-pill rst-pill" onClick={() => logoutAction()}>
-            Sign out
-          </button>
-        }
-      />
+      <Part label="Email and password">
+        <Row name="Email" fact={email} />
+        <OpenRow name="Password" fact="Set" word="Change" onSave={change} onCancel={clear} canSave={ok} error={problem || error}>
+          <form onSubmit={(e) => (e.preventDefault(), ok && pressSave(e.currentTarget))}>
+            <input className="sr-only" type="email" name="email" autoComplete="username" value={email} readOnly tabIndex={-1} aria-hidden="true" />
+            <Fields cols={2}>
+              <Line label="Current password" wide>
+                <input className="dlh-line" type="password" value={current} onChange={(e) => (setCurrent(e.target.value), setError(""))} autoComplete="current-password" />
+              </Line>
+              <Line label="New password">
+                <input className="dlh-line" type="password" value={next} onChange={(e) => (setNext(e.target.value), setError(""))} autoComplete="new-password" aria-invalid={!!problem && next.length < 8} />
+              </Line>
+              <Line label="New password again">
+                <input className="dlh-line" type="password" value={again} onChange={(e) => (setAgain(e.target.value), setError(""))} autoComplete="new-password" aria-invalid={!!again && next !== again} />
+              </Line>
+            </Fields>
+            <button type="submit" hidden aria-hidden="true" tabIndex={-1} />
+          </form>
+        </OpenRow>
+      </Part>
+      <ThisDevice />
     </>
   );
 }
@@ -587,7 +559,6 @@ function ColourPicker({ value, typed, onTyped, onTake, onDrag }: { value: string
               onTake();
             }
           }}
-          placeholder="#"
           aria-label="Colour as a hex code"
           spellCheck={false}
           autoComplete="off"
@@ -598,81 +569,193 @@ function ColourPicker({ value, typed, onTyped, onTake, onDrag }: { value: string
   );
 }
 
-// ---- Business details: who the invoices are from. The country comes first:
-// it names the numbers and the address lines (lib/countries.ts).
+// ---- Business details (23 Nov, Alex: docs/boards/settings-harmony-mockup.html): who the invoices are from. The country
+// leads, a row saying what it sets, and decides each field's name and which fields show (lib/countries.ts): the
+// registration across one card, the address and the invoice contact side by side. Every field empty until typed, no
+// sample in any. On the page's one bar, as before.
 const OTHER = "other";
+const BUSINESS_FIELDS = ["business_name", "legal_name", "company_number", "vat_number", "address", "postcode", "city", "region", "billing_email", "phone", "website"] as const;
+
+/** A VAT number as typed after its country's fixed prefix: the prefix (and a space after it) taken off. */
+const afterPrefix = (v: string, prefix?: string) => (prefix && v.toUpperCase().startsWith(prefix) ? v.slice(prefix.length).trimStart() : v);
 
 export function BusinessSettings({ initial }: { initial: CoachBusiness }) {
-  const d = useDraft<CoachBusiness>({ ...initial, country_code: initial.country_code ?? countryCodeFromName(initial.country) }, saveCoachBusinessAction);
+  const startCode = initial.country_code ?? countryCodeFromName(initial.country);
+  const d = useDraft<CoachBusiness>({ ...initial, country_code: startCode }, saveCoachBusinessAction);
   useSaveSlot("business", { dirty: d.dirty, count: d.count, save: d.commit, cancel: d.discard });
   const country = countryOf(d.v.country_code);
-  const text = (k: keyof CoachBusiness, label: string, opts: { wide?: boolean; placeholder?: string; type?: string } = {}) => (
-    <Field label={label} wide={opts.wide}>
-      <input className="dlh-line" type={opts.type ?? "text"} value={d.v[k] ?? ""} onChange={(e) => d.set(k, e.target.value)} placeholder={opts.placeholder} />
-    </Field>
+  // A country typed before the list, kept shown as it was saved (23 Nov, Alex: a coach whose country leaves the list
+  // keeps it); one on the list but no longer offered (New Zealand) stays offered to them (businessCountries).
+  const typedName = country.code ? "" : (d.v.country ?? "").trim();
+  const picked = !!country.code || !!typedName;
+  // The rest comes in once a country is picked; anything saved without one stays in sight.
+  const held = BUSINESS_FIELDS.some((k) => !!String(d.v[k] ?? "").trim());
+  const options = [...businessCountries(startCode).map((c) => ({ value: c.code, label: c.name })), ...(typedName ? [{ value: OTHER, label: typedName }] : [])];
+  const pick = (v: string) => {
+    if (v === OTHER) return;
+    const next = countryOf(v);
+    // A VAT number carries its country's prefix: a new country swaps it.
+    const vat = d.v.vat_number ?? "";
+    if (vat && country.vatPrefix && country.vatPrefix !== next.vatPrefix && vat.toUpperCase().startsWith(country.vatPrefix)) {
+      const bare = afterPrefix(vat, country.vatPrefix);
+      d.set("vat_number", bare ? `${next.vatPrefix ?? ""}${bare}` : "");
+    }
+    d.set("country_code", v);
+    d.set("country", next.name);
+  };
+  const text = (k: (typeof BUSINESS_FIELDS)[number], label: string, opts: { wide?: boolean; type?: string; auto?: string } = {}) => (
+    <Line label={label} wide={opts.wide}>
+      <input className="dlh-line" type={opts.type ?? "text"} value={d.v[k] ?? ""} onChange={(e) => d.set(k, e.target.value)} autoComplete={opts.auto} />
+    </Line>
   );
+  // The phone on invoices (23 Nov, review; the board's +31): the country's dial code fixed before the line and kept with
+  // the number (`+31 6 12345678`, one string, as the invoice prints it). A number typed with a code of its own (+ or 00)
+  // is kept as typed and shown whole, the fixed code gone; so is one saved under another country's code.
+  const dial = dialOfCountry(country.code);
+  const phoneNow = (d.v.phone ?? "").trim();
+  const ownCode = !dial || (phoneNow.startsWith("+") && !phoneNow.startsWith(`${dial} `) && phoneNow !== dial);
+  const phone = (
+    <Line label="Phone">
+      {/* One input in one place either way, so typing a + of their own never takes the keyboard away. */}
+      <span className="rsr-lined">
+        {!ownCode && dial && <em className="rsr-pre">{dial}</em>}
+        <input
+          className="dlh-line"
+          type="tel"
+          value={ownCode || !dial ? (d.v.phone ?? "") : phoneNow.startsWith(`${dial} `) ? phoneNow.slice(dial.length + 1) : phoneNow === dial ? "" : (d.v.phone ?? "")}
+          onChange={(e) => {
+            const typed = e.target.value;
+            const t = typed.trim();
+            d.set("phone", ownCode || !dial || !t || t.startsWith("+") || t.startsWith("00") ? (t ? typed : "") : `${dial} ${typed.trimStart()}`);
+          }}
+          autoComplete="tel"
+        />
+      </span>
+    </Line>
+  );
+  const numbers = businessNumbers(country);
+  const number = (n: BusinessNumber) => {
+    const value = d.v[n.key] ?? "";
+    if (!n.prefix) return <Fragment key={n.key}>{text(n.key, n.label)}</Fragment>;
+    const prefix = n.prefix;
+    return (
+      <Line key={n.key} label={n.label}>
+        <span className="rsr-lined">
+          <em className="rsr-pre">{prefix}</em>
+          <input
+            className="dlh-line"
+            value={afterPrefix(value, prefix)}
+            onChange={(e) => {
+              // Pasted with its prefix, the prefix is taken once.
+              const typed = afterPrefix(e.target.value, prefix);
+              d.set(n.key, typed.trim() ? `${prefix}${typed}` : "");
+            }}
+            autoComplete="off"
+          />
+        </span>
+      </Line>
+    );
+  };
+  const regions = REGIONS[country.code];
+  const region = country.region
+    ? regions
+      ? (
+          <Line label={country.region} wide group>
+            <Picker
+              value={d.v.region ?? ""}
+              onChange={(v) => d.set("region", v)}
+              label={country.region}
+              className="rsr-sel"
+              menuClassName="nc-countrymenu"
+              empty=""
+              // A region saved before the list (or typed another way) stays offered.
+              options={[...(d.v.region && !regions.includes(d.v.region) ? [d.v.region] : []), ...regions].map((r) => ({ value: r, label: r }))}
+            />
+          </Line>
+        )
+      : text("region", country.region, { wide: true })
+    : null;
   return (
     <>
-      <Section title="Where you do business">
-        <div className="rls-card rst-card">
-          <div className="rst-grid">
-            <Field label="Country" group>
-              <Picker
-                value={country.code || OTHER}
-                onChange={(v) => d.set("country_code", v === OTHER ? "" : v)}
-                label="Country"
-                className="rst-pick"
-                options={[...COUNTRIES.map((c) => ({ value: c.code, label: c.name })), { value: OTHER, label: "Somewhere else" }]}
-              />
-            </Field>
-            {!country.code && text("country", "Country name", { placeholder: "Where you are registered" })}
-          </div>
-        </div>
-      </Section>
+      <Part label="Where you do business">
+        <Row name="Country" fact={country.code ? <SepJoin parts={[`Prices in ${country.currency}`, taxFact(country)]} /> : undefined}>
+          <Picker value={country.code || (typedName ? OTHER : "")} onChange={pick} label="Country" className={`rsr-pick${picked ? "" : " empty"}`} menuClassName="nc-countrymenu" empty="" options={options} />
+        </Row>
+      </Part>
 
-      <Section title="Business">
-        <div className="rls-card rst-card">
-          <div className="rst-grid">
-            {text("business_name", "Business name", { placeholder: "Full Potential Coaching" })}
-            {text("legal_name", "Legal name", { placeholder: "As registered" })}
-            {text("company_number", country.registration ?? "Business registration")}
-            {text("vat_number", country.taxId)}
-          </div>
-        </div>
-      </Section>
+      {(picked || held) && (
+        <>
+          <Part label="Registration">
+            <Fields pad fit={200}>
+              {text("business_name", "Business name", { auto: "organization" })}
+              {text("legal_name", "Legal name")}
+              {numbers.map(number)}
+            </Fields>
+          </Part>
 
-      <Section title="Address">
-        <div className="rls-card rst-card">
-          <div className="rst-grid">
-            {/* One order and one name for an address everywhere (16 Nov, Alex: the audit; AddressFields): Address
-                across, then the postcode and the city, the region after them; the country leads the section above. */}
-            {text("address", "Address", { wide: true, placeholder: "Street and number" })}
-            {text("postcode", country.postcode)}
-            {text("city", "City")}
-            {country.region && text("region", country.region)}
-          </div>
-        </div>
-      </Section>
-
-      <Section title="Contact on invoices">
-        <div className="rls-card rst-card">
-          <div className="rst-grid">
-            {text("billing_email", "Billing email", { type: "email", placeholder: "billing@…" })}
-            {text("phone", "Phone")}
-            {text("website", "Website", { wide: true, placeholder: "https://" })}
-          </div>
-        </div>
-      </Section>
+          <Two top>
+            <Part label="Address">
+              {/* One order and one name for an address everywhere (16 Nov, Alex: the audit; AddressFields): Address
+                  across, then the postcode and the city, the region after them; the country leads above. */}
+              <Fields pad>
+                {text("address", "Address", { wide: true })}
+                {text("postcode", country.postcode)}
+                {text("city", "City")}
+                {region}
+              </Fields>
+            </Part>
+            <Part label="Contact on invoices">
+              <Fields pad>
+                {text("billing_email", "Billing email", { wide: true, type: "email" })}
+                {phone}
+                {text("website", "Website")}
+              </Fields>
+            </Part>
+          </Two>
+        </>
+      )}
     </>
   );
 }
 
-// ---- Invoicing & payments: how invoices are numbered, priced and paid. The
-// country from Business details fills in what is left open.
-// Online payments: the coach's own Stripe account (lib/stripe.ts). Off until
-// the server has Stripe's keys; then Connect, finish on Stripe, Connected.
-// Where it stands is a state pill; the fix is its pill beside it.
-function OnlinePayments({ state }: { state: PaymentsState }) {
+// ---- Invoicing & payments (23 Nov, Alex: docs/boards/settings-harmony-mockup.html): the prices and the tax beside what
+// goes on each invoice, the two ways to pay side by side, then what invoices do by themselves. A figure is typed on its
+// row; a text (the tax note, the footer, the bank details) is a row with Add or Edit, opened in place, whose Save saves
+// the section at once. Only the currency, the tax rate and whether prices include it come from the country (Business
+// details); every other field is empty until typed, no sample in any. The figures go on the page's one bar.
+
+/** A whole or decimal figure typed on a row's right (InlineLine), kept as typed while it is being typed (`21.`). */
+function NumLine({ value, onChange, unit, width, label, decimal = false }: { value: number | undefined; onChange: (n: number | undefined) => void; unit?: string; width: number; label: string; decimal?: boolean }) {
+  const [text, setText] = useState(value == null ? "" : String(value));
+  // Put back from elsewhere (the bar's Cancel): shown.
+  const [was, setWas] = useState(value);
+  if (value !== was) {
+    setWas(value);
+    const typed = text === "" ? undefined : Number(text.replace(",", "."));
+    if (typed !== value) setText(value == null ? "" : String(value));
+  }
+  return (
+    <InlineLine
+      value={text}
+      width={width}
+      unit={unit}
+      label={label}
+      inputMode={decimal ? "decimal" : "numeric"}
+      maxLength={decimal ? 5 : 6}
+      onChange={(t) => {
+        const clean = decimal ? t.replace(/[^\d.,]/g, "") : t.replace(/\D/g, "");
+        setText(clean);
+        const n = clean === "" ? undefined : Number(clean.replace(",", "."));
+        if (n === undefined || Number.isFinite(n)) onChange(n);
+      }}
+    />
+  );
+}
+
+// Card payments: the coach's own Stripe account (lib/stripe.ts), on which a client pays an invoice (23 Nov, Alex: "ok do
+// the stripe also"). Off until the server has Stripe's keys (Soon); then Connect Stripe, finish on Stripe, Connected.
+// Where it stands is the state pill; Disconnect in red words on the row's hover, asking first.
+function CardPayment({ state, ready }: { state: PaymentsState; ready: boolean }) {
   const router = useRouter();
   const [busy, start] = useTransition();
   const [error, setError] = useState("");
@@ -691,43 +774,38 @@ function OnlinePayments({ state }: { state: PaymentsState }) {
     });
   };
   const said = saveFirst ? "Save your changes first." : error;
-  const pill =
-    state.status === "active" ? (
-      <span className="trn-state good rst-state">Connected</span>
-    ) : state.status === "pending" ? (
-      <span className="trn-state warn rst-state">Not finished</span>
-    ) : state.status === "off" ? (
-      <span className="trn-state rst-state">Soon</span>
-    ) : (
-      <span className="trn-state rst-state">Not connected</span>
-    );
+  const off = !ready || state.status === "off";
+  const linked = !off && (state.status === "active" || state.status === "pending");
   return (
-    <Section title="Online payments" fact={state.testMode ? "Test mode" : undefined}>
-      <div className="rls-card rst-card">
-        <div className="rst-row">
-          <span className="rst-row-main">
-            <b>Stripe</b>
-          </span>
-          {state.status !== "none" && state.status !== "off" && (
-            <button type="button" className="rst-danger rst-hover" disabled={busy} onClick={() => setDisconnecting(true)}>
+    <>
+      <Row name="Card payment" fact={<SepJoin parts={["Stripe", !off && state.testMode ? "Test mode" : null]} />} hover={linked}>
+        {off ? (
+          <State>Soon</State>
+        ) : state.status === "none" ? (
+          <Pill onClick={go} disabled={busy}>
+            {busy ? "Opening Stripe…" : "Connect Stripe"}
+          </Pill>
+        ) : (
+          <>
+            <Word tone="red" hoverOnly disabled={busy} onClick={() => setDisconnecting(true)}>
               Disconnect
-            </button>
-          )}
-          {pill}
-          {state.status !== "off" && state.status !== "active" && (
-            <button type="button" className="rst-act" onClick={go} disabled={busy}>
-              {busy ? "Opening Stripe…" : state.status === "pending" ? "Finish on Stripe" : "Connect Stripe"}
-            </button>
-          )}
-        </div>
-        {said && <p className="rst-err rst-err-row">{said}</p>}
-      </div>
+            </Word>
+            {state.status === "active" ? <State tone="good">Connected</State> : <State tone="rust">Not finished</State>}
+            {state.status === "pending" && (
+              <Word onClick={go} disabled={busy}>
+                {busy ? "Opening Stripe…" : "Finish on Stripe"}
+              </Word>
+            )}
+          </>
+        )}
+      </Row>
+      {said && <p className="rst-err rst-err-row">{said}</p>}
       {/* Nothing destructive on one click (rule 4): Disconnect asks first. */}
       <Dialog open={disconnecting} onOpenChange={setDisconnecting}>
         {disconnecting && (
           <ConfirmDialog
             title="Disconnect Stripe?"
-            description="Your clients can’t pay invoices online until you connect it again."
+            description="Your clients can’t pay invoices by card until you connect it again."
             confirm="Disconnect"
             danger
             onConfirm={() => {
@@ -735,221 +813,307 @@ function OnlinePayments({ state }: { state: PaymentsState }) {
               start(async () => {
                 await disconnectStripeAction();
                 router.refresh();
-                toast.success("Stripe disconnected here");
               });
             }}
           />
         )}
       </Dialog>
-    </Section>
-  );
-}
-
-export function InvoicingSettings({ initial, business, payments }: { initial: CoachInvoicing; business: CoachBusiness; payments: PaymentsState }) {
-  const eff = invoicingFor(business, initial);
-  const country = eff.country;
-  const d = useDraft<CoachInvoicing>({ currency: eff.currency, vat_rate: eff.rate, prices_include_vat: eff.pricesIncludeVat, payment_terms_days: eff.termsDays, number_prefix: "", next_number: 1, ...initial }, saveCoachInvoicingAction);
-  const num = (k: "vat_rate" | "payment_terms_days" | "next_number", s: string) => d.set(k, s === "" ? undefined : Number(s));
-  const text = (k: keyof CoachInvoicing, label: string, opts: { wide?: boolean; placeholder?: string; upper?: boolean; error?: string } = {}) => (
-    <Field label={label} wide={opts.wide} error={opts.error}>
-      <input className="dlh-line" value={String(d.v[k] ?? "")} onChange={(e) => d.set(k, (opts.upper ? e.target.value.toUpperCase() : e.target.value) as never)} placeholder={opts.placeholder} aria-invalid={!!opts.error} />
-    </Field>
-  );
-  const year = new Date().getFullYear();
-  const example = `${(d.v.number_prefix ?? "").replaceAll("{year}", String(year))}${String(d.v.next_number ?? 1).padStart(4, "0")}`;
-  const ibanBad = !!d.v.iban && !/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(d.v.iban.replace(/\s+/g, "").toUpperCase());
-  const ibanError = ibanBad ? "Not an IBAN" : undefined;
-  const tax = country.tax;
-  const currencies = CURRENCIES.includes(d.v.currency ?? "") ? CURRENCIES : [d.v.currency ?? "EUR", ...CURRENCIES];
-  // The country's standard rate, as a quiet fact by the field (not in the US, where coaching is usually untaxed).
-  const standard = country.code && country.code !== "US" ? `standard ${country.rate}%` : undefined;
-  // A bad IBAN holds Save back, and the bar says why (its field may be folded away).
-  useSaveSlot("invoicing", { dirty: d.dirty, count: d.count, blocked: ibanBad, problem: ibanBad ? "IBAN in Invoicing & payments isn't valid" : null, save: d.commit, cancel: d.discard });
-  return (
-    <>
-      <Section title={`Prices and ${tax}`} fact={country.code ? country.name : undefined}>
-        <div className="rls-card rst-card">
-          <div className="rst-grid">
-            <Field label="Currency" group>
-              <Picker value={d.v.currency ?? eff.currency} onChange={(v) => d.set("currency", v)} label="Currency" className="rst-pick" options={currencies.map((c) => ({ value: c, label: c, hint: currencyName(c) }))} />
-            </Field>
-            <Field label={`${tax} rate`} fact={standard}>
-              <span className="rst-suffixed">
-                <input className="dlh-line" type="number" inputMode="decimal" min={0} max={50} step={0.1} value={d.v.vat_rate ?? ""} onChange={(e) => num("vat_rate", e.target.value)} />
-                <em>%</em>
-              </span>
-            </Field>
-            <Field label="Prices you type" group>
-              <div className="rd-btn-group rst-cap" role="radiogroup" aria-label="Prices you type">
-                {[true, false].map((inc) => (
-                  <button key={String(inc)} type="button" role="radio" aria-checked={!!d.v.prices_include_vat === inc} className={!!d.v.prices_include_vat === inc ? "on" : ""} onClick={() => d.set("prices_include_vat", inc)}>
-                    {inc ? `Include ${tax}` : `Exclude ${tax}`}
-                  </button>
-                ))}
-              </div>
-            </Field>
-            <Field label="Payment terms">
-              <span className="rst-suffixed">
-                <input className="dlh-line" type="number" inputMode="numeric" min={0} max={120} value={d.v.payment_terms_days ?? ""} onChange={(e) => num("payment_terms_days", e.target.value)} />
-                <em>days</em>
-              </span>
-            </Field>
-            {text("tax_note", `${tax} note on invoices`, { wide: true, placeholder: country.code === "NL" ? "Vrijgesteld van btw (KOR)" : "VAT exempt, reverse charge…" })}
-          </div>
-        </div>
-      </Section>
-
-      <Section title="Numbering" fact={`Next ${example}`}>
-        <div className="rls-card rst-card">
-          <div className="rst-grid">
-            <Field label="Prefix">
-              <input className="dlh-line" value={d.v.number_prefix ?? ""} onChange={(e) => d.set("number_prefix", e.target.value)} placeholder="FP-{year}-" />
-            </Field>
-            <Field label="Next number">
-              <input className="dlh-line" type="number" inputMode="numeric" min={1} value={d.v.next_number ?? ""} onChange={(e) => num("next_number", e.target.value)} />
-            </Field>
-          </div>
-        </div>
-      </Section>
-
-      <Section
-        title="Bank transfer"
-        fact={country.code ? undefined : "No country set"}
-        actions={
-          !country.code && (
-            // Business details is a section of the same page: the pill opens it (this one folds, what is typed kept).
-            <a
-              href="#business"
-              className="trn-pill rst-pill"
-              onClick={(e) => {
-                if (goToSetting("business")) e.preventDefault();
-              }}
-            >
-              Set your country
-            </a>
-          )
-        }
-      >
-        <div className="rls-card rst-card">
-          <div className="rst-grid">
-            {text("account_holder", "Account holder", { placeholder: business.legal_name || business.business_name || "", wide: country.bank === "other" })}
-            {country.bank === "iban" && (
-              <>
-                {text("iban", "IBAN", { upper: true, placeholder: `${country.code || "NL"}00 BANK 0123 4567 89`, error: ibanError })}
-                {text("bic", "BIC / SWIFT", { upper: true })}
-              </>
-            )}
-            {country.bank === "uk" && (
-              <>
-                {text("sort_code", "Sort code", { placeholder: "12-34-56" })}
-                {text("account_number", "Account number", { placeholder: "12345678" })}
-                {text("iban", "IBAN", { upper: true, error: ibanError })}
-                {text("bic", "BIC / SWIFT", { upper: true })}
-              </>
-            )}
-            {country.bank === "us" && (
-              <>
-                {text("routing_number", "Routing number (ABA)", { placeholder: "021000021" })}
-                {text("account_number", "Account number")}
-              </>
-            )}
-            {country.bank === "au" && (
-              <>
-                {text("bsb", "BSB", { placeholder: "062-000" })}
-                {text("account_number", "Account number")}
-              </>
-            )}
-            {country.bank === "other" && (
-              <Field label="How to pay you" wide>
-                <textarea className="dlh-line rst-text" value={d.v.bank_details ?? ""} onChange={(e) => d.set("bank_details", e.target.value)} rows={3} placeholder="Bank, account number, and any code the bank needs" />
-              </Field>
-            )}
-          </div>
-        </div>
-      </Section>
-
-      <OnlinePayments state={payments} />
-
-      <Section title="Invoice footer">
-        <div className="rls-card rst-card">
-          <div className="rst-grid">
-            <Field label="Footer" wide>
-              <textarea className="dlh-line rst-text" value={d.v.footer ?? ""} onChange={(e) => d.set("footer", e.target.value)} placeholder="Thank you for training with us. Questions about this invoice: billing@…" rows={3} />
-            </Field>
-          </div>
-        </div>
-      </Section>
     </>
   );
 }
 
-// ---- Privacy & legal: the documents clients see, and what happens to their data.
+type InvoiceAutoNow = { emailInvoices: boolean; billOnPlan: boolean };
+
+export function InvoicingSettings({
+  initial,
+  business,
+  payments,
+  auto,
+  stripeReady,
+  coachEmail,
+}: {
+  initial: CoachInvoicing;
+  business: CoachBusiness;
+  payments: PaymentsState;
+  /** The coach's sign-in email: where a reply to an invoice email goes when no billing email is set. */
+  coachEmail?: string;
+  /** Invoices by email (on by default) and When a plan is assigned (off by default), lib/invoiceAuto.ts (23 Nov, Alex). */
+  auto?: InvoiceAutoNow;
+  /** Stripe set up on the server (lib/stripe.ts stripeConfigured): card payments offered, else "Soon". */
+  stripeReady?: boolean;
+}) {
+  const router = useRouter();
+  const eff = invoicingFor(business, initial);
+  const country = eff.country;
+  const d = useDraft<CoachInvoicing>({ currency: eff.currency, vat_rate: eff.rate, prices_include_vat: eff.pricesIncludeVat, ...initial }, saveCoachInvoicingAction);
+  const tax = country.tax;
+  // Mid-sentence, the tax of no country yet is a plain word ("Include tax").
+  const taxWord = country.code ? tax : "tax";
+  // The United States has no tax part (sales tax isn't handled): the currency alone.
+  const taxed = country.code !== "US";
+  const ibanBad = !!d.v.iban && !/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(d.v.iban.replace(/\s+/g, "").toUpperCase());
+  const ibanError = ibanBad ? "Not an IBAN" : undefined;
+  const currency = d.v.currency ?? eff.currency;
+  const currencies = CURRENCIES.includes(currency) ? CURRENCIES : [currency, ...CURRENCIES];
+  // A bad IBAN holds Save back, and the bar says why (its row may be shut).
+  useSaveSlot("invoicing", { dirty: d.dirty, count: d.count, blocked: ibanBad, problem: ibanBad ? "IBAN in Invoicing & payments isn't valid" : null, save: d.commit, cancel: d.discard });
+
+  // The next invoice's number, once its prefix or number is set.
+  const year = new Date().getFullYear();
+  const example = d.v.number_prefix || d.v.next_number != null ? `Next ${(d.v.number_prefix ?? "").replaceAll("{year}", String(year))}${String(d.v.next_number ?? 1).padStart(4, "0")}` : undefined;
+  const standard = country.code && country.rate > 0 ? (d.v.vat_rate === country.rate ? `${country.name} standard` : `${country.name} standard ${country.rate}%`) : undefined;
+
+  // A row opened in place edits the form itself; Cancel puts back what it held when opened, Save saves the section now
+  // (what else is changed in it with it), then draws the page again.
+  const [kept, setKept] = useState<Partial<CoachInvoicing>>({});
+  const [rowError, setRowError] = useState("");
+  const keep = (keys: (keyof CoachInvoicing)[]) => (open: boolean) => {
+    if (!open) return;
+    setRowError("");
+    setKept((o) => ({ ...o, ...Object.fromEntries(keys.map((k) => [k, d.v[k]])) }));
+  };
+  const putBack = (keys: (keyof CoachInvoicing)[]) => () => {
+    for (const k of keys) d.set(k, kept[k] as never);
+    setRowError("");
+  };
+  const saveNow = async () => {
+    if (ibanBad) return false;
+    try {
+      await saveCoachInvoicingAction(d.v);
+    } catch {
+      setRowError("Not saved. Try again.");
+      return false;
+    }
+    router.refresh();
+  };
+  const textRow = (k: "tax_note" | "footer", name: string, tall = false) => {
+    const value = d.v[k] ?? "";
+    return (
+      <OpenRow name={name} fact={value || undefined} word={value ? "Edit" : "Add"} onOpenChange={keep([k])} onCancel={putBack([k])} onSave={saveNow} canSave={!ibanBad} error={rowError}>
+        <Fields cols={1}>
+          <Line wide tall={tall} label={undefined}>
+            {tall ? (
+              <textarea className="dlh-line" value={value} onChange={(e) => d.set(k, e.target.value)} rows={3} aria-label={name} />
+            ) : (
+              <input className="dlh-line" value={value} onChange={(e) => d.set(k, e.target.value)} aria-label={name} />
+            )}
+          </Line>
+        </Fields>
+      </OpenRow>
+    );
+  };
+  const field = (k: keyof CoachInvoicing, label: string, opts: { wide?: boolean; upper?: boolean; error?: string } = {}) => (
+    <Line label={label} wide={opts.wide} error={opts.error}>
+      <input className="dlh-line" value={String(d.v[k] ?? "")} onChange={(e) => d.set(k, (opts.upper ? e.target.value.toUpperCase() : e.target.value) as never)} aria-invalid={!!opts.error} autoComplete="off" />
+    </Line>
+  );
+
+  // Bank transfer: how the country pays by bank (lib/countries.ts), opened under its row.
+  const BANK_KEYS: (keyof CoachInvoicing)[] = ["account_holder", "iban", "bic", "sort_code", "account_number", "routing_number", "bsb", "bank_details"];
+  const v = d.v;
+  const account =
+    country.bank === "uk" ? (v.sort_code && v.account_number ? `${v.sort_code} ${v.account_number}` : v.iban)
+    : country.bank === "us" ? (v.routing_number && v.account_number ? `${v.routing_number} ${v.account_number}` : null)
+    : country.bank === "au" ? (v.bsb && v.account_number ? `${v.bsb} ${v.account_number}` : null)
+    : country.bank === "iban" ? v.iban
+    : (v.bank_details?.split("\n")[0] ?? v.iban);
+  const banked = hasBankDetails(v, country);
+
+  // Invoices by email and When a plan is assigned: each switch saved at once, put back if it didn't go.
+  const [autoNow, setAutoNow] = useState<InvoiceAutoNow>(auto ?? { emailInvoices: true, billOnPlan: false });
+  const [autoError, setAutoError] = useState<{ key: keyof InvoiceAutoNow; text: string } | null>(null);
+  const flip = (key: keyof InvoiceAutoNow, on: boolean) => {
+    const was = autoNow;
+    setAutoNow({ ...was, [key]: on });
+    setAutoError(null);
+    const fail = (text: string) => (setAutoNow(was), setAutoError({ key, text }));
+    setInvoiceAutoAction({ [key]: on })
+      .then((r: unknown) => {
+        // What the switches are now (or, from an answer that says so, why it didn't go).
+        const said = r as { ok?: boolean; error?: string; emailInvoices?: unknown; billOnPlan?: unknown } | null;
+        if (said?.ok === false) return fail(said.error ?? "Not saved. Try again.");
+        if (typeof said?.emailInvoices === "boolean" && typeof said?.billOnPlan === "boolean") setAutoNow({ emailInvoices: said.emailInvoices, billOnPlan: said.billOnPlan });
+      })
+      .catch(() => fail("Not saved. Try again."));
+  };
+  const autoSaid = (key: keyof InvoiceAutoNow) => autoError?.key === key && <p className="rst-err rst-err-row">{autoError.text}</p>;
+  const payLink = payments.status === "active" && (stripeReady ?? true);
+  const mailWith = payLink && banked ? "With a Pay link and your bank details" : payLink ? "With a Pay link" : banked ? "With your bank details" : undefined;
+  const sender = business.business_name?.trim() || business.legal_name?.trim() || "";
+  const replyTo = business.billing_email?.trim() || coachEmail?.trim() || "";
+
+  return (
+    <>
+      <Two top>
+        <Part label={taxed ? `Prices and ${taxWord}` : "Prices"} fact={country.code ? country.name : undefined}>
+          <Row name="Currency" fact={currencyName(currency)}>
+            <Picker value={currency} onChange={(c) => d.set("currency", c)} label="Currency" className="rsr-pick" menuClassName="nc-countrymenu" options={currencies.map((c) => ({ value: c, label: c, hint: currencyName(c) }))} />
+          </Row>
+          {taxed && (
+            <>
+              <Row name={`${tax} rate`} fact={standard}>
+                <NumLine value={d.v.vat_rate} onChange={(n) => d.set("vat_rate", n)} unit="%" width={64} label={`${tax} rate`} decimal />
+              </Row>
+              <Row name="Prices you type">
+                <Capsule
+                  value={d.v.prices_include_vat === false ? "exclude" : "include"}
+                  onChange={(x) => d.set("prices_include_vat", x === "include")}
+                  label="Prices you type"
+                  options={[
+                    { value: "include", label: `Include ${taxWord}` },
+                    { value: "exclude", label: `Exclude ${taxWord}` },
+                  ]}
+                />
+              </Row>
+              {textRow("tax_note", `${tax} note`)}
+            </>
+          )}
+        </Part>
+        <Part label="On each invoice" fact={example}>
+          <Row name="Prefix">
+            <InlineLine value={d.v.number_prefix ?? ""} onChange={(p) => d.set("number_prefix", p)} width={130} label="Prefix" maxLength={12} />
+          </Row>
+          <Row name="Next number">
+            <NumLine value={d.v.next_number} onChange={(n) => d.set("next_number", n)} width={64} label="Next number" />
+          </Row>
+          <Row name="Payment terms">
+            <NumLine value={d.v.payment_terms_days} onChange={(n) => d.set("payment_terms_days", n)} unit="days" width={90} label="Payment terms" />
+          </Row>
+          {textRow("footer", "Footer", true)}
+        </Part>
+      </Two>
+
+      <Part label="How clients pay" bare>
+        <Two top>
+          <Card>
+            <OpenRow
+              name="Bank transfer"
+              fact={banked ? <SepJoin parts={[account, v.account_holder]} /> : country.code ? "Not set" : "No country set"}
+              word={banked ? "Edit" : "Add"}
+              extra={
+                !country.code && (
+                  // Business details is a section of the same page: Set your country opens it (what is typed kept).
+                  <Word
+                    onClick={() => {
+                      if (!goToSetting("business")) window.location.hash = "business";
+                    }}
+                  >
+                    Set your country
+                  </Word>
+                )
+              }
+              onOpenChange={keep(BANK_KEYS)}
+              onCancel={putBack(BANK_KEYS)}
+              onSave={saveNow}
+              canSave={!ibanBad}
+              error={rowError}
+            >
+              <Fields>
+                {field("account_holder", "Account holder", { wide: true })}
+                {country.bank === "iban" && (
+                  <>
+                    {field("iban", "IBAN", { upper: true, error: ibanError })}
+                    {field("bic", "BIC / SWIFT", { upper: true })}
+                  </>
+                )}
+                {country.bank === "uk" && (
+                  <>
+                    {field("sort_code", "Sort code")}
+                    {field("account_number", "Account number")}
+                    {field("iban", "IBAN", { upper: true, error: ibanError })}
+                    {field("bic", "BIC / SWIFT", { upper: true })}
+                  </>
+                )}
+                {country.bank === "us" && (
+                  <>
+                    {field("routing_number", "Routing number (ABA)")}
+                    {field("account_number", "Account number")}
+                  </>
+                )}
+                {country.bank === "au" && (
+                  <>
+                    {field("bsb", "BSB")}
+                    {field("account_number", "Account number")}
+                  </>
+                )}
+                {country.bank === "other" && (
+                  <Line label="How to pay you" wide tall>
+                    <textarea className="dlh-line" value={d.v.bank_details ?? ""} onChange={(e) => d.set("bank_details", e.target.value)} rows={3} />
+                  </Line>
+                )}
+              </Fields>
+            </OpenRow>
+          </Card>
+          <Card>
+            <CardPayment state={payments} ready={stripeReady ?? payments.status !== "off"} />
+          </Card>
+        </Two>
+      </Part>
+
+      <Two top>
+        <Part label="Invoices by email">
+          {/* What the email carries, as it will (lib/invoiceEmails.ts): Pay only while Stripe takes cards, the bank only once set. */}
+          <Row name="Email each invoice as it is sent" fact={mailWith}>
+            <Switch on={autoNow.emailInvoices} label="Email each invoice as it is sent" onChange={(on) => flip("emailInvoices", on)} />
+          </Row>
+          {autoSaid("emailInvoices")}
+          {/* Who it is from and where a reply goes, as the email sends it: the billing email, else the sign-in's. */}
+          {sender ? <Row name={`From ${sender}`} fact={replyTo ? `Replies to ${replyTo}` : undefined} /> : replyTo ? <Row name={`Replies to ${replyTo}`} /> : null}
+        </Part>
+        <Part label="When a plan is assigned">
+          <Row name="Start billing when a client gets a plan" fact="The first invoice that day, then one each period">
+            <Switch on={autoNow.billOnPlan} label="Start billing when a client gets a plan" onChange={(on) => flip("billOnPlan", on)} />
+          </Row>
+          {autoSaid("billOnPlan")}
+        </Part>
+      </Two>
+    </>
+  );
+}
+
+// ---- Privacy (Data & privacy's second part, 23 Nov, Alex: docs/boards/settings-harmony-mockup.html): the documents
+// clients see beside what happens to their data, then who is behind the app, its two facts across one card.
 export function PrivacySettings({ company, country, contactEmail, updated }: { company: string; country: string; contactEmail: string; updated: string }) {
   // A document: the whole row opens it in a new tab (Open shows on hover); one still to come wears a grey Soon.
-  const doc = (label: string, href: string | null, note?: ReactNode) =>
+  const doc = (label: string, href: string | null, fact?: ReactNode) =>
     href ? (
-      <Link href={href} target="_blank" className="rst-row opens">
-        <span className="rst-row-main">
+      <Link href={href} target="_blank" className="rsr-row hl rst-row opens">
+        <span className="rsr-rm">
           <b>{label}</b>
-          {note && <small>{note}</small>}
+          {fact && <span>{fact}</span>}
         </span>
         <span className="rst-open">
           Open <ArrowRightIcon />
         </span>
       </Link>
     ) : (
-      <div className="rst-row">
-        <span className="rst-row-main">
-          <b>{label}</b>
-          {note && <small>{note}</small>}
-        </span>
-        <span className="trn-state rst-state">Soon</span>
-      </div>
+      <Row name={label} fact={fact}>
+        <State>Soon</State>
+      </Row>
     );
-  const fact = (label: string, text: ReactNode) => (
-    <div className="rst-row">
-      <span className="rst-row-main stack">
-        <b>{label}</b>
-        <small>{text}</small>
-      </span>
-    </div>
-  );
   return (
     <>
-      <Section title="Documents">
-        <div className="rls-card rst-card rst-rows">
+      <Two top>
+        <Part label="Documents">
           {doc("Privacy policy", "/privacy", `Updated ${updated}`)}
           {doc("Support page", "/support")}
           {doc("Terms of service", null)}
           {doc("Data processing agreement", null)}
-        </div>
-      </Section>
-
-      <Section title="Who is behind the app">
-        <div className="rls-card rst-card rst-rows">
-          <div className="rst-row">
-            <span className="rst-row-main">
-              <b>{company}</b>
-              <small>Registered in {country}</small>
-            </span>
-          </div>
-          <div className="rst-row">
-            <span className="rst-row-main">
-              <b>Privacy contact</b>
-              {contactEmail && <small>{contactEmail}</small>}
-            </span>
-            {!contactEmail && <span className="trn-state rst-state">Missing</span>}
-          </div>
-        </div>
-      </Section>
-
-      <Section title={<>Your clients&rsquo; data</>}>
-        <div className="rls-card rst-card rst-rows">
-          {fact("Clients delete their own account", "In the app, under Account; their data goes straight away.")}
-          {fact("Invoices stay", <>Up to 7 years, the business record the law asks you to keep, with only the client&rsquo;s name.</>)}
-          {fact("Backups", "Nightly; a deleted account is gone from them within 30 days.")}
-        </div>
-      </Section>
+        </Part>
+        <Part label={<>Your clients&rsquo; data</>}>
+          <Row name="Clients delete their own account" fact="Their data goes straight away" />
+          <Row name="Invoices stay" fact={<>Up to 7 years, the client&rsquo;s name alone</>} />
+          <Row name="Backups" fact={<SepJoin parts={["Nightly", "a deleted account gone within 30 days"]} />} />
+        </Part>
+      </Two>
+      <Part label="Who is behind the app">
+        <Cells>
+          <Row name={company} fact={`Registered in ${country}`} />
+          <Row name="Privacy contact" fact={contactEmail || undefined}>
+            {!contactEmail && <State>Missing</State>}
+          </Row>
+        </Cells>
+      </Part>
     </>
   );
 }

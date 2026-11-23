@@ -9,14 +9,15 @@ import { logoutAction } from "../../../lib/auth-actions";
 import type { AccountSecurity, SignedInDevice } from "../../../lib/accountSecurity";
 import { lastActiveWords } from "../../../lib/lastActive";
 import { SepJoin } from "../Sep";
-import { AccountEmail, Field, Section } from "./SettingsForms";
+import { AccountEmail, pressSave, ThisDevice } from "./SettingsForms";
+import { Fields, Line, OpenRow, Part, Pill, Row, State, Two, Word } from "./Rows";
 
-// Settings, Account & security with the sign-in through Clerk (27 Oct, Alex: mockup B; "only email, and that's it"):
-// Sign-in (the email, changed in place, then each login linked to it: Google connected or Connect, Apple Soon while its
-// button is off) and Devices (where the account is signed in, this one first with Sign out, the others each with
-// Sign out, and Sign out everywhere else in the head). Each acts at once (lib/accountActions.ts), none on the Save bar.
-// Two-step sign-in is left out: Clerk asks a paid plan for it. Password (17 Nov, Alex: "Settings row") between them,
-// once Clerk takes passwords: set one, or change it with the current one.
+// Settings, Account with the sign-in through Clerk (27 Oct, Alex: "only email, and that's it"; 23 Nov, Alex: rows, as
+// docs/boards/settings-harmony-mockup.html): Email and password (the email, Change opening its line under its row;
+// the password, Change or Add opening its fields there, once Clerk takes passwords) beside Linked logins (Google
+// connected or Connect, Apple Soon while its button is off); then Devices (this one first, each other with Sign out on
+// hover, Sign out everywhere else on the label). Each acts at once (lib/accountActions.ts), none on the Save bar.
+// Two-step sign-in is left out: Clerk asks a paid plan for it.
 
 const APPLE_ON = process.env.NEXT_PUBLIC_APPLE_SIGNIN !== "off";
 const RETURN = "/admin/redesign/settings#account";
@@ -28,7 +29,12 @@ const lastSeen = (at: number) => lastActiveWords(new Date(at).toISOString());
 export default function ClerkAccount({ email, security, passwordsHint = null }: { email: string; security: AccountSecurity | null; passwordsHint?: boolean | null }) {
   const [busy, start] = useTransition();
   const [gone, setGone] = useState<string[]>([]);
-  const { user } = useUser();
+  const { user, isLoaded } = useUser();
+  // The label says what the card holds (23 Nov, review): "Email and password" only while the Password row shows (Clerk
+  // takes passwords and whether this account has one is known; the same test ClerkPassword draws by), else "Email".
+  const passwords = usePasswordsOn(passwordsHint);
+  const passwordKnown = user ? true : isLoaded ? false : (security?.hasPassword ?? null) !== null;
+  const withPassword = passwords === true && passwordKnown;
   const google = security?.logins.find((l) => l.provider === "google") ?? null;
   const apple = security?.logins.find((l) => l.provider === "apple") ?? null;
   const devices = (security?.devices ?? []).filter((d) => !gone.includes(d.id));
@@ -56,151 +62,127 @@ export default function ClerkAccount({ email, security, passwordsHint = null }: 
       }
     });
 
+  // Every Settings row one order (16 Nov, Alex: the audit): the hover words, then the state pill, then the resting action.
   const loginRow = (name: string, linked: { id: string; email: string } | null, can: boolean, strategy: "oauth_google" | "oauth_apple") => (
-    <div className="rst-row">
-      <span className="rst-row-main">
-        <b>{name}</b>
-        {linked?.email && <small>{linked.email}</small>}
-      </span>
-      {/* Every Settings row one order (16 Nov, Alex: the audit): the hover words, then the state pill, then the resting action. */}
+    <Row name={name} fact={linked?.email} hover={!!linked || can}>
       {linked ? (
         <>
-          <button type="button" className="rst-danger rst-hover" disabled={busy} onClick={() => act(() => disconnectLoginAction(linked.id), `${name} disconnected`)}>
+          <Word tone="red" hoverOnly disabled={busy} onClick={() => act(() => disconnectLoginAction(linked.id), `${name} disconnected`)}>
             Disconnect
-          </button>
-          <span className="trn-state good rst-state">Connected</span>
+          </Word>
+          <State tone="good">Connected</State>
         </>
       ) : can ? (
-        <button type="button" className="rst-act" disabled={busy || !user} onClick={() => connect(strategy)}>
+        <Word disabled={busy || !user} onClick={() => connect(strategy)}>
           Connect
-        </button>
+        </Word>
       ) : (
-        <span className="trn-state rst-state">Soon</span>
+        <State>Soon</State>
       )}
-    </div>
+    </Row>
   );
 
   const deviceRow = (d: SignedInDevice) => (
-    <div className="rst-row" key={d.id}>
-      <span className="rst-row-main">
-        <b>{d.device}</b>
-        <small>
-          <SepJoin parts={[d.browser, d.place, d.current ? null : lastSeen(d.lastActive)]} />
-        </small>
-      </span>
+    <Row key={d.id} name={d.device} fact={<SepJoin parts={[d.browser, d.place, d.current ? null : lastSeen(d.lastActive)]} />} hover>
       {d.current ? (
         <>
-          <button type="button" className="rst-act rst-hover" onClick={() => logoutAction()}>
+          <Word hoverOnly onClick={() => logoutAction()}>
             Sign out
-          </button>
-          <span className="trn-state good rst-state">This device</span>
+          </Word>
+          <State tone="good">This device</State>
         </>
       ) : (
-        <button type="button" className="rst-act rst-hover" disabled={busy} onClick={() => act(() => signOutDeviceAction(d.id), "Signed out", () => setGone((g) => [...g, d.id]))}>
+        <Word hoverOnly disabled={busy} onClick={() => act(() => signOutDeviceAction(d.id), "Signed out", () => setGone((g) => [...g, d.id]))}>
           Sign out
-        </button>
+        </Word>
       )}
-    </div>
+    </Row>
+  );
+
+  const signIn = (
+    <Part label={withPassword ? "Email and password" : "Email"}>
+      <AccountEmail email={email} />
+      <ClerkPassword email={email} passwordsHint={passwordsHint} hasPassword={security?.hasPassword ?? null} />
+    </Part>
   );
 
   return (
     <>
-      <Section title="Sign-in">
-        <div className="rls-card rst-card">
-          <AccountEmail email={email} bare />
-          {security && (
-            <div className="rst-rows rst-rows-after">
-              {loginRow("Google", google, true, "oauth_google")}
-              {loginRow("Apple", apple, APPLE_ON, "oauth_apple")}
-            </div>
-          )}
-        </div>
-      </Section>
-      <ClerkPassword email={email} passwordsHint={passwordsHint} hasPassword={security?.hasPassword ?? null} />
       {security ? (
-        <Section
-          title="Devices"
+        <Two top>
+          {signIn}
+          <Part label="Linked logins">
+            {loginRow("Google", google, true, "oauth_google")}
+            {loginRow("Apple", apple, APPLE_ON, "oauth_apple")}
+          </Part>
+        </Two>
+      ) : (
+        signIn
+      )}
+      {security ? (
+        <Part
+          label="Devices"
           fact={String(devices.length)}
-          actions={
+          action={
             others.length > 0 ? (
-              <button type="button" className="trn-pill rst-pill" disabled={busy} onClick={() => act(signOutOtherDevicesAction, "Signed out everywhere else", () => setGone((g) => [...g, ...others.map((d) => d.id)]))}>
+              <Pill disabled={busy} onClick={() => act(signOutOtherDevicesAction, "Signed out everywhere else", () => setGone((g) => [...g, ...others.map((d) => d.id)]))}>
                 Sign out everywhere else
-              </button>
+              </Pill>
             ) : undefined
           }
         >
-          <div className="rls-card rst-card">
-            <div className="rst-rows">{devices.map(deviceRow)}</div>
-          </div>
-        </Section>
+          {devices.map(deviceRow)}
+        </Part>
       ) : (
-        <Section
-          title="This device"
-          actions={
-            <button type="button" className="trn-pill rst-pill" onClick={() => logoutAction()}>
-              Sign out
-            </button>
-          }
-        />
+        <ThisDevice />
       )}
     </>
   );
 }
 
-/** Password (17 Nov, Alex: "Settings row"): a coach who signs in with an emailed code sets one here and can sign in
- *  with it after, the code still working; one who has one changes it, the current one checked first. Saved at once
- *  through Clerk's server (lib/accountActions.ts), not on the page's bar, as the email above. Drawn with the page
- *  (18 Nov, Alex: the password box came in a second late): whether Clerk takes passwords and whether this account has one
- *  are read by the server (`passwordsHint`, `hasPassword`), Clerk's own account in the browser winning once loaded. */
+/** Password (17 Nov, Alex: "Settings row"; 23 Nov: a row, its fields opening under it): a coach who signs in with an
+ *  emailed code adds one here (`Not set`, Add) and can sign in with it after, the code still working; one who has one
+ *  changes it (`Set`, Change), the current one checked first. Clerk gives no day it was set, so `Set` alone. Saved at
+ *  once through Clerk's server (lib/accountActions.ts), not on the page's bar, as the email above. Drawn with the page
+ *  (18 Nov, Alex: the password box came in a second late): whether Clerk takes passwords and whether this account has
+ *  one are read by the server (`passwordsHint`, `hasPassword`), Clerk's own account in the browser winning once loaded. */
 function ClerkPassword({ email, passwordsHint, hasPassword }: { email: string; passwordsHint: boolean | null; hasPassword: boolean | null }) {
   const passwords = usePasswordsOn(passwordsHint);
   const { isLoaded, user } = useUser();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [error, setError] = useState("");
-  const [busy, start] = useTransition();
   const has = user ? user.passwordEnabled : isLoaded ? null : hasPassword;
   if (passwords !== true || has === null) return null;
   const ready = !!next && (!has || !!current);
-  const save = () =>
-    start(async () => {
-      const r = await setPasswordAction(next, has ? current : null).catch(() => ({ ok: false, error: "Not saved. Try again." }));
-      if (!r.ok) return setError(r.error ?? "Not saved. Try again.");
-      await user?.reload().catch(() => {});
-      setCurrent("");
-      setNext("");
-      setError("");
-      toast.success(has ? "Password changed" : "Password saved");
-    });
+  const clear = () => (setCurrent(""), setNext(""), setError(""));
+  const save = async () => {
+    const r = await setPasswordAction(next, has ? current : null).catch(() => ({ ok: false, error: "Not saved. Try again." }));
+    if (!r.ok) {
+      setError(r.error ?? "Not saved. Try again.");
+      return false;
+    }
+    await user?.reload().catch(() => {});
+    clear();
+    toast.success(has ? "Password changed" : "Password saved");
+  };
   return (
-    <Section title="Password">
-      <div className="rls-card rst-card">
-        <form
-          className="rst-grid"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (ready && !busy) save();
-          }}
-        >
-          <input className="sr-only" type="email" name="email" autoComplete="username" value={user?.primaryEmailAddress?.emailAddress ?? email} readOnly tabIndex={-1} aria-hidden="true" />
+    <OpenRow name="Password" fact={has ? "Set" : "Not set"} word={has ? "Change" : "Add"} onSave={save} onCancel={clear} canSave={ready} error={error}>
+      {/* A form, so a password manager sees the account with it and Enter saves. */}
+      <form onSubmit={(e) => (e.preventDefault(), ready && pressSave(e.currentTarget))}>
+        <input className="sr-only" type="email" name="email" autoComplete="username" value={user?.primaryEmailAddress?.emailAddress ?? email} readOnly tabIndex={-1} aria-hidden="true" />
+        <Fields cols={has ? 2 : 1}>
           {has && (
-            <Field label="Current password">
+            <Line label="Current password">
               <input className="dlh-line" type="password" value={current} onChange={(e) => (setCurrent(e.target.value), setError(""))} autoComplete="current-password" />
-            </Field>
+            </Line>
           )}
-          <Field label={has ? "New password" : "Password"} wide={!has}>
+          <Line label={has ? "New password" : "Password"}>
             <input className="dlh-line" type="password" value={next} onChange={(e) => (setNext(e.target.value), setError(""))} autoComplete="new-password" />
-          </Field>
-          {(next || current) && (
-            <div className="rst-foot wide">
-              <span className="rst-err">{error}</span>
-              <button type="submit" className="dlh-go" disabled={!ready || busy}>
-                {busy ? "Saving…" : "Save"}
-              </button>
-            </div>
-          )}
-        </form>
-      </div>
-    </Section>
+          </Line>
+        </Fields>
+        <button type="submit" hidden aria-hidden="true" tabIndex={-1} />
+      </form>
+    </OpenRow>
   );
 }

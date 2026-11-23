@@ -22,10 +22,17 @@
 .rd.rst .rd-due.rst-unsaved { position: absolute; top: 2px; right: -9px; background: #141a24; }
 .rd.rst .rst-shown { flex: 999 1 420px; min-width: 0; }
 .rd.rst .rst-sec[hidden] { display: none; }
-.rd.rst .rst-sechead { display: flex; align-items: center; gap: 10px; min-height: 40px; margin: 0; font: inherit; }
-.rd.rst .rst-sectitle { min-width: 0; font-size: 20px; font-weight: 600; line-height: 1.25; letter-spacing: -0.01em; color: #141a24; }
-.rd.rst .rst-content { display: flex; flex-direction: column; gap: 22px; padding: 10px 0 30px; }
-/* Stacked, the list stops sticking (19 Nov, Alex: on a narrow window it stuck over the section as it scrolled): the split
+/* The section's head (23 Nov, Alex: docs/boards/settings-harmony-mockup.html): the title and its one tag on the left,
+   its actions on the right (+ Plan, Profile's capsule), 36px tall; its parts 20px under it, 24px apart. */
+.rd.rst .rst-sechead { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; }
+.rd.rst .rst-sechead-title { display: flex; align-items: center; gap: 10px; min-width: 0; margin: 0; font: inherit; }
+.rd.rst .rst-sechead-actions { display: flex; flex: none; align-items: center; gap: 8px; margin-left: auto; }
+.rd.rst .rst-sechead-actions:empty { display: none; }
+.rd.rst .rst-sectitle { min-width: 0; font-size: 20px; font-weight: 600; line-height: 26px; letter-spacing: -0.01em; color: #141a24; }
+.rd.rst .rst-content { display: flex; flex-direction: column; gap: 24px; padding: 20px 0 30px; }
+/* What came from a section merged into another (23 Nov: Billing, Notifications, Your data): its parts at the same
+   rhythm, under the id an old address lands on (rst-part-<key>). */
+.rd.rst .rst-stack { display: flex; flex-direction: column; gap: 24px; min-width: 0; }/* Stacked, the list stops sticking (19 Nov, Alex: on a narrow window it stuck over the section as it scrolled): the split
    wraps once it is under 652px (the list's 200, the gap's 32, the section's 420), which with the rail and the chat tabs
    beside it is a window under about 1015px. */
 @media (max-width: 1020px) { .rd.rst .rst-list { position: static; max-width: none; } }
@@ -240,3 +247,114 @@ body:has(.rd.rst) .rd-picker-menu [data-slot="dropdown-menu-item"] small { font-
 .rd.rst .rst-signout { align-self: flex-start; height: 32px; margin: 14px 0 0 4px; padding: 0 10px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #b42318; cursor: pointer; }
 .rd.rst .rst-signout:hover { background: #f5f6f8; }
 .rd.rst .rst-signout:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; }
+
+/* ---- Rows (23 Nov, Alex: docs/boards/settings-harmony-mockup.html, "Settings in one system"; Rows.tsx): every section
+   drawn the same way. A part: its small caps label in ink (a grey fact after the drawn bar, its one action on the
+   right), 36px, over one white hairline card. In the card, rows: 58px, the name 15px/600 with one grey fact under it,
+   the value or control on the right, #EEF0F3 between rows and nothing else. A row changed with a word opens its fields
+   under itself on the shared fold (RowFold), Cancel in words and the brand Save. Two small parts side by side, one
+   under the other once the section is narrow. Prefix rsr-. */
+.rd.rst .rsr-part { min-width: 0; }
+.rd.rst .rsr-lbl { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 36px; margin-bottom: 4px; }
+.rd.rst .rsr-lw { display: flex; align-items: center; min-width: 0; margin: 0; font: inherit; font-size: 12.5px; }
+.rd.rst .rsr-lw b { font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #141a24; white-space: nowrap; }
+.rd.rst .rsr-lw > span { min-width: 0; overflow: hidden; font-size: 12.5px; font-weight: 500; color: #8b93a1; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rd.rst .rsr-lw .rd-sep { height: 12px; margin: 0 8px; }
+.rd.rst .rsr-lbl-act { display: flex; flex: none; align-items: center; gap: 8px; }
+
+/* The card: white, radius 18, the hairline inside its edge; its rows clipped to its corners. */
+.rd.rst .rsr-card { min-width: 0; overflow: hidden; border-radius: 18px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; }
+/* One line between rows, and between a row's opened fields and the row after them; none under a row opened. */
+.rd.rst .rsr-card > * + *:not(.rd-rowfold) { box-shadow: inset 0 1px 0 #EEF0F3; }
+
+/* A row: the name and its fact on the left, its value or control on the right. */
+.rd.rst .rsr-row { display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 9px 16px 9px 20px; box-sizing: border-box; color: inherit; text-decoration: none; }
+.rd.rst .rsr-row.hl { transition: background-color 0.15s; }
+.rd.rst .rsr-row.hl:hover { background-color: #fafbfd; }
+.rd.rst .rsr-row.hl:hover .rst-act, .rd.rst .rsr-row.hl:hover .rst-danger { background: #F5F6F8; }
+/* A row that is a link (Privacy policy, Support page) keeps the card's white: a shared link style elsewhere filled it dark (23 Nov). */
+.rd.rst a.rsr-row.rsr-row { background-color: transparent; color: inherit; text-decoration: none; }
+.rd.rst a.rsr-row.rsr-row.hl:hover { background-color: #fafbfd; }
+.rd.rst .rsr-row:hover .rst-hover, .rd.rst .rsr-row:focus-within .rst-hover { opacity: 1; }
+.rd.rst .rsr-rm { flex: 1; min-width: 0; }
+.rd.rst .rsr-rm > b { display: block; overflow: hidden; font-size: 15px; font-weight: 600; line-height: 20px; color: #141a24; text-overflow: ellipsis; white-space: nowrap; }
+.rd.rst .rsr-rm > span { display: block; margin-top: 2px; overflow: hidden; font-size: 13px; font-weight: 500; line-height: 18px; color: #8b93a1; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rd.rst .rsr-rm .rd-sep { margin: 0 8px; }
+.rd.rst .rsr-row.faded .rsr-rm { opacity: 0.5; }
+/* Rows side by side in one card (Who is behind the app): an upright line between them. */
+.rd.rst .rsr-cells { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.rd.rst .rsr-cells > * + * { box-shadow: inset 1px 0 0 #EEF0F3; }
+@media (max-width: 700px) { .rd.rst .rsr-cells { grid-template-columns: minmax(0, 1fr); } .rd.rst .rsr-cells > * + * { box-shadow: inset 0 1px 0 #EEF0F3; } }
+
+/* What sits on a row's right. A value (14.5px/500, tabular). */
+.rd.rst .rsr-val { display: inline-flex; flex: none; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 500; color: #141a24; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* A value to pick (Picker with rsr-pick): the floating list on a white hairline box, 36px, radius 12. */
+.rd.rst .rd-picker.rsr-pick { display: inline-flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; width: auto; min-width: 0; max-width: 260px; height: 36px; margin: 0; padding: 0 12px 0 14px; border: 0; border-radius: 12px; outline: none; background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; font: inherit; font-size: 14.5px; font-weight: 500; letter-spacing: 0; text-transform: none; color: #141a24; white-space: nowrap; cursor: pointer; transition: box-shadow 0.15s; }
+.rd.rst .rd-picker.rsr-pick > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.rd.rst .rd-picker.rsr-pick svg { flex: none; width: 12px; height: 12px; color: #8b93a1; }
+.rd.rst .rd-picker.rsr-pick:focus-visible, .rd.rst .rd-picker.rsr-pick[data-state="open"] { box-shadow: inset 0 0 0 1px #141a24; }
+/* Nothing picked yet: the box keeps its width, the chevron at its end. */
+.rd.rst .rd-picker.rsr-pick.empty { min-width: 150px; justify-content: flex-end; }
+/* A short figure typed on the row's right (InlineLine): a clean line, the figure on its right, its unit grey. */
+.rd.rst .rsr-iline { display: inline-flex; flex: none; align-items: baseline; justify-content: flex-end; gap: 6px; height: 30px; padding-top: 5px; border-bottom: 1px solid #E1E5EB; box-sizing: border-box; cursor: text; transition: border-color 0.15s; }
+.rd.rst .rsr-iline:focus-within { border-bottom-color: #141a24; }
+.rd.rst .rsr-iline.bad { border-bottom-color: #b42318; }
+.rd.rst .rsr-iline input { flex: 1; width: 100%; min-width: 0; margin: 0; padding: 0; border: 0; outline: none; background: transparent; font: inherit; font-size: 15px; font-weight: 500; color: #141a24; text-align: right; font-variant-numeric: tabular-nums; }
+.rd.rst .rsr-iline em { flex: none; font-size: 13px; font-style: normal; font-weight: 500; color: #8b93a1; }
+/* A time typed in a box (quiet hours): white with the hairline, 36px, radius 12; a faint arrow between two. */
+.rd.rst .rsr-tbox { flex: none; width: 72px; height: 36px; margin: 0; padding: 0 14px; border: 0; border-radius: 12px; outline: none; background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; box-sizing: border-box; font: inherit; font-size: 14.5px; font-weight: 500; color: #141a24; text-align: center; font-variant-numeric: tabular-nums; transition: box-shadow 0.15s; }
+.rd.rst .rsr-tbox:focus { box-shadow: inset 0 0 0 1px #141a24; }
+.rd.rst .rsr-tbox[aria-invalid="true"] { box-shadow: inset 0 0 0 1px #b42318; }
+.rd.rst .rsr-arrow { display: inline-flex; flex: none; color: #c3c9d2; }
+.rd.rst .rsr-arrow svg { width: 14px; height: 14px; }
+/* The capsule on a row keeps its size. */
+.rd.rst .rd-btn-group.rsr-caps { flex: none; }
+/* A word action in the secondary grey (Cancel). */
+.rd.rst .rst-act.sec { color: #5b6474; }
+/* A pill: white with the button hairline, 34px; go, the screen's one pill, in the brand colour, 36px. */
+.rd.rst .rsr-pill { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 6px; height: 34px; margin: 0; padding: 0 15px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; box-sizing: border-box; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; white-space: nowrap; text-decoration: none; cursor: pointer; transition: box-shadow 0.15s, opacity 0.15s; }
+.rd.rst .rsr-pill svg { flex: none; width: 14px; height: 14px; translate: 0 -0.5px; }
+@media (hover: hover) { .rd.rst .rsr-pill:not(.go):not(:disabled):hover { box-shadow: inset 0 0 0 1px #c5ccd8; } }
+.rd.rst .rsr-pill.go { height: 36px; padding: 0 18px; background: var(--brand, #141a24); box-shadow: none; color: var(--brand-ink, #fff); }
+.rd.rst .rsr-pill:disabled { opacity: 0.45; cursor: default; }
+.rd.rst .rsr-pill:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; }
+/* The state pill at a row's end: white, a 1px edge, 24px, 84px at least so a column of them is one width. */
+.rd.rst .rsr-st { display: inline-flex; flex: none; align-items: center; justify-content: center; min-width: 84px; height: 24px; padding: 0 10px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #E1E5EB; box-sizing: border-box; font-size: 11.5px; font-weight: 600; color: #8b93a1; white-space: nowrap; }
+.rd.rst .rsr-st.good { box-shadow: inset 0 0 0 1px rgba(47, 122, 63, 0.35); color: #2f7a3f; }
+.rd.rst .rsr-st.ink { box-shadow: inset 0 0 0 1px #141a24; color: #141a24; }
+.rd.rst .rsr-st.rust { box-shadow: inset 0 0 0 1px rgba(184, 71, 31, 0.4); color: #b8471f; }
+.rd.rst .rsr-st.bad { box-shadow: inset 0 0 0 1px rgba(180, 35, 24, 0.4); color: #b42318; }
+
+/* Opened in place under its row (OpenRow; the fold's own wrapper takes no line): its fields, then the foot. */
+.rd.rst .rsr-unfold { padding: 2px 20px 16px; }
+.rd.rst .rsr-foot { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 16px; }
+.rd.rst .rsr-foot .rst-err { flex: 1; min-width: 0; }
+
+/* Two small parts (or cards) side by side, 20px apart; one under the other once there is under 660px for them. */
+.rd.rst .rsr-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); align-items: end; gap: 20px; }
+.rd.rst .rsr-two.top { align-items: start; }
+
+/* A real form (Fields, Line): small caps labels (10px, grey) over clean lines (30px, 15px/500), ink while typing. */
+.rd.rst .rsr-form { display: grid; grid-template-columns: repeat(var(--rsr-cols, 2), minmax(0, 1fr)); gap: 18px 24px; }
+.rd.rst .rsr-form.pad { padding: 18px 20px 22px; }
+@media (max-width: 700px) { .rd.rst .rsr-form { grid-template-columns: minmax(0, 1fr); } }
+/* Fields `fit`: as many columns as the card's own width holds, never narrower than the width asked (Registration). */
+.rd.rst .rsr-form.fit { grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--rsr-min, 200px)), 1fr)); }
+.rd.rst .rsr-f { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.rd.rst .rsr-f.wide { grid-column: 1 / -1; }
+.rd.rst .rsr-flabel { overflow: hidden; font-size: 10px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #8b93a1; text-overflow: ellipsis; white-space: nowrap; }
+.rd.rst .rsr-f .dlh-line { height: 30px; padding: 0; line-height: 29px; }
+.rd.rst .rsr-f.tall textarea.dlh-line { height: auto; min-height: 84px; padding: 6px 0; line-height: 1.45; field-sizing: content; }
+/* A list on the line (Picker with rsr-sel): the choice, the faint chevron at its end. */
+.rd.rst .rd-picker.rsr-sel { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; height: 30px; margin: 0; padding: 0; border: 0; border-bottom: 1px solid #E1E5EB; border-radius: 0; outline: none; background: transparent; box-shadow: none; font: inherit; font-size: 15px; font-weight: 500; letter-spacing: 0; text-transform: none; color: #141a24; text-align: left; cursor: pointer; transition: border-color 0.15s; }
+.rd.rst .rd-picker.rsr-sel > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rd.rst .rd-picker.rsr-sel svg { flex: none; width: 12px; height: 12px; color: #98A2B3; }
+.rd.rst .rd-picker.rsr-sel:focus-visible, .rd.rst .rd-picker.rsr-sel[data-state="open"] { border-bottom-color: #141a24; }
+/* Never stretched by its card (23 Nov: the State list grew to fill the Address card while Contact beside it was taller). */
+.rd.rst .rsr-f > .rd-picker.rsr-sel.rsr-sel { flex: none; height: 30px; min-height: 30px; max-height: 30px; }
+/* A line holding a fixed prefix before what is typed (NL before a VAT number, the currency before a price). */
+.rd.rst .rsr-lined { display: flex; align-items: center; gap: 8px; height: 30px; border-bottom: 1px solid #E1E5EB; box-sizing: border-box; transition: border-color 0.15s; }
+.rd.rst .rsr-lined:focus-within { border-bottom-color: #141a24; }
+.rd.rst .rsr-lined .dlh-line { flex: 1; min-width: 0; height: 29px; border-bottom: 0; }
+.rd.rst .rsr-pre { flex: none; padding-right: 8px; border-right: 1px solid #E1E5EB; font-size: 15px; font-style: normal; font-weight: 500; line-height: 18px; color: #8b93a1; }
+@media (prefers-reduced-motion: reduce) { .rd.rst .rsr-row.hl, .rd.rst .rd-picker.rsr-pick, .rd.rst .rsr-iline, .rd.rst .rsr-tbox, .rd.rst .rsr-pill, .rd.rst .rd-picker.rsr-sel, .rd.rst .rsr-lined { transition: none; } }

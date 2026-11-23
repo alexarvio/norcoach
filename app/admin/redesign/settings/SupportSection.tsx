@@ -6,16 +6,19 @@ import { Dialog, DialogClose, DialogContent, DialogTitle } from "../../../compon
 import type { SupportLine, SupportSectionData } from "../../../lib/support";
 import { loadSupportThreadAction, markSupportSeenAction, sendSupportAction } from "../../../lib/supportActions";
 import { newOnceKey } from "../../../lib/onceKey";
+import { Fields, Line, Part, Pill, Word } from "./Rows";
 import "./support.css";
 
 // Settings' Support (23 Oct, Alex: "where the coaches can go in and talk to someone from the company or report an
 // issue"; docs/DESIGN-RULES-ADMIN.md 9b). The body of the Settings page's Support section (SettingsBoard draws its
-// title and Fold), one hairline card: the coach's thread with the company as the chat draws one (their own words on the
-// right on the neutral tint, the company's white with a hairline on the left; a problem with its rust state pill, where
-// in grey, its screenshot as a thumbnail that opens big, a green Done pill once the owner closed it), then the message
-// line (words on a clean line, the ink Send) with Report a problem beside it as a white pill, which turns the line into
-// a problem: what happened and where on clean lines, Attach screenshot in words (a pasted picture too), Cancel in words
-// and the ink Send. The owner answers from Coaches and has no Support section (loadSupportSection is null). Read again
+// title), in Settings' one system since 23 Nov (Alex: docs/boards/settings-harmony-mockup.html): the part `Your thread
+// with Norcoach` over one hairline card: the coach's thread with the company as the chat draws one (their own words on
+// the right on the neutral tint, the company's white with a hairline on the left; a problem with its rust state pill,
+// where in grey, its screenshot as a thumbnail that opens big, a green Done pill once the owner closed it), then at its
+// foot the message line (words on a clean line, no sample text) with Report a problem beside it as a white pill and
+// Send the brand pill, faded until something is typed; Report a problem turns the line into a problem: what happened
+// and where on clean lines, Attach screenshot in words (a pasted picture too), Cancel in words and the brand Send. The
+// owner answers from Coaches and has no Support section (loadSupportSection is null). Read again
 // every so often while open; the company's lines are read once the card is really on screen. Prefix sup- (support.css).
 
 const POLL_MS = 20_000;
@@ -135,8 +138,10 @@ export function SupportThread({ lines, pending = [], onDone }: { lines: SupportL
   );
 }
 
-/** The message line: words on a clean line, Enter sends (Shift+Enter a new line), the ink Send; `extra` beside it. */
-export function SupportLineBox({ value, onChange, onSend, placeholder, label, busy = false, extra }: { value: string; onChange: (v: string) => void; onSend: () => void; placeholder: string; label: string; busy?: boolean; extra?: ReactNode }) {
+/** The message line: words on a clean line, Enter sends (Shift+Enter a new line), the ink Send; `extra` beside it.
+ *  `pills`: Settings' own pills (Rows.tsx), Send the brand pill faded until something is typed, and no sample text
+ *  in the line (23 Nov, Alex: docs/boards/settings-harmony-mockup.html). */
+export function SupportLineBox({ value, onChange, onSend, placeholder, label, busy = false, extra, pills = false }: { value: string; onChange: (v: string) => void; onSend: () => void; placeholder?: string; label: string; busy?: boolean; extra?: ReactNode; pills?: boolean }) {
   const ready = !!value.trim() && !busy;
   const key = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -145,10 +150,10 @@ export function SupportLineBox({ value, onChange, onSend, placeholder, label, bu
     }
   };
   return (
-    <div className="sup-compose">
+    <div className={`sup-compose${pills ? " pills" : ""}`}>
       <textarea className="dlh-line sup-line" rows={1} value={value} placeholder={placeholder} aria-label={label} maxLength={4000} onChange={(e) => onChange(e.target.value)} onKeyDown={key} />
       {extra}
-      <button type="button" className="dlh-go sup-send" disabled={!ready} onClick={onSend}>
+      <button type="button" className={pills ? "rsr-pill go sup-send" : "dlh-go sup-send"} disabled={!ready} onClick={onSend}>
         Send
       </button>
     </div>
@@ -332,81 +337,83 @@ function CoachSupport({ initial }: { initial: SupportLine[] }) {
   };
 
   return (
-    <div ref={card} className="rls-card sup-card">
-      <SupportThread lines={lines} pending={pending} />
-      {mode === "message" ? (
-        <SupportLineBox
-          value={text}
-          onChange={setText}
-          onSend={send}
-          placeholder="Message"
-          label="Message to Norcoach"
-          busy={busy}
-          extra={
-            <button
-              ref={reportBtn}
-              type="button"
-              className="trn-pill sup-report"
-              onClick={() => {
-                setMode("problem");
-                setError(null);
-              }}
-            >
-              <FlagIcon /> Report a problem
-            </button>
-          }
-        />
-      ) : (
-        <div ref={problemBox} className={`sup-problem${busy ? " busy" : ""}`} onPaste={paste} onKeyDown={problemKey}>
-          <label className="sup-field">
-            <span className="dlh-label">What happened</span>
-            <textarea className="dlh-line sup-line" rows={2} value={text} maxLength={4000} autoFocus onChange={(e) => setText(e.target.value)} />
-          </label>
-          <label className="sup-field">
-            <span className="dlh-label">Where</span>
-            <input className="dlh-line" value={where} maxLength={200} onChange={(e) => setWhere(e.target.value)} />
-          </label>
-          <div className="sup-foot">
-            {file ? (
-              <span className="sup-file">
-                {/* eslint-disable-next-line @next/next/no-img-element -- the coach's own file, before it is sent */}
-                {preview && <img src={preview} alt="" />}
-                <span className="sup-file-name">{file.name || "Screenshot"}</span>
-                <button type="button" className="sup-textact" onClick={() => pick(null)}>
-                  Remove
-                </button>
+    <Part label="Your thread with Norcoach">
+      <div ref={card} className="sup-card">
+        <SupportThread lines={lines} pending={pending} />
+        {mode === "message" ? (
+          <SupportLineBox
+            value={text}
+            onChange={setText}
+            onSend={send}
+            label="Message to Norcoach"
+            busy={busy}
+            pills
+            extra={
+              <button
+                ref={reportBtn}
+                type="button"
+                className="rsr-pill sup-report"
+                onClick={() => {
+                  setMode("problem");
+                  setError(null);
+                }}
+              >
+                <FlagIcon /> Report a problem
+              </button>
+            }
+          />
+        ) : (
+          <div ref={problemBox} className={`sup-problem${busy ? " busy" : ""}`} onPaste={paste} onKeyDown={problemKey}>
+            <Fields cols={1}>
+              <Line label="What happened" tall>
+                <textarea className="dlh-line" rows={2} value={text} maxLength={4000} autoFocus onChange={(e) => setText(e.target.value)} />
+              </Line>
+              <Line label="Where">
+                <input className="dlh-line" value={where} maxLength={200} onChange={(e) => setWhere(e.target.value)} />
+              </Line>
+            </Fields>
+            <div className="sup-foot">
+              {file ? (
+                <span className="sup-file">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- the coach's own file, before it is sent */}
+                  {preview && <img src={preview} alt="" />}
+                  <span className="sup-file-name">{file.name || "Screenshot"}</span>
+                  <Word tone="sec" onClick={() => pick(null)}>
+                    Remove
+                  </Word>
+                </span>
+              ) : (
+                <Word className="sup-attach" onClick={() => picker.current?.click()}>
+                  Attach screenshot
+                </Word>
+              )}
+              <input
+                ref={picker}
+                type="file"
+                accept={SCREENSHOT_TYPES.join(",")}
+                hidden
+                onChange={(e) => {
+                  attach(e.target.files?.[0]);
+                  e.target.value = "";
+                }}
+              />
+              <span className="sup-foot-end">
+                <Word tone="sec" onClick={reset}>
+                  Cancel
+                </Word>
+                <Pill go disabled={!text.trim() || busy} onClick={send}>
+                  Send
+                </Pill>
               </span>
-            ) : (
-              <button type="button" className="sup-textact" onClick={() => picker.current?.click()}>
-                Attach screenshot
-              </button>
-            )}
-            <input
-              ref={picker}
-              type="file"
-              accept={SCREENSHOT_TYPES.join(",")}
-              hidden
-              onChange={(e) => {
-                attach(e.target.files?.[0]);
-                e.target.value = "";
-              }}
-            />
-            <span className="sup-foot-end">
-              <button type="button" className="dlh-cancel" onClick={reset}>
-                Cancel
-              </button>
-              <button type="button" className="dlh-go" disabled={!text.trim() || busy} onClick={send}>
-                Send
-              </button>
-            </span>
+            </div>
           </div>
-        </div>
-      )}
-      {error && (
-        <p className="sup-err" role="alert">
-          {error}
-        </p>
-      )}
-    </div>
+        )}
+        {error && (
+          <p className="sup-err" role="alert">
+            {error}
+          </p>
+        )}
+      </div>
+    </Part>
   );
 }

@@ -4,8 +4,17 @@
    where in grey, its screenshot a thumbnail; Done in green. Words on clean lines, the ink Send, Report a problem a white
    pill. Ink, never navy; weights 500 and 600. Prefix sup-. Overrides of a shared class carry an extra class (.rd.rls). */
 
-/* ---- The card: no padding of its own, its parts set their own. */
-.rd.rls .rls-card.sup-card { display: flex; flex-direction: column; padding: 0 0 14px; }
+/* ---- Settings' card (23 Nov, Alex: docs/boards/settings-harmony-mockup.html): the part `Your thread with Norcoach`
+   over Settings' card (Rows.tsx); in it the thread, then the message line with Report a problem and Send at its foot,
+   the card's line between them (none with nothing written yet, the line alone). Its parts set their own room. */
+.rd.rst .sup-card { display: flex; flex-direction: column; }
+.rd.rst .sup-card .sup-thread { padding: 16px 20px 8px; }
+.rd.rst .sup-card .sup-thread + .sup-compose, .rd.rst .sup-card .sup-thread + .sup-problem { box-shadow: inset 0 1px 0 #EEF0F3; }
+.rd.rst .sup-compose.pills { align-items: center; gap: 12px; padding: 14px 16px 16px 20px; }
+.rd.rst .sup-card .sup-problem { gap: 16px; padding: 18px 20px 16px; }
+/* Attach screenshot: the words on the form's left line, their hover room past it. */
+.rd.rst .sup-foot > .rst-act.sup-attach { margin-left: -10px; }
+.rd.rst .sup-card .sup-err { margin: 0 20px 14px; }
 
 /* ---- The thread: oldest first, a heading over each day, its own scroll so the page never grows with it. */
 .sup-thread { display: flex; flex-direction: column; gap: 14px; max-height: 420px; padding: 16px 18px 6px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #e1e5eb transparent; }

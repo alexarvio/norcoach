@@ -165,7 +165,7 @@ export default function ProfileDetails({
             <Line label="Last name" value={d.last} onChange={set("last")} max={LIMIT.displayName} auto="family-name" />
             <div className="rst-field">
               <span className="dlh-label">Date of birth</span>
-              <DateText value={d.birthdate} onChange={set("birthdate")} label="Date of birth" fromYear={1900} className="rpf-dateline" />
+              <DateText value={d.birthdate} onChange={set("birthdate")} label="Date of birth" fromYear={1900} placeholder="" className="rpf-dateline" />
             </div>
             <Line label="What you coach" value={d.title} onChange={set("title")} max={LIMIT.title} />
           </div>

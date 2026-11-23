@@ -27,6 +27,16 @@ export const DIAL_CODES: [iso: string, code: string][] = [
 ];
 export const DEFAULT_DIAL = "+31";
 
+/** Each business country's dial code, by its ISO code (lib/countries.ts' COUNTRIES; 23 Nov: Settings, Business details
+ *  shows the country's fixed before the phone on invoices). */
+const COUNTRY_DIAL: Record<string, string> = {
+  AT: "+43", BE: "+32", BG: "+359", HR: "+385", CY: "+357", CZ: "+420", DK: "+45", EE: "+372", FI: "+358", FR: "+33",
+  DE: "+49", GR: "+30", HU: "+36", IE: "+353", IT: "+39", LV: "+371", LT: "+370", LU: "+352", MT: "+356", NL: "+31",
+  PL: "+48", PT: "+351", RO: "+40", SK: "+421", SI: "+386", ES: "+34", SE: "+46", IS: "+354", LI: "+423", NO: "+47",
+  CH: "+41", GB: "+44", US: "+1", CA: "+1", AU: "+61", NZ: "+64",
+};
+export const dialOfCountry = (code: string | null | undefined): string | null => (code ? COUNTRY_DIAL[code.toUpperCase()] ?? null : null);
+
 /** A dial code as it is kept: a plus and one to four digits. */
 export const isDialCode = (v: string) => /^\+[0-9]{1,4}$/.test(v);
 
