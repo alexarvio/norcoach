@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextFetchEvent, NextRequest } from "next/server";
 import { clerkMiddleware } from "@clerk/nextjs/server";
+import { oldAdminAddress } from "./app/admin/redesign/paths";
 
 // Next 16 renamed `middleware.ts` to `proxy.ts` — same mechanism, new name.
 //
@@ -99,6 +100,17 @@ export function proxy(request: NextRequest, event: NextFetchEvent) {
   if (legal) return legal;
   const moved = toCanonical(request);
   if (moved) return moved;
+  // An old admin address (/admin/redesign/home?client=1, in a notification, a push, an email or a bookmark) goes to its
+  // new one (/clients/1/home), its other query kept and its # kept by the browser (24 Nov, Alex: the addresses).
+  const admin = oldAdminAddress(request.nextUrl.pathname, request.nextUrl.search);
+  if (admin) {
+    const url = request.nextUrl.clone();
+    const [path, query = ""] = admin.split("#")[0].split("?");
+    url.pathname = path;
+    url.search = query ? `?${query}` : "";
+    url.hash = admin.includes("#") ? admin.slice(admin.indexOf("#")) : "";
+    return NextResponse.redirect(url, 308);
+  }
   if (withClerk) return withClerk(request, event);
   const { pathname } = request.nextUrl;
 

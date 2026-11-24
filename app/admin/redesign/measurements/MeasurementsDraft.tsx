@@ -477,7 +477,7 @@ export default function MeasurementsDraft({ clientId, firstName, plan }: { clien
                     "Lifestyle"
                   )}
                   {/* Real phases only: with none, nothing is live (22 Oct, Alex: the client-level sheet showed as a live phase). */}
-                  <PhaseSwitcher name="" currentId={plan.id} items={plan.phases.filter((p) => p.id > 0)} hrefFor={(id) => `/admin/redesign/measurements?client=${clientId}&phase=${id}`} label="Switch phase" newLabel="New phase" onNew={() => setDlg({ kind: "newPhase" })} />
+                  <PhaseSwitcher name="" currentId={plan.id} items={plan.phases.filter((p) => p.id > 0)} hrefFor={(id) => `/clients/${clientId}/lifestyle?phase=${id}`} label="Switch phase" newLabel="New phase" onNew={() => setDlg({ kind: "newPhase" })} />
                 </>
               )}
             </h1>
@@ -931,7 +931,7 @@ export default function MeasurementsDraft({ clientId, firstName, plan }: { clien
               startTransition(async () => {
                 await deletePhaseAction(phaseId);
                 savedToast(`${plan.name} deleted`);
-                router.push(`${window.location.pathname}?client=${clientId}&tab=measurements`, { scroll: false });
+                router.push(`/clients/${clientId}/lifestyle`, { scroll: false });
               });
             }}
             onClose={close}

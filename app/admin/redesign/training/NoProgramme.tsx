@@ -46,7 +46,7 @@ export default function NoProgramme({ clientId }: { clientId: number; firstName:
               start(async () => {
                 const id = await createProgramWithAction(clientId, v.name, v.weeks, v.start || null, onceKey);
                 toast.success("Saved", { description: `${v.name || "New programme"}: ${v.weeks} weeks, a draft` });
-                if (id) router.push(`/admin/redesign/training?client=${clientId}&program=${id}&week=1`, { scroll: false });
+                if (id) router.push(`/clients/${clientId}/training?program=${id}&week=1`, { scroll: false });
                 else router.refresh();
               });
             }}

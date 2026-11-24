@@ -1,0 +1,67 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Admin addresses</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600&display=swap" rel="stylesheet"><style>
+  :root { --ink:#141a24; --body:#3a4250; --sec:#5b6474; --faint:#8b93a1; --label:#98A2B3; --line:#E1E5EB; --div:#EEF0F3; --page:#f4f7fc; --green:#2f7a3f; --rust:#b8471f; }
+  * { box-sizing:border-box; margin:0; }
+  body { font-family:Archivo,system-ui,sans-serif; font-weight:500; color:var(--ink); background:#fff; padding:28px 24px 80px; -webkit-font-smoothing:antialiased; }
+  h1 { font-size:20px; font-weight:600; margin-bottom:4px; }
+  .sub { color:var(--faint); font-size:13px; margin-bottom:30px; max-width:900px; line-height:1.55; }
+  .opts { display:grid; grid-template-columns:repeat(auto-fit, minmax(330px, 1fr)); gap:20px; max-width:1180px; }
+  .opt { background:var(--page); border-radius:18px; padding:20px; box-shadow:0 0 0 1px var(--line); }
+  .opt.pick { box-shadow:0 0 0 1.5px var(--ink); }
+  .tag { font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--sec); margin-bottom:6px; }
+  .opt h2 { font-size:17px; font-weight:600; margin-bottom:14px; }
+  .bar { display:flex; align-items:center; gap:8px; height:38px; padding:0 14px; border-radius:999px; background:#2a2d34; color:#e8eaee; font-size:13.5px; margin-bottom:16px; overflow:hidden; white-space:nowrap; }
+  .bar .host { color:#9aa0aa; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:14px; }
+  .row { display:flex; justify-content:space-between; gap:12px; padding:10px 14px; border-top:1px solid var(--div); font-size:13px; }
+  .row:first-child { border-top:0; }
+  .row span:first-child { color:var(--faint); }
+  .row code { font-family:inherit; font-weight:600; font-variant-numeric:tabular-nums; }
+  ul { margin:16px 0 0; padding:0 0 0 18px; font-size:13px; line-height:1.6; color:var(--body); }
+  li.no { color:var(--rust); } li.yes { color:var(--green); }
+  .foot { margin-top:28px; font-size:13px; color:var(--body); max-width:900px; line-height:1.6; }
+  @media (max-width:500px) { body { padding:20px 16px 60px; } }
+</style></head><body>
+<h1>The admin's addresses</h1>
+<p class="sub">Today every screen is <b>app.norcoachapp.com/admin/redesign/home?client=1</b>, and switching tab adds <b>&amp;tab=training</b>. In every option below "redesign" goes, tabs are named as the coach reads them (Lifestyle, Shape update, Chat), and every old address keeps working: it forwards to its new one, the thing it pointed at included.</p>
+<div class="opts">
+
+<div class="opt">
+  <div class="tag">A</div><h2>Short, client after the ?</h2>
+  <div class="bar"><span class="host">app.norcoachapp.com</span>/training?client=1</div>
+  <div class="card">
+    <div class="row"><span>A client's tab</span><code>/lifestyle?client=1</code></div>
+    <div class="row"><span>Shape update</span><code>/shape-update?client=1</code></div>
+    <div class="row"><span>All clients</span><code>/feed</code></div>
+    <div class="row"><span>Settings</span><code>/settings#branding</code></div>
+  </div>
+  <ul><li class="yes">Smallest change</li><li class="no">The client is still a <b>?client=1</b> tail</li></ul>
+</div>
+
+<div class="opt pick">
+  <div class="tag">B · my pick</div><h2>The client in the address</h2>
+  <div class="bar"><span class="host">app.norcoachapp.com</span>/clients/1/training</div>
+  <div class="card">
+    <div class="row"><span>A client's tab</span><code>/clients/1/lifestyle</code></div>
+    <div class="row"><span>Shape update</span><code>/clients/1/shape-update</code></div>
+    <div class="row"><span>All clients</span><code>/feed</code></div>
+    <div class="row"><span>Settings</span><code>/settings#branding</code></div>
+  </div>
+  <ul><li class="yes">Reads as a folder: this client, this tab</li><li class="yes">No name in a copied link or the browser's history</li></ul>
+</div>
+
+<div class="opt">
+  <div class="tag">C</div><h2>The client's name in the address</h2>
+  <div class="bar"><span class="host">app.norcoachapp.com</span>/clients/adonis-stergiopoulos/training</div>
+  <div class="card">
+    <div class="row"><span>A client's tab</span><code>/clients/adonis-stergiopoulos/lifestyle</code></div>
+    <div class="row"><span>Two of one name</span><code>/clients/anna-de-vries-2/home</code></div>
+    <div class="row"><span>All clients</span><code>/feed</code></div>
+    <div class="row"><span>Settings</span><code>/settings#branding</code></div>
+  </div>
+  <ul><li class="yes">Readable</li><li class="no">Changes when the name does; two of one name get a number</li><li class="no">The client's name in every copied link and the history</li></ul>
+</div>
+
+</div>
+<p class="foot">The coach-wide screens are the same in all three: <b>/feed</b>, <b>/phases</b>, <b>/calendar</b>, <b>/library</b>, <b>/business</b>, <b>/settings</b>, <b>/coaches</b>. A client's tabs: home, plan, lifestyle, training, nutrition, shape-update, meetings, invoices, and chat for the chat opened as a page.</p>
+</body></html>

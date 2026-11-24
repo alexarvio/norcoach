@@ -22,7 +22,7 @@ import "./feed.css";
 // visit, Needs you (a task a row, each with its action), Clients (a row a client: their last 14 days, this week's
 // sessions, when they were last active, at most two state pills) and Activity (a log, New over Earlier). Money lives
 // on Business. One read (app/lib/feedBoard.ts), the rail on the left.
-//   /admin/redesign/feed            ?cat=training|nutrition|lifestyle|meetings|messages opens Activity on that kind
+//   /feed            ?cat=training|nutrition|lifestyle|meetings|messages opens Activity on that kind
 export const dynamic = "force-dynamic";
 
 export default async function FeedPage({ searchParams }: { searchParams: Promise<{ cat?: string }> }) {

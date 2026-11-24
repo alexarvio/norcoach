@@ -13,7 +13,7 @@ import { startTiming } from "../../../../lib/timing";
 // with a bar above it. While it is "Not sent" it reads Settings live and
 // says what Settings still lacks; once sent, the details frozen onto it.
 // Opened from the client's Invoices tab.
-//   /admin/redesign/invoices/12
+//   /invoices/12
 export const dynamic = "force-dynamic";
 
 export default async function InvoicePage({ params }: { params: Promise<{ id: string }> }) {
@@ -39,7 +39,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   return t.end(
     <main className="ivp ivp-admin">
       <div className="ivp-bar">
-        <Link href={`/admin/redesign/invoices?client=${v.clientId}`} className="ivp-back">
+        <Link href={`/clients/${v.clientId}/invoices`} className="ivp-back">
           ‹ Invoices
         </Link>
         <span className="ivp-state">
@@ -50,7 +50,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
       {missing.length > 0 && !v.frozen && (
         <p className="ivp-missing">
           Missing from Settings: {missing.join(", ")}.
-          <Link className="ivp-fix" href={missing.length === 1 && missing[0] === "bank details" ? "/admin/redesign/settings#invoicing" : "/admin/redesign/settings#business"}>
+          <Link className="ivp-fix" href={missing.length === 1 && missing[0] === "bank details" ? "/settings#invoicing" : "/settings#business"}>
             Add them
           </Link>
         </p>

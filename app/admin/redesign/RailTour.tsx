@@ -10,11 +10,11 @@ import { usePathname, useRouter } from "next/navigation";
 
 const STEPS: { find: string; title: string; text: string }[] = [
   // The rail as it is now (16 Nov, Alex: the audit): the Feed's number counts things owed, a client's is a rust number.
-  { find: '.rr-nav a[href="/admin/redesign/feed"]', title: "Feed", text: "Everything your clients log, newest first, one kind at a time. The number is how many things need you." },
-  { find: '.rr-nav a[href="/admin/redesign/calendar"]', title: "Calendar", text: "Your calls with clients and your own time, a month at a time." },
-  { find: '.rr-nav a[href="/admin/redesign/phases"]', title: "Phases", text: "Every client's plan side by side: training, nutrition and lifestyle phases." },
-  { find: '.rr-nav a[href="/admin/redesign/business"]', title: "Business", text: "How the business is doing: clients, revenue, and what's still outstanding." },
-  { find: '.rr-nav a[href="/admin/redesign/library"]', title: "Library", text: "Your exercises and their demo videos, in your own groups." },
+  { find: '.rr-nav a[href="/feed"]', title: "Feed", text: "Everything your clients log, newest first, one kind at a time. The number is how many things need you." },
+  { find: '.rr-nav a[href="/calendar"]', title: "Calendar", text: "Your calls with clients and your own time, a month at a time." },
+  { find: '.rr-nav a[href="/phases"]', title: "Phases", text: "Every client's plan side by side: training, nutrition and lifestyle phases." },
+  { find: '.rr-nav a[href="/business"]', title: "Business", text: "How the business is doing: clients, revenue, and what's still outstanding." },
+  { find: '.rr-nav a[href="/library"]', title: "Library", text: "Your exercises and their demo videos, in your own groups." },
   { find: ".rr-clients-head", title: "Your clients", text: "Everyone you coach. A rust number by a name is how many things need you; Needs you shows just those." },
   { find: ".rr-new", title: "New client", text: "Add a client here. They get an email with a link to join the app." },
   { find: ".rr-coach", title: "You", text: "Your profile, business details and invoicing, whenever you want to change them." },

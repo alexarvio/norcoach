@@ -6,7 +6,7 @@ import "../onboarding/onboarding.css";
 // The whiteboard reply, on its own page to try (9 Oct): the recorder as it
 // sits in the coach's video dialog, over a sample clip. Sending goes
 // nowhere here (there is no request behind it). Local only.
-//   /admin/redesign/whiteboard
+//   /whiteboard
 export const dynamic = "force-dynamic";
 
 export default async function WhiteboardPage() {

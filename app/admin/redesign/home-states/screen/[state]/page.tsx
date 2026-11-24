@@ -5,7 +5,7 @@ import { homeProps, STATES, type StateId } from "../../states";
 import "../../home-states.css";
 
 // One state of the client's Home, full size, from the board's made-up data.
-//   /admin/redesign/home-states/screen/naked
+//   /home-states/screen/naked
 export const dynamic = "force-dynamic";
 
 export default async function HomeStatePage({ params }: { params: Promise<{ state: string }> }) {

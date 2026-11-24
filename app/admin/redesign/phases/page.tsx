@@ -24,7 +24,7 @@ import "./phases.css";
 // Every client's phases and events on one timeline (redrawn 14 Oct; the
 // Plan's timeline since 21 Oct): ending soon as a list to act on, the
 // clients' lanes below, the rail on the left.
-//   /admin/redesign/phases
+//   /phases
 export const dynamic = "force-dynamic";
 
 export default async function PhasesPage() {

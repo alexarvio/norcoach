@@ -47,7 +47,7 @@ import "../profile/profile.css";
 // for a coach (not the owner) Support. One bar at the foot saves every section changed (SaveHost). #<key> opens a
 // section; the old #billing, #notifications and #data land on the part of the section that holds them now
 // (settingsNav's SETTINGS_ALIASES). The old addresses redirect here (settings/[section], /admin/redesign/profile).
-//   /admin/redesign/settings#profile | account | business | branding | plans | invoicing | preferences | privacy | support
+//   /settings#profile | account | business | branding | plans | invoicing | preferences | privacy | support
 export const dynamic = "force-dynamic";
 
 /** When Stripe was last asked about a coach's unfinished account (the page's own memory, per server). */

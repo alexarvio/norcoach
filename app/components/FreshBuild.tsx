@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { QUIET_COOKIE } from "../lib/quietLoad";
+import { isAdminPath } from "../admin/redesign/paths";
 
 // A page left open across a deploy calls saves the new server no longer has, and every save fails until the app is
 // opened afresh (30 Oct, Alex: a client couldn't save his check-in; the server answered "not found" seven times in a
@@ -14,7 +15,7 @@ const CHECK_EVERY_MS = 60_000;
 const quiet = () => {
   document.cookie = `${QUIET_COOKIE}=1; path=/; max-age=60; samesite=lax`;
 };
-const onAdmin = () => window.location.pathname.startsWith("/admin");
+const onAdmin = () => isAdminPath(window.location.pathname);
 
 export default function FreshBuild({ build }: { build: string }) {
   useEffect(() => {

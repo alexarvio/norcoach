@@ -38,7 +38,7 @@ export default async function LoginPage({
   // login form they'd have no reason to fill in.
   const user = await getSessionUser();
   if (user && !user.must_change_password) {
-    redirect(user.role === "coach" ? "/admin/redesign" : "/client");
+    redirect(user.role === "coach" ? "/clients" : "/client");
   }
 
   const { error, deleted, reset } = await searchParams;

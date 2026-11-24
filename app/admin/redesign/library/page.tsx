@@ -15,7 +15,7 @@ import "./library.css";
 
 // The coach's Library (5 Oct; 21 Oct, Alex: just the exercises and their demos): every exercise of theirs by muscle
 // group, each with a video or a link. Training's header and the shared hairline cards (trn.css, measurements.css).
-//   /admin/redesign/library
+//   /library
 export const dynamic = "force-dynamic";
 
 export default async function LibraryPage() {

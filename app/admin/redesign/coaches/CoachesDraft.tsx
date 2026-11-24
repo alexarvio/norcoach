@@ -143,7 +143,7 @@ export default function CoachesDraft({ accounts, support, billingOn = false }: {
                           {/* eslint-disable-next-line @next/next/no-img-element -- the coach's own uploaded photo */}
                           {c.photo ? <img src={pic(c.photo, 96)} alt="" /> : c.name.trim().slice(0, 1).toUpperCase()}
                         </span>
-                        <a className="rco-name" href={`/admin/redesign/settings?coachId=${c.id}#profile`} title={`Open ${c.name}'s profile`}>
+                        <a className="rco-name" href={`/settings?coachId=${c.id}#profile`} title={`Open ${c.name}'s profile`}>
                           <b>{c.name}</b>
                         </a>
                         <small title={[c.business, c.email, c.code && norcode(c.code)].filter(Boolean).join(" | ")}>

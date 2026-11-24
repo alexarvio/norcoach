@@ -9,7 +9,7 @@ import "./events-states.css";
 // yet, things coming, one running, and a past, side by side from made-up
 // data. Each frame is the real screen (Open shows it full size). Local
 // only, like the Home board.
-//   /admin/redesign/events-states
+//   /events-states
 export const dynamic = "force-dynamic";
 
 export default async function EventsStatesBoard() {
@@ -21,7 +21,7 @@ export default async function EventsStatesBoard() {
       <p className="es-intro">Made-up data, the real screen. Add sits on top; Coming up, then Past. The client&rsquo;s own rows open the sheet; Finlay&rsquo;s show his note on a tap.</p>
       <ol className="ob-steps">
         {[...STATES, { id: "home", name: "On Home", note: "The same events as \"In one now\", as the Coming up card on Home shows them: the running one, the next under it." }].map((s, i) => {
-          const href = s.id === "home" ? "/admin/redesign/events-states/home" : `/admin/redesign/events-states/screen/${s.id}`;
+          const href = s.id === "home" ? "/events-states/home" : `/events-states/screen/${s.id}`;
           return (
             <li key={s.id} className="ob-step">
               <div className="ob-cap">

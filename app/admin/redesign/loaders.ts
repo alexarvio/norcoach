@@ -133,6 +133,7 @@ import { applyReader, applyReads } from "./training/applyPreviewData";
 import { changedWeeks } from "./training/applyShape";
 import { sub, type Timer } from "../../lib/timing";
 import { coachBrand } from "../../lib/brandMark";
+import { clientTab } from "./paths";
 
 // What the redesign drafts read, gathered on the server for the shell that
 // shows them side by side. Read-only: the drafts save nothing.
@@ -725,7 +726,7 @@ const screenOf = (href: string) => (/[?&]chat=/.test(href) ? "Chat" : SCREEN_OF[
  *  completed is (complete-<id>). */
 function railSpots(clientId: number, actions: HomeAction[], byId: Map<string, FeedEvent>, isNew: boolean): { spots: RailSpot[]; total: number; owed: number; phases: number } {
   const ranked: { href: string; rank: number; ms: number }[] = [];
-  if (isNew) ranked.push({ href: `/admin/redesign/plan?client=${clientId}`, rank: -1, ms: 0 });
+  if (isNew) ranked.push({ href: `/clients/${clientId}/plan`, rank: -1, ms: 0 });
   const phases = (isNew ? 1 : 0) + actions.filter((a) => PHASE_OWED.test(a.id)).length;
   for (const a of actions) {
     if (!OWED.some((re) => re.test(a.id))) continue;
@@ -753,7 +754,7 @@ export function loadPhaseNeeds(coachId: number, chat: ChatCoachView, food: FoodR
   for (const c of listClients(coachId)) {
     const base = { clientId: c.id, client: c.name ?? "Client", avatarPath: c.avatar_path ?? null, time: null, words: null, since: null };
     if (listClientPhases(c.id).length === 0 && !data.training_programs.some((p) => p.client_id === c.id)) {
-      rows.push({ ...base, key: `${c.id}:setup`, cat: "plan", kind: "phase", what: "No phase yet", action: "New phase", href: `/admin/redesign/plan?client=${c.id}`, dismissId: null });
+      rows.push({ ...base, key: `${c.id}:setup`, cat: "plan", kind: "phase", what: "No phase yet", action: "New phase", href: `/clients/${c.id}/plan`, dismissId: null });
       continue;
     }
     for (const a of clientActions(coachId, c.id, chat, food, ck, sr)) {
@@ -785,7 +786,7 @@ export function loadDots(clientId: number, chat: ChatCoachView, food: FoodRows, 
     tab(t);
     dots.todo.push({ ...item, tab: t });
   };
-  const route = (name: string, rest = "") => `/admin/redesign/${name}?client=${clientId}${rest}`;
+  const route = (name: string, rest = "") => clientTab(name, clientId, rest);
   // A server week (week_number) to its programme's screen week.
   const programs = listPrograms(clientId);
   const placeWeek = (week: number) => {
@@ -1280,7 +1281,7 @@ const NEED_AREA: Record<string, string> = { training: "Training", nutrition: "Nu
 const NO_REPLY = new Set(["no-phase", "week", "program-ending", "locked"]);
 export function needView(clientId: number, a: HomeAction, byId: Map<string, FeedEvent>): NeedView {
   const ev = a.eventId ? byId.get(a.eventId) : undefined;
-  const open = a.href ?? (ev ? feedHref(ev) : null) ?? `/admin/redesign/${a.tab ? NEED_TAB_ROUTE[a.tab] ?? a.tab : "home"}?client=${clientId}`;
+  const open = a.href ?? (ev ? feedHref(ev) : null) ?? clientTab(a.tab ? NEED_TAB_ROUTE[a.tab] ?? a.tab : "home", clientId);
   if (NO_REPLY.has(a.id) || /^(complete|track|empty)-/.test(a.id)) return { ...a, open, reply: null };
   const area = NEED_AREA[a.tab ?? ""] ?? "Chat";
   // An unanswered message: the chat, at it.
@@ -1301,7 +1302,7 @@ export function needView(clientId: number, a: HomeAction, byId: Map<string, Feed
 }
 
 export function feedHref(e: Pick<FeedEvent, "clientId" | "tab" | "category" | "target">): string | null {
-  const tab = (name: string, rest = "") => `/admin/redesign/${name}?client=${e.clientId}${rest}`;
+  const tab = (name: string, rest = "") => clientTab(name, e.clientId, rest);
   const t = e.target;
   if (t?.kind === "gone") return null;
   // A message from the client (2 Oct): what it is about opens (its tab, its
@@ -1313,9 +1314,9 @@ export function feedHref(e: Pick<FeedEvent, "clientId" | "tab" | "category" | "t
     const view = t.link ? (t.link.kind === "food" ? { removed: false, week: null } : describeMessageLink(noFoodRows("page.feed"), e.clientId, t.link)) : null;
     const base = t.link && view && !view.removed ? messageLinkHref(e.clientId, t.link, view.week) : tab("home");
     const [path, hash = ""] = base.split("#");
-    return `${path}&chat=${t.messageId}${hash ? `#${hash}` : ""}`;
+    return `${path}${path.includes("?") ? "&" : "?"}chat=${t.messageId}${hash ? `#${hash}` : ""}`;
   }
-  if (t?.kind === "invoice") return `/admin/redesign/invoices/${t.invoiceId}`;
+  if (t?.kind === "invoice") return `/invoices/${t.invoiceId}`;
   if (t?.kind === "food") return tab("nutrition", `#day-${t.date}`);
   if (t?.kind === "program") return tab("training", `&program=${t.programId}`);
   if (t?.kind === "session") {
@@ -1442,7 +1443,7 @@ export function loadHome(clientId: number, chat: { coach: ChatCoachView; thread:
     in… or nutrition day"): the session in its programme and week, unfolded (#session-); the food day (#day-); the
     check-in's row on its rhythm (#checkin-), else the Lifestyle tab. The tabs land on them as a message's link does. */
 function withDayLinks(clientId: number, board: HomeBoard): HomeBoard {
-  const tab = (name: string, rest = "") => `/admin/redesign/${name}?client=${clientId}${rest}`;
+  const tab = (name: string, rest = "") => clientTab(name, clientId, rest);
   const programs = listPrograms(clientId);
   const nutrition = listClientPhases(clientId).filter((p) => p.track === "nutrition");
   const link = (d: HomeBoard["days"][number]): HomeBoard["days"][number] => {
@@ -1487,7 +1488,7 @@ function planOf(clientId: number): { plans: PlanChoice[]; planId: string | null;
  * for an exercise, #session-DAY-ex-ROW scrolls to and marks the row).
  */
 export function messageLinkHref(clientId: number, link: MessageLink, week: number | null): string {
-  const tab = (name: string, rest = "") => `/admin/redesign/${name}?client=${clientId}${rest}`;
+  const tab = (name: string, rest = "") => clientTab(name, clientId, rest);
   switch (link.kind) {
     case "session":
     case "exercise": {

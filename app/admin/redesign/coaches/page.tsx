@@ -25,7 +25,7 @@ import "./coaches.css";
 // at once, lib/coachSignUp.ts), the
 // coaches' Support threads (23 Oct, SupportInbox, lib/support.ts), and the owner's account actions (CoachesPanel's
 // own, see ./actions.ts). Never any client's name or data. Owner only.
-//   /admin/redesign/coaches
+//   /coaches
 export const dynamic = "force-dynamic";
 
 export default async function CoachesPage() {

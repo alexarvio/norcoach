@@ -115,7 +115,7 @@ export default function NewClientDialog({
 
   const open = (id: number) => {
     onClose();
-    router.push(`/admin/redesign/home?client=${id}`);
+    router.push(`/clients/${id}/home`);
   };
   // A one-time key a tap (6 Nov); Create again on the same form after a failure keeps the failed one's key, so a client
   // that in fact got made is not made twice.

@@ -43,7 +43,7 @@ import { addDays, clientStatus, daysBetween, daysLeft, endingSoon, leftLabel, mo
 const ALL_TRACKS = new Set<PhaseTrack>(TRACKS);
 const EXTENDS = [1, 2, 4];
 const first = (name: string) => name.split(" ")[0];
-const PLAN = (id: number) => `/admin/redesign/plan?client=${id}`;
+const PLAN = (id: number) => `/clients/${id}/plan`;
 
 type View = "all" | "attention";
 /** folded: the clients folded down to their name row (21 Oct, Alex), kept with the rest. */

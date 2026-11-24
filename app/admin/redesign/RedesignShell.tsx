@@ -2,7 +2,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useChatStream } from "../../components/useChatStream";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { ChatIcon } from "../../components/icons";
 import { OpenChatContext, type OpenChat } from "./ChatPanel";
 import { Toaster } from "../../components/ui/toast";
@@ -29,6 +29,7 @@ import { PopupTabZone, PopupWhoProvider } from "./PopupWho";
 import { SHOW_TAB_EVENT } from "./followLink";
 import { visitClient, type VisitRoute } from "./visit";
 import { forgetPrefetches } from "./RedesignRail";
+import { clientScreenOf, clientTab } from "./paths";
 
 // The redesign drafts on one page: Training, Nutrition and Measurements all
 // loaded, one shown at a time, beside the rail (drawn by the layout since
@@ -308,6 +309,16 @@ export default function RedesignShell({ clientId, clientName, firstName, units, 
     // The page's client now: their thread is the page's own, never a second copy behind it.
     setOtherThread((t) => (t?.id === clientId ? null : t));
   }
+  // Another of this client's tabs asked by the address (24 Nov): every tab is one page now (tabs/page.tsx), so a link to
+  // another tab (a to-do row, a phase's Open, the Feed) arrives as a new initialTab, not a new page. A save's refresh
+  // after the shell's own switch asks for the tab already showing, which changes nothing; one asked before a switch and
+  // landing after it is older than the address, and is left alone.
+  const pathname = usePathname();
+  const [seenTab, setSeenTab] = useState(initialTab);
+  if (seenTab !== initialTab) {
+    setSeenTab(initialTab);
+    if (initialTab !== "messages" && clientScreenOf(pathname)?.tab === initialTab) setTab(pageTab(initialTab));
+  }
   // The address asks for the chat: /messages, or ?chat=<message> from the
   // feed or Home (the page under it is what the message is about). It opens
   // once, on that message, and the ask leaves the address.
@@ -348,15 +359,13 @@ export default function RedesignShell({ clientId, clientName, firstName, units, 
       tabRef.current = t;
       setTab(t);
       requestAnimationFrame(() => window.scrollTo(0, scrolls.current[t] ?? 0));
-      // The address follows as ?tab= on the route that is mounted (9 Oct). It
-      // used to rewrite the path to the tab's own route while this page stayed
-      // mounted; the next refresh (any save revalidates) then fetched that
-      // other route, and the whole shell remounted: the chat closed and the
-      // tab snapped back to the route's own. Other tabs' query (week,
-      // programme, phase) stays out of the address.
+      // The address follows as /clients/<id>/<tab> (24 Nov, Alex: the addresses; was ?tab= on the route mounted, 9 Oct).
+      // Every tab is one page (tabs/page.tsx), so the next refresh (any save revalidates) reads this same page again;
+      // when each tab was a route of its own, a path changed under a mounted page remounted the shell on that refresh:
+      // the chat closed and the tab snapped back. Other tabs' query (week, programme, phase) stays out of the address.
       // The hairline preview's ?look= stays (19 Oct): a reload kept the tab but lost the look.
       const look = new URLSearchParams(window.location.search).get("look");
-      window.history.replaceState(null, "", `${window.location.pathname}?client=${clientId}&tab=${t}${look ? `&look=${encodeURIComponent(look)}` : ""}`);
+      window.history.replaceState(null, "", clientTab(t, clientId, look ? `?look=${encodeURIComponent(look)}` : ""));
     },
     [clientId, openChat]
   );

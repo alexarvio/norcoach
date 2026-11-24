@@ -10,7 +10,7 @@ import "./home-states.css";
 // so the empty states can be seen whatever the real clients have. Each
 // frame is the real Home (Open shows it full size). Local only, like the
 // onboarding board.
-//   /admin/redesign/home-states
+//   /home-states
 export const dynamic = "force-dynamic";
 
 export default async function HomeStatesBoard() {
@@ -22,7 +22,7 @@ export default async function HomeStatesBoard() {
       <p className="hs-intro">Made-up data, the real screen. Today, Your plan and the coach are always there; with nothing to show, each says so.</p>
       <ol className="ob-steps">
         {STATES.map((s, i) => {
-          const href = `/admin/redesign/home-states/screen/${s.id}`;
+          const href = `/home-states/screen/${s.id}`;
           return (
             <li key={s.id} className="ob-step">
               <div className="ob-cap">

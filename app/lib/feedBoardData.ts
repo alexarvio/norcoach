@@ -27,6 +27,7 @@ import { SERVER_TZ, zonedToUtc } from "./timezones";
 import { titleParts } from "./titleParts";
 import { clientActions, coachNeeds } from "./coachNeeds";
 import { feedHref, needView } from "../admin/redesign/loaders";
+import { clientTab } from "../admin/redesign/paths";
 
 type UserRow = Data["users"][number];
 type ClientData = Data["clients"][number];
@@ -278,7 +279,7 @@ function sinceOf(ctx: Ctx): FeedBoard["since"] {
 
 // ---- Needs you ----------------------------------------------------------------------------------
 
-const tab = (name: string, clientId: number, rest = "") => `/admin/redesign/${name}?client=${clientId}${rest}`;
+const tab = (name: string, clientId: number, rest = "") => clientTab(name, clientId, rest);
 
 /** The live programme and the week it is in, for a link to a week on Training. */
 function liveWeek(clientId: number): { programId: number; index: number } | null {
@@ -429,7 +430,7 @@ function activityOf(ctx: Ctx): ActivityRow[] {
     if (r.feed) {
       const e = r.feed;
       // A client who deleted their account has no tab to open: the departure is on Business.
-      const href = safe(`href ${e.id}`, () => feedHref(e), null) ?? (e.target?.kind === "gone" ? "/admin/redesign/business" : tab("home", e.clientId));
+      const href = safe(`href ${e.id}`, () => feedHref(e), null) ?? (e.target?.kind === "gone" ? "/business" : tab("home", e.clientId));
       rows.push({ id: e.id, clientId: e.clientId, client: e.clientName, avatarPath: faceOf(e.clientId), kind: r.kind, mark: activityMarkOf(e), at: new Date(e.at).toISOString(), timeKnown: e.timeKnown, title: e.thing || cap(e.text), quote: activityWords(e), href, isNew: isNew(e.at) });
     } else if (r.call) {
       const { m, time } = r.call;

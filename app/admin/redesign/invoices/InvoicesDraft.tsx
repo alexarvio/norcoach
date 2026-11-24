@@ -98,7 +98,7 @@ function totals(lines: InvoiceLine[], rate: number, incl: boolean) {
   const vat = cents(sum * r);
   return { subtotal: sum, vat, total: cents(sum + vat) };
 }
-const sheetHref = (id: number) => `/admin/redesign/invoices/${id}`;
+const sheetHref = (id: number) => `/invoices/${id}`;
 
 export default function InvoicesDraft({ clientId, firstName, clientName, plan }: { clientId: number; firstName: string; clientName: string; plan: DraftInvoices }) {
   const router = useRouter();
@@ -154,7 +154,7 @@ export default function InvoicesDraft({ clientId, firstName, clientName, plan }:
       {plan.missing.length > 0 && (
         <section className="riv-fix" aria-label="Missing from Settings">
           <span>Missing from Settings: {plan.missing.join(", ").replace(/, ([^,]*)$/, " and $1")}</span>
-          <Link className="trn-pill" href={plan.missing.includes("bank details") && plan.missing.length === 1 ? "/admin/redesign/settings#invoicing" : "/admin/redesign/settings#business"}>
+          <Link className="trn-pill" href={plan.missing.includes("bank details") && plan.missing.length === 1 ? "/settings#invoicing" : "/settings#business"}>
             Add them
           </Link>
         </section>

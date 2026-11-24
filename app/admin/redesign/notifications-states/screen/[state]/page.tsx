@@ -5,7 +5,7 @@ import { COACH, notificationsProps, STATES, type StateId } from "../../states";
 import "../../../home-states/home-states.css";
 
 // One state of the client's Notifications screen, full size, from the board's made-up data.
-//   /admin/redesign/notifications-states/screen/today
+//   /notifications-states/screen/today
 export const dynamic = "force-dynamic";
 
 export default async function NotificationsStatePage({ params }: { params: Promise<{ state: string }> }) {

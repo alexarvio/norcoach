@@ -1,10 +1,11 @@
 "use client";
 
 import { createContext, Suspense, use, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import RedesignRail from "./RedesignRail";
 import PageSkeleton, { VIEW_SKELETON } from "./PageSkeleton";
 import type { RailData, StampedRail } from "./loaders";
+import { clientScreenOf, pageKeyOf, viewOfPath } from "./paths";
 
 // The rail stays, only the page swaps (22 Nov, Alex: "if we have to touch the rail… to make it a proper product, then
 // yes"; docs/rail-layout-plan.md). The layout (layout.tsx) hands its read of the rail over as a promise and this frame
@@ -14,20 +15,9 @@ import type { RailData, StampedRail } from "./loaders";
 // (/api/admin/rail), the newest read winning. A path that isn't one of the framed views (the boards, a printed
 // invoice, the redirects) is its page alone, no frame.
 
-const BASE = "/admin/redesign/";
-/** A client's screens: the shell (RedesignShell) or NoClients on each. */
-const CLIENT_VIEWS = ["home", "plan", "measurements", "training", "nutrition", "pictures", "meetings", "invoices", "messages"] as const;
-/** The coach-wide views, each drawing the rail and the chat dock. */
-const COACH_VIEWS = ["feed", "phases", "calendar", "library", "business", "coaches", "settings"] as const;
-const FRAMED = new Set<string>([...CLIENT_VIEWS, ...COACH_VIEWS]);
-const CLIENT = new Set<string>(CLIENT_VIEWS);
-
-/** The view a path is ("feed", "home"…), or null when it isn't a framed one. */
-function viewOf(path: string | null): string | null {
-  if (!path?.startsWith(BASE)) return null;
-  const rest = path.slice(BASE.length).replace(/\/$/, "");
-  return FRAMED.has(rest) ? rest : null;
-}
+/** The view a path is ("feed", or a client's tab key, "home"…), or null when it isn't a framed one (paths.ts: a client's
+ *  screens are /clients/<id>/<tab>, the coach-wide views /<view>). */
+const viewOf = (path: string | null): string | null => viewOfPath(path);
 export const isFramedPath = (path: string | null) => viewOf(path) != null;
 
 /** A move, for the rail's read: another view, or another client on a client's screens. Nothing else in the address
@@ -94,7 +84,6 @@ function RailSkeleton() {
 
 export default function RailFrame({ rail: promise, children }: { rail: Promise<StampedRail | null>; children: ReactNode }) {
   const path = usePathname();
-  const params = useSearchParams();
   const view = viewOf(path);
   const framed = view != null;
 
@@ -124,8 +113,9 @@ export default function RailFrame({ rail: promise, children }: { rail: Promise<S
   }, []);
   // Else, on a client's screen, the client the address names (a page still loading), or null when it names none (the
   // page's default, from the read); on a coach-wide view, none (0).
-  const named = Number(params.get("client"));
-  const onClient = !!view && CLIENT.has(view);
+  const screen = clientScreenOf(path);
+  const named = screen?.clientId ?? 0;
+  const onClient = screen != null;
   const asked = !onClient ? 0 : Number.isInteger(named) && named > 0 ? named : null;
   const hereId = here?.id ?? null;
 
@@ -134,7 +124,8 @@ export default function RailFrame({ rail: promise, children }: { rail: Promise<S
   // page's report, else the read's pick), so the shell's ?client=&tab= rewrite of that address is no move.
   const latest = newest(fromLayout, fetched);
   const keyClient = !onClient ? 0 : (asked ?? hereId ?? latest?.defaultClient ?? null);
-  const moveKey = !framed || keyClient == null ? null : `${path}|${keyClient}`;
+  // A client's tabs are one page (a tab switched is no move), keyed by the client alone.
+  const moveKey = !framed || keyClient == null ? null : onClient ? `/clients|${keyClient}` : `${path}|0`;
   const lastMove = useRef<string | null>(null);
   // The rail's own read on landing (RedesignRail's router.refresh after a stale prefetch) reads the layout again, so
   // this move's own read is left out: one read a click.
@@ -204,7 +195,7 @@ export default function RailFrame({ rail: promise, children }: { rail: Promise<S
   }, [goingTo, clicks, hide]);
   // Landed: another view, or another client (a tab or a week picked inside a page is no landing). The attribute comes off
   // before the paint that shows the new page.
-  const address = `${path}|${params.get("client") ?? ""}`;
+  const address = pageKeyOf(path);
   const [seenAddress, setSeenAddress] = useState(address);
   if (seenAddress !== address) {
     setSeenAddress(address);

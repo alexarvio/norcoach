@@ -6,7 +6,7 @@ import "../../home-states/home-states.css";
 
 // The same events as the board's "In one now" frame, as the client's Home
 // shows them: the "Coming up" card with the running one and the next (9 Oct).
-//   /admin/redesign/events-states/home
+//   /events-states/home
 export const dynamic = "force-dynamic";
 
 export default async function EventsOnHomePage() {

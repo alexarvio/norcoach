@@ -18,7 +18,7 @@ import "./business.css";
 // The coach's Business (21 Oct, Alex: built from the Business mockup): the business in numbers, nothing about the
 // clients' bodies. What changed since the last visit, three figures, money and clients by month, who owes, the plans
 // ending and who isn't billed by itself. One read (app/lib/businessBoard.ts), the rail on the left.
-//   /admin/redesign/business
+//   /business
 export const dynamic = "force-dynamic";
 
 export default async function BusinessPage() {

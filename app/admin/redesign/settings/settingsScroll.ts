@@ -7,7 +7,7 @@ import { useSyncExternalStore } from "react";
 // (onGoToSetting); a link on the page hands its key over (goToSetting), which shows that section and brings it into
 // view. Any address key goes: a section's, or an old one merged into another (#billing, #notifications, #data), which
 // shows the section holding it at that part (settingsNav's resolveSetting). On any other page such a link is a plain
-// /admin/redesign/settings#<key>.
+// /settings#<key>.
 
 const GO = "rst:go";
 const OPEN = "rst:open";

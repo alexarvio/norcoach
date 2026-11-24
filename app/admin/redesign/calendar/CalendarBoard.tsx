@@ -29,7 +29,7 @@ export type BoardCell = { date: string; inMonth: boolean; isToday: boolean; chip
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const spokenDay = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
-const href = (month: string, day?: string) => `/admin/redesign/calendar?month=${month}${day ? `&day=${day}` : ""}`;
+const href = (month: string, day?: string) => `/calendar?month=${month}${day ? `&day=${day}` : ""}`;
 
 export default function CalendarBoard({
   label,
@@ -78,7 +78,7 @@ export default function CalendarBoard({
             {/* In this month, Today picks today at once (24 Oct, Alex: it did nothing on another day of the same month,
                 the board keeping the day it had); from another month it loads this one. */}
             <Link
-              href="/admin/redesign/calendar"
+              href="/calendar"
               scroll={false}
               className="rd-btn ghost rq-today"
               onClick={(ev) => {
@@ -118,7 +118,7 @@ export default function CalendarBoard({
                       </>
                     );
                     return m.clientId != null ? (
-                      <Link key={m.id} href={`/admin/redesign/meetings?client=${m.clientId}`} scroll={false} className={cls} style={style} title={m.title}>
+                      <Link key={m.id} href={`/clients/${m.clientId}/meetings`} scroll={false} className={cls} style={style} title={m.title}>
                         {words}
                       </Link>
                     ) : (
