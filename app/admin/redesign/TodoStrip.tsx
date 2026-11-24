@@ -85,8 +85,11 @@ function waitOf(item: TodoItem, now: number): string {
 
 /** The groups, a tab each, in the tracks' order and then the needs-you lists' (NEED_CATS): Lifestyle, Training,
  *  Nutrition, Shape update, Meetings, Sign-in, Plan. Home holds the sign-in lock alone, so its head is the needs-you
- *  lists' Sign-in, the lock in its grey (24 Nov, Alex: one head for one thing, never an invented "Home"). */
-const GROUPS: { tab: DotTab; label: string; color: string; icon: ReactNode }[] = [
+ *  lists' Sign-in, the lock in its grey (24 Nov, Alex: one head for one thing, never an invented "Home"). Read when the
+ *  panel draws, never as this file loads: NeedGroups reaches back here through PlanDraft and TrainingDraft, so on a
+ *  page loaded straight onto /feed NEED_LOOK isn't there yet at load (24 Nov: "Cannot access 'NEED_LOOK' before
+ *  initialization"). */
+const groupsOf = (): { tab: DotTab; label: string; color: string; icon: ReactNode }[] => [
   { tab: "measurements", ...NEED_LOOK.lifestyle },
   { tab: "training", ...NEED_LOOK.training },
   { tab: "nutrition", ...NEED_LOOK.nutrition },
@@ -263,7 +266,7 @@ export function TodoPanel({
     letGo(keys, () => dismissHomeActionAction(clientId, keys));
   };
 
-  const groups = GROUPS.map((g) => ({ ...g, rows: items.filter((i) => i.tab === g.tab).map(told) })).filter((g) => g.rows.length > 0);
+  const groups = groupsOf().map((g) => ({ ...g, rows: items.filter((i) => i.tab === g.tab).map(told) })).filter((g) => g.rows.length > 0);
   const askingGroup = asking ? items.filter((i) => i.tab === asking.tab && canDone(i)) : [];
   const others = askingGroup.length - 1;
 
