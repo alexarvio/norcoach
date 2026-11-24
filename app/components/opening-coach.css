@@ -5,7 +5,7 @@
    one dark shape in `--bg-mark` (app/lib/brandMark.ts): the star and NORCOACH make way, and the coach's logo stands
    still in the middle of the paper in ink, from the first frame to the last, as big as a 240 × 120 box allows (a wide
    logo by its width, a tall one by its height). Ready, `Powered by` (small caps, grey) fades up 28px under it, then the
-   NORCOACH word sweeps in from left to right beside it, the line centred under the logo from the start and never moving;
+   NORCOACH word slides out from behind "by" into place, the line centred under the logo from the start and never moving;
    it holds, then the paper fades off the app as before, 3.1s in all. Reduced motion: the line fades in whole, then the
    paper. Without a logo, the opening is as it was. */
 
@@ -35,20 +35,21 @@ body.has-coach-logo .nc-boot-app .nc-boot-coach {
   line-height: 1;
   opacity: 0; transform: translateY(6px);
 }
-/* The word's room is there from the start, so the line sits centred where it ends and never moves; the word sweeps
-   in from left to right inside it (24 Nov, Alex: "it expands kind of from the middle outwards… I want to have it
-   maybe from the left to the right… the word comes from the left and swifts to the right"). */
-.nc-boot-powered-wrap { display: block; width: 45.5px; height: 8px; margin-left: 7px; overflow: hidden; }
-.nc-boot-powered-word { display: block; height: 8px; width: 45.5px; color: #141a24; opacity: 0; clip-path: inset(0 100% 0 0); transform: translateX(-10px); }
+/* The word's room is there from the start, so the line sits centred where it ends and never moves (24 Nov, Alex: "it
+   expands kind of from the middle outwards… I want to have it… from the left to the right"); it starts at the end of
+   "by", and the word slides out from behind "by" into it (24 Nov, Alex: "the idea is that it kind of comes from behind.
+   It slides in from behind the by"). */
+.nc-boot-powered-wrap { display: block; width: 52.5px; height: 8px; overflow: hidden; }
+.nc-boot-powered-word { display: block; height: 8px; width: 45.5px; margin-left: 7px; color: #141a24; opacity: 0; transform: translateX(-52.5px); }
 
 body.has-coach-logo .nc-boot-app.revealing .nc-boot-powered-by { animation: nc-boot-powered-by 500ms cubic-bezier(.22, 1, .36, 1) forwards; }
 body.has-coach-logo .nc-boot-app.revealing .nc-boot-powered-word { animation: nc-boot-powered-word 1000ms cubic-bezier(.22, 1, .36, 1) 350ms forwards; }
 @keyframes nc-boot-powered-by { to { opacity: 1; transform: none; } }
-@keyframes nc-boot-powered-word { 0% { clip-path: inset(0 100% 0 0); transform: translateX(-10px); opacity: .55; } 100% { clip-path: inset(0 0 0 0); transform: none; opacity: .55; } }
+@keyframes nc-boot-powered-word { 0% { transform: translateX(-52.5px); opacity: .55; } 100% { transform: none; opacity: .55; } }
 
 @media (prefers-reduced-motion: reduce) {
   body.has-coach-logo .nc-boot-app .nc-boot-powered-by { transform: none; }
-  body.has-coach-logo .nc-boot-app .nc-boot-powered-word { clip-path: none; transform: none; }
+  body.has-coach-logo .nc-boot-app .nc-boot-powered-word { transform: none; }
   body.has-coach-logo .nc-boot-app.revealing .nc-boot-powered-by { animation: nc-boot-fade 200ms ease forwards; }
   body.has-coach-logo .nc-boot-app.revealing .nc-boot-powered-word { animation: nc-boot-powered-half 200ms ease forwards; }
 }
