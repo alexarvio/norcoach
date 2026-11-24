@@ -4,6 +4,7 @@ import { getData } from "../../../lib/db";
 import { isTimezone } from "../../../lib/timezones";
 import { setViewZone } from "../../../lib/viewZone";
 import { readRail } from "../../../admin/redesign/loaders";
+import { startTiming } from "../../../lib/timing";
 
 // The rail's data alone (22 Nov, docs/rail-layout-plan.md): the rail is drawn once by app/admin/redesign/layout.tsx and
 // never again on a move, so RailFrame asks here after each navigation to keep its counts fresh. The same read as the
@@ -25,6 +26,10 @@ export async function GET(request: Request) {
     const zone = decodeURIComponent(raw);
     setViewZone(zone && isTimezone(zone) ? zone : null);
   } catch {}
-  const rail = await readRail(user);
+  // Timed as its own screen (24 Nov: the browser waits about a second on it, the layout's same read 60ms; /api/timing).
+  const t = startTiming("rail.api");
+  t.client(null);
+  const rail = await t.time("read", () => readRail(user, t));
+  t.end(rail);
   return NextResponse.json(rail, { headers: NO_STORE });
 }
