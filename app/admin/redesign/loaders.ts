@@ -496,7 +496,9 @@ export function loadTraining(coachId: number, clientId: number, params: { week?:
         removed: a.sets_removed ?? 0,
         reps: a.reps ?? "",
         kg: a.target_weight_kg,
-        gymKg: gyms.map((g) => ({ gym: g.name, kg: a.gym_targets?.[g.id]?.kg ?? a.target_weight_kg })),
+        // The home gym and the gyms with a weight of their own (24 Nov, Alex: two test gyms read 85 kg on the hover though
+        // nothing was ever set there): a gym with none follows home, so it is no figure of its own to list.
+        gymKg: gyms.filter((g) => g.home || a.gym_targets?.[g.id]?.kg != null).map((g) => ({ gym: g.name, kg: a.gym_targets?.[g.id]?.kg ?? a.target_weight_kg })),
         rpe: a.rpe_target,
         tempo: a.tempo,
         rest: a.rest_seconds,
