@@ -82,9 +82,12 @@ export default function TrainingDayList({
   // Discarded here (19 Oct, Alex: discarding took seconds): the workout closes
   // at once and the session reads as never started, its sets gone, until the
   // server's page catches up (the mask holds while the server still has the
-  // start it had, so a fresh start right after is not hidden).
+  // start it had, so a fresh start right after is not hidden), and only while
+  // the discard is still in the outbox, on its way or just answered (24 Nov: a
+  // discard that never reached the server hid a running session for good, its
+  // sets saved but gone from the screen and Finish with nothing to end).
   const [discardedHere, setDiscardedHere] = useState<{ dayId: number; startedAt: string } | null>(null);
-  const masked = (d: SessionDay) => discardedHere != null && d.key === discardedHere.dayId && d.startedAt === discardedHere.startedAt;
+  const masked = (d: SessionDay) => discardWaits && discardedHere != null && d.key === discardedHere.dayId && d.startedAt === discardedHere.startedAt;
   // Free sessions (19 Oct, Alex): the one just started here and the exercises
   // just added to it are drawn before the server's page has them; one left
   // empty or discarded is gone at once.
@@ -107,6 +110,7 @@ export default function TrainingDayList({
   // so a reload, a refresh or a page the server built before it landed never snaps back: the sets, the swaps, the
   // cardio, the gym, the start, the end, a discard. After the rogue session's own rows, so its sets show on them too.
   const outbox = useWorkoutOutbox();
+  const discardWaits = discardedHere != null && outbox.overlay.some((e) => e.kind === "discard" && e.dayId === discardedHere.dayId && e.startedAt === discardedHere.startedAt);
   const withFree = applyWorkoutOutbox(merged, outbox.overlay);
   const days = discardedHere == null ? withFree : withFree.map((d) => (masked(d) ? fresh(d) : d));
   // The session going, as the days say once what waits has landed: a start waiting makes it so, an end or a discard
