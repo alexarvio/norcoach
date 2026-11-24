@@ -1,0 +1,49 @@
+/* The client app's opening with the coach's own logo (24 Nov, Alex: "whenever the coach sets their logo, that we have
+   their logo in there, and like below we can say powered by Norcoach"; app/components/OpeningLogo.tsx). Only in the
+   client app (`.nc-boot-app`) and only while the root layout marks the body `has-coach-logo`, with the logo as one dark
+   shape in `--bg-mark` (app/lib/brandMark.ts): the star and NORCOACH make way, and the coach's logo stands alone in the
+   middle of the paper in ink while the app loads, as big as the star's room allows (a wide logo by its width, a tall one
+   by its height). Ready, it gives the star's punch and `Powered by` (small caps, grey) with the NORCOACH word (ink at
+   half strength, as tall as the label's capitals) rises in under it, the logo staying centred; then the paper fades as
+   before, 3.1s in all. Reduced motion: the line fades in, then the paper. Without a logo, the opening is as it was. */
+
+.nc-boot-coach { display: none; }
+
+body.has-coach-logo .nc-boot-app .nc-boot-logo { display: none; }
+body.has-coach-logo .nc-boot-app .nc-boot-coach {
+  display: block;
+  position: relative;
+  width: min(calc(100vw - 96px), 240px);
+  height: 120px;
+  will-change: transform;
+}
+.nc-boot-coach-logo {
+  position: absolute; inset: 0;
+  background: currentColor;
+  -webkit-mask: var(--bg-mark) center / contain no-repeat;
+  mask: var(--bg-mark) center / contain no-repeat;
+}
+.nc-boot-powered {
+  position: absolute; left: 50%; top: calc(100% + 28px);
+  display: inline-flex; align-items: center; gap: 7px;
+  white-space: nowrap;
+  transform: translate(-50%, 6px);
+  opacity: 0;
+}
+.nc-boot-powered-by {
+  font-size: 10.5px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: #8b93a1;
+  line-height: 1;
+}
+.nc-boot-powered-word { display: block; height: 8px; width: auto; color: #141a24; opacity: .55; }
+
+body.has-coach-logo .nc-boot-app.revealing .nc-boot-coach { animation: nc-boot-lift 800ms ease 2300ms forwards; }
+body.has-coach-logo .nc-boot-app.revealing .nc-boot-coach-logo { animation: nc-boot-punch 1300ms cubic-bezier(.22, 1, .36, 1) forwards; }
+body.has-coach-logo .nc-boot-app.revealing .nc-boot-powered { animation: nc-boot-powered 700ms cubic-bezier(.22, 1, .36, 1) 350ms forwards; }
+@keyframes nc-boot-powered { to { opacity: 1; transform: translate(-50%, 0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  body.has-coach-logo .nc-boot-app.revealing .nc-boot-coach,
+  body.has-coach-logo .nc-boot-app.revealing .nc-boot-coach-logo { animation: none; }
+  body.has-coach-logo .nc-boot-app .nc-boot-powered { transform: translate(-50%, 0); }
+  body.has-coach-logo .nc-boot-app.revealing .nc-boot-powered { animation: nc-boot-fade 200ms ease forwards; }
+}
