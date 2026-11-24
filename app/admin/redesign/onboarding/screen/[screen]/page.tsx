@@ -20,7 +20,7 @@ import "../../onboarding.css";
 // One step of an onboarding flow, drawn in the state it has on the day:
 // signed out, a first password to choose, a dialog half filled in. Shown in
 // a frame on the board, or full size from its Open link.
-//   /admin/redesign/onboarding/screen/login
+//   /onboarding/screen/login
 export const dynamic = "force-dynamic";
 
 // A made-up client for the screens that need one typed in.

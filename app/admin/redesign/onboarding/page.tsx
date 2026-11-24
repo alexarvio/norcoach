@@ -13,7 +13,7 @@ import "./onboarding.css";
 // side and in order. Each frame is the real screen (Open shows it full
 // size), so a change made for the board is a change to the app.
 // Local only, like the shadcn trial.
-//   /admin/redesign/onboarding
+//   /onboarding
 export const dynamic = "force-dynamic";
 
 export default async function OnboardingBoard() {
@@ -29,7 +29,7 @@ export default async function OnboardingBoard() {
             <h2 className="ob-flow-title">{f.title}</h2>
             <ol className="ob-steps">
               {f.steps.map((s, i) => {
-                const href = s.src ?? `/admin/redesign/onboarding/screen/${s.screen}`;
+                const href = s.src ?? `/onboarding/screen/${s.screen}`;
                 return (
                   <li key={s.name} className="ob-step">
                     <div className="ob-cap">

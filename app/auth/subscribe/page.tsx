@@ -26,7 +26,7 @@ export default async function SubscribePage({ searchParams }: { searchParams: Pr
   }
   // Theirs while there is no live plan: never had one, or one that ended (a cancelled plan comes back here, not on
   // Stripe's page, which can't start a new one).
-  if (isOwner(coach) || !billingOn() || (billingAccess(coach.id, false).state !== "subscribe" && !canSubscribe(getBilling(coach.id)))) redirect("/admin/redesign");
+  if (isOwner(coach) || !billingOn() || (billingAccess(coach.id, false).state !== "subscribe" && !canSubscribe(getBilling(coach.id)))) redirect("/clients");
 
   const [month, year] = await Promise.all([readPrice(priceFor("month") ?? ""), readPrice(priceFor("year") ?? "")]);
   const trial = getBilling(coach.id).trial_used ? 0 : TRIAL_DAYS;

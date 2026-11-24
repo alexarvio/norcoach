@@ -177,5 +177,5 @@ export async function finishWelcomeAction(next: "client" | "tour" | "look") {
     delete user.onboarding;
     persist();
   }
-  redirect(next === "client" ? "/admin/redesign/home?add=1" : next === "tour" ? "/admin/redesign/home?tour=1" : "/admin/redesign/home");
+  redirect(next === "client" ? "/clients?add=1" : next === "tour" ? "/clients?tour=1" : "/clients");
 }

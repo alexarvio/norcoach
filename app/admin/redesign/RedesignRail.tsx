@@ -16,6 +16,7 @@ import RefreshOnReturn, { calm } from "./RefreshOnReturn";
 import { onRefreshFree } from "./holdRefresh";
 import { pic } from "../../lib/pic";
 import { BrandLogo } from "../../components/BrandLogo";
+import { pageKeyOf } from "./paths";
 
 // The left rail, in the redesign's sheet: the brand, the coach's cross-client
 // views as icon rows, every client in one scrolling list, and the coach at
@@ -44,9 +45,9 @@ function LibraryIcon() {
   );
 }
 // Views already redrawn here open in the redesign; the rest where they always were.
-const REDRAWN: Partial<Record<string, string>> = { feed: "/admin/redesign/feed", calendar: "/admin/redesign/calendar", phases: "/admin/redesign/phases", business: "/admin/redesign/business", library: "/admin/redesign/library" };
-const COACHES = "/admin/redesign/coaches";
-const SETTINGS_HREF = "/admin/redesign/settings";
+const REDRAWN: Partial<Record<string, string>> = { feed: "/feed", calendar: "/calendar", phases: "/phases", business: "/business", library: "/library" };
+const COACHES = "/coaches";
+const SETTINGS_HREF = "/settings";
 
 // A view as near instant as Next allows (22 Nov, Alex: "I go to feed, I go to phases, and then maybe I go to settings, it
 // takes maybe 0.5 seconds… as instant as possible"). The views are dynamic pages; since 22 Nov the rail is the layout's
@@ -78,12 +79,8 @@ export function forgetPrefetches() {
 }
 /** The view a click is going to whose prefetch may be old: it reads itself again once it lands. */
 let readOnArrival: string | null = null;
-/** A page as the address tells it apart: the view, and on a client's screens the client too. */
-const keyOf = (href: string) => {
-  const [path, query = ""] = href.split("#")[0].split("?");
-  const client = new URLSearchParams(query).get("client");
-  return client ? `${path}?client=${client}` : path;
-};
+/** A page as the address tells it apart: the view, and on a client's screens the client (their tabs are one page). */
+const keyOf = (href: string) => pageKeyOf(href.split("#")[0].split("?")[0]);
 
 /** A view or client row of the rail: a Link prefetched in full while the mouse (or the keyboard's focus) rests on it. */
 function ViewLink({ href, onClick, onPointerDown, children, still = false, armAfter, ...rest }: Omit<ComponentProps<typeof Link>, "href" | "prefetch" | "onPointerEnter" | "onPointerLeave" | "onPointerCancel" | "onFocus" | "onBlur"> & { href: string; /** Never prefetched (Feed, Business): their page notes the coach's look as it is read, and Next's full prefetch
@@ -303,7 +300,7 @@ export default function RedesignRail({ rail, clientId, settings = false, onArriv
   // The client just clicked is marked at once, before the page arrives (a
   // switch is a round trip to the server), then the real one takes over.
   const [pending, setPending] = useState<{ id: number; from: string } | null>(null);
-  const here = `${clientId}:${path}`;
+  const here = `${clientId}:${pageKeyOf(path)}`;
   // Not the client already open (22 Oct, Alex: a click on them changed nothing, so their face pulsed for good).
   const pendingId = pending && pending.from === here && pending.id !== clientId ? pending.id : null;
   const markedId = pendingId ?? clientId;
@@ -455,7 +452,7 @@ export default function RedesignRail({ rail, clientId, settings = false, onArriv
       {/* What they pay Norcoach (28 Oct, Alex; lib/billing.ts): a payment that failed, then read-only, as a fact and its
           way to the fix (Settings, Billing). Nothing while it is paid. */}
       {(rail.billing.state === "grace" || rail.billing.state === "readonly") && (
-        <Link href="/admin/redesign/settings#billing" className="rr-billing">
+        <Link href="/settings#billing" className="rr-billing">
           <b>{rail.billing.state === "readonly" ? "Read-only" : "Payment failed"}</b>
           <small>{rail.billing.state === "grace" && rail.billing.until ? `Read-only from ${dayMonth(rail.billing.until)}` : "Renew in Billing"}</small>
         </Link>
@@ -535,7 +532,7 @@ export default function RedesignRail({ rail, clientId, settings = false, onArriv
                         so the click lands on a page already in; the page writes nothing for being drawn, its visit is
                         written once it is on screen (visitClient). Its outline still shows at once (RailFrame). */}
                     <ViewLink
-                      href={`/admin/redesign/home?client=${c.id}`}
+                      href={`/clients/${c.id}/home`}
                       armAfter={CLIENT_ARM_MS}
                       className={`rr-row${active ? " active" : ""}${pendingId === c.id ? " loading" : ""}`}
                       aria-current={active ? "page" : undefined}
@@ -543,7 +540,7 @@ export default function RedesignRail({ rail, clientId, settings = false, onArriv
                         setPendingId(c.id);
                         if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
                         // The page you are on: no outline, and one still up from another click comes down.
-                        going(c.id === clientId && path === "/admin/redesign/home" ? null : `/admin/redesign/home?client=${c.id}`);
+                        going(c.id === clientId && pageKeyOf(path) === `/clients/${c.id}` ? null : `/clients/${c.id}/home`);
                       }}
                     >
                       <span className={`rr-avatar${c.notSignedIn ? " pending" : ""}`} title={c.notSignedIn ? "Hasn't signed in to the app yet" : undefined}>

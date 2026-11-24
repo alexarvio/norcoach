@@ -1452,7 +1452,7 @@ function DeleteClientDialog({ clientId, name, firstName }: { clientId: number; n
       const err = await deleteClientConfirmedAction(clientId, typed);
       if (err) return setError(err);
       toast.success(`${name} deleted`);
-      router.push("/admin/redesign/feed");
+      router.push("/feed");
     });
   return (
     <DialogContent

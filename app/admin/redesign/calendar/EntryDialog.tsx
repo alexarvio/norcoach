@@ -295,7 +295,7 @@ export default function EntryDialog({ open, cats, clients, dayEntries, onDone }:
         <span className="npd-tools">
           {/* Their Meetings hold their calls alone (23 Oct, Alex), so Open is a call's. */}
           {client && isClientCall(cat) && (
-            <Link href={`/admin/redesign/meetings?client=${client.id}`} className="npd-open" title={`Open ${first(client.name)}’s meetings`} aria-label={`Open ${first(client.name)}’s meetings`}>
+            <Link href={`/clients/${client.id}/meetings`} className="npd-open" title={`Open ${first(client.name)}’s meetings`} aria-label={`Open ${first(client.name)}’s meetings`}>
               Open
             </Link>
           )}

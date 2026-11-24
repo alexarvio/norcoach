@@ -29,7 +29,7 @@ import { isClientCall } from "../../../lib/calendarKinds";
 // In the admin's hairline voice since 22 Oct (Alex: the last screen on the old
 // style): Training's header, bare; a clash a row with its way to the day; the
 // month and the day each a section title on the page over one hairline card.
-//   /admin/redesign/calendar?month=2026-09&day=2026-09-25
+//   /calendar?month=2026-09&day=2026-09-25
 export const dynamic = "force-dynamic";
 
 const toMin = (t: string) => {
@@ -55,7 +55,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const conflicts = t.time("conflicts", () => getMeetingConflicts(coach.id));
   const conflictIds = new Set<number>(conflicts.flatMap((c) => [c.a.id, c.b.id]));
   const categories = t.time("categories", () => listCalendarCategories(coach.id));
-  const href = (month: string, day?: string) => `/admin/redesign/calendar?month=${month}${day ? `&day=${day}` : ""}`;
+  const href = (month: string, day?: string) => `/calendar?month=${month}${day ? `&day=${day}` : ""}`;
 
   // Every day of the six weeks with its entries, so a day opens in the browser at once (CalendarBoard); the day asked
   // for joins them when it lies outside the grid.

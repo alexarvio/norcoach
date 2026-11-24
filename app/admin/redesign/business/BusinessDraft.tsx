@@ -18,10 +18,10 @@ import type { BillingRow, BusinessBoard, MoneyMonth, OwedRow, RosterMonth, Serie
 // - Owed and Not billed automatically as logs, each with its way to act (no Plans ending: 23 Oct, Alex).
 // Facts, not explanations; dates d/m (dayMonth), a log's rows by logDate; ink, never navy; weights 500 and 600.
 
-const HOME = (id: number) => `/admin/redesign/home?client=${id}`;
-const INVOICES = (id: number) => `/admin/redesign/invoices?client=${id}`;
+const HOME = (id: number) => `/clients/${id}/home`;
+const INVOICES = (id: number) => `/clients/${id}/invoices`;
 /** An invoice as it prints (the Invoices tab's own link). */
-const SHEET = (id: number) => `/admin/redesign/invoices/${id}`;
+const SHEET = (id: number) => `/invoices/${id}`;
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const MINUS = "−";

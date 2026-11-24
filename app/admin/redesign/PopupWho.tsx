@@ -1,14 +1,16 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { DialogTitle } from "../../components/ui/dialog";
 import { pic } from "../../lib/pic";
 import { popupClientAction } from "./popupWhoActions";
+import { clientScreenOf } from "./paths";
 
 // A pop-up's title in C (22 Nov, Alex: docs/boards/admin-popups-c-mockup.html, "build them"): on a client's screens the
 // client's face and `{Name} | {tab}` in small caps over the title, in the coach's dark; anywhere else the title alone.
-// The client is the one the address names (?client=), the tab the one it is on, so every pop-up says it the same way.
+// The client is the one the address names (/clients/<id>/<tab>), the tab the one it is on, so every pop-up says it the
+// same way.
 
 const TAB_WORD: Record<string, string> = {
   home: "Home",
@@ -51,11 +53,11 @@ export function PopupWhoProvider({ id, name, photo, children }: { id: number; na
 const known = new Map<number, Who | null>();
 
 function useWho(): { who: Who; tab: string | null } | null {
-  const params = useSearchParams();
   const path = usePathname();
   const zone = useContext(PopupTabContext);
   const given = useContext(PopupWhoContext);
-  const id = Number(params?.get("client"));
+  const screen = clientScreenOf(path);
+  const id = screen?.clientId ?? 0;
   const [, bump] = useState(0);
   const has = Number.isInteger(id) && id > 0;
   const handed = given && (!has || given.id === id) ? given : null;
@@ -75,8 +77,7 @@ function useWho(): { who: Who; tab: string | null } | null {
   }, [handed, has, id]);
   const who = handed ?? (has ? known.get(id) : null);
   if (!who) return null;
-  const seg = path?.match(/\/admin\/redesign\/([a-z]+)/)?.[1] ?? null;
-  const tab = zone ?? params?.get("tab") ?? seg;
+  const tab = zone ?? screen?.tab ?? null;
   return { who, tab };
 }
 

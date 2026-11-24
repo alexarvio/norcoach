@@ -62,7 +62,7 @@ export async function loginAction(formData: FormData) {
   await startSession(user.id);
 
   if (user.must_change_password) redirect("/login/change-password");
-  redirect(user.role === "coach" ? "/admin/redesign" : "/client");
+  redirect(user.role === "coach" ? "/clients" : "/client");
 }
 
 export async function logoutAction() {
@@ -83,7 +83,7 @@ export async function changePasswordAction(formData: FormData) {
   if (password !== confirm) redirect("/login/change-password?error=match");
 
   setPassword(user.id, password, false);
-  redirect(user.role === "coach" ? "/admin/redesign" : "/client");
+  redirect(user.role === "coach" ? "/clients" : "/client");
 }
 
 // "Forgot password" (lib/passwordReset.ts). The answer is the same whether or

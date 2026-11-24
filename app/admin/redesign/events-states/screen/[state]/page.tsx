@@ -5,7 +5,7 @@ import { COACH, eventsProps, STATES, TODAY, type StateId } from "../../states";
 import "../../events-states.css";
 
 // One state of the client's Events screen, full size, from the board's made-up data.
-//   /admin/redesign/events-states/screen/now
+//   /events-states/screen/now
 export const dynamic = "force-dynamic";
 
 export default async function EventsStatePage({ params }: { params: Promise<{ state: string }> }) {

@@ -11,6 +11,7 @@ import { ConfirmDialog } from "./training/TrainingDraft";
 import { SepJoin } from "./Sep";
 import { landOnSoon } from "../../lib/landOn";
 import type { DotTab, TodoItem } from "./dots";
+import { clientScreenOf, tabOfSlug } from "./paths";
 
 // The to-do strip (2 Nov, Alex: "if we just use dots, it can be a little bit confusing"; mockup A with the outline round
 // the whole container, docs/boards/needs-strip-mockup.html): at the top of a client's tab, under its header, one row for
@@ -117,7 +118,7 @@ export function TodoStrip({ tab, onAct, describe }: { tab: DotTab; onAct?: (item
     const asks = [...to.searchParams.keys()].filter((k) => k !== "client");
     // On this tab with nothing more to ask of the server: its #. Else there.
     if (!asks.length && to.hash) goToHash(to.hash);
-    else if (item.kind !== "read" || asks.length || to.pathname !== `/admin/redesign/${tab}`) router.push(item.href);
+    else if (item.kind !== "read" || asks.length || clientScreenOf(to.pathname)?.tab !== tabOfSlug(tab)) router.push(item.href);
   };
   // The needs-you rows' structure (3 Nov, Alex: "similar to the ones we just did… the buttons should be icons without
   // words"; NeedGroups): the date it came in, its mark, the thing and their words, the wait, the action as its icon alone

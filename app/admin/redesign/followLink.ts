@@ -1,6 +1,6 @@
 "use client";
 
-import { TAB_KEYS } from "./tabs";
+import { clientScreenOf, pageKeyOf } from "./paths";
 
 // A link inside the admin, followed without reloading the page (11 Nov, Alex: a message's link "reloaded itself, so the
 // whole animation with the logo from the beginning appeared again"). A client's screens are one page with every tab in
@@ -36,14 +36,15 @@ export function followLink(router: Router, href: string) {
   const to = new URL(href, window.location.origin);
   const here = window.location;
   const target = `${to.pathname}${to.search}${to.hash}`;
-  if (to.pathname !== here.pathname) {
+  if (pageKeyOf(to.pathname) !== pageKeyOf(here.pathname)) {
     // Another screen: it mounts on its own tab and reads its # itself.
     router.push(target, { scroll: false });
     return;
   }
-  // The same screen, maybe with another of its tabs showing: the link's own tab comes forward.
-  const routeTab = /^\/admin\/redesign\/([a-z]+)/.exec(to.pathname)?.[1];
-  if (routeTab && (TAB_KEYS as readonly string[]).includes(routeTab)) window.dispatchEvent(new CustomEvent(SHOW_TAB_EVENT, { detail: routeTab }));
+  // The same screen (a client's tabs are one page, /clients/<id>/<tab>), maybe with another of its tabs showing: the
+  // link's own tab comes forward.
+  const routeTab = clientScreenOf(to.pathname)?.tab;
+  if (routeTab && routeTab !== "messages") window.dispatchEvent(new CustomEvent(SHOW_TAB_EVENT, { detail: routeTab }));
   if (bare(to.search) === bare(here.search)) {
     window.history.replaceState(null, "", target);
     if (to.hash) afterPaint(arriveAt);
@@ -56,7 +57,7 @@ export function followLink(router: Router, href: string) {
   const want = bare(to.search);
   const started = performance.now();
   const wait = () => {
-    if (window.location.pathname !== to.pathname) return;
+    if (pageKeyOf(window.location.pathname) !== pageKeyOf(to.pathname)) return;
     if (bare(window.location.search) === want) return afterPaint(arriveAt);
     if (performance.now() - started < 60000) requestAnimationFrame(wait);
   };

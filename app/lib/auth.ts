@@ -201,7 +201,7 @@ export async function requireCoach(): Promise<SessionUser> {
   // render, never refused. What stays open (chat, Support, read marks, billing) uses requireCoachAccount instead.
   const access = billingAccess(user.id, isOwner(user));
   if (access.state === "subscribe") redirect("/auth/subscribe");
-  if (access.state === "readonly" && !rendering() && (await isChange())) redirect("/admin/redesign/settings?readonly=1#billing");
+  if (access.state === "readonly" && !rendering() && (await isChange())) redirect("/settings?readonly=1#billing");
   // Where the coach is looking from: meetings read in that timezone (viewZone.ts).
   try {
     const zone = decodeURIComponent((await cookies()).get("ironline_tz")?.value ?? "");

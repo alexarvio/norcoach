@@ -82,7 +82,7 @@ export function pushCoachNews(clientId: number, news: { title: string; body: str
  *  in quiet hours, as news is. */
 export function pushCoachJoin(coachId: number, requestId: number, name: string) {
   if (!coachWants(coachId, "news")) return;
-  sendPushInBackground(coachId, { title: name, body: "Wants to join you", url: "/admin/redesign/feed", tag: `join:${requestId}` });
+  sendPushInBackground(coachId, { title: name, body: "Wants to join you", url: "/feed", tag: `join:${requestId}` });
 }
 
 /** A client's photo or video of an exercise came in: "Video of Squat", and a tap opens it to review. */

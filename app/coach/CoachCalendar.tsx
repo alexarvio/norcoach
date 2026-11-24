@@ -12,7 +12,7 @@ import { Avatar, Facts, Icon, Sheet } from "./parts";
 import RingEdge from "../components/RingEdge";
 
 // The Calendar on the coach's phone (22 Oct, Alex): the laptop's Calendar
-// (/admin/redesign/calendar) for a thumb, the same entries and the same
+// (/calendar) for a thumb, the same entries and the same
 // actions. A week at a time on a strip (a swipe or ‹ › for another week,
 // Today back), the chosen day under it as a list with its times, 24-hour;
 // a swipe on the list is the next or the day before. Each entry wears its

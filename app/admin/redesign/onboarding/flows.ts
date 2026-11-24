@@ -21,7 +21,7 @@ export function flows(firstClientId: number | null): Flow[] {
         { name: "Create a coach account", screen: "coach-signup" },
         { name: "The code from the email", screen: "code-coach" },
         { name: "About you", screen: "coach-details" },
-        { name: "First view", src: "/admin/redesign", note: "Yours; a new coach's has no clients" },
+        { name: "First view", src: "/clients", note: "Yours; a new coach's has no clients" },
       ],
     },
     {
@@ -32,7 +32,7 @@ export function flows(firstClientId: number | null): Flow[] {
         { name: "New client, empty", screen: "new-client-1" },
         { name: "Member info filled in", screen: "new-client-1-filled" },
         { name: "App access", screen: "new-client-2", note: "Still today's: becomes “Send the invite”" },
-        { name: "Lands on their Home", src: firstClientId ? `/admin/redesign/home?client=${firstClientId}` : "/admin/redesign" },
+        { name: "Lands on their Home", src: firstClientId ? `/clients/${firstClientId}/home` : "/clients" },
       ],
     },
     {

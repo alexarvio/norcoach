@@ -881,8 +881,8 @@ export function PhaseDialog({ clientId, firstName, today, thisWeek, phase, track
               className="npd-open"
               href={
                 track === "training"
-                  ? `/admin/redesign/training?client=${clientId}${phase.program ? `&program=${phase.program.id}` : ""}`
-                  : `/admin/redesign/${track === "nutrition" ? "nutrition" : "measurements"}?client=${clientId}&phase=${phase.id}`
+                  ? `/clients/${clientId}/training${phase.program ? `?program=${phase.program.id}` : ""}`
+                  : `/clients/${clientId}/${track === "nutrition" ? "nutrition" : "lifestyle"}?phase=${phase.id}`
               }
             >
               Open

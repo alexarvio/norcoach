@@ -9,7 +9,7 @@ import "../home-states/home-states.css";
 // with nothing yet, a few new today, and a week of them, side by side from
 // made-up data. Each frame is the real screen (Open shows it full size).
 // Local only, like the Home and Events boards.
-//   /admin/redesign/notifications-states
+//   /notifications-states
 export const dynamic = "force-dynamic";
 
 export default async function NotificationsStatesBoard() {
@@ -21,7 +21,7 @@ export default async function NotificationsStatesBoard() {
       <p className="hs-intro">Made-up data, the real screen. What Finlay did, by day, in its category&rsquo;s colour; unread rows lifted, read rows flat; no reminders.</p>
       <ol className="ob-steps">
         {STATES.map((s, i) => {
-          const href = `/admin/redesign/notifications-states/screen/${s.id}`;
+          const href = `/notifications-states/screen/${s.id}`;
           return (
             <li key={s.id} className="ob-step">
               <div className="ob-cap">

@@ -22,7 +22,7 @@ export default async function CoachSetupPage() {
   if (me) {
     if (me.role !== "coach") redirect("/auth/continue");
     const row = getData().users.find((u) => u.id === me.id);
-    if (!row?.onboarding) redirect("/admin/redesign");
+    if (!row?.onboarding) redirect("/clients");
     if (billingAccess(me.id, isOwner(me)).state === "subscribe") redirect("/auth/subscribe");
     const profile = getCoachProfile(me.id);
     const settings = getCoachSettings(me.id);

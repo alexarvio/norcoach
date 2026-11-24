@@ -996,7 +996,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
         addingWeek.current = false;
       }
       savedToast(`Week ${n} added${from ? `, a copy of Week ${from}` : ""}`);
-      router.push(`${window.location.pathname}?client=${clientId}&tab=training&program=${program.id}&week=${n}`, { scroll: false });
+      router.push(`/clients/${clientId}/training?program=${program.id}&week=${n}`, { scroll: false });
     });
   };
   const lastWeek = weeks[weeks.length - 1];
@@ -1897,7 +1897,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
                       {shownName}
                     </button>
                   )}
-                  <PhaseSwitcher name="" currentId={program.id} items={program.programs} hrefFor={(id) => `/admin/redesign/training?client=${clientId}&program=${id}`} dueIds={Object.keys(dots?.training.weeks ?? {}).map(Number)} label="Switch programme" newLabel="New programme" onNew={() => setDlg({ kind: "newProgram" })} />
+                  <PhaseSwitcher name="" currentId={program.id} items={program.programs} hrefFor={(id) => `/clients/${clientId}/training?program=${id}`} dueIds={Object.keys(dots?.training.weeks ?? {}).map(Number)} label="Switch programme" newLabel="New programme" onNew={() => setDlg({ kind: "newProgram" })} />
                 </>
               )}
             </h1>
@@ -2041,7 +2041,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
         weeks={weeks}
         viewIdx={viewIdx}
         dateOf={weekDate}
-        hrefFor={(index) => `/admin/redesign/training?client=${clientId}&program=${program.id}&week=${index}`}
+        hrefFor={(index) => `/clients/${clientId}/training?program=${program.id}&week=${index}`}
         isLocal={isLocal}
         onShow={showWeek}
         onAdd={addWeek}
@@ -2278,7 +2278,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
         locked={program.status === "past"}
         questions={program.workoutQuestions}
         answers={program.answersFeed}
-        href={(it) => `/admin/redesign/training?client=${clientId}&tab=training&program=${program.id}&week=${it.weekIdx}#session-${it.dayId}`}
+        href={(it) => `/clients/${clientId}/training?program=${program.id}&week=${it.weekIdx}#session-${it.dayId}`}
       />
 
       {/* ---- Dialogs. One open at a time. */}
@@ -2629,7 +2629,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
               startTransition(async () => {
                 await removeProgramWeekAction(fd({ clientId, programId: program.id, week: idx }));
                 savedToast(`${label} removed`);
-                router.push(`${window.location.pathname}?client=${clientId}&tab=training&program=${program.id}&week=${Math.max(1, idx - 1)}`, { scroll: false });
+                router.push(`/clients/${clientId}/training?program=${program.id}&week=${Math.max(1, idx - 1)}`, { scroll: false });
               });
             }}
           />
@@ -2651,7 +2651,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
                   startTransition(async () => {
                     await deletePhaseAction(id);
                     savedToast(`${program.name} deleted`);
-                    router.push(`${window.location.pathname}?client=${clientId}&tab=training`, { scroll: false });
+                    router.push(`/clients/${clientId}/training`, { scroll: false });
                   });
                 }}
                 onClose={close}
@@ -2790,7 +2790,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
               startTransition(async () => {
                 const made = await addClientPhaseAction(f);
                 savedToast(`${v.name} drafted: ${v.programId ? "on its programme" : "a new programme"}`);
-                if (made?.programId) router.push(`${window.location.pathname}?client=${clientId}&tab=training&program=${made.programId}&week=1`, { scroll: false });
+                if (made?.programId) router.push(`/clients/${clientId}/training?program=${made.programId}&week=1`, { scroll: false });
                 else router.refresh();
               });
             }}

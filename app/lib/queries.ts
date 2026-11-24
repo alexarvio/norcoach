@@ -8588,7 +8588,7 @@ function clientHomeOf(full: boolean, clientId: number, chat: ChatCoachView, food
   for (const m of listMeetings(clientId)) {
     if (!callToComplete(m)) continue;
     const name = (m.summary_title ?? "").trim() || m.topic.trim() || `${meetingTypeOf(m.meeting_type ?? "checkin").label} call`;
-    actions.push({ id: `complete-${m.id}`, tone: "due", group: "reply", title: "Call to complete", detail: name, tab: "meetings", at: callEndsAt(m), href: `/admin/redesign/meetings?client=${clientId}#call-${m.id}` });
+    actions.push({ id: `complete-${m.id}`, tone: "due", group: "reply", title: "Call to complete", detail: name, tab: "meetings", at: callEndsAt(m), href: `/clients/${clientId}/meetings#call-${m.id}` });
   }
   // An invoice past its due date, still unpaid.
   const today = localDateStr();
@@ -8603,7 +8603,7 @@ function clientHomeOf(full: boolean, clientId: number, chat: ChatCoachView, food
       detail: inv.description,
       tab: "invoices",
       at: stampMs(`${inv.due_date} 00:00:00`),
-      href: `/admin/redesign/invoices/${inv.id}`,
+      href: `/invoices/${inv.id}`,
     });
   }
   // No phase live on training or nutrition (8 Oct): the client's Home says

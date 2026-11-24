@@ -23,7 +23,7 @@ import { PopupTitle } from "../PopupWho";
 
 /** Where the phase is edited: the track's own tab, on this phase. */
 export const planHref = (clientId: number, p: OverviewPhase) =>
-  p.track === "training" ? `/admin/redesign/training?client=${clientId}${p.programId ? `&program=${p.programId}` : ""}` : `/admin/redesign/${p.track === "nutrition" ? "nutrition" : "measurements"}?client=${clientId}&phase=${p.id}`;
+  p.track === "training" ? `/clients/${clientId}/training${p.programId ? `?program=${p.programId}` : ""}` : `/clients/${clientId}/${p.track === "nutrition" ? "nutrition" : "lifestyle"}?phase=${p.id}`;
 
 const up = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const stateOf = (p: OverviewPhase, today: string) => phaseStateOf({ draft: p.draft, startWeek: p.start, endWeek: p.endWeek, today });

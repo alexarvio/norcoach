@@ -54,7 +54,7 @@ export function invoicePaidByStripe(invoiceId: number, sessionId: string, accoun
   // The coach hears on their devices, when they have notifications on.
   const coachId = inv.coach_id;
   const client = getData().clients.find((c) => c.id === inv.client_id);
-  if (coachId != null) sendPushInBackground(coachId, { title: "Invoice paid", body: `${client?.name ?? "A client"} paid ${name}`, url: `/admin/redesign/invoices?client=${inv.client_id}`, tag: `invoice-paid:${invoiceId}` });
+  if (coachId != null) sendPushInBackground(coachId, { title: "Invoice paid", body: `${client?.name ?? "A client"} paid ${name}`, url: `/clients/${inv.client_id}/invoices`, tag: `invoice-paid:${invoiceId}` });
 }
 
 /** Stripe told us an account changed (account.updated): keep its status current. */

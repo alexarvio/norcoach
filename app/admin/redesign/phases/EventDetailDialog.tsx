@@ -107,7 +107,7 @@ export default function EventDetailDialog({ client, event: e, today, coach }: { 
           </span>
           Added by <b>{by.name}</b>
         </span>
-        <Link ref={openRef} href={`/admin/redesign/plan?client=${client.id}`} className="dlh-go">
+        <Link ref={openRef} href={`/clients/${client.id}/plan`} className="dlh-go">
           Open
         </Link>
       </div>

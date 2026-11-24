@@ -538,7 +538,7 @@ export default function NutritionDraft({
                     "Nutrition"
                   )}
                   {/* Real phases only: with none, nothing is live (22 Oct, Alex: the client-level targets showed as a live phase). */}
-                  <PhaseSwitcher name="" currentId={plan.id} items={plan.phases.filter((p) => p.id > 0)} hrefFor={(id) => `/admin/redesign/nutrition?client=${clientId}&phase=${id}`} label="Switch phase" newLabel="New phase" onNew={() => setDlg({ kind: "newPhase" })} />
+                  <PhaseSwitcher name="" currentId={plan.id} items={plan.phases.filter((p) => p.id > 0)} hrefFor={(id) => `/clients/${clientId}/nutrition?phase=${id}`} label="Switch phase" newLabel="New phase" onNew={() => setDlg({ kind: "newPhase" })} />
                 </>
               )}
             </h1>
@@ -1082,7 +1082,7 @@ export default function NutritionDraft({
               startTransition(async () => {
                 await deletePhaseAction(phaseId);
                 savedToast(`${plan.name} deleted`);
-                router.push(`${window.location.pathname}?client=${clientId}&tab=nutrition`, { scroll: false });
+                router.push(`/clients/${clientId}/nutrition`, { scroll: false });
               });
             }}
             onClose={close}

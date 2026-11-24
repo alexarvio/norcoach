@@ -37,6 +37,20 @@ const nextConfig: NextConfig = {
     // Navigations and refreshes wait the same way.
     useOffline: true,
   },
+  // The admin's addresses (24 Nov, Alex: B of docs/boards/admin-urls-mockup.html): /clients/<id>/<tab> and /<view>
+  // onto the pages under app/admin/redesign, which stay where they are. Every old /admin/redesign address is sent here
+  // by proxy.ts (oldAdminAddress in app/admin/redesign/paths.ts), so a rewrite's own target is never asked for.
+  async rewrites() {
+    const TABS = "home|plan|lifestyle|training|nutrition|shape-update|meetings|invoices|chat";
+    const VIEWS = "feed|phases|calendar|library|business|coaches|settings|onboarding|whiteboard|events-states|home-states|notifications-states";
+    return [
+      { source: "/clients", destination: "/admin/redesign/tabs" },
+      { source: "/clients/:client(\\d+)", destination: "/admin/redesign/tabs?client=:client&tab=home" },
+      { source: `/clients/:client(\\d+)/:tab(${TABS})`, destination: "/admin/redesign/tabs?client=:client&tab=:tab" },
+      { source: "/invoices/:id(\\d+)", destination: "/admin/redesign/invoices/:id" },
+      { source: `/:view(${VIEWS})/:rest*`, destination: "/admin/redesign/:view/:rest*" },
+    ];
+  },
 };
 
 export default nextConfig;

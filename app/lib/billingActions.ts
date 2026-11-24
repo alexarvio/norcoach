@@ -18,7 +18,7 @@ export async function startSubscriptionAction(interval: BillingInterval): Promis
   const base = appUrl();
   if (!price || !base) return { error: "Subscriptions are not set up on this server." };
   const b = getBilling(coach.id);
-  if (!canSubscribe(b)) return { url: `${base}/admin/redesign` };
+  if (!canSubscribe(b)) return { url: `${base}/clients` };
   try {
     // Stripe's own word on this customer: a live one (from another tab, or a webhook not here yet) is theirs already.
     if (b.customer) {
@@ -26,7 +26,7 @@ export async function startSubscriptionAction(interval: BillingInterval): Promis
       const live = subs.find((s) => s.status === "trialing" || s.status === "active" || s.status === "past_due");
       if (live) {
         applySubscription(coach.id, live);
-        return { url: `${base}/admin/redesign` };
+        return { url: `${base}/clients` };
       }
       if (subs.some((s) => s.trial_end)) markTrialUsed(coach.id);
     }
@@ -55,7 +55,7 @@ export async function openBillingPortalAction(): Promise<{ url?: string; error?:
   if (!b.customer) return { error: "No subscription yet." };
   if (!base) return { error: "The app does not know its own address (APP_URL)." };
   try {
-    return { url: await billingPortal(b.customer, `${base}/admin/redesign/settings#billing`) };
+    return { url: await billingPortal(b.customer, `${base}/settings#billing`) };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Stripe did not answer. Try again." };
   }

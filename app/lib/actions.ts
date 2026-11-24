@@ -2384,7 +2384,7 @@ export async function requestMeetingAction(clientId: number, about: string, when
     const client = getClient(Number(clientId));
     const coachId = coachUserIdOf(Number(clientId));
     // Held in the coach's quiet hours, as every push to them (27 Oct).
-    if (coachId) pushCoachNews(Number(clientId), { title: `${(client?.name ?? "A client").trim().split(/\s+/)[0]} asked for a call`, body: topic, url: `/admin/redesign/meetings?client=${clientId}`, tag: `meeting-request:${clientId}` });
+    if (coachId) pushCoachNews(Number(clientId), { title: `${(client?.name ?? "A client").trim().split(/\s+/)[0]} asked for a call`, body: topic, url: `/clients/${clientId}/meetings`, tag: `meeting-request:${clientId}` });
     revalidatePath("/admin");
     revalidatePath("/client");
     return null;
@@ -2750,7 +2750,7 @@ export async function clientAddEventAction(clientId: number, v: EventInput, once
     if (row && (await getSessionUser())?.role === "client") {
       const first = (getClient(Number(clientId))?.name ?? "A client").trim().split(/\s+/)[0];
       const when = !v.end || v.start === v.end ? dayMonth(v.start) : `${dayMonth(v.start)} – ${dayMonth(v.end)}`;
-      pushCoachNews(Number(clientId), { title: `${first} added an event`, body: `${v.title} | ${when}`, url: `/admin/redesign/plan?client=${clientId}`, tag: `event:${row.id}` });
+      pushCoachNews(Number(clientId), { title: `${first} added an event`, body: `${v.title} | ${when}`, url: `/clients/${clientId}/plan`, tag: `event:${row.id}` });
     }
     revalidatePath("/admin");
     revalidatePath("/client");
@@ -3310,7 +3310,7 @@ export async function addCalendarEventAction(formData: FormData) {
   revalidatePath("/admin");
   revalidatePath("/client");
   // Back to the Calendar (the redesign's since 25 Sep), on the day it went into.
-  redirect(`/admin/redesign/calendar?month=${date.slice(0, 7)}&day=${date}`);
+  redirect(`/calendar?month=${date.slice(0, 7)}&day=${date}`);
 }
 
 // The redesign's Calendar dialog: the same entry with a category, a note
@@ -5587,8 +5587,8 @@ export async function connectStripeAction(): Promise<{ url?: string; error?: str
       account = await createCoachAccount(b.billing_email || coach.email, b.country_code || null);
       setCoachPayments(coach.id, { stripe_account_id: account, stripe_status: "pending" });
     }
-    const back = `${base}/admin/redesign/settings?stripe=back#invoicing`;
-    return { url: await onboardingLink(account, back, `${base}/admin/redesign/settings?stripe=retry#invoicing`) };
+    const back = `${base}/settings?stripe=back#invoicing`;
+    return { url: await onboardingLink(account, back, `${base}/settings?stripe=retry#invoicing`) };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Stripe did not answer. Try again." };
   }

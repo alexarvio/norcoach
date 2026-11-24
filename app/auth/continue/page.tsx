@@ -5,6 +5,7 @@ import { findUserByEmail, getSessionUser } from "../../lib/auth";
 import { NATIVE_COOKIE } from "../../lib/quietLoad";
 import { letCoachIn } from "../../lib/coachSignUp";
 import { latestRequestFor } from "../../lib/joinRequests";
+import { isAdminPath } from "../../admin/redesign/paths";
 
 // Every sign-in through Clerk ends here: our own account for this person,
 // and where it lives. Someone who came through the coach sign-up and has no
@@ -19,7 +20,7 @@ export const dynamic = "force-dynamic";
 function backTo(next: string | undefined, role: string): string | null {
   if (!next || !next.startsWith("/") || next.startsWith("//") || next.includes("\\")) return null;
   const path = next.split(/[?#]/)[0];
-  const fits = role === "client" ? path === "/client" || path.startsWith("/client/") : path === "/coach" || path.startsWith("/coach/") || path.startsWith("/admin");
+  const fits = role === "client" ? path === "/client" || path.startsWith("/client/") : path === "/coach" || path.startsWith("/coach/") || isAdminPath(path);
   return fits ? next : null;
 }
 
@@ -31,7 +32,7 @@ export default async function ContinuePage({ searchParams }: { searchParams: Pro
   const inApp = (await cookies()).get(NATIVE_COOKIE)?.value === "1";
   // A coach still waiting from when sign-ups were approved by hand is let in now (17 Nov, Alex: no approval).
   if (user?.pending) letCoachIn(user.id);
-  if (user) redirect(backTo(next, user.role) ?? (user.role === "client" ? "/client" : inApp ? "/coach" : "/admin/redesign"));
+  if (user) redirect(backTo(next, user.role) ?? (user.role === "client" ? "/client" : inApp ? "/coach" : "/clients"));
 
   const who = await clerkIdentity();
   if (!who) redirect("/login");

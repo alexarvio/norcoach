@@ -20,7 +20,7 @@ import { Fields, Line, OpenRow, Part, Pill, Row, State, Two, Word } from "./Rows
 // Two-step sign-in is left out: Clerk asks a paid plan for it.
 
 const APPLE_ON = process.env.NEXT_PUBLIC_APPLE_SIGNIN !== "off";
-const RETURN = "/admin/redesign/settings#account";
+const RETURN = "/settings#account";
 
 /** When a device was last used, in the chat's words (`Active now`, `Active 2 h ago`, `Active 3/11`; lastActiveWords,
  *  16 Nov, Alex: the audit, no copy of its own). */

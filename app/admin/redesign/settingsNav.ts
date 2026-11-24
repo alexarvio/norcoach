@@ -2,13 +2,13 @@ import { AccountIcon, BookmarkIcon, BuildingIcon, ChatIcon, GearIcon, LockIcon, 
 
 // Settings is one page, its sections listed on the left and the one picked on the right (27 Oct, Alex: mockup B); these
 // are its sections in the page's order, each section's key its id and the address's #key. A plain module, so the page
-// (a server component) and the rail (a client one) read the same list. The old URLs (/admin/redesign/settings/<key>,
+// (a server component) and the rail (a client one) read the same list. The old URLs (/settings/<key>,
 // /admin/redesign/profile) redirect to the section on the page.
 // Nine sections since 23 Nov (Alex: docs/boards/settings-harmony-mockup.html, "9 sections, not 12"): Billing went into
 // Account, Notifications into Preferences, Your data and Privacy & legal into one, Data & privacy. Their old keys
 // still land (SETTINGS_ALIASES): #billing opens Account at its Norcoach part, #notifications Preferences at its
 // notifications, #data Data & privacy at its export.
-export const SETTINGS_PATH = "/admin/redesign/settings";
+export const SETTINGS_PATH = "/settings";
 export const SETTINGS = [
   { key: "profile", label: "Profile", href: `${SETTINGS_PATH}#profile`, Icon: AccountIcon },
   // Account & security and what the coach pays Norcoach (lib/billing.ts), one section (23 Nov, Alex).
@@ -61,7 +61,7 @@ export const sectionOf = (slotKey: string): string => {
   return resolveSetting(head)?.key ?? head;
 };
 
-/** The page at one section, with its query (?coachId, ?stripe) kept: `/admin/redesign/settings?stripe=back#invoicing`. */
+/** The page at one section, with its query (?coachId, ?stripe) kept: `/settings?stripe=back#invoicing`. */
 export function settingsHref(key: SettingsAddress, query: Record<string, string | undefined> = {}): string {
   const q = new URLSearchParams(Object.entries(query).filter((e): e is [string, string] => !!e[1])).toString();
   return `${SETTINGS_PATH}${q ? `?${q}` : ""}#${key}`;

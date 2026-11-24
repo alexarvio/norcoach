@@ -25,6 +25,7 @@ import { fetchEverySet, type SetRows } from "../lib/sets/rows";
 import { coachIdOfClient } from "../lib/tenancy";
 import { coachOwnsClient } from "../lib/tenancy";
 import CoachesPanel from "./CoachesPanel";
+import { oldAdminAddress } from "./redesign/paths";
 
 import { redirect } from "next/navigation";
 import { isOwner, requireCoach } from "../lib/auth";
@@ -95,14 +96,14 @@ export default async function AdminPage({
     const carry = new URLSearchParams(
       Object.entries({ cat: params.cat, page: params.page, month: params.month, day: params.day, win: params.win }).filter((e): e is [string, string] => !!e[1])
     ).toString();
-    redirect(`/admin/redesign/${view}${carry ? `?${carry}` : ""}`);
+    redirect(`/${view}${carry ? `?${carry}` : ""}`);
   }
   if (!view && params.old !== "1") {
     const tab = params.tab === "photos" ? "pictures" : REDESIGN_TABS.includes(params.tab ?? "") ? params.tab! : "home";
     const carry = new URLSearchParams(
       Object.entries({ client: params.client, phase: params.phase }).filter((e): e is [string, string] => !!e[1])
     ).toString();
-    redirect(`/admin/redesign/${tab}${carry ? `?${carry}` : ""}`);
+    redirect(oldAdminAddress(`/admin/redesign/${tab}`, carry) ?? "/clients");
   }
   // ?client= only opens one of this coach's own clients; anything else lands
   // on their first client, as if no client had been asked for.

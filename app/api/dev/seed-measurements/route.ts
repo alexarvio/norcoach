@@ -91,5 +91,5 @@ export async function GET(req: Request) {
     if (w === 2) await note("weekly", key, "Work deadline this week, stress up and only two sessions. Back to normal from Monday.");
   }
 
-  return NextResponse.redirect(new URL(`/admin/redesign/measurements?client=${id}`, req.url));
+  return NextResponse.redirect(new URL(`/clients/${id}/lifestyle`, req.url));
 }
