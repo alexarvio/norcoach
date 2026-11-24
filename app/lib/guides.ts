@@ -1,7 +1,9 @@
 import { allocId, getData, persist } from "./db";
 import { GUIDE_SCREENS, GUIDE_TOPICS } from "./guideScreens";
+import { cleanStep, type GuideStep } from "./guideSteps";
 
 export { GUIDE_SCREENS, GUIDE_TOPICS };
+export type { GuideStep };
 
 // Help for coaches (24 Nov, Alex: "tutorials… how to create a client or how to onboard a client or how to create a
 // workout"; B of docs/boards/coach-help-mockup.html). Guides are short videos with steps, made by the owner (the Norcoach
@@ -22,8 +24,8 @@ export type HelpGuide = {
   video: string | null;
   /** How long it runs, in seconds; null when not known. */
   seconds: number | null;
-  /** Short lines, in order. */
-  steps: string[];
+  /** Short lines, in order; a line may carry the moment in the video it starts at (lib/guideSteps.ts, 24 Nov). */
+  steps: GuideStep[];
   published: boolean;
   /** Its place in its topic, lowest first. */
   order: number;
@@ -70,8 +72,8 @@ export function listPublishedGuides(): GuideView[] {
   return rows().filter((g) => g.published).sort(byPlace).map(view);
 }
 
-/** What the editor sends. */
-export type GuideFields = { title: string; topic: string; screens: string[]; video: string | null; seconds: number | null; steps: string[]; published: boolean; order: number };
+/** What the editor sends: its steps as the lines typed (`0:45 Open the tab` a timed one), kept as steps. */
+export type GuideFields = { title: string; topic: string; screens: string[]; video: string | null; seconds: number | null; steps: GuideStep[]; published: boolean; order: number };
 
 // In a folder of their own, so a clip gets its poster as a chat video does (storage.ts posterKey wants three parts).
 const isUploaded = (v: string) => /^\/uploads\/guides\/team\/[^/?#]+$/.test(v);
@@ -93,8 +95,8 @@ export function cleanGuideFields(v: Partial<GuideFields>): GuideFields | null {
   const screens = GUIDE_SCREENS.map((s) => s.key).filter((k) => picked.has(k));
   const seconds = v.seconds == null || !Number.isFinite(Number(v.seconds)) || Number(v.seconds) <= 0 ? null : Math.min(6 * 3600, Math.round(Number(v.seconds)));
   const steps = (Array.isArray(v.steps) ? v.steps : [])
-    .map((s) => String(s ?? "").trim().replace(/\s+/g, " ").slice(0, MAX_STEP))
-    .filter(Boolean)
+    .map((s) => cleanStep(s, MAX_STEP))
+    .filter((s): s is GuideStep => s != null)
     .slice(0, MAX_STEPS);
   const order = Number.isFinite(Number(v.order)) ? Math.max(0, Math.min(9999, Math.round(Number(v.order)))) : 0;
   return { title, topic, screens, video: cleanGuideVideo(v.video), seconds, steps, published: !!v.published, order };

@@ -8,6 +8,7 @@ import { useChatStream } from "../../components/useChatStream";
 import { chatListAction } from "./messages/actions";
 import ChatList, { ChatsBack, type DockChat } from "./ChatList";
 import { useCloseOnEmptyClick } from "./useCloseOnEmptyClick";
+import { useSidePanel } from "./help/sidePanels";
 
 // The chat on the screens that are not one client's (12 Oct): Feed, Calendar,
 // Phases, Library, Business. The same tab on the window's right edge as on
@@ -77,6 +78,8 @@ export default function ChatDock({ chats: fromPage }: { chats: DockChat[] }) {
   };
   // A click on empty space closes it, one on anything with a function doesn't (24 Oct, Alex).
   useCloseOnEmptyClick(open, close);
+  // One panel on the right at a time with help too (24 Nov, Alex: docs/boards/help-docked-mockup.html; help/sidePanels.ts).
+  useSidePanel("chat", open, close);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && !document.querySelector("[role=dialog]") && close();
