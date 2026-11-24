@@ -23,7 +23,7 @@ import { Fold } from "../Fold";
 import { RowFold } from "../RowFold";
 import { landOnSoon } from "../../../lib/landOn";
 import { newOnceKey } from "../../../lib/onceKey";
-import { TodoStrip } from "../TodoStrip";
+import { useTodoHandlers } from "../TodoStrip";
 import { saveFocusAction, saveFocusDraftAction } from "../../../lib/focusActions";
 import type { CoachFocus, FocusGoalView } from "../../../lib/focus";
 import { useHoldWhile, useSaveQueue } from "../useSaveQueue";
@@ -292,6 +292,22 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
   const close = () => setDlg(null);
   const patchMeeting = (id: number, f: Partial<DraftMeeting>) => setMeetings((prev) => prev.map((m) => (m.id === id ? { ...m, ...f } : m)));
   const byId = (id: number) => meetings.find((m) => m.id === id) ?? null;
+  // What the coach owes here, done from the client's To do (24 Nov, Alex: "Build B"; was this tab's strip, 2 Nov): a call
+  // they asked for (Book opens Schedule with their words as its topic), a call over and not marked completed (Mark
+  // completed opens How did the call go?).
+  useTodoHandlers("meetings", {
+    act: (item) => {
+      if (item.kind === "complete-call" && item.ref != null && byId(item.ref)) {
+        setDlg({ kind: "complete", meetingId: item.ref });
+        return true;
+      }
+      if (item.kind === "ask-call") {
+        setDlg({ kind: "schedule", date: today, reschedule: null, topic: plan.request?.about });
+        return true;
+      }
+      return false;
+    },
+  });
   // The calls still to come after this one in its series.
   const laterOf = (id: number) => {
     const m = byId(id);
@@ -657,24 +673,6 @@ function MeetingsBoard({ clientId, firstName, plan }: MeetingsProps) {
           </DropdownMenu>
         </div>
       </header>
-
-      {/* ---- What the coach owes here (2 Nov, Alex: the rail said Meetings and nothing here said what): a call they asked
-          for (Book opens Schedule with their words as its topic; it was a bar of its own, 9 Oct), a call over and not marked
-          completed (Mark completed opens How did the call go?). */}
-      <TodoStrip
-        tab="meetings"
-        onAct={(item) => {
-          if (item.kind === "complete-call" && item.ref != null && byId(item.ref)) {
-            setDlg({ kind: "complete", meetingId: item.ref });
-            return true;
-          }
-          if (item.kind === "ask-call") {
-            setDlg({ kind: "schedule", date: today, reschedule: null, topic: plan.request?.about });
-            return true;
-          }
-          return false;
-        }}
-      />
 
       {/* ---- The next call. Nothing booked: no card (Schedule a meeting is where one gets booked). */}
       {upcoming && (

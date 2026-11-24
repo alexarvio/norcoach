@@ -1391,40 +1391,6 @@ span.rd-demo { cursor: default; }
 .rg-fig.rg-span { font-weight: 500; color: #3a4250; }
 .rg-head.rg-head { align-items: center; gap: 8px; color: #5b6474; }
 
-/* ---- The to-do strip (2 Nov, Alex: mockup A, the outline round the whole container; TodoStrip.tsx): under a client tab's
-   header, a row for each thing the rail counts there. A soft rust tint, the rust edge all round, what it is in ink,
-   their words grey, the wait rust, the action ink words with its icon. */
-.rd-todo { margin: 0 0 24px; border-radius: 14px; background: rgba(184, 71, 31, 0.08); box-shadow: inset 0 0 0 1.5px #b8471f; overflow: hidden; }
-/* Since 3 Nov (Alex: "similar to the ones we just did… the buttons should be icons without words"): the needs-you rows'
-   columns (NeedGroups, .nd- in feed/feed.css) with no face or name, it being one client's tab: the date it came in
-   (logDate; none, the column goes), the mark, the thing and their words, the wait centred, the action as its icon alone
-   in a round 30px button, the round check. */
-.rd-todo-row { display: grid; grid-template-columns: var(--todo-date, 84px) 16px minmax(0, 1fr) 96px 30px 20px; align-items: center; column-gap: 16px; min-height: 52px; padding: 0 12px 0 18px; font-size: 13.5px; font-weight: 500; color: #3a4250; }
-.rd-todo.nodate .rd-todo-row { grid-template-columns: 16px minmax(0, 1fr) 96px 30px 20px; }
-.rd-todo-row + .rd-todo-row { border-top: 1px solid rgba(184, 71, 31, 0.16); }
-.rd-todo-mark { display: inline-flex; flex: none; color: #b8471f; }
-.rd-todo-mark svg { width: 14px; height: 14px; translate: 0 -0.5px; }
-.rd-todo-thing { display: flex; align-items: baseline; gap: 10px; min-width: 0; overflow: hidden; white-space: nowrap; }
-.rd-todo-what { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #141a24; font-weight: 600; }
-.rd-todo-words { min-width: 0; flex: 1 1 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #8b93a1; }
-.rd-todo-wait { white-space: nowrap; color: #b8471f; font-variant-numeric: tabular-nums; text-align: center; }
-/* The owed rows' action exactly (16 Nov, Alex, the audit: the strip is the Feed's Needs you for one client): a round white
-   button with a hairline, an ink ring under the pointer, every stroke 1.1px on screen. */
-.rd-todo-act { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; color: #141a24; cursor: pointer; }
-.rd-todo-act svg { width: 16px; height: 16px; }
-.rd-todo-act svg *, .rd-todo-done svg * { vector-effect: non-scaling-stroke; stroke-width: 1.1px; }
-.rd-todo-act:hover { background: #fff; box-shadow: inset 0 0 0 1px #141a24; }
-.rd-todo-act:focus-visible { outline: 1px solid #141a24; outline-offset: 1px; }
-/* The round icon button centres itself: none of the words' half-pixel lifts further down. */
-.rd-todo .rd-todo-act, .rd-todo .rd-todo-act svg { translate: none; }
-.rd-todo .rd-todo-date { translate: 0 0.4px; }
-/* Mark done without doing it (2 Nov, Alex): a round check at the row's end, quiet grey, green under the pointer as the
-   Feed's; asks first. A row that can't be let go keeps the room, so every action lines up. */
-/* The check 4px from the action, as every needs-you row's icons (3 Nov, Alex: "squeeze them"). */
-.rd-todo-done, .rd-todo-done-room { flex: none; width: 28px; height: 28px; margin-left: -12px; }
-.rd-todo-done { display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 999px; background: none; color: #8b93a1; cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease; }
-.rd-todo-done svg { width: 14px; height: 14px; }
-.rd-todo-done:hover, .rd-todo-done:focus-visible { outline: none; background: rgba(47, 122, 63, 0.12); color: #2f7a3f; }
 /* One width whichever tab is on (2 Nov, Alex: "the tiniest change in the size of the nav bar when I toggle"): the tab on
    screen is set at 600, so every tab holds its word's 600 width (an unseen copy of it under the word), and the bar never
    moves. */
@@ -1439,18 +1405,6 @@ span.rd-demo { cursor: default; }
 .rd.rd.rd .rls-card.rls-card > .rls-none:only-child { margin: 0; padding: 16px 18px; font-size: 13px; font-weight: 500; line-height: 19.5px; color: #8b93a1; }
 /* The card's own foot room (6px under its last row) goes when the empty word is all it holds, so the word sits midway. */
 .rd.rd .rls-card.rls-card:has(> .rls-none:only-child), .rd.rd .rls-card.rls-card:has(> .rls-empty:only-child), .rd.rd .rls-card.rls-card:has(> .rt-none:only-child), .rd.rd .rls-card.rls-card:has(> .rp-tnone:only-child) { padding: 0; }
-/* Every row's words and marks on its true middle (2 Nov, Alex: "not centered… it makes us feel cheap"): the outline is a
-   real border, so it takes its own room rather than lying over the first row's top and the last row's foot, and the line
-   between rows is the row's own top edge, outside the room the row centres in. */
-.rd-todo { box-shadow: none; border: 1.5px solid #b8471f; }
-.rd-todo-row { box-sizing: content-box; min-height: 52px; }
-/* Measured on Archivo (2 Nov): the middle between the capitals and the small letters, which the eye reads as a line's
-   middle, sat 0.4px high in the words and 0.75px in the action; the marks need no half-pixel lift here, they meet that
-   middle as they are. Each brought onto the row's middle, within a quarter pixel. */
-.rd-todo-what, .rd-todo-words, .rd-todo-wait { translate: 0 0.4px; }
-.rd-todo-act { translate: 0 0.5px; }
-.rd-todo-mark svg, .rd-todo-act svg { translate: none; }
-.rd-todo-act svg { translate: 0 -0.25px; }
 
 /* ---- Weight goal pop-up (2 Nov, Alex; WeightGoalDialog): the .dlh card, the goal's beige tag with its target, the
    verdict as the one state pill, one live fact, Now | Plan | To go in the shared hairline figures. It renders in a
@@ -1466,11 +1420,6 @@ span.rd-demo { cursor: default; }
 /* Delete's words on the card's left edge, under the title and fields (3 Nov, Alex): its 14px padding pulled back. */
 .dlh.wgd .dlh-foot .wgd-del { margin-right: auto; margin-left: -14px; }
 
-/* The to-do strip's round check on the row's hover only (3 Nov, Alex: as the Feed's); the action itself stays, the row
-   can't be clicked. Always there on a touch screen. */
-.rd-todo-done { opacity: 0; }
-.rd-todo-row:hover .rd-todo-done, .rd-todo-row:focus-within .rd-todo-done { opacity: 1; }
-@media (any-hover: none) { html:not([data-mouse]) { .rd-todo-done { opacity: 1; } } }
 /* The progress pop-up keeps one height across its windows (4 Nov, Alex): the room of a log row or the fold
    kept empty where this window has none and another offered one does. */
 

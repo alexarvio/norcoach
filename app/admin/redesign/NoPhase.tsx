@@ -8,7 +8,7 @@ import { addClientPhaseAction } from "../../lib/actions";
 import { newOnceKey } from "../../lib/onceKey";
 import type { PhaseTrack } from "../../lib/db";
 import { PhaseDialog, phaseForm, type DraftPlan } from "./plan/PlanDraft";
-import { TodoStrip } from "./TodoStrip";
+import { useTodoHandlers } from "./TodoStrip";
 
 // Training, Nutrition or Lifestyle the first time, before the client has a phase on that track and nothing is set up
 // there. In the admin's voice (22 Oct, Alex: the old centred card and navy button were left over): the track's name as
@@ -20,6 +20,8 @@ const TITLE: Record<PhaseTrack, string> = { training: "Training", nutrition: "Nu
 
 export default function NoPhase({ clientId, firstName, track, plan }: { clientId: number; firstName: string; track: PhaseTrack; plan: DraftPlan }) {
   const router = useRouter();
+  // Drawn, for the client's To do (24 Nov, Alex: "Build B"; this tab's strip before, 2 Nov).
+  useTodoHandlers(track === "lifestyle" ? "measurements" : track);
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   return (
@@ -31,8 +33,6 @@ export default function NoPhase({ clientId, firstName, track, plan }: { clientId
           </div>
         </div>
       </header>
-      {/* What the coach owes on this tab, as every tab has it (2 Nov, Alex). */}
-      <TodoStrip tab={track === "lifestyle" ? "measurements" : track} />
       <section className="rls-section">
         <div className="rls-card">
           <div className="rls-empty">

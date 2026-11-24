@@ -10,7 +10,7 @@ import { fillChatLooks, warmClientPhotos } from "../../lib/storage";
 import { getData, type InvoiceTemplate, type PhaseTrack } from "../../lib/db";
 import type { PlanChoice } from "../../lib/planText";
 import { meetingRemindersOn } from "../../lib/meetingReminders";
-import type { DotTab, DotTrail, TodoItem } from "./dots";
+import { todoRows, type DotTab, type DotTrail, type TodoItem } from "./dots";
 import type { NeedRow } from "../../lib/feedBoard";
 import { titleParts } from "../../lib/titleParts";
 import { getUserForClient, isOwner } from "../../lib/auth";
@@ -713,7 +713,7 @@ export type RailClient = { id: number; name: string; avatarPath: string | null; 
 
 // What the coach owes, as the Feed's Needs you has it (needFrom in feedBoardData.ts); statuses are the Feed's alone.
 // A call to complete is the Meetings tab's alone (2 Nov, Alex: off the Feed, "unnecessary and bulky"): its strip and its
-// dot, never the rail's count.
+// dot, and since 24 Nov the client's number in the rail (loadRail counts every To do row), never the Feed.
 // A phase missing or empty is the Phases screen's (2 Nov, Alex: "anything phases related out of the feed"): counted apart.
 const OWED = [/^week$/, /^locked$/, /^reply-\d+$/, /^reply-video-\d+$/, /^call-\d+$/, /^read-/];
 const PHASE_OWED = /^(track|empty)-/;
@@ -776,7 +776,7 @@ export function loadPhaseNeeds(coachId: number, chat: ChatCoachView, food: FoodR
 export type RailData = { clients: RailClient[]; coach: { name: string; photoPath: string | null; /** Weights shown in by default (Settings, Preferences, 27 Oct). */ units: "kg" | "lbs"; /** Settings, Business details: the one line under the logo, empty when none is set (16 Nov, the audit). */ business: string; /** Their banner in NORCOACH's place (19 Nov, Alex; lib/brandMark.ts), its width over its height. */ banner?: string; bannerRatio?: number }; isOwner: boolean; inviteReady: boolean; /** Sign-in through Clerk: New client sends an invite link, no password. */ clerk: boolean; /** Support lines not read: the company's to a coach (the Support row), every coach's to the owner (Coaches). */ supportUnread: number; /** What the coach pays Norcoach (28 Oct; lib/billing.ts): a failed payment or read-only says so in the rail. */ billing: BillingAccess; /** Subscriptions set up on the server: the Billing row shows. */ billingOn: boolean; /** Asking to join with the coach's code (18 Nov): counted on the Feed row with the rest of Needs you. */ joinRequests: number };
 
 /** The dot trail on one client's screens (dots.ts): what the rail counts for them, each placed where it is. */
-export function loadDots(clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, sr: SetRows): DotTrail {
+export function loadDots(clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, sr: SetRows, /** The coach's Needs you read already in hand (the rail's, so its count reads every client's To do without rebuilding it). */ read?: ReturnType<typeof coachNeeds>): DotTrail {
   const data = getData();
   const client = data.clients.find((c) => c.id === clientId);
   const dots: DotTrail = { tabs: [], training: { weeks: {}, days: [], exercises: [] }, food: {}, meetings: false, unlock: false, todo: [] };
@@ -804,8 +804,9 @@ export function loadDots(clientId: number, chat: ChatCoachView, food: FoodRows, 
     todo("plan", { key: "setup", kind: "setup", what: "No phase yet", words: null, since: null, action: "New phase", href: route("plan"), ref: null });
   }
   // The rail's read of the coach's Needs you, not the whole feed again for one client (4 Nov, Alex; coachNeeds.ts).
-  const { byId } = coachNeeds(client.coach_id ?? 0, chat, food, ck, sr);
-  for (const a of clientActions(client.coach_id ?? 0, clientId, chat, food, ck, sr)) {
+  const needs = read ?? coachNeeds(client.coach_id ?? 0, chat, food, ck, sr);
+  const { byId } = needs;
+  for (const a of actionsFrom(needs, client.coach_id ?? 0, clientId, chat, food, ck, sr)) {
     const open = needView(clientId, a, byId).open;
     const since = a.at != null && Number.isFinite(a.at) ? a.at : null;
     if (a.id === "week") {
@@ -873,28 +874,57 @@ export function loadDots(clientId: number, chat: ChatCoachView, food: FoodRows, 
     }
     // reply-<id>, a message: the chat tab's own dot.
   }
-  // A target not reached in 3 sessions (24 Nov, Alex: B of docs/boards/target-rule-mockup.html): Training's strip and its
-  // dot trail (the tab, a week's card and its session asking it) alone, never through clientActions, so
-  // neither the Feed nor the rail's count ever has it. Every one has a figure to offer (missedTargets), the one condition
-  // the cell and the ⋯ show it on too. Let go with the strip's check, it goes as every row does.
+  // A target not reached in 3 sessions (24 Nov, Alex: B of docs/boards/target-rule-mockup.html): a To do row on Training
+  // and its dot trail (the tab, a week's card and its session asking it) alone, never through clientActions, so
+  // the Feed never has it (the rail's number counts it as a To do row, 24 Nov). Every one has a figure to offer (missedTargets), the one condition
+  // the cell and the ⋯ show it on too. Let go with the row's check, it goes as every row does.
+  // One row a lift (24 Nov, Alex: B of docs/boards/todo-button-mockup.html, "Build B"): every session of the programme
+  // asking the same lift the same figure with the same offer is one row, its sessions together (`Push, Upper`), so its
+  // action is true for every part. missedTargets keeps one a session (Training's rust cell, its ⋯ and setTargetFromNow
+  // find their group by its rows); one lift with two figures or two offers stays two rows.
+  const dayOrder = (dayId: number) => data.program_days.find((d) => d.id === dayId)?.day_of_week ?? 0;
+  const lifts = new Map<string, ReturnType<typeof missedTargets>>();
   for (const m of missedTargets(sr, clientId)) {
     if (client.coach_dismissed?.[m.key] != null) continue;
     // One week for the week card's dot, the session's dot and the link (24 Nov, review): the NOW week's row asking it,
-    // the week the coach opens on, else the first row's (m.at).
+    // the week the coach opens on, else the first row's (m.at). Every session's, merged into one row or not.
     once((dots.training.weeks[m.programId] ??= []), m.at.weekIdx);
     once(dots.training.days, m.at.dayId);
+    const lift = `${m.exerciseId}:${m.variationId ?? 0}:${m.fromKg}:${m.to.kg}:${m.to.back ? "back" : "set"}`;
+    const list = lifts.get(lift);
+    if (list) list.push(m);
+    else lifts.set(lift, [m]);
+  }
+  for (const list of lifts.values()) {
+    list.sort((a, b) => a.at.weekIdx - b.at.weekIdx || dayOrder(a.at.dayId) - dayOrder(b.at.dayId));
+    const m = list[0];
+    // The longest run is the one to say: one lift's sessions are read from the newest back, so it holds every other's.
+    const run = list.reduce((x, y) => (y.sessions > x.sessions ? y : x), m);
+    const sessionNames = [...new Set(list.map((g) => g.at.dayName))];
     todo("training", {
       key: m.key,
+      keys: list.length > 1 ? list.map((g) => g.key) : undefined,
       kind: "missed",
       what: m.name,
       words: null,
-      facts: [m.at.dayName, `${m.fromKg} kg`, m.best ? `best ${m.best.kg} × ${m.best.reps}` : null],
-      wait: `${m.sessions} sessions`,
+      facts: [sessionNames.join(", "), run.best ? `best ${run.best.kg} × ${run.best.reps}` : null],
+      happened: `${m.fromKg} kg not reached in ${run.sessions} sessions`,
       since: null,
       action: `${m.to.back ? "Back to" : "Set to"} ${m.to.kg} kg`,
       href: route("training", `&program=${m.programId}&week=${m.at.weekIdx}#session-${m.at.dayId}-ex-${m.at.rowId}`),
       ref: m.at.rowId,
-      missed: { assignmentId: m.at.rowId, dayId: m.at.dayId, fromKg: m.fromKg, toKg: m.to.kg, back: m.to.back, best: m.best, session: m.at.dayName, sessions: m.sessions },
+      missed: {
+        parts: list.map((g) => ({ assignmentId: g.at.rowId, dayId: g.at.dayId, fromKg: g.fromKg })),
+        sessionNames,
+        assignmentId: m.at.rowId,
+        dayId: m.at.dayId,
+        fromKg: m.fromKg,
+        toKg: m.to.kg,
+        back: m.to.back,
+        best: run.best,
+        session: m.at.dayName,
+        sessions: run.sessions,
+      },
     });
   }
   // A call today is no dot (25 Oct, Alex: "this is not the calendar"): nothing is owed for it until it is over.
@@ -916,7 +946,19 @@ export function loadRail(coach: { id: number; email: string; role: "coach" | "cl
     return list.map((c) => {
       const user = getUserForClient(c.id);
       const isNew = listClientPhases(c.id).length === 0 && !data.training_programs.some((p) => p.client_id === c.id);
-      return { id: c.id, name: c.name, avatarPath: c.avatar_path ?? null, ...railSpots(c.id, actionsFrom(needs, coach.id, c.id, chat, food, ck, sr), byId, isNew), notSignedIn: !user || (!user.clerk_user_id && (user.must_change_password || !user.password_hash)) };
+      const counted = railSpots(c.id, actionsFrom(needs, coach.id, c.id, chat, food, ck, sr), byId, isNew);
+      // The number by a client is their To do count (24 Nov, Alex: "yes"; a dot on any tab is a number in the rail): the
+      // Feed's Needs you as before, then the To do rows the Feed doesn't list (a call to complete, a phase owed, a target
+      // not reached), each on its screen after the Feed's. A message to reply to stays counted on Chat, as it always was.
+      for (const row of todoRows(loadDots(c.id, chat, food, ck, sr, needs))) {
+        if (row.key === "setup" || OWED.some((re) => re.test(row.key))) continue;
+        const screen = screenOf(row.href);
+        const at = counted.spots.find((s) => s.screen === screen);
+        if (at) at.count++;
+        else counted.spots.push({ screen, href: row.href, count: 1 });
+        counted.total++;
+      }
+      return { id: c.id, name: c.name, avatarPath: c.avatar_path ?? null, ...counted, notSignedIn: !user || (!user.clerk_user_id && (user.must_change_password || !user.password_hash)) };
     });
   });
   return sub("coach", () => {

@@ -8,7 +8,7 @@ import { useEffect, useRef } from "react";
 // A click inside the panel or on its tabs, a drag that selected text, and any button but the main one leave it be.
 
 const DOES_SOMETHING =
-  "a, button, input, textarea, select, label, summary, video, audio, [role=button], [role=tab], [role=link], [role=menuitem], [role=menuitemradio], [role=option], [role=checkbox], [role=switch], [role=slider], [role=dialog], [role=alertdialog], [role=menu], [role=listbox], [contenteditable=''], [contenteditable='true'], [data-radix-popper-content-wrapper], .rd-chatpanel, .rd-chattab";
+  "a, button, input, textarea, select, label, summary, video, audio, [role=button], [role=tab], [role=link], [role=menuitem], [role=menuitemradio], [role=option], [role=checkbox], [role=switch], [role=slider], [role=dialog], [role=alertdialog], [role=menu], [role=listbox], [contenteditable=''], [contenteditable='true'], [data-radix-popper-content-wrapper], .rd-chatpanel, .rd-chattab, .rd-todopanel, .rd-todobtn";
 
 function hasFunction(target: Element): boolean {
   if (target.closest(DOES_SOMETHING)) return true;

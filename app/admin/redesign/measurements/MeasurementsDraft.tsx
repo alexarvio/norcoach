@@ -17,7 +17,7 @@ import { stateTagStyle } from "../../phaseChrome";
 import PhaseDatesDialog from "../PhaseDatesDialog";
 import { PhaseDialog, phaseForm as planPhaseForm, type DraftPlan } from "../plan/PlanDraft";
 import PhaseSwitcher from "../PhaseSwitcher";
-import { TodoContext, TodoStrip } from "../TodoStrip";
+import { TodoContext, useTodoHandlers } from "../TodoStrip";
 import { useOpenChat } from "../ChatPanel";
 import { SortableItem, SortableList } from "../Sortable";
 import Picker from "../Picker";
@@ -158,6 +158,8 @@ type MetricChanges = Parameters<typeof applyMetricChangesAction>[0];
 
 export default function MeasurementsDraft({ clientId, firstName, plan }: { clientId: number; firstName: string; plan: DraftMeasurements }) {
   const router = useRouter();
+  // Drawn, for the client's To do (24 Nov, Alex: "Build B"; this tab's strip before, 2 Nov): a check-in's note opens here.
+  useTodoHandlers("measurements");
   const [, startTransition] = useTransition();
   // A header action goes to the server, then the page re-reads; what is on screen follows.
   // No Saved toast (16 Nov, Alex: the audit): the tab's status says it; `said` stays as the note of what each save is.
@@ -360,10 +362,10 @@ export default function MeasurementsDraft({ clientId, firstName, plan }: { clien
   }, [show, logCadence, view.metrics.length, plan.notStarted]);
   // The check-in row open on its note, `${cadence}:${period}`, one at a time (6 Nov, Alex: docs/boards/admin-choices-mockup.html).
   const [openCheckin, setOpenCheckin] = useState<string | null>(null);
-  // Opening a row with their note is reading it, as a food day's (6 Nov, Alex): the to-do strip's Read row for that
-  // check-in goes, and the rail's number with it; the same marks its Read button makes.
+  // Opening a row with their note is reading it, as a food day's (6 Nov, Alex): the client's To do row for that
+  // check-in goes (its Read, 24 Nov; the to-do strip's before), and the rail's number with it; the same marks Read makes.
   const { items: todos } = useContext(TodoContext);
-  // Their notes still to read, as the strip lists them: the dot trail's last steps on this tab (7 Nov, Alex), the rhythm
+  // Their notes still to read, as the To do lists them: the dot trail's last steps on this tab (7 Nov, Alex), the rhythm
   // holding one and its row, each a rust dot until the row is opened.
   const dueReads = (todos ?? []).filter((i) => i.kind === "read" && i.tab === "measurements");
   const dueOn = (c: Cadence, period: string) => dueReads.filter((i) => i.href.endsWith(`#checkin-${c}-${period}`));
@@ -563,8 +565,6 @@ export default function MeasurementsDraft({ clientId, firstName, plan }: { clien
           </DropdownMenu>
         </div>
       </header>
-      {/* What the coach owes here (2 Nov, Alex): a note on a check-in to read. */}
-      <TodoStrip tab="measurements" />
 
       {/* ---- Tracked metrics: what the client is asked for, one rhythm at a time. */}
       {/* Where the strip's Add metrics lands (2 Nov: a live phase asking no metrics). */}

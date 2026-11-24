@@ -7,13 +7,15 @@ import { Dialog } from "../../../components/ui/dialog";
 import { createProgramWithAction } from "../../../lib/actions";
 import { newOnceKey } from "../../../lib/onceKey";
 import { NewProgramDialog } from "./TrainingDraft";
-import { TodoStrip } from "../TodoStrip";
+import { useTodoHandlers } from "../TodoStrip";
 
 // Training for a client with a training phase but no programme yet: makes the first one, with the New programme
 // dialog (26 Sep; it was a dead end before, the only way in being the Plan). In the admin's voice (22 Oct, Alex), as
 // NoPhase: the track's name as the title, one hairline card, `No programme yet` and New programme.
 export default function NoProgramme({ clientId }: { clientId: number; firstName: string }) {
   const router = useRouter();
+  // Drawn, for the client's To do (24 Nov, Alex: "Build B"; this tab's strip before, 2 Nov).
+  useTodoHandlers("training");
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   return (
@@ -25,8 +27,6 @@ export default function NoProgramme({ clientId }: { clientId: number; firstName:
           </div>
         </div>
       </header>
-      {/* What the coach owes on this tab, as every tab has it (2 Nov, Alex). */}
-      <TodoStrip tab="training" />
       <section className="rls-section">
         <div className="rls-card">
           <div className="rls-empty">

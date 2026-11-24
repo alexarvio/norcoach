@@ -1,25 +1,63 @@
 "use client";
 
-import { createContext, useContext, useState, useTransition, type CSSProperties } from "react";
-import { logDate, logDateWidth } from "../../lib/dayMonth";
+import { createContext, useContext, useEffect, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDownIcon, CalendarIcon, CheckIcon, EyeIcon, LockIcon, PhaseFlagIcon, PlayIcon, PlusIcon } from "../../components/icons";
-import { TrackIcon } from "./plan/PlanDraft";
-import { dismissHomeActionAction, markSeenAction } from "../../lib/actions";
+import { toast } from "sonner";
+import { CameraIcon, CheckIcon } from "../../components/icons";
+import { backToTargetsAction, dismissHomeActionAction, markSeenAction } from "../../lib/actions";
+import { newOnceKey } from "../../lib/onceKey";
 import { Dialog } from "../../components/ui/dialog";
 import { ConfirmDialog } from "./training/TrainingDraft";
 import { SepJoin } from "./Sep";
+import { NEED_LOOK } from "./NeedGroups";
+import { PopupTabZone } from "./PopupWho";
+import { RowFold } from "./RowFold";
+import { TRACK_ACCENT } from "../phaseChrome";
 import { landOnSoon } from "../../lib/landOn";
+import { useCloseOnEmptyClick } from "./useCloseOnEmptyClick";
 import type { DotTab, TodoItem } from "./dots";
-import { clientScreenOf, tabOfSlug } from "./paths";
+import "./todo-panel.css";
 
-// The to-do strip (2 Nov, Alex: "if we just use dots, it can be a little bit confusing"; mockup A with the outline round
-// the whole container, docs/boards/needs-strip-mockup.html): at the top of a client's tab, under its header, one row for
-// each thing the rail counts on that tab: what it is, the client's words, how long it has waited, and the action that does
-// it. Done, the row goes, and with the last one the strip and the tab's dot. Nothing owed: no strip. The rows come from
-// the dot trail (loadDots, dots.ts), through RedesignShell. Styles: .rd-todo in training/draft.css.
+// The client's To do (24 Nov, Alex: "instead of having all these rows here… a button somewhere, and then we can expand…
+// it's a bit too much"; "Build B", B of docs/boards/todo-button-mockup.html). Was a rust strip on top of each tab (2 Nov,
+// Alex: mockup A of docs/boards/needs-strip-mockup.html). One rust pill at the end of the client's tabs with the count
+// of everything owed on them (TodoButton), opening a panel from the window's right as the chat does (TodoPanel): the
+// rows by tab in the tracks' order, three a group and the rest behind `N more`; a row its name (a tap opens the thing on
+// its tab, landed on and lit), its facts grey with the drawn bar and what happened in rust, its action as its words, the
+// round check on hover. The rows come from the dot trail (loadDots, dots.ts) through RedesignShell; what a tab does in
+// place (Meetings' Mark completed and Book, Plan's New phase, Training's Back to) it hands the panel (useTodoHandlers).
+// Styles: todo-panel.css.
 
-export const TodoContext = createContext<{ clientId: number; items: TodoItem[] }>({ clientId: 0, items: [] });
+/** What a tab does for a row on its own screen, handed to the panel (useTodoHandlers). Each says whether it did it. */
+export type TodoHandlers = {
+  /** The row's action in place (a dialog of the tab's, Back to through its save status). */
+  act?: (item: TodoItem) => boolean;
+  /** Opening the row's thing on the tab (Training's session on the week showing, another week coming first). */
+  go?: (item: TodoItem) => boolean;
+  /** The unit the tab shows weights in (Training's KG | LBS), for a target's figures. */
+  unit?: () => "kg" | "lbs";
+};
+
+export const TodoContext = createContext<{ clientId: number; items: TodoItem[]; register: (tab: DotTab, h: TodoHandlers) => () => void }>({ clientId: 0, items: [], register: () => () => {} });
+
+/** A tab hands the panel what it does in place, for as long as it is drawn. Every tab a row can be on calls it, with
+ *  nothing to hand or not, so the panel knows the tab is there (an action asked of a tab not drawn yet waits for it). */
+export function useTodoHandlers(tab: DotTab, h: TodoHandlers = {}) {
+  const { register } = useContext(TodoContext);
+  const latest = useRef(h);
+  useEffect(() => {
+    latest.current = h;
+  });
+  useEffect(
+    () =>
+      register(tab, {
+        act: (i) => latest.current.act?.(i) ?? false,
+        go: (i) => latest.current.go?.(i) ?? false,
+        unit: () => latest.current.unit?.() ?? "kg",
+      }),
+    [register, tab]
+  );
+}
 
 /** To a # on the tab showing: the tab's own listener (#session-…, #day-…, #call-…) opens the thing, then it is landed on. */
 export function goToHash(hash: string) {
@@ -45,142 +83,266 @@ function waitOf(item: TodoItem, now: number): string {
   return `${d} ${d === 1 ? "day" : "days"}`;
 }
 
-function iconOf(kind: TodoItem["kind"]) {
-  switch (kind) {
-    case "setup":
-    case "week":
-      return <PlusIcon />;
-    case "locked":
-      return <LockIcon />;
-    case "video":
-      return <PlayIcon />;
-    case "ask-call":
-      return <CalendarIcon />;
-    case "complete-call":
-      return <CheckIcon />;
-    case "read":
-      return <EyeIcon />;
-    case "missed":
-      return <ArrowDownIcon />;
-  }
+/** The groups, a tab each, in the tracks' order and then the needs-you lists' (NEED_CATS): Lifestyle, Training,
+ *  Nutrition, Shape update, Meetings, Sign-in, Plan. Home holds the sign-in lock alone, so its head is the needs-you
+ *  lists' Sign-in, the lock in its grey (24 Nov, Alex: one head for one thing, never an invented "Home"). */
+const GROUPS: { tab: DotTab; label: string; color: string; icon: ReactNode }[] = [
+  { tab: "measurements", ...NEED_LOOK.lifestyle },
+  { tab: "training", ...NEED_LOOK.training },
+  { tab: "nutrition", ...NEED_LOOK.nutrition },
+  { tab: "pictures", label: "Shape update", color: TRACK_ACCENT.lifestyle, icon: <CameraIcon /> },
+  { tab: "meetings", ...NEED_LOOK.meetings },
+  { tab: "home", ...NEED_LOOK.account },
+  { tab: "plan", ...NEED_LOOK.plan },
+];
+/** Rows a group shows before `N more`. */
+const SHOWN = 3;
+
+const LB = 2.20462;
+/** A weight to the nearest half, in the unit shown (as Training's kgOf). */
+const weight = (kg: number, lbs: boolean) => `${Math.round((lbs ? kg * LB : kg) * 2) / 2}`;
+
+/** Every Needs-you id a row stands for: a lift's missed figure is one row for all its sessions. */
+const keysOf = (i: TodoItem) => i.keys ?? [i.key];
+/** The rows the coach can let go: what the Feed's round check clears (not a sign-in lock, which ends by itself, nor a
+ *  new client's first phase, which is no Needs-you item). */
+const canDone = (i: TodoItem) => i.kind !== "locked" && i.key !== "setup";
+/** Done on the tab's own screen, the panel making way for it: Meetings' Mark completed and Book, Plan's New phase or
+ *  Open, Home's Unlock. A target's Back to is done from the panel itself; the rest open their thing. */
+const tabActs = (i: TodoItem) => i.kind === "complete-call" || i.kind === "ask-call" || i.kind === "locked" || (i.kind === "setup" && i.tab === "plan");
+
+/** The pill at the end of the client's tabs (24 Nov, Alex: B of docs/boards/todo-button-mockup.html): rust, its count a
+ *  rust disc, a soft rust tint while its panel is open. Not drawn when nothing is owed. */
+export function TodoButton({ count, open, onClick }: { count: number; open: boolean; onClick: () => void }) {
+  return (
+    <button type="button" className={`rd-todobtn${open ? " open" : ""}`} aria-expanded={open} aria-label={`To do, ${count}`} onClick={onClick}>
+      To do
+      <b>{count}</b>
+    </button>
+  );
 }
 
-/** What a row is about, before its words (2 Nov, Alex: "can we use the correct icons… always use the same thing"): a phase
- *  missing or still a draft, a new client's first phase, the flag the Events screen gives a phase; something missing in a
- *  track, that track's own icon (training the dumbbell, nutrition the apple, lifestyle the heart); the rest, as the action. */
-function markOf(item: TodoItem) {
-  if (item.key === "setup" || item.key.startsWith("track-")) return <PhaseFlagIcon />;
-  // A target not reached (24 Nov): the training mark, as the week's.
-  if (item.key === "week" || item.kind === "missed") return <TrackIcon track="training" size={16} />;
-  if (item.key.startsWith("empty-")) return <TrackIcon track={item.tab === "measurements" ? "lifestyle" : item.tab === "nutrition" ? "nutrition" : "training"} size={16} />;
-  return iconOf(item.kind);
-}
-
-/** The tab's strip. `onAct` does a row's action in place (Meetings' Mark completed and Book, Plan's New phase) and says
- *  so; anything it leaves goes to the row's place: on this tab its # (the tab opens the thing and lands on it), else there. */
-export function TodoStrip({ tab, onAct, describe }: { tab: DotTab; onAct?: (item: TodoItem) => boolean; /** A row's facts and action in the tab's own words (Training's kg or lbs, 24 Nov); null keeps the server's. */ describe?: (item: TodoItem) => { facts?: (string | null)[]; action?: string } | null }) {
-  const { clientId, items: all } = useContext(TodoContext);
+export function TodoPanel({
+  open,
+  now,
+  onClose,
+  clientId,
+  clientName,
+  items,
+  tab,
+  show,
+  handler,
+  park,
+  onGone,
+  onBack,
+  units,
+}: {
+  open: boolean;
+  /** When it was opened (ms): the waits as of then, worked out in the browser alone (the panel is drawn once opened). */
+  now: number;
+  onClose: () => void;
+  clientId: number;
+  clientName: string;
+  /** Every row owed, gone ones left out (todoRows). */
+  items: TodoItem[];
+  /** The tab showing. */
+  tab: DotTab | "invoices";
+  show: (tab: DotTab) => void;
+  /** What a drawn tab does in place. */
+  handler: (tab: DotTab) => TodoHandlers | undefined;
+  /** Runs once the tab is drawn and has handed its handlers (or, failing that, after a moment with none). */
+  park: (tab: DotTab, run: (h: TodoHandlers | undefined) => void) => void;
+  /** Let go on the screen: gone at once, while the server lets them go. */
+  onGone: (keys: string[]) => void;
+  /** The server refused: the rows come back. */
+  onBack: (keys: string[]) => void;
+  /** The coach's weight unit, for a target when Training isn't drawn. */
+  units: "kg" | "lbs";
+}) {
   const router = useRouter();
-  const [now] = useState(() => Date.now());
   const [, start] = useTransition();
-  // Marked done by hand (2 Nov, Alex: "a button to override this"): gone at once, while the server lets them go.
-  const [gone, setGone] = useState<ReadonlySet<string>>(() => new Set());
   const [asking, setAsking] = useState<TodoItem | null>(null);
-  const items = (all ?? [])
-    .filter((i) => i.tab === tab && !gone.has(i.key))
-    .map((i) => {
-      const d = describe?.(i);
-      return d ? { ...i, ...(d.facts ? { facts: d.facts } : {}), ...(d.action ? { action: d.action } : {}) } : i;
-    });
-  if (!items.length) return null;
-  /** The rows the coach can let go: what the Feed's round check clears (not a sign-in lock, which ends by itself, nor a
-   *  new client's first phase, which is no Needs-you item). */
-  const canDone = (i: TodoItem) => i.kind !== "locked" && i.key !== "setup";
-  const markDone = (list: TodoItem[]) => {
-    setAsking(null);
-    setGone((g) => new Set([...g, ...list.map((i) => i.key)]));
+  // A group opened past its first three, by tab.
+  const [more, setMore] = useState<ReadonlySet<DotTab>>(() => new Set());
+  // Rows going (a target sent back): faded until the next read of the page.
+  const [busy, setBusy] = useState<ReadonlySet<string>>(() => new Set());
+  const [seenItems, setSeenItems] = useState(items);
+  if (seenItems !== items) {
+    setSeenItems(items);
+    setBusy(new Set());
+  }
+
+  // Closes on Esc (unless a pop-up, a menu or a floating list has it: Esc closes that alone, 24 Nov, Alex) and on a click
+  // on empty page, as the chat does; never while the check's confirm is up, whose dim is no empty page.
+  useCloseOnEmptyClick(open && !asking, onClose);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) =>
+      e.key === "Escape" && !e.defaultPrevented && !document.querySelector("[role=dialog], [role=menu], [role=listbox], [data-radix-popper-content-wrapper]") && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  const lbs = (handler("training")?.unit?.() ?? units) === "lbs";
+  /** A row's words: a target's in the unit shown (24 Nov), the rest as the server says them. */
+  const told = (i: TodoItem) => {
+    const m = i.missed;
+    if (!m) return i;
+    const unit = lbs ? "lbs" : "kg";
+    return {
+      ...i,
+      facts: [m.sessionNames.join(", "), m.best ? `best ${weight(m.best.kg, lbs)} × ${m.best.reps}` : null],
+      happened: `${weight(m.fromKg, lbs)} ${unit} not reached in ${m.sessions} sessions`,
+      action: `${m.back ? "Back to" : "Set to"} ${weight(m.toKg, lbs)} ${unit}`,
+    };
+  };
+
+  /** Gone at once while the server lets them go; a save it refuses brings them back, said in red (24 Nov, Alex: a failed
+   *  save never hides a row for good). */
+  const letGo = (keys: string[], save: () => Promise<unknown>) => {
+    onGone(keys);
     start(async () => {
-      await dismissHomeActionAction(clientId, list.map((i) => i.key));
+      try {
+        await save();
+      } catch {
+        onBack(keys);
+        toast.error("Not saved", { description: "Check the connection, then try again." });
+        return;
+      }
       router.refresh();
     });
   };
-  const go = (item: TodoItem) => {
-    // Read is reading it (2 Nov): the note is marked read now, whichever tab it is on, so its row, the tab's dot and the
-    // rail's count go with it even where opening it marks nothing.
-    if (item.kind === "read") {
-      start(async () => {
-        await (item.eventId ? markSeenAction(clientId, { ids: [item.eventId] }) : dismissHomeActionAction(clientId, item.key));
-        router.refresh();
-      });
-    }
-    if (onAct?.(item)) return;
+  const markRead = (item: TodoItem) => letGo(keysOf(item), () => (item.eventId ? markSeenAction(clientId, { ids: [item.eventId] }) : dismissHomeActionAction(clientId, item.key)));
+  /** To the thing on its tab, as the strip's link went: the tab's own way (Training's session), else its address, a # on
+   *  the tab landed on and lit. */
+  const land = (item: TodoItem, h: TodoHandlers | undefined) => {
+    if (h?.go?.(item)) return;
     const to = new URL(item.href, window.location.origin);
     const asks = [...to.searchParams.keys()].filter((k) => k !== "client");
-    // On this tab with nothing more to ask of the server: its #. Else there.
-    if (!asks.length && to.hash) goToHash(to.hash);
-    else if (item.kind !== "read" || asks.length || clientScreenOf(to.pathname)?.tab !== tabOfSlug(tab)) router.push(item.href);
+    if (asks.length) router.push(item.href);
+    else if (to.hash) goToHash(to.hash);
   };
-  // The needs-you rows' structure (3 Nov, Alex: "similar to the ones we just did… the buttons should be icons without
-  // words"; NeedGroups): the date it came in, its mark, the thing and their words, the wait, the action as its icon alone
-  // (its word the tooltip), the round check. One client's tab, so no face or name. A strip with no dates drops the column.
-  const dated = items.some((i) => i.since != null);
-  const dateW = logDateWidth(items.filter((i) => i.since != null).map((i) => new Date(i.since!)));
+  /** Its tab forward, then `run` once the tab is there. */
+  const onTab = (item: TodoItem, run: (h: TodoHandlers | undefined) => void) => {
+    onClose();
+    if (item.tab !== tab) show(item.tab);
+    park(item.tab, run);
+  };
+  /** The row's name: its thing, on its tab. A note of theirs is read by opening it, whichever tab it is on. */
+  const openThing = (item: TodoItem) => {
+    if (item.kind === "read") markRead(item);
+    onTab(item, (h) => land(item, h));
+  };
+  /** The row's action, in its words. */
+  const act = (item: TodoItem) => {
+    // Read is reading it, as the strip's was (2 Nov; 24 Nov, Alex): the note marked read and opened, its session, food
+    // day or check-in landed on and lit on its tab.
+    if (item.kind === "read") return openThing(item);
+    if (item.kind === "missed" && item.missed) {
+      setBusy((b) => new Set([...b, item.key]));
+      // Training drawn: its own Back to, settling what the session has waiting first and saying it in its status.
+      if (handler("training")?.act?.(item)) return;
+      const parts = item.missed.parts.map((p) => ({ assignmentId: p.assignmentId, fromKg: p.fromKg }));
+      start(async () => {
+        const r = await backToTargetsAction(parts, newOnceKey()).catch(() => null);
+        if (!r || r.ok === false) {
+          setBusy((b) => new Set([...b].filter((k) => k !== item.key)));
+          toast.error("Not saved", { description: r && r.ok === false ? r.error : "Check the connection, then try again." });
+          return;
+        }
+        router.refresh();
+      });
+      return;
+    }
+    if (tabActs(item)) return onTab(item, (h) => (h?.act?.(item) ? undefined : land(item, h)));
+    openThing(item);
+  };
+  const markDone = (list: TodoItem[]) => {
+    setAsking(null);
+    const keys = list.flatMap(keysOf);
+    letGo(keys, () => dismissHomeActionAction(clientId, keys));
+  };
+
+  const groups = GROUPS.map((g) => ({ ...g, rows: items.filter((i) => i.tab === g.tab).map(told) })).filter((g) => g.rows.length > 0);
+  const askingGroup = asking ? items.filter((i) => i.tab === asking.tab && canDone(i)) : [];
+  const others = askingGroup.length - 1;
+
   return (
-    <section className={`rd-todo${dated ? "" : " nodate"}`} aria-label="To do" style={{ "--todo-date": `${dateW}px` } as CSSProperties}>
-      {items.map((item) => {
-        const wait = item.wait ?? waitOf(item, now);
-        return (
-          <div key={item.key} className="rd-todo-row">
-            {dated && <span className="rd-logdate rd-todo-date">{item.since != null ? logDate(new Date(item.since)) : ""}</span>}
-            <span className="rd-todo-mark" aria-hidden="true">
-              {markOf(item)}
-            </span>
-            <span className="rd-todo-thing">
-              <span className="rd-todo-what">{item.what}</span>
-              {item.words ? (
-                <span className="rd-todo-words">&ldquo;{item.words}&rdquo;</span>
-              ) : (
-                // Facts of the app's, grey, parted by the drawn bar (a target not reached: `Push | 150 kg | best 120 × 6`).
-                item.facts?.some(Boolean) && (
-                  <span className="rd-todo-words">
-                    <SepJoin parts={item.facts} />
-                  </span>
-                )
-              )}
-            </span>
-            {/* Worked out on the server and again in the browser: an hour may tick over between them. */}
-            <span className="rd-todo-wait" suppressHydrationWarning>
-              {wait}
-            </span>
-            <button type="button" className="rd-todo-act" title={item.action} aria-label={`${item.action}: ${item.what}`} onClick={() => go(item)}>
-              {iconOf(item.kind)}
-            </button>
-            {/* Done without doing it: asks first (the pop-up), as the Feed's round check, green under the pointer. */}
-            {canDone(item) ? (
-              <button type="button" className="rd-todo-done" title="Mark done" aria-label={`Mark done: ${item.what}`} onClick={() => setAsking(item)}>
-                <CheckIcon />
+    <aside className={`rd-todopanel${open ? " open" : ""}`} aria-label="To do" aria-hidden={!open} inert={open ? undefined : true}>
+      <div className="tdp-head">
+        <h2>
+          To do<small>{clientName}</small>
+        </h2>
+        <button type="button" className="tdp-x" aria-label="Close" title="Close" onClick={onClose}>
+          ✕
+        </button>
+      </div>
+      {groups.map((g) => {
+        const opened = more.has(g.tab);
+        const row = (item: TodoItem) => {
+          const wait = item.happened ?? item.wait ?? waitOf(item, now);
+          return (
+            <div key={item.key} className={`tdp-row${busy.has(item.key) ? " busy" : ""}`}>
+              <div className="tdp-thing">
+                <button type="button" className="tdp-name" onClick={() => openThing(item)}>
+                  {item.what}
+                </button>
+                <small>
+                  <SepJoin parts={[...(item.words ? [`“${item.words}”`] : (item.facts ?? []).slice(0, 1)), wait ? <em key="w">{wait}</em> : null, ...(item.words ? [] : (item.facts ?? []).slice(1))]} />
+                </small>
+              </div>
+              <button type="button" className="tdp-act" onClick={() => act(item)}>
+                {item.action}
               </button>
-            ) : (
-              <span className="rd-todo-done-room" aria-hidden="true" />
+              {/* Done without doing it: asks first, as the Feed's round check, green under the pointer. */}
+              {canDone(item) ? (
+                <button type="button" className="tdp-done" title="Mark done" aria-label={`Mark done: ${item.what}`} onClick={() => setAsking(item)}>
+                  <CheckIcon />
+                </button>
+              ) : (
+                <span className="tdp-done-room" aria-hidden="true" />
+              )}
+            </div>
+          );
+        };
+        return (
+          <section key={g.tab} className="tdp-group">
+            <div className="tdp-ghead" style={{ "--c": g.color } as CSSProperties}>
+              {g.icon}
+              {g.label}
+              <small>{g.rows.length}</small>
+            </div>
+            {g.rows.slice(0, SHOWN).map(row)}
+            {g.rows.length > SHOWN && (
+              <>
+                <RowFold open={opened}>{g.rows.slice(SHOWN).map(row)}</RowFold>
+                {!opened && (
+                  <button type="button" className="tdp-more" onClick={() => setMore((s) => new Set([...s, g.tab]))}>
+                    {g.rows.length - SHOWN} more
+                  </button>
+                )}
+              </>
             )}
-          </div>
+          </section>
         );
       })}
-      <Dialog open={asking != null} onOpenChange={(o) => !o && setAsking(null)}>
-        {asking && (
-          <ConfirmDialog
-            thing={{ name: asking.what, facts: asking.words ? [`“${asking.words}”`] : asking.facts ?? [null] }}
-            title="Mark as done?"
-            // A confirm pop-up's words (11 Nov, Alex: A of docs/boards/popup-anatomy-mockup.html): who does what, the choice
-            // starting with its verb, the verb alone on the pill.
-            description="Nothing is sent."
-            confirm="Done"
-            // Several waiting on this tab: all of them at once, ticked first.
-            tick={items.filter(canDone).length > 1 ? (items.filter(canDone).length === 2 ? "Also mark the other one as done" : `Also mark the other ${items.filter(canDone).length - 1} as done`) : null}
-            onConfirm={(all) => markDone(all ? items.filter(canDone) : [asking])}
-          />
-        )}
-      </Dialog>
-    </section>
+      {/* The confirm names the row's tab over its title, as a pop-up opened on that tab does (PopupTabZone). */}
+      <PopupTabZone tab={asking?.tab ?? "home"} hidden={false}>
+        <Dialog open={asking != null} onOpenChange={(o) => !o && setAsking(null)}>
+          {asking && (
+            <ConfirmDialog
+              thing={{ name: asking.what, facts: asking.words ? [`“${asking.words}”`] : told(asking).facts ?? [null] }}
+              title="Mark as done?"
+              // A confirm pop-up's words (11 Nov, Alex: A of docs/boards/popup-anatomy-mockup.html).
+              description="Nothing is sent."
+              confirm="Done"
+              // Several waiting in its group: all of them at once, ticked first.
+              tick={others > 0 ? (others === 1 ? "Also mark the other one as done" : `Also mark the other ${others} as done`) : null}
+              onConfirm={(all) => markDone(all ? askingGroup : [asking])}
+            />
+          )}
+        </Dialog>
+      </PopupTabZone>
+    </aside>
   );
 }

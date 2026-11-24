@@ -4353,8 +4353,8 @@ export async function setRowDemoHiddenAction(assignmentId: number, hidden: boole
   revalidatePath("/client");
 }
 
-// A target not reached in 3 sessions (24 Nov, Alex: B of docs/boards/target-rule-mockup.html): the row's ⋯ and the to-do
-// strip's Back to 120 kg put the figure on every row still asking it, as the coach's typed weight (setTargetFromNow).
+// A target not reached in 3 sessions (24 Nov, Alex: B of docs/boards/target-rule-mockup.html): the row's ⋯ Back to
+// 120 kg (the To do panel's is backToTargetsAction, below) puts the figure on every row still asking it, as the coach's typed weight (setTargetFromNow).
 // Taken once (one-time key), so sent again after a dropped signal it changes nothing more. `fromKg` is the figure the
 // screen showed: a figure changed meanwhile is left as it is, and that is no failure (the page read after it shows what
 // is there), so the tab's Retry never meets a save it can't make. The client is told nothing new (24 Nov, Alex: the
@@ -4370,6 +4370,33 @@ export async function backToTargetAction(assignmentId: number, fromKg: number, o
         revalidatePath("/admin");
         revalidatePath("/client");
         return { ok: true, changed: r?.changed ?? 0 };
+      })
+    );
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Something went wrong" };
+  }
+}
+
+// The To do panel's Back to 120 kg (24 Nov, Alex: B of docs/boards/todo-button-mockup.html, "Build B"): one row a lift,
+// so one click puts the figure on every session of it still asking it (its `missed.parts`, dots.ts), each as
+// backToTargetAction does, under one lock and one one-time key, so a retry changes nothing more. Every part must be the
+// same client's; a part whose figure changed meanwhile is left as it is, and that is no failure.
+export async function backToTargetsAction(parts: { assignmentId: number; fromKg: number }[], onceKey?: string): Promise<{ ok: true; changed: number } | { ok: false; error: string }> {
+  const list = (Array.isArray(parts) ? parts : [])
+    .map((p) => ({ id: Number(p?.assignmentId), fromKg: Number(p?.fromKg) }))
+    .filter((p) => Number.isInteger(p.id) && Number.isFinite(p.fromKg));
+  if (!list.length) return { ok: false, error: "Unknown exercise" };
+  const owners = new Set(list.map((p) => getClientIdForAssignment(p.id)));
+  const owner = owners.size === 1 ? [...owners][0] : null;
+  if (owner == null || !(await coachForClient(owner))) return { ok: false, error: "Unknown exercise" };
+  try {
+    return await once(`backToTargetsAction:${list.map((p) => p.id).join(",")}`, onceKeyOf(onceKey), () =>
+      withClientSetsLocked("action.training", owner, (sr): { ok: true; changed: number } => {
+        let changed = 0;
+        for (const p of list) changed += setTargetFromNow(sr, p.id, p.fromKg)?.changed ?? 0;
+        revalidatePath("/admin");
+        revalidatePath("/client");
+        return { ok: true, changed };
       })
     );
   } catch (e) {
