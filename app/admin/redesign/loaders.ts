@@ -133,7 +133,7 @@ import { applyReader, applyReads } from "./training/applyPreviewData";
 import { changedWeeks } from "./training/applyShape";
 import { sub, type Timer } from "../../lib/timing";
 import { coachBrand } from "../../lib/brandMark";
-import { clientTab } from "./paths";
+import { clientScreenOf, clientTab } from "./paths";
 
 // What the redesign drafts read, gathered on the server for the shell that
 // shows them side by side. Read-only: the drafts save nothing.
@@ -720,8 +720,14 @@ export type RailClient = { id: number; name: string; avatarPath: string | null; 
 const OWED = [/^week$/, /^locked$/, /^reply-\d+$/, /^reply-video-\d+$/, /^call-\d+$/, /^read-/];
 const PHASE_OWED = /^(track|empty)-/;
 const SCREEN_OF: Record<string, string> = { home: "Home", plan: "Plan", measurements: "Lifestyle", training: "Training", nutrition: "Nutrition", pictures: "Shape update", meetings: "Meetings", invoices: "Invoices" };
-/** The screen a link opens: the chat when it carries one, else its tab. */
-const screenOf = (href: string) => (/[?&]chat=/.test(href) ? "Chat" : SCREEN_OF[/^\/admin\/redesign\/([a-z]+)/.exec(href)?.[1] ?? ""] ?? "Home");
+/** The screen a link opens: the chat when it carries one, else its tab, read from the address as it is now
+    (/clients/1/plan, 24 Nov) or an old one (/admin/redesign/plan?client=1). */
+const screenOf = (href: string) => {
+  if (/[?&]chat=/.test(href)) return "Chat";
+  const path = href.split(/[?#]/)[0];
+  const tab = clientScreenOf(path)?.tab ?? /^\/admin\/redesign\/([a-z]+)/.exec(path)?.[1] ?? "";
+  return tab === "messages" ? "Chat" : SCREEN_OF[tab] ?? "Home";
+};
 /** In the Feed's order (needsOf in feedBoardData.ts): a new client's set-up, the blockers (an empty live week, then a
  *  sign-in lock), then the rest oldest first; a screen sits where its first thing does. A call today is no task (2 Nov,
  *  Alex: the rail said Meetings and nothing there said what; the Feed dropped it 25 Oct); a call over and not marked
