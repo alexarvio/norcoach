@@ -45,6 +45,11 @@
 /* What happened, in rust (`60 kg not reached in 4 sessions`, `2 days`). */
 .tdp-thing small em { font-style: normal; font-weight: 600; color: #b8471f; }
 /* The action as its words (the one word action, docs/DESIGN-RULES-ADMIN.md §8): 32px, ink, the page grey under the pointer. */
+/* A missed target's chat (24 Nov, Alex): Training's round tool, the icon alone, before the action in words. */
+.tdp-tool { display: inline-grid; flex: none; place-items: center; width: 30px; height: 30px; margin-right: -6px; padding: 0; border: 0; border-radius: 999px; background: none; color: #5b6474; cursor: pointer; }
+.tdp-tool svg { width: 16px; height: 16px; }
+.tdp-tool svg[viewBox="0 0 18 18"] * { stroke-width: 1.2; }
+.tdp-tool:hover, .tdp-tool:focus-visible { outline: none; background: #f5f6f8; color: #141a24; }
 .tdp-act { flex: none; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; white-space: nowrap; cursor: pointer; }
 .tdp-act:hover, .tdp-act:focus-visible { outline: none; background: #f5f6f8; }
 /* The round check, on the row's hover (always on a touch screen): grey, green under the pointer; asks first. A row that
