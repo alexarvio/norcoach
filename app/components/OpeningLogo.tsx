@@ -44,7 +44,9 @@ export default function OpeningLogo({ revealing = false, plain = false, classNam
           <span className="nc-boot-coach-logo" />
           <span className="nc-boot-powered">
             <span className="nc-boot-powered-by">Powered by</span>
-            <NorCoachWordmark className="nc-boot-powered-word" />
+            <span className="nc-boot-powered-wrap">
+              <NorCoachWordmark className="nc-boot-powered-word" />
+            </span>
           </span>
         </div>
       )}
