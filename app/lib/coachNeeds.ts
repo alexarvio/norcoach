@@ -67,7 +67,13 @@ export const coachNeeds = cache((coachId: number, chat: ChatCoachView, food: Foo
 
 /** One client's Needs-you items from the coach's read; a client outside it (not the coach's) read on its own, as before. */
 export function clientActions(coachId: number, clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, sr: SetRows): HomeAction[] {
-  const needs = coachNeeds(coachId, chat, food, ck, sr);
+  return actionsFrom(coachNeeds(coachId, chat, food, ck, sr), coachId, clientId, chat, food, ck, sr);
+}
+
+/** clientActions from a coachNeeds read already in hand (24 Nov: outside a render React's cache() remembers nothing, so
+ *  /api/admin/rail rebuilt the whole coach-wide read once per client through clientActions; the rail now hands its one
+ *  read down). */
+export function actionsFrom(needs: CoachNeeds, coachId: number, clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, sr: SetRows): HomeAction[] {
   const home = needs.homes.get(clientId);
   if (!home) return getClientHomeActions(clientId, chat, food, ck, sr, needs.feed).actions;
   if ("error" in home) throw home.error;

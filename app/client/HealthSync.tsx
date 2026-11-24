@@ -172,9 +172,9 @@ function dayAverages(samples: Sample[], fromDay: string): { date: string; value:
 }
 
 /** One kind's samples, or none when it can't be read (not allowed, not on this phone): the others still go. */
-const samplesOf = async (dataType: string, from: Date, limit: number): Promise<Sample[]> => {
+const samplesOf = async (dataType: string, from: Date, limit: number, ascending = true): Promise<Sample[]> => {
   try {
-    const res = await callNative<{ samples?: Sample[] }>("Health", "readSamples", { dataType, startDate: from.toISOString(), endDate: new Date().toISOString(), limit, ascending: true });
+    const res = await callNative<{ samples?: Sample[] }>("Health", "readSamples", { dataType, startDate: from.toISOString(), endDate: new Date().toISOString(), limit, ascending });
     return Array.isArray(res.samples) ? res.samples : [];
   } catch {
     return [];
@@ -229,7 +229,8 @@ async function syncHealth(): Promise<HealthSyncResult | null> {
 
   // Weight: each day's latest weigh-in, in kg, with when it was.
   const weighIns = new Map<string, { date: string; kg: number; at: string }>();
-  for (const s of await samplesOf("weight", weightFrom, 500)) {
+  // Newest first (24 Nov): past the limit, the oldest are the ones left out, never today's; each day keeps its latest either way.
+  for (const s of await samplesOf("weight", weightFrom, 500, false)) {
     const t = Date.parse(s.endDate || s.startDate);
     if (!Number.isFinite(t) || !Number.isFinite(s.value) || (s.unit && s.unit !== "kilogram")) continue;
     const date = localDay(new Date(t));

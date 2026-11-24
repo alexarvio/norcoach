@@ -33,7 +33,12 @@ export const isFramedPath = (path: string | null) => viewOf(path) != null;
 /** A move, for the rail's read: another view, or another client on a client's screens. Nothing else in the address
  *  counts (the shell's ?tab= rewrite that drops ?program= or adds ?client=, the Calendar's ?month= and ?day=, the
  *  Library's ?edit=, a week or a phase picked): the rail's counts are the coach's, never the view's. */
-const READ_GAP_MS = 200;
+// Read once the coach has stopped moving, and at most every READ_EVERY_MS (24 Nov, Alex: "still quite laggy changing
+// from page to page"): the read costs the server most of a second (the Needs you of every client), and on its one
+// thread it held up the next page clicked. A save or a refresh reads the rail with the page anyway; this only catches
+// what changed meanwhile (a message come in), so it can wait.
+const READ_GAP_MS = 2500;
+const READ_EVERY_MS = 30_000;
 /** How long a rail click waits for its page before the outline takes the page's place: a page the browser has lands
  *  well inside it, so it never flashes. */
 const OUTLINE_MS = 90;
@@ -97,7 +102,9 @@ export default function RailFrame({ rail: promise, children }: { rail: Promise<S
   const [fromLayout, setFromLayout] = useState<StampedRail | null>(null);
   const [fetched, setFetched] = useState<StampedRail | null>(null);
   const onLayout = useCallback((r: StampedRail) => setFromLayout((had) => newest(had, r)), []);
+  const lastRead = useRef(0);
   const read = useCallback(async () => {
+    lastRead.current = Date.now();
     try {
       const res = await fetch("/api/admin/rail", { cache: "no-store" });
       if (!res.ok) return;
@@ -144,7 +151,7 @@ export default function RailFrame({ rail: promise, children }: { rail: Promise<S
       arrivalRead.current = false;
       return;
     }
-    const t = window.setTimeout(() => void read(), READ_GAP_MS);
+    const t = window.setTimeout(() => void read(), Math.max(READ_GAP_MS, lastRead.current + READ_EVERY_MS - Date.now()));
     return () => window.clearTimeout(t);
   }, [moveKey, read]);
 
