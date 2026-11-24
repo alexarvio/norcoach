@@ -9,7 +9,7 @@ import { Toaster } from "../../../components/ui/toast";
 import { SectionShell } from "./Rows";
 
 // The Settings page (27 Oct, Alex: mockup B, "go for b"; before, one page of folding sections): Training's bare
-// header, then the sections as a list on the left, each its name over one quiet fact ("EUR | 21% VAT"), and the one
+// header, then the sections as a list on the left, each its name alone (23 Nov, Alex: "take out the information below the titles of the sections"), and the one
 // picked on the right, its title (20px/600) and its parts. One section shows at a time, the others kept mounted and
 // hidden, so what was typed in one stays on the page's one bar (SaveHost) and an ink dot after its name in the list
 // says so. A section is its key: #invoicing on arrival picks it, the rail's Settings rows pick theirs
@@ -22,8 +22,6 @@ export type SettingsSection = {
   key: string;
   /** Its title; the rail's label when left out. */
   label?: string;
-  /** One quiet fact under its name in the list ("EUR | 21% VAT"). */
-  fact?: ReactNode;
   /** A state tag after its title (Profile: Published). */
   tag?: ReactNode;
   /** On the right of its title (Plans' + Plan). A body that holds the state its action needs puts it there itself
@@ -141,7 +139,6 @@ function Sections({ sections }: { sections: SettingsSection[] }) {
                 {labelOf(s)}
                 {held && <span className="rd-due rst-unsaved" role="img" aria-label="Not saved" title="Not saved" />}
               </span>
-              {s.fact ? <span className="rst-item-fact">{s.fact}</span> : null}
             </button>
           );
         })}
