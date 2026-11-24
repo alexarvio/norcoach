@@ -3,7 +3,8 @@ import { clerkOn } from "../../../lib/clerk";
 import { getCoachProfile, getCoachProfileView, getCoachSettings, listCoachEmails } from "../../../lib/queries";
 import { fetchChatDock } from "../../../lib/chat/rows";
 import { getData } from "../../../lib/db";
-import { COUNTRIES, countryOf, invoicingFor, taxFact } from "../../../lib/countries";
+import { COUNTRIES, invoicingFor, taxFact } from "../../../lib/countries";
+import { billingView } from "../../../lib/billing";
 import { nameParts } from "../../../lib/coachNames";
 import { LEGAL } from "../../../lib/legal";
 import { paymentsState, refreshCoachStripe, type PaymentsState } from "../../../lib/payments";
@@ -18,10 +19,8 @@ import { coachBrandInline } from "../../../lib/brandMark";
 import { coachCardPictures, coachCardsDefault } from "../../../lib/coachCards";
 import BrandingSection from "./BrandingSection";
 import { PHASE_COVERS } from "../../../lib/phaseCovers";
-import { BRAND_SWATCHES } from "../../../lib/brandColour";
 import SupportSection from "./SupportSection";
 import BillingSettings from "./BillingSettings";
-import { billingView } from "../../../lib/billing";
 import PlansSettings from "./PlansSettings";
 import { listCoachPlans, planClientCounts } from "../../../lib/coachPlans";
 import { DataSettings, NotificationsSettings, PreferencesSettings } from "./MoreSettings";
@@ -30,7 +29,6 @@ import { passwordsOnHint } from "../../../lib/clerkPasswords";
 import { ensureJoinCode } from "../../../lib/joinRequests";
 import ProfileEditor from "../profile/ProfileEditor";
 import SettingsBoard, { type SettingsSection } from "./SettingsBoard";
-import { SepJoin } from "../Sep";
 import { getInvoiceAuto } from "../../../lib/invoiceAuto";
 import { stripeConfigured } from "../../../lib/stripe";
 import "../../../components/ui/ui.css";
@@ -129,33 +127,13 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const planCounts = planClientCounts(coach.id);
   const plans = listCoachPlans(coach.id, true).map((p) => ({ id: p.id, name: p.name, price: p.price ?? null, every: p.every ?? null, archived: !!p.archived, clients: planCounts.get(p.id) ?? 0 }));
   const eff = invoicingFor(business, invoicing);
-  const livePlans = plans.filter((p) => !p.archived).length;
   // Plans' tax line follows the business country (23 Nov, Alex, decision d; taxFact): none for the US or before a
   // country is set, Canada's GST/HST without a rate (the province's).
   const planTax = eff.rate > 0 ? taxFact(eff.country, eff.rate) : null;
 
-  // The list's quiet fact under each name (27 Oct, Alex: mockup B), parts parted by the drawn bar (3 Nov, Alex: was a typed "|").
+  // What they pay Norcoach (28 Oct): Account's Norcoach part while subscriptions are on (not the owner's).
   const billing = t.time("billing", () => billingView(coach.id, owner));
-  const join = (parts: (string | null | undefined | false)[]) => (parts.some(Boolean) ? <SepJoin parts={parts} /> : null);
-  const land = business.country_code ? countryOf(business.country_code) : null;
-  // What they pay Norcoach (28 Oct): its state in a word, in Account's fact while subscriptions are on (not the owner's).
   const billingOn = billing.on && !owner;
-  const billingWord = billing.status === "free" ? "Free" : billing.access.state === "readonly" ? "Read-only" : billing.status === "trialing" ? "Trial" : billing.status === "active" ? "Active" : billing.access.state === "grace" ? "Payment failed" : "Not started";
-  const facts = {
-    profile: profile ? (profile.published ? "Published" : "Not published") : null,
-    // Account (23 Nov, Alex: Account & security and Billing, one section).
-    account: join([coach.email, security?.logins.some((l) => l.provider === "google") ? "Google" : null, billingOn ? billingWord : null]),
-    business: join([business.business_name, land?.name ?? business.country]) ?? "Not set",
-    // Branding's fact: the colour by its name (or its hex), then what is uploaded.
-    branding: join([settings.brand?.color ? BRAND_SWATCHES.find((s) => s.hex === settings.brand?.color)?.name ?? settings.brand.color.toUpperCase() : null, settings.brand?.mark ? "Logo" : null, brandNow.banner ? "Banner" : null]) ?? "Not set",
-    plans: livePlans === 0 ? "None yet" : `${livePlans} plan${livePlans === 1 ? "" : "s"}`,
-    // The tax as the business country names it (taxFact): none for the US or before a country is set.
-    invoicing: join([invoicing.currency ?? land?.currency ?? "EUR", invoicing.vat_rate != null && invoicing.vat_rate > 0 ? taxFact(eff.country, invoicing.vat_rate) : null, payments.status === "active" ? "Stripe" : null]),
-    // Preferences (23 Nov, Alex: Preferences and Notifications, one section).
-    preferences: join([units, timezone, notify.quiet ? `quiet ${notify.quietFrom ?? "22:00"}–${notify.quietTo ?? "07:00"}` : null]),
-    // Data & privacy (23 Nov, Alex: Your data and Privacy & legal, one section).
-    privacy: join(["Export", `Policy updated ${legalDate(LEGAL.updated)}`]),
-  };
   // Invoicing's two switches (lib/invoiceAuto.ts) and whether card payments through Stripe are on at all here.
   const auto = getInvoiceAuto(coach.id);
   const stripeReady = stripeConfigured();
@@ -166,7 +144,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       key: "profile",
       // The owner on another coach's: whose it is.
       label: profile && coachId !== coach.id ? `${profile.displayName}'s profile` : undefined,
-      fact: facts.profile,
       tag: profile && <span className={`trn-state${profile.published ? " good" : ""}`}>{profile.published ? "Published" : "Not published"}</span>,
       body: profile ? <ProfileEditor key={coachId} profile={profile} coaches={coaches} details={details} countries={countries} joinCode={ensureJoinCode(coachId)} /> : <p className="rpf-empty">No coach profile</p>,
     },
@@ -174,7 +151,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       // Sign-in, then what the coach pays Norcoach (23 Nov, Alex: Billing joined Account; off until subscriptions are set
       // up on the server, and the owner has none). Its part is `billing`: #billing lands on it.
       key: "account",
-      fact: facts.account,
       body: (
         <>
           <AccountSettings email={coach.email} passwordless={clerkOn()} security={security} passwordsHint={passwordsHint} />
@@ -188,14 +164,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     },
     {
       key: "business",
-      fact: facts.business,
       body: <BusinessSettings key={JSON.stringify(business)} initial={business} />,
     },
     {
       // Branding, a section of its own (22 Nov, Alex: "right now it lives inside of business but i want its own section"):
       // the logo, the banner and the brand colour (19 Nov, Alex: docs/boards/coach-brand-mockup.html), and the card pictures.
       key: "branding",
-      fact: facts.branding,
       // C's identity card and A's card pictures (22 Nov, Alex: "have the branding like in c and the card pictures like in a";
       // docs/boards/settings-branding-mockup.html): the coach's brand drawn as it shows, edited in place.
       body: (
@@ -210,15 +184,14 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         />
       ),
     },
-    { key: "plans", fact: facts.plans, body: <PlansSettings plans={plans} currency={eff.currency} vatFact={planTax ? `Prices ${eff.pricesIncludeVat ? "include" : "exclude"} ${planTax}` : null} /> },
+    { key: "plans", body: <PlansSettings plans={plans} currency={eff.currency} vatFact={planTax ? `Prices ${eff.pricesIncludeVat ? "include" : "exclude"} ${planTax}` : null} /> },
     // Keyed on the business's country too: a new one there brings its own defaults here.
     // auto: Invoices by email and When a plan is assigned (lib/invoiceAuto.ts); stripeReady: card payments are offered.
-    { key: "invoicing", fact: facts.invoicing, body: <InvoicingSettings key={JSON.stringify([invoicing, business.country_code ?? null, business.country ?? null])} initial={invoicing} business={business} payments={payments} auto={auto} stripeReady={stripeReady} coachEmail={coach.email ?? undefined} /> },
+    { key: "invoicing", body: <InvoicingSettings key={JSON.stringify([invoicing, business.country_code ?? null, business.country ?? null])} initial={invoicing} business={business} payments={payments} auto={auto} stripeReady={stripeReady} coachEmail={coach.email ?? undefined} /> },
     {
       // Units and the time zone, then notifications (23 Nov, Alex: Notifications joined Preferences). Its part
       // `notifications`: #notifications lands on it.
       key: "preferences",
-      fact: facts.preferences,
       body: (
         <>
           <PreferencesSettings key={`${units}|${timezone}`} units={units} timezone={timezone} />
@@ -232,7 +205,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       // The export, then the legal (23 Nov, Alex: Your data and Privacy & legal, one section). Its part `data`: #data
       // lands on it.
       key: "privacy",
-      fact: facts.privacy,
       body: (
         <>
           <div id="rst-part-data" className="rst-stack">
