@@ -4,6 +4,8 @@
 // store's save is a stub that only counts, and the store is never the JSON file (STORE=postgres, so persist() writes no
 // file). Only a pglite folder copied somewhere of its own, never a folder a server has open, never Postgres:
 //   DRY_COPY=<copied pglite folder> TZ=Europe/Amsterdam npx tsx scripts/dry-run-targets.ts
+// Or a backup's JSON snapshot (24 Nov: latest.json from the backups bucket, downloaded to a folder of its own):
+//   DRY_JSON=<snapshot .json> TZ=Europe/Amsterdam npx tsx scripts/dry-run-targets.ts
 // Its output holds real data: keep it on the machine.
 
 import fs from "fs";
@@ -11,18 +13,23 @@ import Module from "module";
 import os from "os";
 import path from "path";
 
+const json = process.env.DRY_JSON ? path.resolve(process.env.DRY_JSON) : null;
 const copy = path.resolve(process.env.DRY_COPY ?? "");
 const here = path.resolve(__dirname, "..");
 const refused = [path.join(here, ".pglite-local"), path.resolve(here, "..", "ironline-verify", ".pglite-verify")];
-if (!process.env.DRY_COPY || !fs.existsSync(path.join(copy, "PG_VERSION"))) {
+if (json && !fs.existsSync(json)) {
+  console.error("DRY_JSON names no file.");
+  process.exit(2);
+}
+if (!json && (!process.env.DRY_COPY || !fs.existsSync(path.join(copy, "PG_VERSION")))) {
   console.error("DRY_COPY=<a copied pglite folder> is needed.");
   process.exit(2);
 }
-if (refused.some((r) => path.relative(r, copy) === "" || !path.relative(r, copy).startsWith(".."))) {
+if (!json && refused.some((r) => path.relative(r, copy) === "" || !path.relative(r, copy).startsWith(".."))) {
   console.error("Only on a copy: that folder is one a server uses. Copy it somewhere else first.");
   process.exit(2);
 }
-if (fs.existsSync(path.join(copy, "postmaster.pid"))) {
+if (!json && fs.existsSync(path.join(copy, "postmaster.pid"))) {
   console.error("The copy holds a postmaster.pid: it was copied while open. Copy it again from a closed folder.");
   process.exit(2);
 }
@@ -43,7 +50,8 @@ M._resolveFilename = function (request: string, ...rest: unknown[]) {
 type Gyms = Record<string, { kg: number | null; coach_kg?: number | null }> | undefined;
 type Snap = { kg: number | null; coach: number | null | undefined; gyms: Gyms };
 
-async function main() {
+async function loadRaw(db: typeof import("../app/lib/db")): Promise<unknown> {
+  if (json) return JSON.parse(fs.readFileSync(json, "utf8"));
   const { PGlite } = await import("@electric-sql/pglite");
   const { drizzle } = await import("drizzle-orm/pglite");
   const { migrate } = await import("drizzle-orm/pglite/migrator");
@@ -52,10 +60,16 @@ async function main() {
   // The copy brought up to this build's schema (on the copy alone), as the server's connect does.
   await migrate(pdb, { migrationsFolder: path.join(here, "drizzle") });
   const store = await import("../app/lib/pg/store");
-  const db = await import("../app/lib/db");
+  void db;
   type AnyDb = Parameters<typeof store.loadStore>[0];
   const raw = await store.loadStore(pdb as unknown as AnyDb);
   await pg.close();
+  return raw;
+}
+
+async function main() {
+  const db = await import("../app/lib/db");
+  const raw = await loadRaw(db);
   const { data } = db.prepareStore(raw as Parameters<typeof db.prepareStore>[0]);
   let saves = 0;
   // The save stubbed: nothing reaches a database or a file.
