@@ -35,21 +35,19 @@ h1{color:#fff;font-size:26px;font-weight:600}
 .mk{position:absolute;inset:0;background:currentColor;-webkit-mask:url(fp-mark.png) center/contain no-repeat;mask:url(fp-mark.png) center/contain no-repeat}
 .pw{position:absolute;left:50%;top:calc(100% + 28px);display:inline-flex;align-items:center;white-space:nowrap;transform:translateX(-50%)}
 .pw .by{font-size:10.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#8b93a1;line-height:1;opacity:0;transform:translateY(6px)}
-.pw .wrap{display:block;width:0;height:8px;overflow:hidden}
-.pw svg{display:block;height:8px;width:45.5px;color:#141a24;opacity:0;transform:translateX(-100%)}
+.pw .wrap{display:block;width:45.5px;height:8px;margin-left:7px;overflow:hidden}
+.pw svg{display:block;height:8px;width:45.5px;color:#141a24;opacity:0;clip-path:inset(0 100% 0 0);transform:translateX(-10px)}
 .pw.light .by{color:rgba(255,255,255,.72)}
 .pw.light svg{color:#fff}
 .pw.foot{top:auto;bottom:46px}
 /* The shared timeline: loading 0–1.8s, ready at 1.8s, the app at 3.6s. */
 .play .pw .by{animation:by .5s cubic-bezier(.22,1,.36,1) 1.8s forwards}
-.play .pw .wrap{animation:wrap 1s cubic-bezier(.22,1,.36,1) 2.15s forwards}
 .play .pw svg{animation:word 1s cubic-bezier(.22,1,.36,1) 2.15s forwards}
 .play .op{animation:off .8s ease 3.6s forwards}
 @keyframes by{to{opacity:1;transform:none}}
-@keyframes wrap{to{width:45.5px;margin-left:7px}}
-@keyframes word{0%{transform:translateX(-100%);opacity:0}25%{opacity:.6}100%{transform:none;opacity:.6}}
+@keyframes word{0%{clip-path:inset(0 100% 0 0);transform:translateX(-10px);opacity:.6}100%{clip-path:inset(0 0 0 0);transform:none;opacity:.6}}
 .play .pw.light svg{animation:wordL 1s cubic-bezier(.22,1,.36,1) 2.15s forwards}
-@keyframes wordL{0%{transform:translateX(-100%);opacity:0}25%{opacity:.9}100%{transform:none;opacity:.9}}
+@keyframes wordL{0%{clip-path:inset(0 100% 0 0);transform:translateX(-10px);opacity:.9}100%{clip-path:inset(0 0 0 0);transform:none;opacity:.9}}
 @keyframes off{to{opacity:0;visibility:hidden}}
 
 /* A: Wipe in. The logo is drawn on from left to right, as if written. */
