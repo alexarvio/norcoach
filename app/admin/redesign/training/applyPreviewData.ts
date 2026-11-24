@@ -1,7 +1,7 @@
 import { getData } from "../../../lib/db";
 import type { SetLogRow, SetRows } from "../../../lib/sets/rows";
 import { MAX_SESSIONS_PER_WEEK, assignmentsForDayIn, cardioForDayIn, getAssignmentsForDay, getWeek, homeGymId, listCardioForDay, listClientGyms, trainingIndex, weekIn } from "../../../lib/queries";
-import { assistedRow, beforeStop, coachKg, copiedWeights, laneKg, laneOfGym, laterSlot, liftOf, raisedTo, repWindow, setsSinceReset, stopAfter, writeLane, type Lane } from "../../../lib/targetRule";
+import { assistedRow, coachKg, copiedWeights, freshLane, laneOfGym, lanesOf, setLane, underSwap, type Source } from "../../../lib/targetRule";
 import { changeCount, changedWeeks, type ApplyFig, type ApplyItem, type ApplyPreview, type ApplySession, type ApplyWeek } from "./applyShape";
 
 // What Apply to the rest (copyProgramWeek, one target week at a time) and a session's Apply to remaining weeks
@@ -83,35 +83,40 @@ function compare(sr: SetRows, clientId: number, gone: Set<number>) {
     else rowsOfExercise.set(wa.exercise_id, [{ slot: d, row: wa }]);
   }
 
+  // The programme whose weeks hold a week of the client's, as the rule reads it (queries.ts programOverWeek).
+  const programOf = (week: number) => data.training_programs.find((p) => p.client_id === clientId && week >= p.start_week && week < p.start_week + p.total_weeks)?.id ?? null;
+
   /**
-   * A copied row's weights once the rule that writes them forward (progressTargetFromLogs, on every request) has
-   * passed over it: the same rule (lib/targetRule.ts), on the copy alone. The copy carries the source's weights and when
-   * they were typed, never a reset (copiedWeights), so an earlier logged row of the same exercise that met its weight
-   * raises it again, unless a reset of the coach's that stays on the plan sits between them.
+   * A copied row's weights once the rule that works them out (progressTargetFromLogs and its pass) has passed over it:
+   * the same rule (lib/targetRule.ts freshLane, 24 Nov), on the copy alone. The copy carries the source's weights and
+   * when they were typed, never a reset (copiedWeights), so it is worked out afresh from the coach's own figure: raised
+   * by an earlier set of the same lift in the same programme inside its range, unless a reset of the coach's that stays
+   * on the plan sits between them, else that figure again.
    */
   const landed = (row: Row, dest: Day): Row => {
     if (!waOf.get(row.id) || dest.free) return row;
     const copy = copiedWeights(row);
     // What stays on the plan once the copy is made: a session it replaces goes, its resets with it.
     const stays = (rowsOfExercise.get(row.exercise_id) ?? []).filter((o) => !gone.has(o.slot.id));
+    const sources: Source[] = [];
     for (const [id, logs] of logsOf) {
       const wa = waOf.get(id);
       const day = wa ? dayOf.get(wa.program_day_id) : undefined;
       if (!wa || !day || wa.swap || (day.free && day.copy_of == null) || wa.exercise_id === 0 || wa.exercise_id !== row.exercise_id || day.client_id !== clientId || gone.has(day.id)) continue;
-      if (!laterSlot(dest, day)) continue;
-      const assisted = assistedRow(exById.get(wa.exercise_id), wa.variation_id);
-      const lanes = new Map<Lane, typeof logs>();
-      for (const sl of logs) {
-        const lane = laneOfGym(sl.gym_id, home);
-        lanes.set(lane, [...(lanes.get(lane) ?? []), sl]);
-      }
-      for (const [lane, ls] of lanes) {
-        // Only sets in the logged row's rep range count, as on the server (4 Nov, Alex).
-        const lift = liftOf(setsSinceReset(ls, wa, lane), laneKg(wa, lane), lane, assisted, repWindow(wa.reps));
-        if (!lift || !beforeStop(dest, stopAfter(day, stays, lane))) continue;
-        const kg = raisedTo(copy, lane, lift, assisted);
-        if (kg != null) writeLane(copy, lane, kg);
-      }
+      sources.push({
+        slot: day,
+        row: wa,
+        program: programOf(day.week_number),
+        variation: wa.variation_id ?? null,
+        reps: wa.reps,
+        sets: logs.filter((sl) => !underSwap(wa, sl.id)).map((sl) => ({ weight_kg: sl.weight_kg, reps: sl.reps, logged_at: sl.logged_at, lane: laneOfGym(sl.gym_id, home) })),
+      });
+    }
+    const target = { slot: dest, row: copy, program: programOf(dest.week_number), variation: copy.variation_id ?? null, reps: copy.reps };
+    const assisted = assistedRow(exById.get(copy.exercise_id), copy.variation_id);
+    for (const lane of lanesOf(copy, sources)) {
+      const best = freshLane(target, lane, sources, stays, assisted);
+      if (best !== undefined) setLane(copy, lane, best);
     }
     return copy;
   };

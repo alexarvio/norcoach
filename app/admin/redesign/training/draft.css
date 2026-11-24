@@ -356,6 +356,24 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
 .rd-cell-box::placeholder { color: #b0b6c0; font-weight: 500; }
 .rd-gymcells { display: flex; gap: 6px; }
 .rd-gymcells .rd-cell-box { max-width: none; }
+/* A weight the rule raised against the week before: a green arrow up right after the figure, inside the cell's own
+   track so no other cell moves (24 Nov, Alex: docs/boards/target-rule-mockup.html). Without the arrow the wrapper draws
+   nothing (it stays, so the field never remounts while typed in). The arrow lifted half a pixel to Archivo's capitals. */
+.rd-kgfig { display: contents; }
+.rd-kgfig.on { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; max-width: 100%; min-width: 0; }
+.rd-kgfig.on .rd-cell-box { flex: 0 1 auto; min-width: 0; }
+/* The field with a mark on is as wide as its figure (its width set from the text, WeightCell), its right room 3px, so
+   the mark sits 4px after the digits as after a done week's figure, never at the cell's edge. */
+.rd-kgfig.on.box { gap: 0; }
+.rd-kgfig.on.box > .rd-cell-box { padding-right: 3px; }
+.rd-raised { display: inline-flex; flex: none; color: #2f7a3f; translate: 0 -0.5px; cursor: default; }
+.rd-raised svg { width: 12px; height: 12px; }
+/* A figure not reached in 3 sessions in a row (24 Nov, Alex: B of docs/boards/target-rule-mockup.html): rust at 600,
+   the shared 6px dot right after it in the same room; it wins over the arrow. The weeks the ⋯'s Back to reaches grey
+   on the right of its item, as the Copy list's counts. */
+.rd-kgfig.miss .rd-cell-box, .rd.trn .trn-list .rd-row .rd-kgfig.miss .rd-cell-box { color: #b8471f; font-weight: 600; }
+.rd-kgfig.miss > .rd-due { cursor: default; }
+.pb-menu .rd-menu-reach { margin-left: auto; padding-left: 16px; font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; color: #8b93a1; }
 .rd-trendcell { border: 0; font: inherit; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .rd-trendcell.none { font-weight: 500; }
 .rd-weekrow { display: flex; align-items: flex-start; gap: 12px; }
@@ -667,6 +685,10 @@ html:has(.rd-page) { overflow-y: scroll; scrollbar-gutter: stable; }
 /* In the legend every mark one size, so they line up (25 Oct, Alex): 22px rings; the needs-you dot centred on them. */
 .rd-legend-mark > .rd-flag, .rd-legend-mark > .rd-swapdot, .rd-legend-mark > .rd-extradot, .rd-legend-mark > .rd-pbdot, .rd-legend-mark > .rd-copydot { width: 22px; min-width: 22px; height: 22px; padding: 0; box-sizing: border-box; }
 .rd-legend-mark > .rd-due { margin: 0 8px; }
+/* The weight's marks (24 Nov, Alex): the raised arrow centred in a mark's 22px, as the dot is; a missed figure as the
+   KG cell draws it, rust at 600 with the dot right after it. */
+.rd-legend-mark > .rd-raised { justify-content: center; width: 22px; }
+.rd-legend-mark > .rd-kg-miss { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600; color: #b8471f; font-variant-numeric: tabular-nums; }
 /* Their note as the session row draws it (16 Nov, Alex: the audit): the grey ring with the pen, never a tinted capsule. */
 .rd-legend-mark > .rd-tag.note { justify-content: center; width: 22px; min-width: 22px; height: 22px; padding: 0; box-sizing: border-box; border-radius: 999px; background: none; box-shadow: inset 0 0 0 1px #e1e5eb; color: #5b6474; cursor: default; }
 .rd-legend-mark > .rd-tag.note svg { width: 12px; height: 12px; }

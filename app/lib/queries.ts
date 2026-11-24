@@ -46,7 +46,7 @@ import { deleteClientCheckIns, fetchDueCheckIns, removeMetricWithReadings, sweep
 import { setsDue } from "./setsDue";
 import { SETS_PG } from "./sets/mode";
 import { deleteClientSets, dropSetsOfRows, dropTicksOfEntries, fetchSetOwner, fetchSetsForClients, pinSetGyms, setHomeSetWeek, setSessionNewsCounter, sweepClientSets, writeSets, type SetBox, type SetRows } from "./sets/rows";
-import { assistedRow, beforeStop, copiedWeights, isReset, laneKg, laneOfGym, laneTypedAt, laterSlot, liftOf, raisedTo, repWindow, setsSinceReset, stopAfter, writeLane, type Lane } from "./targetRule";
+import { assistedRow, beforeStop, copiedWeights, freshLane, isReset, laneKg, laneOfGym, lanesOf, laneTypedAt, laterSlot, moveHome, repWindow, setLane, stopAfter, stopsOf, underSwap, type Lane, type Source } from "./targetRule";
 import { FEATURES } from "./features";
 import { daysBetween, weightGoalViews, type WeightGoalView } from "./weightGoal";
 import { healthKindOf, WEIGHT_NAME } from "./healthKind";
@@ -137,6 +137,8 @@ export type WorkoutAssignment = {
   gym_targets?: Record<string, { kg: number | null; set_at?: string | null; coach_kg?: number | null }>;
   warmup_sets?: { weight_kg: number | null; reps: number | null }[];
   swap?: { library_exercise_id: number | null; custom_name: string | null; at: string };
+  /** The sets logged while a swap was on the row (see db.ts): the substitute's, after the swap is taken back too. */
+  swap_set_ids?: number[];
   /** In a free session, an exercise the client named that is not in the library (exercise_id 0). */
   custom_name?: string | null;
   /** The coach's alternatives (see db.ts). */
@@ -1163,7 +1165,12 @@ function copyWeekOneInto(clientId: number, startWeek: number, toWeek: number) {
     if (!toDay) return;
     if (fromDay.label) setDayLabel(toDay.id, fromDay.label);
     getAssignmentsForDay(fromDay.id).forEach((a) => {
-      addExerciseToDay(toDay.id, a.exercise_id, a.sets, a.reps, a.target_weight_kg, a.rpe_target, a.tempo, a.notes);
+      const row = addExerciseToDay(toDay.id, a.exercise_id, a.sets, a.reps, a.target_weight_kg, a.rpe_target, a.tempo, a.notes);
+      // When the coach typed the weight and their own figure beside a raise come with it (24 Nov): without them a raised
+      // figure on the copy reads as the coach's own, which the weight rule never takes back, and a set from before the
+      // coach typed the weight can raise it.
+      if (a.target_set_at) row.target_set_at = a.target_set_at;
+      if (a.coach_kg !== undefined) row.coach_kg = a.coach_kg;
     });
   });
 }
@@ -1889,7 +1896,7 @@ export function copyProgramWeek(sr: SetRows, clientId: number, fromWeek: number,
       // The prescription only: what the client did (warm-ups, a swap) stays on the week they did it. The coach's weights
       // come with when they were typed, never a reset (copiedWeights, 23 Oct): what the client lifts from the reset on
       // moves the copies.
-      data.workout_assignments.push({ ...copiedWeights(wa), sets_removed: undefined, warmup_sets: undefined, swap: undefined, id, program_day_id: dest.id });
+      data.workout_assignments.push({ ...copiedWeights(wa), sets_removed: undefined, warmup_sets: undefined, swap: undefined, swap_set_ids: undefined, id, program_day_id: dest.id });
       // Custom columns are part of the plan too, so they come along.
       for (const v of data.assignment_custom_values.filter((v) => v.workout_assignment_id === wa.id)) {
         data.assignment_custom_values.push({
@@ -1964,10 +1971,10 @@ export function addExerciseToDay(
   rpeTarget: number | null = null,
   tempo: string | null = null,
   notes: string | null = null
-) {
+): StoredAssignment {
   const data = getData();
   const count = data.workout_assignments.filter((wa) => wa.program_day_id === programDayId).length;
-  data.workout_assignments.push({
+  const row: StoredAssignment = {
     id: allocId("workout_assignments"),
     program_day_id: programDayId,
     exercise_id: exerciseId,
@@ -1983,8 +1990,10 @@ export function addExerciseToDay(
     note_kind: null,
     note_at: notes ? new Date().toISOString() : null,
     note_read: false,
-  });
+  };
+  data.workout_assignments.push(row);
   persist();
+  return row;
 }
 
 /** How many sets an exercise has this session (10 Nov, Alex: `− Remove a set`, and Add a set putting one back): a value,
@@ -2209,35 +2218,56 @@ export function logSet(
   // writeSets), the weight rule after the commit on what the write left; memory mode today's lines in today's order.
   const wa = getData().workout_assignments.find((x) => x.id === workoutAssignmentId);
   const clientId = getClientIdForAssignment(workoutAssignmentId) ?? 0;
+  // The set this write left (pg: the last try's, the one that committed), marked as the substitute's after the commit
+  // while the row is swapped (markSwapSet).
+  let wrote: number | null = null;
   return writeSets(
     "w.set.log",
     clientId,
     () => (wa ? progressReach(wa) : [workoutAssignmentId]),
     (box) => {
       if (!SETS_PG) {
-        logSetIn(box, workoutAssignmentId, setNumber, weightKg, reps, rpeActual, gymId, unit, at);
+        markSwapSet(workoutAssignmentId, logSetIn(box, workoutAssignmentId, setNumber, weightKg, reps, rpeActual, gymId, unit, at));
         progressTargetFromLogs(box, workoutAssignmentId);
         return true;
       }
+      wrote = null;
       // A discard (or a start again) that committed while this waited on the client's chain: the set stays out.
       if (stillOn && !stillOn()) return false;
       // The coach took the row out while this waited on the client's chain (22 Nov, Alex: "Yes, fix it"): nothing to write,
       // and done, as the cardio tick on a gone cardio (setCardioDone), never a SetViewMiss the phone would resend forever.
       // Memory mode has no wait between the caller's look and this write, so it never meets a row gone in between.
       if (getClientIdForAssignment(workoutAssignmentId) !== clientId) return true;
-      logSetIn(box, workoutAssignmentId, setNumber, weightKg, reps, rpeActual, gymId, unit, at);
+      wrote = logSetIn(box, workoutAssignmentId, setNumber, weightKg, reps, rpeActual, gymId, unit, at);
       return true;
     },
     {
       afterCommit: (done, view) => {
         if (!SETS_PG || !done) return;
+        markSwapSet(workoutAssignmentId, wrote);
         progressTargetFromLogs(view, workoutAssignmentId);
       },
     }
   );
 }
 
-/** logSet's own lines on a box: memory the store, pg a copy of the reach (its rule run after the commit, above). */
+/**
+ * A set written while its row is swapped is the substitute's (24 Nov, Alex: Smith machine sets raised the chest press
+ * once the swap was undone): its id is kept on the row (swap_set_ids), so taken back the swap still leaves it out
+ * (underSwap). Marked here, as the server takes the set, so a set from the phone's outbox, which arrives after the swap
+ * it was logged under and before its undo (the outbox sends in the order made), is marked whatever either clock says;
+ * the online save and the outbox both come through logSet.
+ */
+function markSwapSet(workoutAssignmentId: number, setId: number | null) {
+  if (setId == null) return;
+  const wa = getData().workout_assignments.find((x) => x.id === workoutAssignmentId);
+  if (!wa?.swap || wa.swap_set_ids?.includes(setId)) return;
+  wa.swap_set_ids = [...(wa.swap_set_ids ?? []), setId];
+  persist();
+}
+
+/** logSet's own lines on a box: memory the store, pg a copy of the reach (its rule run after the commit, above). The
+    id of the set it wrote, new or corrected. */
 function logSetIn(
   box: SetBox,
   workoutAssignmentId: number,
@@ -2248,7 +2278,7 @@ function logSetIn(
   gymId: number | null,
   unit: "kg" | "lb" | null,
   at: Date | string | null
-) {
+): number {
   // Its exercise is worked out again on the weight rule's next pass, as every pass used to (runProgressPass).
   markProgressRow(workoutAssignmentId);
   box.needRows("logSet", [workoutAssignmentId]);
@@ -2261,10 +2291,11 @@ function logSetIn(
     existing.rpe_actual = rpeActual;
     if (unit) existing.unit = unit;
     box.persist();
-    return;
+    return existing.id;
   }
+  const id = box.alloc();
   box.logs.push({
-    id: box.alloc(),
+    id,
     workout_assignment_id: workoutAssignmentId,
     set_number: setNumber,
     weight_kg: weightKg,
@@ -2277,6 +2308,7 @@ function logSetIn(
     ...(unit ? { unit } : {}),
   });
   box.persist();
+  return id;
 }
 
 // The weight goal writes itself forward. When a client's best set of the
@@ -2335,6 +2367,39 @@ function exerciseOccurrences(clientId: number, exerciseId: number): { slot: Stor
     if (slot) out.push({ slot, row });
   }
   return out;
+}
+
+/**
+ * Every row of the exercise whose sets the weight rule reads: the planned days and the duplicates of them (9 Nov, Alex:
+ * a session done twice counts for the weight rule), never a rogue session's.
+ */
+function ruleRowsOf(clientId: number, exerciseId: number): { slot: StoredDay; row: StoredAssignment }[] {
+  const data = getData();
+  const days = new Map(data.program_days.filter((pd) => pd.client_id === clientId && !isRogue(pd)).map((pd) => [pd.id, pd] as const));
+  const out: { slot: StoredDay; row: StoredAssignment }[] = [];
+  for (const row of data.workout_assignments) {
+    if (row.exercise_id !== exerciseId) continue;
+    const slot = days.get(row.program_day_id);
+    if (slot) out.push({ slot, row });
+  }
+  return out;
+}
+
+/** The programme whose weeks hold this week of the client's (as last time reads it, exerciseHistoryFor), or none. */
+function programOverWeek(clientId: number, week: number, programs: readonly TrainingProgram[] = getData().training_programs): TrainingProgram | undefined {
+  return programs.find((p) => p.client_id === clientId && week >= p.start_week && week < p.start_week + p.total_weeks);
+}
+
+/**
+ * A done week (24 Nov): as the Training tab draws it past (loadTraining), so the rule never works out a week the coach
+ * reads as over. A week of the live programme before this one, every week of one whose weeks have run out, and every
+ * week of an earlier deployed programme. A draft's or a scheduled one's weeks are never done.
+ */
+function weekDoneIn(p: TrainingProgram | undefined, deployed: TrainingProgram | null, week: number): boolean {
+  if (!p || p.status !== "deployed") return false;
+  if (deployed && p.id !== deployed.id && p.start_week < deployed.start_week) return true;
+  if (!deployed || p.id !== deployed.id) return false;
+  return week - p.start_week + 1 < programWeekNow(p);
 }
 
 /**
@@ -2463,6 +2528,12 @@ type ProgressLookup = {
   /** The rows with a set logged. */
   logged(): Set<number>;
   occurrences(clientId: number, exerciseId: number): ProgressOccurrence[];
+  /** The rows whose sets can raise the exercise's weights (ruleRowsOf): the planned days' and their duplicates'. */
+  sources(clientId: number, exerciseId: number): ProgressOccurrence[];
+  /** The id of the programme whose weeks hold this week (programOverWeek), or null. */
+  program(clientId: number, week: number): number | null;
+  /** The week is done (weekDoneIn): the rule leaves its rows as they are. */
+  weekDone(clientId: number, week: number): boolean;
   home(clientId: number): number | null;
   exercise(id: number): Data["exercises"][number] | undefined;
 };
@@ -2470,23 +2541,50 @@ type ProgressLookup = {
 /** The store as each read always scanned it: for one run of the rule. */
 function directLookup(sr: SetRows): ProgressLookup {
   const data = getData();
+  // One run reads every row of the exercise (24 Nov: progressExercise works the whole exercise out on each set saved),
+  // so the sets go into a row → sets map on the first read and the programmes are read once a client and week, not a
+  // scan of every set and every programme a row. Nothing in a run adds or removes a set or a programme.
+  let logsOf: Map<number, SetLog[]> | null = null;
+  let logged: Set<number> | null = null;
+  const programs = new Map<string, TrainingProgram | undefined>();
+  const deployed = new Map<number, TrainingProgram | null>();
+  const programAt = (clientId: number, week: number) => {
+    const key = `${clientId}|${week}`;
+    if (!programs.has(key)) programs.set(key, programOverWeek(clientId, week));
+    return programs.get(key);
+  };
+  const deployedOf = (clientId: number) => {
+    if (!deployed.has(clientId)) deployed.set(clientId, getDeployedProgram(clientId));
+    return deployed.get(clientId) ?? null;
+  };
   return {
     row: (id) => data.workout_assignments.find((x) => x.id === id),
     day: (id) => data.program_days.find((pd) => pd.id === id),
     logs: (id) => {
       sr.needRows("directLookup", [id]);
-      return sr.logs.filter((sl) => sl.workout_assignment_id === id);
+      if (!logsOf) {
+        logsOf = new Map();
+        for (const sl of sr.logs) {
+          const list = logsOf.get(sl.workout_assignment_id);
+          if (list) list.push(sl);
+          else logsOf.set(sl.workout_assignment_id, [sl]);
+        }
+      }
+      return logsOf.get(id) ?? [];
     },
-    logged: () => new Set(sr.logs.map((sl) => sl.workout_assignment_id)),
+    logged: () => (logged ??= new Set(sr.logs.map((sl) => sl.workout_assignment_id))),
     occurrences: exerciseOccurrences,
+    sources: ruleRowsOf,
+    program: (clientId, week) => programAt(clientId, week)?.id ?? null,
+    weekDone: (clientId, week) => weekDoneIn(programAt(clientId, week), deployedOf(clientId), week),
     home: homeGymId,
     exercise: (id) => data.exercises.find((e) => e.id === id),
   };
 }
 
-/** The same reads from maps made once, for a pass. `order`: every row with a set, in the order its first set was
-    stored (the order the pass has always taken them in). */
-function progressIndex(sr: SetRows): ProgressLookup & { order: number[] } {
+/** The same reads from maps made once, for a pass. `groups`: every client and exercise on the plan (exercise 0, a
+    rogue session's names, left out), in the order their first row was stored: what a pass works out. */
+function progressIndex(sr: SetRows): ProgressLookup & { groups(): [number, number][] } {
   const data = getData();
   const rows = new Map<number, StoredAssignment>();
   for (const wa of data.workout_assignments) if (!rows.has(wa.id)) rows.set(wa.id, wa);
@@ -2507,27 +2605,55 @@ function progressIndex(sr: SetRows): ProgressLookup & { order: number[] } {
     if (!byClient) planned.set(pd.id, (byClient = new Map()));
     byClient.set(pd.client_id, pd);
   }
-  const occ = new Map<string, ProgressOccurrence[]>();
-  for (const row of data.workout_assignments) {
-    const at = planned.get(row.program_day_id);
-    if (!at) continue;
-    for (const [clientId, slot] of at) {
-      const key = `${clientId}|${row.exercise_id}`;
-      const list = occ.get(key);
-      if (list) list.push({ slot, row });
-      else occ.set(key, [{ slot, row }]);
-    }
+  // ruleRowsOf: the same, on the planned days and their duplicates (every day but a rogue session).
+  const ruled = new Map<number, Map<number, StoredDay>>();
+  for (const pd of data.program_days) {
+    if (isRogue(pd)) continue;
+    let byClient = ruled.get(pd.id);
+    if (!byClient) ruled.set(pd.id, (byClient = new Map()));
+    byClient.set(pd.client_id, pd);
   }
+  const occ = new Map<string, ProgressOccurrence[]>();
+  const src = new Map<string, ProgressOccurrence[]>();
+  const put = (into: Map<string, ProgressOccurrence[]>, key: string, o: ProgressOccurrence) => {
+    const list = into.get(key);
+    if (list) list.push(o);
+    else into.set(key, [o]);
+  };
+  for (const row of data.workout_assignments) {
+    for (const [clientId, slot] of planned.get(row.program_day_id) ?? []) put(occ, `${clientId}|${row.exercise_id}`, { slot, row });
+    for (const [clientId, slot] of ruled.get(row.program_day_id) ?? []) put(src, `${clientId}|${row.exercise_id}`, { slot, row });
+  }
+  const groups: [number, number][] = [];
+  for (const key of occ.keys()) {
+    const [c, e] = key.split("|").map(Number);
+    if (e !== 0) groups.push([c, e]);
+  }
+  // The client's programmes and the one deployed now, read once a client.
+  const programsOf = new Map<number, TrainingProgram[]>();
+  const deployedOf = new Map<number, TrainingProgram | null>();
+  const programs = (clientId: number) => {
+    let list = programsOf.get(clientId);
+    if (!list) programsOf.set(clientId, (list = data.training_programs.filter((p) => p.client_id === clientId)));
+    return list;
+  };
+  const deployed = (clientId: number) => {
+    if (!deployedOf.has(clientId)) deployedOf.set(clientId, getDeployedProgram(clientId));
+    return deployedOf.get(clientId) ?? null;
+  };
   const homes = new Map<number, number | null>();
   const exercises = new Map<number, Data["exercises"][number]>();
   for (const e of data.exercises) if (!exercises.has(e.id)) exercises.set(e.id, e);
   return {
-    order: [...logged],
+    groups: () => groups,
     row: (id) => rows.get(id),
     day: (id) => days.get(id),
     logs: (id) => logsOf.get(id) ?? [],
     logged: () => logged,
     occurrences: (clientId, exerciseId) => occ.get(`${clientId}|${exerciseId}`) ?? [],
+    sources: (clientId, exerciseId) => src.get(`${clientId}|${exerciseId}`) ?? [],
+    program: (clientId, week) => programOverWeek(clientId, week, programs(clientId))?.id ?? null,
+    weekDone: (clientId, week) => weekDoneIn(programOverWeek(clientId, week, programs(clientId)), deployed(clientId), week),
     home: (clientId) => {
       if (!homes.has(clientId)) homes.set(clientId, homeGymId(clientId));
       return homes.get(clientId) ?? null;
@@ -2538,17 +2664,18 @@ function progressIndex(sr: SetRows): ProgressLookup & { order: number[] } {
 
 export function progressTargetFromLogs(sr: SetRows, workoutAssignmentId: number) {
   const look = directLookup(sr);
+  const wa = look.row(workoutAssignmentId);
+  const day = wa ? look.day(wa.program_day_id) : undefined;
+  // A free session's exercises (19 Oct) are names, all exercise 0: 88 kg logged on one became the target of every free
+  // exercise after it.
+  if (!wa || !day || isRogue(day) || wa.exercise_id === 0) return;
   // A view that doesn't hold every row of the exercise (pg: a write's reach, and a coach added or retargeted a row of it
   // meanwhile) runs nothing now: the row is marked, and the minute's pass runs it on the client whole.
-  if (SETS_PG) {
-    const wa = look.row(workoutAssignmentId);
-    const day = wa ? look.day(wa.program_day_id) : undefined;
-    if (wa && day && !sr.holdsRows([wa.id, ...look.occurrences(day.client_id, wa.exercise_id).map((o) => o.row.id)])) {
-      markProgressRow(wa.id);
-      return;
-    }
+  if (SETS_PG && !sr.holdsRows(progressReach(wa))) {
+    markProgressRow(wa.id);
+    return;
   }
-  if (progressRow(look.row(workoutAssignmentId), look)) persist();
+  if (progressExercise(day.client_id, wa.exercise_id, look)) persist();
 }
 
 /**
@@ -2597,62 +2724,74 @@ setSessionNewsCounter((dayIds, sets, cardioTicks, t) => {
   return out;
 });
 
-/** The rows the weight rule reads for one row (progressRow): the row and every row of its exercise on the client's plan. */
+/** The rows the weight rule reads for one row (progressExercise): the row and every row of its exercise whose sets it
+    reads or whose weights it works out (ruleRowsOf: the plan's and its duplicates'). */
 function progressReach(wa: StoredAssignment): number[] {
   const day = getData().program_days.find((pd) => pd.id === wa.program_day_id);
-  return [wa.id, ...(day ? exerciseOccurrences(day.client_id, wa.exercise_id).map((o) => o.row.id) : [])];
+  return [wa.id, ...(day ? ruleRowsOf(day.client_id, wa.exercise_id).map((o) => o.row.id) : [])];
 }
 
-/** One logged row's run of the weight rule (progressTargetFromLogs). True when it moved a weight. */
-function progressRow(wa: StoredAssignment | undefined, look: ProgressLookup): boolean {
-  if (!wa) return false;
-  // Sets on a substitute (14 Oct) say nothing about the prescribed exercise's weight.
-  if (wa.swap) return false;
-  const day = look.day(wa.program_day_id);
-  if (!day) return false;
-  // Nor do a free session's (19 Oct): its exercises are names, all exercise 0,
-  // and 88 kg logged on one became the target of every free exercise after it.
-  if (isRogue(day) || wa.exercise_id === 0) return false;
-  const logs = look.logs(wa.id);
-  if (logs.length === 0) return false;
-  const home = look.home(day.client_id);
-  // An assisted lift (23 Oct, Alex): its kg is help, so its best is the least and the target moves down to it.
-  const assisted = assistedRow(look.exercise(wa.exercise_id), wa.variation_id);
-
-  const byGym = new Map<Lane, SetLog[]>();
-  for (const sl of logs) {
-    const lane = laneOfGym(sl.gym_id, home);
-    byGym.set(lane, [...(byGym.get(lane) ?? []), sl]);
-  }
-
-  // Every later occurrence of the same exercise for this client moves up:
-  // the same weekday next week, but also a second session later this week
-  // that repeats it, and every week after, up to the coach's next reset in
-  // that lane. "Later" is by day: a later week, or a later weekday of the
-  // same week. Occurrences the client has already logged against are left
-  // alone, and a target the coach planned higher than the logged weight stays.
-  // Only a set in the rep range counts (4 Nov, Alex: 70 kg × 8 against 10–12
-  // raised weeks 6–13 to 70; 10 Nov, Alex: over the top doesn't count either).
-  const rows = look.occurrences(day.client_id, wa.exercise_id);
+/**
+ * One exercise of one client worked out by the weight rule (24 Nov, Alex: lib/targetRule.ts freshLane): every later
+ * row they haven't logged, in a week that isn't done, from the coach's own figure and the sets that are there now, so a
+ * set corrected, removed or discarded, or a swap set after the sets went in, takes its raise with it. A row swapped
+ * with nothing logged yet is left as it is. How many rows it changed; `record`, when given, gets each lane it changed
+ * (the first fresh pass's record, noteTargetsRecomputed).
+ */
+function progressExercise(clientId: number, exerciseId: number, look: ProgressLookup, record?: TargetChange[]): number {
+  // A free session's exercises (19 Oct) are names, all exercise 0.
+  if (exerciseId === 0) return 0;
+  const rows = look.occurrences(clientId, exerciseId);
+  if (rows.length === 0) return 0;
+  const home = look.home(clientId);
   const logged = look.logged();
-  const later = rows.filter((o) => o.row.id !== wa.id && laterSlot(o.slot, day) && !logged.has(o.row.id));
-  const range = repWindow(wa.reps);
-
-  let changed = false;
-  for (const [lane, laneLogs] of byGym) {
-    const lift = liftOf(setsSinceReset(laneLogs, wa, lane), laneKg(wa, lane), lane, assisted, range);
-    if (!lift) continue;
-    const stop = stopAfter(day, rows, lane);
-    for (const o of later) {
-      if (!beforeStop(o.slot, stop)) continue;
-      const kg = raisedTo(o.row, lane, lift, assisted);
-      if (kg == null) continue;
-      writeLane(o.row, lane, kg);
-      changed = true;
+  const ex = look.exercise(exerciseId);
+  // The sets that can raise: every logged row of the plan's and its duplicates', never a swapped one's (14 Oct: sets on
+  // a substitute say nothing about the prescribed exercise's weight) nor those logged under a swap since undone. The
+  // warm-ups are never sets (warmup_sets, db.ts).
+  const sources: Source[] = [];
+  for (const o of look.sources(clientId, exerciseId)) {
+    if (o.row.swap) continue;
+    const logs = look.logs(o.row.id);
+    if (logs.length === 0) continue;
+    sources.push({
+      slot: o.slot,
+      row: o.row,
+      program: look.program(clientId, o.slot.week_number),
+      variation: o.row.variation_id ?? null,
+      reps: o.row.reps,
+      sets: logs.filter((s) => !underSwap(o.row, s.id)).map((s) => ({ weight_kg: s.weight_kg, reps: s.reps, logged_at: s.logged_at, lane: laneOfGym(s.gym_id, home) })),
+    });
+  }
+  const stopOf = stopsOf(rows);
+  let changed = 0;
+  for (const o of rows) {
+    if (logged.has(o.row.id) || o.row.swap || look.weekDone(clientId, o.slot.week_number)) continue;
+    const dest = { slot: o.slot, row: o.row, program: look.program(clientId, o.slot.week_number), variation: o.row.variation_id ?? null, reps: o.row.reps };
+    // An assisted lift (23 Oct, Alex): its kg is help, so its best is the least and the target moves down to it.
+    const assisted = assistedRow(ex, o.row.variation_id);
+    let moved = false;
+    for (const lane of lanesOf(o.row, sources)) {
+      const best = freshLane(dest, lane, sources, rows, assisted, stopOf);
+      if (best === undefined) continue;
+      const before = record ? { kg: laneKg(o.row, lane), coach: storedCoachKg(o.row, lane) } : null;
+      if (!setLane(o.row, lane, best)) continue;
+      moved = true;
+      if (record && before) record.push({ rowId: o.row.id, lane, before: before.kg, after: laneKg(o.row, lane), ...(before.coach !== undefined ? { coach_kg_before: before.coach } : {}) });
     }
+    if (moved) changed++;
   }
   return changed;
 }
+
+/** The coach's own figure kept beside a lane's raise as stored (absent: the lane's weight was theirs). */
+function storedCoachKg(row: StoredAssignment, lane: Lane): number | null | undefined {
+  return lane == null ? row.coach_kg : row.gym_targets?.[lane]?.coach_kg;
+}
+
+/** A lane the first fresh pass changed (noteTargetsRecomputed): its weight before and after, and the coach's own
+    figure kept beside it before (absent when there was none), so any of it can be put back by hand. */
+type TargetChange = { rowId: number; lane: Lane; before: number | null; after: number | null; coach_kg_before?: number | null };
 
 // ---- The weight rule's pass, on what changed (17 Nov, mission 2 of docs/database-plan.md) ----
 //
@@ -2662,9 +2801,11 @@ function progressRow(wa: StoredAssignment | undefined, look: ProgressLookup): bo
 //
 // Why that is the same: what a run of the rule moves, and everything it reads, is one exercise of one client (its rows
 // on the client's planned days, their sets, the client's home gym, the exercise's name and variations; never the time
-// of day), and a pass leaves each exercise as a second pass would (the rule only raises a weight up to what was
-// lifted, and keeps when it was typed). So an exercise nothing touched since the last pass would come out of a full
-// pass as it went in, and running only the touched ones, in the order a full pass takes them, ends the same.
+// of day but a week becoming done, which only stops a row changing), and a pass leaves each exercise as a second pass
+// would (24 Nov: each row is worked out from the coach's own figure and the sets there, never from what it reads now,
+// and keeps when it was typed). So an exercise nothing touched since the last pass would come out of a full pass as it
+// went in, and running only the touched ones, in the order a full pass takes them, ends the same. The pass goes by
+// exercise, not by logged row, so an exercise whose last set went still has its raise taken back.
 //
 // What touches one: a set stored, changed or taken off (markProgressRow), the coach's weight, reps, swap or variation
 // on a row, a gym's weights or the home gym moving, sessions renumbered or weeks shifted (markProgressClient), an
@@ -2694,6 +2835,29 @@ const progressState = (): ProgressState => (progressG._ironlineProgress ??= { ro
 // one, so a change to the rule itself is applied to every row, as the pass every minute used to.
 progressState().all = true;
 
+/**
+ * The first full pass with the fresh rule (24 Nov, Alex: Flat Chest Press weeks 8–13 back from 150 to 120). The pass
+ * itself is the normal full pass, idempotent as every pass is, run at start as always: the flag changes nothing it does.
+ * It only gates the record and the log line, once: every lane that first pass changed (its weight before and after, the
+ * coach's own figure kept beside it before), so what the fresh rule took back can be read and put back by hand, kept on
+ * the store under the flag (targets_recomputed_v1: when, how many, the first TARGET_RECORD_CAP of them). A full pass
+ * deferred in pg mode (its view not every set) is no full pass, so it leaves the record for the next one.
+ */
+const TARGET_RECORD_CAP = 1000;
+
+/** The record to fill on this pass: only on a full pass with no record kept yet. */
+function targetRecordFor(full: boolean): TargetChange[] | undefined {
+  return full && !getData().targets_recomputed_v1 ? [] : undefined;
+}
+
+function noteTargetsRecomputed(record: TargetChange[] | undefined, moved: number) {
+  if (!record) return;
+  const data = getData();
+  data.targets_recomputed_v1 = { at: new Date().toISOString(), rows: moved, lanes: record.length, changes: record.slice(0, TARGET_RECORD_CAP) };
+  persist();
+  console.log(`[progress] every target worked out afresh once (24 Nov): ${moved} row${moved === 1 ? "" : "s"} changed, ${record.length} lane${record.length === 1 ? "" : "s"} recorded${record.length > TARGET_RECORD_CAP ? ` (the first ${TARGET_RECORD_CAP} kept)` : ""}`);
+}
+
 /** A row's sets or weights changed: its exercise's weights are worked out again on the next pass. */
 export function markProgressRow(workoutAssignmentId: number) {
   progressState().rows.add(workoutAssignmentId);
@@ -2705,6 +2869,234 @@ export function markProgressClient(clientId: number) {
 /** Something every client's rows may read changed (an exercise's name or variations): the next pass is a full one. */
 export function markProgressAll() {
   progressState().all = true;
+}
+
+// ---- A target not reached (24 Nov, Alex: B of docs/boards/target-rule-mockup.html) ----------------------------------
+// The live programme's rows from this week on that still ask one figure the client hasn't reached in the last
+// MISSED_SESSIONS sessions of the lift in a row: the KG figure in rust with its dot, the row's ⋯ offering the figure back,
+// a row of Training's to-do strip and its dot trail (loaders.ts). Counted back from their latest session of the exercise
+// and variation, session by session, until one reached it (a set at the weight or more, less help on an assisted lift,
+// with reps at the bottom of the row's range or more), never further back than when the coach typed the weight nor than
+// the first week that session asked this figure. Only a session that is over counts (ended, or from a day before today):
+// one still being trained can reach it, never miss it. A swap, a rogue session, a session they couldn't train and one
+// without the lift neither count nor break the run; so does a set at a gym with a weight of its own, which answers
+// another figure. Only a figure with something to offer shows (a figure back, or a best to set it to): one condition for
+// the cell, the ⋯, the strip and the dots. Never the Feed, never the rail's count.
+
+/** Sessions in a row under the figure before it shows (24 Nov, Alex: "3 sessions"). */
+export const MISSED_SESSIONS = 3;
+
+/** A figure not reached, and the rows that ask it. */
+export type MissedTarget = {
+  /**
+   * The to-do strip's id: the lift, the session it sits in, the figure, the coach's own figure, and where the run began
+   * (the session that last reached it, else the floor), so a new figure, or the same one missed in a new run, is a new
+   * one and a run let go stays let go only while it lasts.
+   */
+  key: string;
+  exerciseId: number;
+  variationId: number | null;
+  name: string;
+  /** The figure asked, in kg (help, on an assisted lift). */
+  fromKg: number;
+  /** Sessions in a row under it. */
+  sessions: number;
+  /** The heaviest set inside the range in that run (the least help, on an assisted lift). */
+  best: { kg: number; reps: number } | null;
+  /** What the ⋯ offers: the coach's own figure back when the rule raised it, else the run's best. */
+  to: { kg: number; back: boolean };
+  /** The rows asking it, the earliest first, and their weeks of the programme. */
+  rows: number[];
+  weeks: number[];
+  programId: number;
+  first: { rowId: number; dayId: number; dayName: string; weekIdx: number };
+  /**
+   * Where the dots and the strip's link go (24 Nov, review): the row asking it in this calendar week, the week the coach
+   * opens on, else the first; one week for the week card's dot, the session's dot and the link, so they never part.
+   */
+  at: { rowId: number; dayId: number; dayName: string; weekIdx: number };
+};
+
+const missedMemo = new WeakMap<SetRows, Map<number, MissedTarget[]>>();
+
+/** The client's figures not reached, read once a request (loadTraining and loadDots share it). */
+export function missedTargets(sr: SetRows, clientId: number): MissedTarget[] {
+  let byClient = missedMemo.get(sr);
+  if (!byClient) missedMemo.set(sr, (byClient = new Map()));
+  let got = byClient.get(clientId);
+  if (!got) byClient.set(clientId, (got = missedTargetsOf(sr, clientId)));
+  return got;
+}
+
+function missedTargetsOf(sr: SetRows, clientId: number): MissedTarget[] {
+  const p = getDeployedProgram(clientId);
+  if (!p) return [];
+  const nowIdx = programWeekNow(p);
+  if (nowIdx > p.total_weeks) return [];
+  sr.need("missedTargets", clientId);
+  const data = getData();
+  const end = p.start_week + p.total_weeks;
+  const nowWeek = p.start_week + Math.max(nowIdx, 1) - 1;
+  const home = homeGymId(clientId);
+  const days = new Map<number, StoredDay>();
+  for (const pd of data.program_days) if (pd.client_id === clientId && pd.week_number >= p.start_week && pd.week_number < end && !days.has(pd.id)) days.set(pd.id, pd);
+  const rows = data.workout_assignments.filter((wa) => wa.exercise_id > 0 && days.has(wa.program_day_id));
+  const rowIds = new Set(rows.map((wa) => wa.id));
+  const logsOf = new Map<number, SetLog[]>();
+  for (const sl of sr.logs) {
+    if (!rowIds.has(sl.workout_assignment_id)) continue;
+    const list = logsOf.get(sl.workout_assignment_id);
+    if (list) list.push(sl);
+    else logsOf.set(sl.workout_assignment_id, [sl]);
+  }
+  const liftOf = (wa: StoredAssignment) => `${wa.exercise_id}:${wa.variation_id ?? ""}`;
+  const today = localDateStr();
+  // Each lift's sessions, by the session: when it went in (its latest set), whether it is over, and its sets that answer
+  // the home figure.
+  type Session = { dayId: number; ms: number; over: boolean; sets: { kg: number; reps: number }[] };
+  const sessionsOf = new Map<string, Map<number, Session>>();
+  for (const wa of rows) {
+    const day = days.get(wa.program_day_id)!;
+    if (isRogue(day) || day.skip_reason || wa.swap) continue;
+    for (const s of logsOf.get(wa.id) ?? []) {
+      if (s.weight_kg == null || s.reps == null || underSwap(wa, s.id)) continue;
+      const lane = laneOfGym(s.gym_id, home);
+      if (lane != null && wa.gym_targets?.[lane]?.kg != null) continue;
+      let byDay = sessionsOf.get(liftOf(wa));
+      if (!byDay) sessionsOf.set(liftOf(wa), (byDay = new Map()));
+      const at = byDay.get(day.id) ?? { dayId: day.id, ms: -Infinity, over: !!day.session_ended_at, sets: [] };
+      at.ms = Math.max(at.ms, stampMs(s.logged_at));
+      at.sets.push({ kg: s.weight_kg, reps: s.reps });
+      byDay.set(day.id, at);
+    }
+  }
+  for (const byDay of sessionsOf.values()) for (const s of byDay.values()) if (!s.over && Number.isFinite(s.ms) && localDateStr(new Date(s.ms)) < today) s.over = true;
+  // Each planned session's row of a lift, by its week (the session is its day of the week in the programme), for the
+  // first week it asked a figure.
+  const slotRow = new Map<string, StoredAssignment>();
+  for (const wa of rows) {
+    const day = days.get(wa.program_day_id)!;
+    if (day.free) continue;
+    const at = `${liftOf(wa)}|${day.day_of_week}|${day.week_number}`;
+    if (!slotRow.has(at)) slotRow.set(at, wa);
+  }
+  // When a programme week begins (its Monday, as programWeekNow counts the weeks).
+  const startMs = p.deployed_at ? stampMs(`${weekStart(localDayOf(p.deployed_at))} 00:00:00`) : NaN;
+  const weekFrom = (week: number) => (Number.isFinite(startMs) ? startMs + (week - p.start_week) * 7 * 86400000 : -Infinity);
+  // The coach's own figure on a row (coach_kg beside a raise, else the weight).
+  const coachFig = (wa: StoredAssignment) => (wa.coach_kg !== undefined ? wa.coach_kg : wa.target_weight_kg);
+  // The rows still asking: this week on, on the plan, nothing logged, not swapped, a figure and a range to reach. One
+  // group a lift, a session of the programme, a figure and a coach's own figure (24 Nov), so Back to and Set to only
+  // ever touch rows that ask the same thing in the same place.
+  const groups = new Map<string, StoredAssignment[]>();
+  for (const wa of rows) {
+    const day = days.get(wa.program_day_id)!;
+    if (day.free || day.week_number < nowWeek || wa.swap || wa.target_weight_kg == null || logsOf.has(wa.id) || !repWindow(wa.reps)) continue;
+    const key = `missed-${wa.exercise_id}-${wa.variation_id ?? 0}-s${day.day_of_week}-${wa.target_weight_kg}-c${coachFig(wa) ?? "none"}`;
+    const list = groups.get(key);
+    if (list) list.push(wa);
+    else groups.set(key, [wa]);
+  }
+  const out: MissedTarget[] = [];
+  for (const [group, list] of groups) {
+    list.sort((a, b) => {
+      const x = days.get(a.program_day_id)!;
+      const y = days.get(b.program_day_id)!;
+      return x.week_number - y.week_number || x.day_of_week - y.day_of_week || a.order_index - b.order_index;
+    });
+    const first = list[0];
+    const day = days.get(first.program_day_id)!;
+    const kg = first.target_weight_kg!;
+    const range = repWindow(first.reps)!;
+    const ex = data.exercises.find((e) => e.id === first.exercise_id);
+    const assisted = assistedRow(ex, first.variation_id);
+    // Never further back than the coach typing the weight, nor than the first week this session asked it (24 Nov: a
+    // figure the rule raised in week 6 is no figure missed in week 3, and a row typed before stamps existed has no stamp).
+    let askedFrom = day.week_number;
+    while (slotRow.get(`${liftOf(first)}|${day.day_of_week}|${askedFrom - 1}`)?.target_weight_kg === kg) askedFrom--;
+    const typed = laneTypedAt(first, null);
+    const floor = Math.max(typed ? stampMs(typed) : -Infinity, weekFrom(askedFrom));
+    const sessions = [...(sessionsOf.get(liftOf(first))?.values() ?? [])].sort((a, b) => b.ms - a.ms);
+    let n = 0;
+    let best: { kg: number; reps: number } | null = null;
+    // Where the run began: the session that last reached it, else the floor.
+    let runFrom = Number.isFinite(floor) ? `t${Math.round(floor / 1000)}` : "t0";
+    for (const s of sessions) {
+      if (s.ms <= floor) break;
+      if (s.sets.some((x) => (assisted ? x.kg <= kg : x.kg >= kg) && x.reps >= range.min)) {
+        runFrom = `d${s.dayId}`;
+        break;
+      }
+      if (!s.over) continue;
+      n++;
+      for (const x of s.sets) {
+        if (x.reps < range.min || x.reps > range.max) continue;
+        if (!best || (assisted ? x.kg < best.kg : x.kg > best.kg) || (x.kg === best.kg && x.reps > best.reps)) best = x;
+      }
+    }
+    if (n < MISSED_SESSIONS) continue;
+    const coach = first.coach_kg;
+    const to = typeof coach === "number" && coach !== kg ? { kg: coach, back: true } : best && best.kg !== kg ? { kg: best.kg, back: false } : null;
+    // Nothing to offer is nothing to show (24 Nov): no rust figure, no ⋯ item, no strip row and no dot.
+    if (!to) continue;
+    const placeOf = (wa: StoredAssignment) => {
+      const d = days.get(wa.program_day_id)!;
+      const ofWeek = [...days.values()].filter((x) => !x.free && x.week_number === d.week_number).sort((a, b) => a.day_of_week - b.day_of_week);
+      return { rowId: wa.id, dayId: d.id, dayName: d.label?.trim() || `Session ${ofWeek.findIndex((x) => x.id === d.id) + 1}`, weekIdx: d.week_number - p.start_week + 1 };
+    };
+    const nowRow = list.find((wa) => days.get(wa.program_day_id)!.week_number === nowWeek);
+    out.push({
+      key: `${group}-${runFrom}`,
+      exerciseId: first.exercise_id,
+      variationId: first.variation_id ?? null,
+      name: assignmentView(first, ex).exercise_name ?? "Exercise",
+      fromKg: kg,
+      sessions: n,
+      best,
+      to,
+      rows: list.map((wa) => wa.id),
+      weeks: [...new Set(list.map((wa) => days.get(wa.program_day_id)!.week_number - p.start_week + 1))],
+      programId: p.id,
+      first: placeOf(first),
+      at: placeOf(nowRow ?? first),
+    });
+  }
+  return out;
+}
+
+/**
+ * The ⋯'s "Back to 120 kg" (24 Nov, Alex): the figure not reached goes to the coach's own (or the run's best) on every
+ * row of the live programme still asking it, as the coach's typed weight (stamped now, so the sets before it can't
+ * raise it again; the figure kept beside a raise goes; never a reset). Back to puts each row's own figure back (its
+ * coach_kg); Set to puts the run's best only on rows whose range is the one that best sat in. Worked out afresh here, so
+ * a screen that is out of date changes nothing: null when the row asks no missed figure, or another than `fromKg`.
+ */
+export function setTargetFromNow(sr: SetRows, assignmentId: number, fromKg: number): { changed: number } | null {
+  const data = getData();
+  const wa = data.workout_assignments.find((x) => x.id === assignmentId);
+  const day = wa && data.program_days.find((pd) => pd.id === wa.program_day_id);
+  if (!wa || !day) return null;
+  const m = missedTargetsOf(sr, day.client_id).find((x) => x.rows.includes(assignmentId));
+  if (!m || m.fromKg !== fromKg) return null;
+  const range = repWindow(data.workout_assignments.find((x) => x.id === m.first.rowId)?.reps);
+  let changed = 0;
+  for (const id of m.rows) {
+    const row = data.workout_assignments.find((x) => x.id === id);
+    if (!row || row.target_weight_kg !== fromKg) continue;
+    let kg: number;
+    if (m.to.back) {
+      if (typeof row.coach_kg !== "number") continue;
+      kg = row.coach_kg;
+    } else {
+      const own = repWindow(row.reps);
+      if (!range || !own || own.min !== range.min || own.max !== range.max) continue;
+      kg = m.to.kg;
+    }
+    typeWeight(sr, row, null, kg, true);
+    changed++;
+  }
+  if (changed) persist();
+  return { changed };
 }
 
 /** The lists the rule reads, and their lengths: a row, day, gym or exercise added or removed, or sets removed (every
@@ -2851,6 +3243,7 @@ function runProgressPass(sr: SetRows, covers: ReadonlySet<number> | null = null)
     const look = progressIndex(sr);
     // The exercises to work out again: a client's every one, a marked row's own.
     let take: ((row: StoredAssignment) => boolean) | undefined;
+    let takeGroup: ((client: number, exercise: number) => boolean) | undefined;
     if (!full) {
       const groupOf = (row: StoredAssignment | undefined) => {
         const day = row && look.day(row.program_day_id);
@@ -2861,9 +3254,10 @@ function runProgressPass(sr: SetRows, covers: ReadonlySet<number> | null = null)
         const g = groupOf(look.row(id));
         if (g) groups.add(g.key);
       }
+      takeGroup = (client, exercise) => clientsMarked.has(client) || groups.has(`${client}|${exercise}`);
       take = (row) => {
         const g = groupOf(row);
-        return !!g && (clientsMarked.has(g.client) || groups.has(g.key));
+        return !!g && takeGroup!(g.client, row.exercise_id);
       };
     }
 
@@ -2871,16 +3265,15 @@ function runProgressPass(sr: SetRows, covers: ReadonlySet<number> | null = null)
     // carryEarlierResets), before the lifts from it on move the rows again.
     const carried = carryEarlierResets(look, take);
     if (carried) persist();
-    // Goals progress from what was logged before the rule existed too: every
-    // assignment with logs gets one pass. Cheap, idempotent, and a no-op for
-    // a next week that already has logs of its own.
+    // Every exercise on the plan is worked out (24 Nov): one with no set left takes back a raise as well.
     let moved = 0;
-    for (const id of look.order) {
-      const wa = look.row(id);
-      if (take && !(wa && take(wa))) continue;
-      if (progressRow(wa, look)) moved++;
+    const record = targetRecordFor(full);
+    for (const [c, e] of look.groups()) {
+      if (takeGroup && !takeGroup(c, e)) continue;
+      moved += progressExercise(c, e, look, record);
     }
     if (moved) persist();
+    noteTargetsRecomputed(record, moved);
 
     if (full) st.fullOn = today;
     // Only the day's own full pass, with nothing marked waiting, can say a write marked nothing: at start, after a list
@@ -2948,6 +3341,7 @@ function runProgressPassPg(sr: SetRows, covers: ReadonlySet<number> | null) {
   try {
     const look = progressIndex(sr);
     let take: ((row: StoredAssignment) => boolean) | undefined;
+    let takeGroup: ((client: number, exercise: number) => boolean) | undefined;
     if (!full) {
       const groupOf = (row: StoredAssignment | undefined) => {
         const day = row && look.day(row.program_day_id);
@@ -2964,20 +3358,22 @@ function runProgressPassPg(sr: SetRows, covers: ReadonlySet<number> | null) {
       putBack(rowsOut, [...clientsMarked].filter((c) => !held(c)));
       const takenClients = new Set([...clientsMarked].filter(held));
       if (covers) sr.need("runProgressPass", [...new Set([...takenClients, ...[...groups].map((k) => Number(k.split("|")[0]))])]);
+      takeGroup = (client, exercise) => held(client) && (takenClients.has(client) || groups.has(`${client}|${exercise}`));
       take = (row) => {
         const g = groupOf(row);
-        return !!g && held(g.client) && (takenClients.has(g.client) || groups.has(g.key));
+        return !!g && takeGroup!(g.client, row.exercise_id);
       };
     }
     const carried = carryEarlierResets(look, take);
     if (carried) persist();
     let moved = 0;
-    for (const id of look.order) {
-      const wa = look.row(id);
-      if (take && !(wa && take(wa))) continue;
-      if (progressRow(wa, look)) moved++;
+    const record = targetRecordFor(full);
+    for (const [c, e] of look.groups()) {
+      if (takeGroup && !takeGroup(c, e)) continue;
+      moved += progressExercise(c, e, look, record);
     }
     if (moved) persist();
+    noteTargetsRecomputed(record, moved);
     if (full) st.fullOn = today;
     if (full && nightly && before && !reshaped && !asked && rowsMarked.size === 0 && clientsMarked.size === 0 && (carried || moved)) {
       console.warn(`[progress] the day's full pass moved weights on ${moved} row${moved === 1 ? "" : "s"}${carried ? " and carried a reset" : ""}: a write did not mark them (markProgressRow)`);
@@ -8038,6 +8434,8 @@ export function dismissHomeAction(clientId: number, actionId: string | string[],
   // Kept small: only the items that still stand stay recorded. Every item, let go or not (2 Nov: the list after the
   // filter left out what was let go before, so each Done brought the one before it back).
   const standing = new Set(getClientHomeActions(clientId, chat, food, ck, sr).allActionIds);
+  // A target not reached (24 Nov) is Training's strip alone, never a Needs-you item: kept while it still stands.
+  for (const m of missedTargets(sr, clientId)) standing.add(m.key);
   const next: Record<string, number> = {};
   for (const [id, at] of Object.entries(client.coach_dismissed ?? {})) if (standing.has(id)) next[id] = at;
   const now = Date.now();
@@ -10414,42 +10812,15 @@ export function setHomeGym(sr: SetRows, gymId: number) {
   for (const g of data.client_goals) {
     if (g.client_id === clientId && g.tracked_by?.kind === "exercise" && g.tracked_by.gymId == null) g.tracked_by = { ...g.tracked_by, gymId: oldHome };
   }
-  for (const wa of assignments) {
-    const targets = { ...(wa.gym_targets ?? {}) };
-    const incoming = targets[gymId];
-    // The coach's own figure beside a raised weight goes with its gym's weight too (coach_kg, 4 Nov): a gym's null
-    // there means it followed the home weight, so the old home's own figure.
-    const homeCoach = wa.coach_kg !== undefined ? wa.coach_kg : wa.target_weight_kg;
-    // A reset goes with its gym's weight (lib/targetRule.ts).
-    targets[oldHome] = {
-      kg: wa.target_weight_kg,
-      set_at: wa.target_set_at ?? null,
-      ...(wa.target_pinned ? { pinned: true } : {}),
-      ...(wa.coach_kg !== undefined ? { coach_kg: wa.coach_kg } : {}),
-    };
-    if (wa.target_pinned || incoming?.pinned) wa.target_pinned = !!incoming?.pinned && incoming.kg != null;
-    // A week trained at the new home before it had a weight of its own was
-    // its first visit there: what was lifted is that week's weight, or the
-    // week would read as short of the old home's figure.
-    const firstVisitBest = Math.max(
-      ...sr.logs
-        .filter((sl) => sl.workout_assignment_id === wa.id && sl.gym_id === gymId && sl.weight_kg != null)
-        .map((sl) => sl.weight_kg as number)
-    );
-    if (incoming?.kg != null) {
-      wa.target_weight_kg = incoming.kg;
-      wa.target_set_at = incoming.set_at ?? null;
-      if (incoming.coach_kg !== undefined) wa.coach_kg = incoming.coach_kg ?? homeCoach;
-      else delete wa.coach_kg;
-    } else if (wa.target_weight_kg != null && Number.isFinite(firstVisitBest)) {
-      wa.target_weight_kg = firstVisitBest;
-      wa.target_set_at = null;
-      // What was lifted there is the rule's figure; the coach's own is the one the gym followed.
-      wa.coach_kg = homeCoach;
-    }
-    delete targets[gymId];
-    wa.gym_targets = targets;
+  // The sets by row, read once (a scan of every set a row was quadratic on a client with years of them).
+  const bestThere = new Map<number, number>();
+  for (const sl of sr.logs) {
+    if (sl.gym_id !== gymId || sl.weight_kg == null || !assignmentIds.has(sl.workout_assignment_id)) continue;
+    bestThere.set(sl.workout_assignment_id, Math.max(bestThere.get(sl.workout_assignment_id) ?? -Infinity, sl.weight_kg));
   }
+  // Each row's weights move lanes in one place (lib/targetRule.ts moveHome): a week trained at the new home before it
+  // had a weight of its own was its first visit there, and what was lifted is that week's weight, as the coach's own.
+  for (const wa of assignments) moveHome(wa, oldHome, gymId, bestThere.get(wa.id) ?? null);
   for (const g of data.client_gyms) if (g.client_id === clientId) g.is_home = g.id === gymId;
   // Every lane the rule reads moved (runProgressPass).
   markProgressClient(clientId);
@@ -11015,7 +11386,7 @@ export function duplicateSession(sourceId: number, week: number, name?: string):
   if (rows.length === 0 && cardio.length === 0) return null;
   const day: ProgramDay = { id: allocId("program_days"), client_id: source.client_id, week_number: week, day_of_week: nextFreeSlot(source.client_id, week), label: source.label || name?.trim().slice(0, 80) || `Session ${source.day_of_week}`, status: "published", free: true, copy_of: source.id };
   data.program_days.push(day);
-  for (const wa of rows) data.workout_assignments.push({ ...copiedWeights(wa), sets_removed: undefined, warmup_sets: undefined, swap: undefined, id: allocId("workout_assignments"), program_day_id: day.id });
+  for (const wa of rows) data.workout_assignments.push({ ...copiedWeights(wa), sets_removed: undefined, warmup_sets: undefined, swap: undefined, swap_set_ids: undefined, id: allocId("workout_assignments"), program_day_id: day.id });
   for (const c of cardio) data.cardio_entries.push({ ...c, swap: undefined, id: allocId("cardio_entries"), program_day_id: day.id });
   persist();
   return day.id;
@@ -11312,6 +11683,7 @@ export async function discardSession(programDayId: number, opts: { onlyIfNoSets?
       if (!ids.has(wa.id)) continue;
       delete wa.warmup_sets;
       delete wa.swap;
+      delete wa.swap_set_ids;
       delete wa.sets_removed;
     }
     const cardioIds = new Set(listCardioForDay(day.id).map((c) => c.id));
@@ -11360,7 +11732,11 @@ export function setExerciseSwap(assignmentId: number, swap: { library_exercise_i
   if (!wa) return;
   const name = swap?.custom_name?.trim().slice(0, 80) || null;
   const lib = swap?.library_exercise_id ?? null;
-  if (swap && (lib != null || name)) wa.swap = { library_exercise_id: lib, custom_name: lib != null ? null : name, at: new Date().toISOString() };
+  const now = new Date().toISOString();
+  // A swap taken back or replaced leaves the sets logged under it marked (swap_set_ids, by logSet as each went in, 24 Nov,
+  // Alex): they stay the substitute's, so they never raise the prescribed lift, and are no last time or best of it
+  // (underSwap).
+  if (swap && (lib != null || name)) wa.swap = { library_exercise_id: lib, custom_name: lib != null ? null : name, at: now };
   else delete wa.swap;
   // A swapped row's sets carry nothing; taken back, they do again (runProgressPass).
   markProgressRow(wa.id);
@@ -11610,7 +11986,8 @@ function exerciseHistoryFor(sr: SetRows, assignmentId: number): { day: ProgramDa
     if ((other.variation_id ?? null) !== (wa.variation_id ?? null)) continue;
     const pd = days.get(other.program_day_id);
     if (!pd || !inPhase(pd) || at(pd) >= at(day)) continue;
-    const logs = sr.logs.filter((sl) => sl.workout_assignment_id === other.id).sort((a, b) => a.set_number - b.set_number);
+    // Sets logged while a swap later undone was on it are the substitute's (24 Nov, underSwap).
+    const logs = sr.logs.filter((sl) => sl.workout_assignment_id === other.id && !underSwap(other, sl.id)).sort((a, b) => a.set_number - b.set_number);
     if (!logs.length) continue;
     out.push({ day: pd, logs });
   }
@@ -11875,7 +12252,7 @@ export function copyProgramDay(fromDayId: number, toDayId: number) {
     const id = allocId("workout_assignments");
     // The prescription only: what the client did (warm-ups, a swap) stays on the week they did it, and a reset stays on
     // the row the coach typed it on (copiedWeights, 23 Oct).
-    data.workout_assignments.push({ ...copiedWeights(wa), sets_removed: undefined, warmup_sets: undefined, swap: undefined, id, program_day_id: dest.id });
+    data.workout_assignments.push({ ...copiedWeights(wa), sets_removed: undefined, warmup_sets: undefined, swap: undefined, swap_set_ids: undefined, id, program_day_id: dest.id });
     for (const v of data.assignment_custom_values.filter((v) => v.workout_assignment_id === wa.id)) {
       data.assignment_custom_values.push({ ...v, id: allocId("assignment_custom_values"), workout_assignment_id: id });
     }

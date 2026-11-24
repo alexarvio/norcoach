@@ -38,7 +38,7 @@ export type TodoItem = {
   /** The Needs-you id ("week", "complete-12", "read-…"), unique on one client. */
   key: string;
   tab: DotTab;
-  kind: "setup" | "week" | "locked" | "video" | "ask-call" | "complete-call" | "read";
+  kind: "setup" | "week" | "locked" | "video" | "ask-call" | "complete-call" | "read" | "missed";
   /** "Week 5 has no sessions", "Video of Back Squat", "Check-In, 2/11, to complete". */
   what: string;
   /** The client's own words, in quotes after it. */
@@ -55,6 +55,14 @@ export type TodoItem = {
   eventId?: string | null;
   /** A track with nothing live (`track-…`): the track New phase opens on. */
   track?: "lifestyle" | "training" | "nutrition" | null;
+  /** Facts in grey after it, parted by the drawn bar, in place of their words (a target not reached: `Push | 150 kg |
+   *  best 120 × 6`). */
+  facts?: (string | null)[];
+  /** How long it has waited, when it is not a time (a target not reached: `3 sessions`). */
+  wait?: string;
+  /** A target not reached in 3 sessions (24 Nov, Alex: B of docs/boards/target-rule-mockup.html): the row, the figure it
+   *  asks and what Back to puts there, in kg; the session it sits in. Training's strip says it in the unit picked. */
+  missed?: { assignmentId: number; dayId: number; fromKg: number; toKg: number; back: boolean; best: { kg: number; reps: number } | null; session: string; sessions: number };
 };
 
 export const NO_DOTS: DotTrail = { tabs: [], training: { weeks: {}, days: [], exercises: [] }, food: {}, meetings: false, unlock: false, todo: [] };
