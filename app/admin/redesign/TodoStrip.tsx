@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CameraIcon, CheckIcon } from "../../components/icons";
+import { CameraIcon, ChatIcon, CheckIcon } from "../../components/icons";
 import { backToTargetsAction, dismissHomeActionAction, markSeenAction } from "../../lib/actions";
 import { newOnceKey } from "../../lib/onceKey";
 import { Dialog } from "../../components/ui/dialog";
@@ -15,6 +15,7 @@ import { RowFold } from "./RowFold";
 import { TRACK_ACCENT } from "../phaseChrome";
 import { landOnSoon } from "../../lib/landOn";
 import { useCloseOnEmptyClick } from "./useCloseOnEmptyClick";
+import { useOpenChat } from "./ChatPanel";
 import type { DotTab, TodoItem } from "./dots";
 import "./todo-panel.css";
 
@@ -187,6 +188,18 @@ export function TodoPanel({
   }, [open, onClose]);
 
   const lbs = (handler("training")?.unit?.() ?? units) === "lbs";
+  // A target not reached, told to the client in the chat (24 Nov, Alex: "the option here of texting the client, linking
+  // the exercise… so the client also can see what am I talking about"): the chat opens on their thread linked to the
+  // exercise in the session it was last missed in, as Training's exercise chat links it, the bar empty (nothing
+  // pre-written). Opening the chat closes this panel (RedesignShell).
+  const openChat = useOpenChat();
+  const firstName = clientName.split(" ")[0] || clientName;
+  const messageAbout = (item: TodoItem) => {
+    const m = item.missed;
+    if (!m || !openChat) return;
+    const week = /[?&]week=(d+)/.exec(item.href)?.[1];
+    openChat({ area: "Training", label: `${item.what} · ${m.session}${week ? `, Week ${week}` : ""}`, link: { kind: "exercise", dayId: m.dayId, assignmentId: m.assignmentId } });
+  };
   /** A row's words: a target's in the unit shown (24 Nov), the rest as the server says them. */
   const told = (i: TodoItem) => {
     const m = i.missed;
@@ -294,6 +307,11 @@ export function TodoPanel({
                   <SepJoin parts={[...(item.words ? [`“${item.words}”`] : (item.facts ?? []).slice(0, 1)), wait ? <em key="w">{wait}</em> : null, ...(item.words ? [] : (item.facts ?? []).slice(1))]} />
                 </small>
               </div>
+              {item.missed && openChat && (
+                <button type="button" className="tdp-tool" title={`Message ${firstName} about ${item.what}`} aria-label={`Message ${firstName} about ${item.what}`} onClick={() => messageAbout(item)}>
+                  <ChatIcon />
+                </button>
+              )}
               <button type="button" className="tdp-act" onClick={() => act(item)}>
                 {item.action}
               </button>
