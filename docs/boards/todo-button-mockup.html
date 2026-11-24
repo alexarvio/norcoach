@@ -1,0 +1,106 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>To do button</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600&display=swap" rel="stylesheet"><style>
+  :root { --ink:#141a24; --body:#3a4250; --sec:#5b6474; --faint:#8b93a1; --label:#98A2B3; --line:#E1E5EB; --btn:#DCE1E8; --div:#EEF0F3; --page:#f4f7fc; --green:#2f7a3f; --rust:#b8471f; --indigo:#3a3390; --brand:#B8F329; --blue:#2f6fd6; --beige:#a08a5c; }
+  * { box-sizing:border-box; margin:0; }
+  body { font-family:Archivo,system-ui,sans-serif; font-weight:500; color:var(--ink); background:#fff; padding:28px 24px 80px; -webkit-font-smoothing:antialiased; }
+  h1 { font-size:20px; font-weight:600; margin-bottom:4px; }
+  .sub { color:var(--faint); font-size:13px; margin-bottom:30px; max-width:1080px; line-height:1.55; }
+  h2 { font-size:16px; font-weight:600; margin:0 0 4px; } .rec { margin-left:6px; height:20px; padding:0 8px; border-radius:999px; box-shadow:inset 0 0 0 1px rgba(47,122,63,.35); color:var(--green); font-size:10.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; display:inline-grid; place-items:center; vertical-align:2px; }
+  .sec { margin-bottom:56px; } .sec > p { font-size:12.5px; color:var(--faint); margin-bottom:16px; max-width:1000px; line-height:1.55; }
+  .screen { position:relative; width:1180px; background:var(--page); border-radius:18px; padding:20px 24px 28px; box-shadow:0 0 0 1px var(--line); overflow:hidden; }
+  svg { fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+  /* client tabs */
+  .nav { display:flex; align-items:center; gap:12px; margin-bottom:18px; }
+  .tabs { display:inline-flex; padding:4px; border-radius:999px; background:#E9ECF1; font-size:13px; font-weight:600; }
+  .tabs span { position:relative; height:30px; padding:0 13px; border-radius:999px; display:grid; place-items:center; color:var(--sec); }
+  .tabs span.on { background:var(--brand); color:var(--ink); }
+  .tabs span i { position:absolute; top:5px; right:5px; width:6px; height:6px; border-radius:50%; background:var(--rust); }
+  /* header */
+  .hd { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:6px; }
+  .hd .t { font-size:24px; font-weight:600; display:flex; align-items:center; gap:10px; } .hd .t small { font-size:11px; font-weight:600; letter-spacing:.12em; color:var(--green); background:rgba(47,122,63,.12); padding:3px 8px; border-radius:6px; }
+  .hd .f { font-size:13px; color:var(--sec); margin-top:6px; } .saved { font-size:13px; color:var(--green); font-weight:500; }
+  .tools { display:flex; gap:8px; align-items:center; }
+  .pill { height:36px; padding:0 14px; border-radius:999px; background:#fff; box-shadow:inset 0 0 0 1px var(--btn); display:inline-flex; align-items:center; gap:8px; font-size:13px; font-weight:600; white-space:nowrap; }
+  .pill svg { width:15px; height:15px; }
+  .todo-pill { box-shadow:inset 0 0 0 1.5px var(--rust); color:var(--rust); background:#fff; }
+  .todo-pill b { min-width:20px; height:20px; padding:0 6px; border-radius:999px; background:var(--rust); color:#fff; font-size:11px; display:inline-grid; place-items:center; }
+  .todo-pill.open { background:rgba(184,71,31,.08); }
+  .more { width:36px; height:36px; border-radius:50%; background:#fff; box-shadow:inset 0 0 0 1px var(--btn); display:grid; place-items:center; } .more svg { width:16px; height:16px; }
+  /* faded page under */
+  .ghost { margin-top:18px; display:flex; gap:10px; }
+  .wk { width:118px; height:70px; border-radius:14px; background:#fff; box-shadow:inset 0 0 0 1px var(--line); padding:10px 12px; font-size:13px; font-weight:600; position:relative; }
+  .wk small { display:block; color:var(--faint); font-size:11px; margin-top:22px; font-weight:500; } .wk.now { box-shadow:inset 0 0 0 1.5px var(--brand); }
+  .wk i { position:absolute; top:7px; right:7px; width:6px; height:6px; border-radius:50%; background:var(--rust); }
+  .card { margin-top:16px; background:#fff; border-radius:18px; box-shadow:inset 0 0 0 1px var(--line); height:180px; padding:14px 22px; }
+  .card .r { height:44px; display:flex; align-items:center; gap:10px; font-size:15px; font-weight:600; border-bottom:1px solid var(--div); } .card .r i { width:6px; height:6px; border-radius:50%; background:var(--rust); }
+  .card .r small { font-size:13px; color:var(--faint); font-weight:500; }
+  /* the list of what's owed */
+  .panel { position:absolute; z-index:5; width:560px; background:#fff; border-radius:14px; box-shadow:0 18px 40px rgba(20,30,50,.18); padding:8px 6px 6px; }
+  .grp { padding:10px 12px 4px; font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; display:flex; align-items:center; gap:7px; }
+  .grp svg { width:14px; height:14px; } .grp .n { color:var(--faint); letter-spacing:.06em; }
+  .row { display:flex; align-items:center; gap:10px; min-height:52px; padding:6px 12px; border-radius:9px; }
+  .row:hover, .row.h { background:#fafbfd; }
+  .row .w { flex:1; min-width:0; } .row .w b { font-size:14px; font-weight:600; display:block; } .row .w small { display:block; margin-top:2px; font-size:12.5px; color:var(--faint); line-height:1.35; }
+  .row .w small em { font-style:normal; color:var(--rust); font-weight:600; }
+  .bar { display:inline-block; width:1px; height:11px; background:var(--label); margin:0 6px; vertical-align:-1px; }
+  .act { height:32px; padding:0 10px; border-radius:8px; font-size:13px; font-weight:600; color:var(--ink); display:inline-flex; align-items:center; white-space:nowrap; } .row.h .act { background:#f5f6f8; }
+  .ck { width:30px; height:30px; border-radius:50%; display:grid; place-items:center; color:var(--faint); } .ck svg { width:15px; height:15px; }
+  .more-row { padding:8px 12px 6px; font-size:13px; font-weight:600; color:var(--sec); }
+  .note { position:absolute; font-size:11.5px; color:var(--indigo); font-weight:600; }
+  .side { position:absolute; top:0; right:0; bottom:0; width:520px; background:#fff; box-shadow:-18px 0 40px rgba(20,30,50,.12); padding:18px 10px 10px; z-index:5; }
+  .side .sh { display:flex; align-items:center; justify-content:space-between; padding:0 14px 8px; } .side .sh b { font-size:18px; font-weight:600; } .side .sh small { color:var(--faint); font-size:13px; margin-left:8px; font-weight:500; }
+  .x { width:28px; height:28px; border-radius:50%; display:grid; place-items:center; color:var(--faint); } .x svg { width:14px; height:14px; }
+  .tabbtn { height:30px; padding:0 12px; border-radius:999px; display:inline-flex; align-items:center; gap:7px; font-size:13px; font-weight:600; color:var(--rust); box-shadow:inset 0 0 0 1.5px var(--rust); background:#fff; }
+  .tabbtn b { min-width:18px; height:18px; padding:0 5px; border-radius:999px; background:var(--rust); color:#fff; font-size:10.5px; display:inline-grid; place-items:center; }
+  .tabbtn.open { background:rgba(184,71,31,.08); }
+  .before { width:1180px; }
+</style></head><body>
+<h1>What's owed, behind one button</h1>
+<p class="sub">24 Nov, Alex: "instead of having all these rows here… a button somewhere, and then we can expand… it's a bit too much." Today a rust strip sits on top of a client's tab (nine rows on Alex's Training). Below, two ways to keep it one tap away, with the rows themselves made clearer either way: what happened in words, the action saying what it does, one row a lift. The rust dots that lead to each thing stay. Alex's real targets; the figures behind "Back to" are the coach's own where there is one, else the best set.</p>
+
+<div class="sec">
+  <h2>A. A button on each tab</h2>
+  <p>The tab's own count as a rust pill in its header, beside Note to Alex and ⋯. A tap drops that tab's list under it, in the floating lists' look. Nothing owed, no pill. Each tab answers for itself: Training's misses on Training, a call to complete on Meetings.</p>
+  <div class="screen" style="height:610px">
+    <div class="nav"><div class="tabs"><span>Home</span><span>Plan</span><span>Lifestyle<i></i></span><span class="on">Training<i></i></span><span>Nutrition</span><span>Shape update</span><span>Meetings<i></i></span><span>Invoices</span></div></div>
+    <div class="hd"><div><div class="t">Lat Focus <small>LIVE</small> <span class="saved">✓ All changes saved</span></div><div class="f">13 weeks <span class="bar"></span> 5/10 – 28/12</div></div>
+      <div class="tools"><span class="pill todo-pill open">To do <b>6</b></span><span class="pill"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4"/></svg>Note to Alex</span><span class="more"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></span></div></div>
+    <div class="ghost"><div class="wk">Week 7<small>16 Nov</small></div><div class="wk now">Week 8 <i></i><small>23 Nov</small></div><div class="wk">Week 9<small>30 Nov</small></div><div class="wk">Week 10<small>7 Dec</small></div></div>
+    <div class="card"><div class="r">Upper <small>7 exercises</small><i></i></div><div class="r">Push <small>6 exercises</small><i></i></div><div class="r">Pull <small>6 exercises</small><i></i></div></div>
+    <div class="panel" style="top:112px; right:178px">
+      <div class="row h"><div class="w"><b>Cable Fly</b><small>Push <span class="bar"></span><em>60 kg not reached in 4 sessions</em> <span class="bar"></span> best 45 × 10</small></div><span class="act">Set to 45 kg</span><span class="ck"><svg viewBox="0 0 24 24"><path d="m5.5 12.5 4 4 9-9"/></svg></span></div>
+      <div class="row"><div class="w"><b>Lying Triceps extension</b><small>Push, Upper <span class="bar"></span><em>95 kg not reached in 7 sessions</em> <span class="bar"></span> best 85 × 10</small></div><span class="act">Set to 85 kg</span><span class="ck"><svg viewBox="0 0 24 24"><path d="m5.5 12.5 4 4 9-9"/></svg></span></div>
+      <div class="row"><div class="w"><b>Concentration curl</b><small>Pull <span class="bar"></span><em>16 kg not reached in 6 sessions</em> <span class="bar"></span> best 15 × 10</small></div><span class="act">Set to 15 kg</span><span class="ck"><svg viewBox="0 0 24 24"><path d="m5.5 12.5 4 4 9-9"/></svg></span></div>
+      <div class="more-row">3 more</div>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <h2>B. One button for the client <span class="rec">recommended</span></h2>
+  <p>One rust count at the end of the client's tabs, everything owed for that client, whatever tab it belongs to. A tap opens a panel from the right, as the chat does, grouped by tab in the tracks' order, each row its action; a row's name opens its thing on its tab, lit as a link lands. The tab dots still say where each lives. One place to clear a client, and no tab carries a strip.</p>
+  <div class="screen" style="height:640px">
+    <div class="nav"><div class="tabs"><span>Home</span><span>Plan</span><span>Lifestyle<i></i></span><span class="on">Training<i></i></span><span>Nutrition</span><span>Shape update</span><span>Meetings<i></i></span><span>Invoices</span></div><span class="tabbtn open">To do <b>8</b></span></div>
+    <div class="hd"><div><div class="t">Lat Focus <small>LIVE</small> <span class="saved">✓ All changes saved</span></div><div class="f">13 weeks <span class="bar"></span> 5/10 – 28/12</div></div></div>
+    <div class="ghost"><div class="wk">Week 7<small>16 Nov</small></div><div class="wk now">Week 8 <i></i><small>23 Nov</small></div><div class="wk">Week 9<small>30 Nov</small></div></div>
+    <div class="card" style="width:600px"><div class="r">Upper <small>7 exercises</small><i></i></div><div class="r">Push <small>6 exercises</small><i></i></div><div class="r">Pull <small>6 exercises</small><i></i></div></div>
+    <div class="side">
+      <div class="sh"><div><b>To do</b><small>Alex Arvio</small></div><span class="x"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></span></div>
+      <div class="grp" style="color:var(--beige)"><svg viewBox="0 0 24 24"><path d="M12 20.3 4.6 13a4.6 4.6 0 0 1 6.5-6.5l.9.9.9-.9a4.6 4.6 0 0 1 6.5 6.5L12 20.3z"/></svg>Lifestyle <span class="n">1</span></div>
+      <div class="row"><div class="w"><b>Note on Sun 22 Nov</b><small>"40 mins of treadmill at 5.5 speed"</small></div><span class="act">Read</span><span class="ck"><svg viewBox="0 0 24 24"><path d="m5.5 12.5 4 4 9-9"/></svg></span></div>
+      <div class="grp" style="color:var(--indigo)"><svg viewBox="0 0 24 24"><path d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11"/></svg>Training <span class="n">6</span></div>
+      <div class="row h"><div class="w"><b>Cable Fly</b><small>Push <span class="bar"></span><em>60 kg not reached in 4 sessions</em> <span class="bar"></span> best 45 × 10</small></div><span class="act">Set to 45 kg</span><span class="ck"><svg viewBox="0 0 24 24"><path d="m5.5 12.5 4 4 9-9"/></svg></span></div>
+      <div class="row"><div class="w"><b>Lying Triceps extension</b><small>Push, Upper <span class="bar"></span><em>95 kg not reached in 7 sessions</em> <span class="bar"></span> best 85 × 10</small></div><span class="act">Set to 85 kg</span><span class="ck"><svg viewBox="0 0 24 24"><path d="m5.5 12.5 4 4 9-9"/></svg></span></div>
+      <div class="row"><div class="w"><b>Lat Pull In</b><small>Pull, Upper <span class="bar"></span><em>85 kg not reached in 5 sessions</em> <span class="bar"></span> best 82.5 × 10</small></div><span class="act">Set to 82.5 kg</span><span class="ck"><svg viewBox="0 0 24 24"><path d="m5.5 12.5 4 4 9-9"/></svg></span></div>
+      <div class="more-row">3 more</div>
+      <div class="grp" style="color:var(--blue)"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>Meetings <span class="n">1</span></div>
+      <div class="row"><div class="w"><b>Check-in call</b><small>Sat 21 Nov <span class="bar"></span><em>To complete</em></small></div><span class="act">Mark completed</span><span class="ck"><svg viewBox="0 0 24 24"><path d="m5.5 12.5 4 4 9-9"/></svg></span></div>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <h2>Either way, the rows read clearer</h2>
+  <p>Today: <b>Cable Fly</b> Push | 60 kg | best 45 × 10 … <span style="color:var(--rust)">4 sessions</span> and a round arrow down. With these: what happened in words (<span style="color:var(--rust)">60 kg not reached in 4 sessions</span>), the action saying what it does (Set to 45 kg, Back to 50 kg when the coach had set 50 before the rule raised it), one row a lift with its sessions together (Push, Upper), three shown and the rest behind "3 more". The round check still lets a row go, asking first.</p>
+</div>
+</body></html>

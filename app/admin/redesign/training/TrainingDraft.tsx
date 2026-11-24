@@ -1400,7 +1400,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
                           {/* On a done week the figures and the note read where they were typed (fixed). */}
                           {cols.sets && <Cell value={e.sets ?? String(r.sets)} onChange={(v) => edit({ sets: v })} label="Sets" width="sm" fixed={weekLocked} />}
                           {cols.weight && (
-                            <span title={multiGym ? r.gymKg.map((g) => `${g.gym}: ${kgOf(g.kg, lbs)} ${unit}`).join("\n") : undefined}>
+                            <span title={multiGym && r.gymKg.length > 1 ? r.gymKg.map((g) => `${g.gym}: ${kgOf(g.kg, lbs)} ${unit}`).join("\n") : undefined}>
                               <WeightCell
                                 key={unit}
                                 kg={e.kg !== undefined ? e.kg : r.kg}
@@ -1409,7 +1409,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
                                 fixed={weekLocked}
                                 raised={e.kg === undefined ? raisedWords(r, firstName, lbs) : null}
                                 // Gone the moment the coach types a figure of their own, as the arrow; the gyms after it on hover.
-                                missed={missed ? [missedWords(missed, lbs), ...(multiGym ? r.gymKg.map((g) => `${g.gym}: ${kgOf(g.kg, lbs)} ${unit}`) : [])].join("\n") : null}
+                                missed={missed ? [missedWords(missed, lbs), ...(multiGym && r.gymKg.length > 1 ? r.gymKg.map((g) => `${g.gym}: ${kgOf(g.kg, lbs)} ${unit}`) : [])].join("\n") : null}
                               />
                             </span>
                           )}
