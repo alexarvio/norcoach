@@ -238,6 +238,11 @@
 .rd.rls .rls-addrow.rd-addrow { display: inline-flex; flex: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
 .rd.rls .rls-add.on { background: #f5f6f8; }
 .rd-addpop.rd-addpop.rls-findpop { width: 380px; }
+/* A metric the phone can fill (24 Nov, Alex): the health heart in grey before the unit, its words on hover. */
+.rls-findpop .rls-addright { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+.rls-findpop .rls-auto { display: inline-flex; color: #98a2b3; cursor: help; }
+.rls-findpop .rls-auto svg { width: 13px; height: 13px; }
+.rls-findpop .rd-addrow-item:hover .rls-auto, .rls-findpop .rd-addrow-item.on .rls-auto { color: #8b93a1; }
 .rls-findpop .rd-addrow-bar { display: flex; align-items: center; gap: 4px; flex: none; margin: 0 0 4px; padding: 0 4px 0 0; border: 1px solid #141a24; border-radius: 12px; background: #fff; box-shadow: none; }
 .rls-findpop .rd-addrow-search { flex: 1; min-width: 0; height: 38px; padding: 0 12px; border: 0; border-radius: 12px 0 0 12px; outline: none; box-shadow: none; font: inherit; font-size: 14px; font-weight: 500; color: #141a24; }
 .rls-findpop .rd-addrow-search::placeholder { color: #98a2b3; }

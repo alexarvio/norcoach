@@ -9,7 +9,7 @@ import type { MessageLink } from "../../../lib/messageLinks";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
 import { Dialog, DialogContent } from "../../../components/ui/dialog";
 import { ConfirmChoice, ConfirmText, ConfirmThing } from "../ConfirmParts";
-import { CalendarIcon, ChartIcon, ChatIcon, NoteIcon,ChevronDownIcon, MoreIcon, PlusIcon, TrashIcon } from "../../../components/icons";
+import { CalendarIcon, ChartIcon, ChatIcon, NoteIcon,ChevronDownIcon, HeartIcon, MoreIcon, PlusIcon, TrashIcon } from "../../../components/icons";
 import type { LoggedMetric, LoggedValues } from "../../../lib/queries";
 import { ConfirmDialog, DeletePhaseDialog, MessageDialog, fmtDate, stateLabel, useClickAway } from "../training/TrainingDraft";
 import { GoalsNotePills, GripIcon } from "../training/TrainingParts";
@@ -26,6 +26,7 @@ import { Popover, PopoverAnchor, PopoverContent } from "../../../components/ui/p
 import { dayMonth, logDate } from "../../../lib/dayMonth";
 import { newOnceKey } from "../../../lib/onceKey";
 import { groupColour } from "../../../lib/categoryColors";
+import { healthKindOf } from "../../../lib/healthKind";
 import { defaultSummary, type MetricSummary } from "../../../lib/metricSummary";
 import { Sep, SepJoin } from "../Sep";
 import { Fold } from "../Fold";
@@ -639,7 +640,7 @@ export default function MeasurementsDraft({ clientId, firstName, plan }: { clien
             <div className="rls-empty">
               <span>None yet</span>
               {adding ? (
-                <AddMetricRow library={plan.library} groups={plan.groups} have={rows.map((r) => r.name.toLowerCase())} onAdd={addMetric} onClose={() => setAdding(false)} alignEnd />
+                <AddMetricRow library={plan.library} groups={plan.groups} cadence={cadence} have={rows.map((r) => r.name.toLowerCase())} onAdd={addMetric} onClose={() => setAdding(false)} alignEnd />
               ) : (
                 <button type="button" className="rls-add" onClick={() => setAdding(true)}>
                   <PlusIcon /> Metric
@@ -728,7 +729,7 @@ export default function MeasurementsDraft({ clientId, firstName, plan }: { clien
               {/* + Metric opens a dropdown with the search at its top (21 Oct, Alex): the card never stretches while adding. */}
               {/* Nothing added to an ended phase (6 Nov, Alex: an ended phase look-only). */}
               {past ? null : adding ? (
-                <AddMetricRow library={plan.library} groups={plan.groups} have={rows.map((r) => r.name.toLowerCase())} onAdd={addMetric} onClose={() => setAdding(false)} />
+                <AddMetricRow library={plan.library} groups={plan.groups} cadence={cadence} have={rows.map((r) => r.name.toLowerCase())} onAdd={addMetric} onClose={() => setAdding(false)} />
               ) : (
                 <button type="button" className="rls-add" onClick={() => setAdding(true)}>
                   <PlusIcon /> Metric
@@ -996,7 +997,7 @@ function RemoveMetricDialog({ metric: m, firstName, onRemove, onClose }: { metri
  *  search bar. Type for matches; the chevron opens the groups, a group its
  *  metrics. The list floats over the page, six rows then it scrolls, Create
  *  pinned at its foot. A pick becomes a row and the bar stays for the next. */
-function AddMetricRow({ library, groups, have, onAdd, onClose, alignEnd = false }: { library: DraftMeasurements["library"]; groups: DraftMeasurements["groups"]; have: string[]; onAdd: (name: string, unit: string, group: string) => void; onClose: () => void; /** The list opens from the button's right end, for a + Metric on a card's right. */ alignEnd?: boolean }) {
+function AddMetricRow({ library, groups, cadence, have, onAdd, onClose, alignEnd = false }: { library: DraftMeasurements["library"]; groups: DraftMeasurements["groups"]; /** The rhythm it is added to: steps, sleep and heart rate come from the phone daily alone. */ cadence: Cadence; have: string[]; onAdd: (name: string, unit: string, group: string) => void; onClose: () => void; /** The list opens from the button's right end, for a + Metric on a card's right. */ alignEnd?: boolean }) {
   const [q, setQ] = useState("");
   const [browse, setBrowse] = useState(false);
   const [pack, setPack] = useState<string | null>(null);
@@ -1037,7 +1038,16 @@ function AddMetricRow({ library, groups, have, onAdd, onClose, alignEnd = false 
   const row = (m: Item, i: number, hint: "group" | "unit") => (
     <button key={`${m.pack}-${m.name}`} type="button" role="option" aria-selected={i === cursor} className={`rd-addrow-item${i === cursor ? " on" : ""}${m.taken ? " taken" : ""}`} disabled={m.taken} onMouseEnter={() => setCursor(i)} onClick={() => pick(m)}>
       {m.name}
-      <small style={!m.taken && hint === "group" ? { color: groupColour(m.group).hex } : undefined}>{m.taken ? "On the list" : hint === "group" ? m.pack : m.unit}</small>
+      <span className="rls-addright">
+        {/* One the phone can fill (24 Nov, Alex: "an icon… that would indicate that this can be tracked automatically, just the
+            icon, and when i hover on top then we have a sentence"): the health heart, before the unit. */}
+        {!m.taken && healthKindOf({ name: m.name, unit: m.unit, frequency: cadence }) && (
+          <span className="rls-auto" title="Filled in by itself from the client’s Apple Health or Health Connect, once they connect it in the app." aria-label="Can be tracked automatically">
+            <HeartIcon />
+          </span>
+        )}
+        <small style={!m.taken && hint === "group" ? { color: groupColour(m.group).hex } : undefined}>{m.taken ? "On the list" : hint === "group" ? m.pack : m.unit}</small>
+      </span>
     </button>
   );
   return (

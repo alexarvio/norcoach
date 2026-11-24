@@ -2,7 +2,9 @@
 // rule for the sync (healthSync.ts) and the check-in pop-up, which says when the phone isn't connected yet (17 Nov,
 // Alex). Pure, so the check-in's read can ask it too.
 
-import { isStepsMetric } from "./db";
+// Steps as db.ts names them (isStepsMetric), written here so this file has no server import: the coach's metric search
+// asks it in the browser (24 Nov, Alex: an icon on a metric the phone can fill).
+const isStepsMetric = (name: string) => /\bsteps?\b/i.test(name);
 import type { MetricDefinition } from "./queries";
 
 /** A body weight's name (Weight, Body weight), never a goal or a lift's. */
