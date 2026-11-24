@@ -90,6 +90,11 @@ export async function GET(
     const allowed =
       !!user && (user.role === "coach" ? user.id === coachId || isOwner(user) : coachIdOfClient(user.client_id) === coachId);
     if (!allowed) return new Response("Not found", { status: 404 });
+  } else if (kind === "guides") {
+    // uploads/guides/team/<file>: the help guides' videos (24 Nov, Alex; lib/guides.ts), the owner's, for every coach
+    // to watch from the ? on their admin.
+    const user = await getSessionUser();
+    if (!user || user.role !== "coach" || clientIdRaw !== "team" || segments.length !== 3) return new Response("Not found", { status: 404 });
   } else {
     // uploads/avatars/<clientId>/avatar.<ext>: the client's profile photo,
     // per-client and checked like the rest.

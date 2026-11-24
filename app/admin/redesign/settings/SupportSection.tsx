@@ -169,7 +169,11 @@ export default function SupportSection({ thread }: SupportSectionData) {
 const SCREENSHOT_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 const SCREENSHOT_MAX = 20 * 1024 * 1024;
 
-function CoachSupport({ initial }: { initial: SupportLine[] }) {
+/** The coach's thread with the team and its sending. `look`: "settings", Settings' part and pills; "panel", the help
+ *  panel's Message us (help/HelpButton.tsx), no part round it, the problem form on the .dlh clean lines. `onSeen` in
+ *  place of drawing the page again once the team's lines are read (the panel clears its own dot). */
+export function CoachSupport({ initial, look = "settings", onSeen }: { initial: SupportLine[]; look?: "settings" | "panel"; onSeen?: () => void }) {
+  const panel = look === "panel";
   const [lines, setLines] = useState(initial);
   const [pending, setPending] = useState<SupportPending[]>([]);
   const [mode, setMode] = useState<"message" | "problem">("message");
@@ -183,6 +187,10 @@ function CoachSupport({ initial }: { initial: SupportLine[] }) {
   const card = useRef<HTMLDivElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const seeing = useRef(false);
+  const onSeenRef = useRef(onSeen);
+  useEffect(() => {
+    onSeenRef.current = onSeen;
+  });
 
   // The screenshot's own little picture while it is attached, let go with it.
   const shown = useRef<string | null>(null);
@@ -218,7 +226,7 @@ function CoachSupport({ initial }: { initial: SupportLine[] }) {
       setLines((ls) => ls.map((l) => (l.unread ? { ...l, unread: false } : l)));
       markSupportSeenAction()
         // The rail's Support dot goes with them (the page drawn again; what is typed elsewhere stays).
-        .then(() => router.refresh())
+        .then(() => (onSeenRef.current ? onSeenRef.current() : router.refresh()))
         .catch(() => {})
         .finally(() => {
           seeing.current = false;
@@ -336,9 +344,8 @@ function CoachSupport({ initial }: { initial: SupportLine[] }) {
     }
   };
 
-  return (
-    <Part label="Your thread with Norcoach">
-      <div ref={card} className="sup-card">
+  const body = (
+      <div ref={card} className={`sup-card${panel ? " sup-panel" : ""}`}>
         <SupportThread lines={lines} pending={pending} />
         {mode === "message" ? (
           <SupportLineBox
@@ -347,12 +354,12 @@ function CoachSupport({ initial }: { initial: SupportLine[] }) {
             onSend={send}
             label="Message to Norcoach"
             busy={busy}
-            pills
+            pills={!panel}
             extra={
               <button
                 ref={reportBtn}
                 type="button"
-                className="rsr-pill sup-report"
+                className={panel ? "sup-panelpill sup-report" : "rsr-pill sup-report"}
                 onClick={() => {
                   setMode("problem");
                   setError(null);
@@ -364,24 +371,47 @@ function CoachSupport({ initial }: { initial: SupportLine[] }) {
           />
         ) : (
           <div ref={problemBox} className={`sup-problem${busy ? " busy" : ""}`} onPaste={paste} onKeyDown={problemKey}>
-            <Fields cols={1}>
-              <Line label="What happened" tall>
-                <textarea className="dlh-line" rows={2} value={text} maxLength={4000} autoFocus onChange={(e) => setText(e.target.value)} />
-              </Line>
-              <Line label="Where">
-                <input className="dlh-line" value={where} maxLength={200} onChange={(e) => setWhere(e.target.value)} />
-              </Line>
-            </Fields>
+            {panel ? (
+              <>
+                <label className="sup-field">
+                  <span className="dlh-label">What happened</span>
+                  <textarea className="dlh-line sup-line" rows={2} value={text} maxLength={4000} autoFocus onChange={(e) => setText(e.target.value)} />
+                </label>
+                <label className="sup-field">
+                  <span className="dlh-label">Where</span>
+                  <input className="dlh-line" value={where} maxLength={200} onChange={(e) => setWhere(e.target.value)} />
+                </label>
+              </>
+            ) : (
+              <Fields cols={1}>
+                <Line label="What happened" tall>
+                  <textarea className="dlh-line" rows={2} value={text} maxLength={4000} autoFocus onChange={(e) => setText(e.target.value)} />
+                </Line>
+                <Line label="Where">
+                  <input className="dlh-line" value={where} maxLength={200} onChange={(e) => setWhere(e.target.value)} />
+                </Line>
+              </Fields>
+            )}
             <div className="sup-foot">
               {file ? (
                 <span className="sup-file">
                   {/* eslint-disable-next-line @next/next/no-img-element -- the coach's own file, before it is sent */}
                   {preview && <img src={preview} alt="" />}
                   <span className="sup-file-name">{file.name || "Screenshot"}</span>
-                  <Word tone="sec" onClick={() => pick(null)}>
-                    Remove
-                  </Word>
+                  {panel ? (
+                    <button type="button" className="sup-textact" onClick={() => pick(null)}>
+                      Remove
+                    </button>
+                  ) : (
+                    <Word tone="sec" onClick={() => pick(null)}>
+                      Remove
+                    </Word>
+                  )}
                 </span>
+              ) : panel ? (
+                <button type="button" className="sup-textact sup-attach" onClick={() => picker.current?.click()}>
+                  Attach screenshot
+                </button>
               ) : (
                 <Word className="sup-attach" onClick={() => picker.current?.click()}>
                   Attach screenshot
@@ -398,12 +428,25 @@ function CoachSupport({ initial }: { initial: SupportLine[] }) {
                 }}
               />
               <span className="sup-foot-end">
-                <Word tone="sec" onClick={reset}>
-                  Cancel
-                </Word>
-                <Pill go disabled={!text.trim() || busy} onClick={send}>
-                  Send
-                </Pill>
+                {panel ? (
+                  <>
+                    <button type="button" className="sup-textact" onClick={reset}>
+                      Cancel
+                    </button>
+                    <button type="button" className="dlh-go sup-panelgo" disabled={!text.trim() || busy} onClick={send}>
+                      Send
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <Word tone="sec" onClick={reset}>
+                      Cancel
+                    </Word>
+                    <Pill go disabled={!text.trim() || busy} onClick={send}>
+                      Send
+                    </Pill>
+                  </>
+                )}
               </span>
             </div>
           </div>
@@ -414,6 +457,6 @@ function CoachSupport({ initial }: { initial: SupportLine[] }) {
           </p>
         )}
       </div>
-    </Part>
   );
+  return panel ? body : <Part label="Your thread with Norcoach">{body}</Part>;
 }

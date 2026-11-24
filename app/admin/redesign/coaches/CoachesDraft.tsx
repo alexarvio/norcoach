@@ -15,6 +15,8 @@ import { addCoach, removeCoach, resetCoachPassword, type CoachOutcome } from "./
 import { setCoachPaysAction } from "../../../lib/billingActions";
 import type { SupportInboxRow } from "../../../lib/support";
 import SupportInbox from "./SupportInbox";
+import GuidesSection from "./GuidesSection";
+import type { GuideView } from "../../../lib/guides";
 import { PopupTitle } from "../PopupWho";
 
 // The owner's Coaches (22 Oct, Alex: the old /admin?view=coaches in the new style, root "rd trn rls rco"): Training's
@@ -54,7 +56,7 @@ async function settle(p: Promise<CoachOutcome>): Promise<CoachOutcome> {
 
 const accountGrid = { gridTemplateColumns: "minmax(0, 1fr) 64px 132px 104px 124px 300px", columnGap: 16 } as const;
 
-export default function CoachesDraft({ accounts, support, billingOn = false }: { accounts: CoachRow[]; /** The coaches' Support threads, newest first (SupportInbox). */ support: SupportInboxRow[]; /** Subscriptions set up on the server (lib/billing.ts): the owner can switch who pays. */ billingOn?: boolean }) {
+export default function CoachesDraft({ accounts, support, guides = [], billingOn = false }: { accounts: CoachRow[]; /** The coaches' Support threads, newest first (SupportInbox). */ support: SupportInboxRow[]; /** The help guides, drafts too (GuidesSection, 24 Nov). */ guides?: GuideView[]; /** Subscriptions set up on the server (lib/billing.ts): the owner can switch who pays. */ billingOn?: boolean }) {
   const router = useRouter();
   const [, start] = useTransition();
   const [busy, setBusy] = useState<number | null>(null);
@@ -103,6 +105,9 @@ export default function CoachesDraft({ accounts, support, billingOn = false }: {
 
       {/* ---- What the coaches wrote from Settings' Support: a coach a row, a thread opening under it. */}
       <SupportInbox initial={support} />
+
+      {/* ---- The help guides every coach sees from the ? (24 Nov, Alex). */}
+      <GuidesSection initial={guides} />
 
       {/* ---- Every coach account, oldest first. */}
       <section className="rls-section">

@@ -4,6 +4,7 @@ import { createContext, Suspense, use, useCallback, useContext, useEffect, useLa
 import { usePathname } from "next/navigation";
 import RedesignRail from "./RedesignRail";
 import PageSkeleton, { VIEW_SKELETON } from "./PageSkeleton";
+import HelpButton from "./help/HelpButton";
 import type { RailData, StampedRail } from "./loaders";
 import { clientScreenOf, pageKeyOf, viewOfPath } from "./paths";
 
@@ -147,6 +148,8 @@ export default function RailFrame({ rail: promise, children }: { rail: Promise<S
   }, [moveKey, read]);
 
   const value = useMemo<RailContextValue>(() => ({ rail: latest?.rail ?? null, reportHere }), [latest, reportHere]);
+  // The help panel reads the rail again once the team's lines are read, so the rail's Support dot goes with its own.
+  const reread = useCallback(() => void read(), [read]);
 
   // A rail click whose page isn't in by OUTLINE_MS (22 Nov, Alex: "a bit faster yeah but not completely smooth"; a click
   // on a client Next hasn't kept showed nothing for half a second, then swapped): the page you were on gives way to the
@@ -214,6 +217,8 @@ export default function RailFrame({ rail: promise, children }: { rail: Promise<S
           </Suspense>
           {children}
           {goingTo != null && <PageSkeleton {...VIEW_SKELETON[goingTo]} chat={false} />}
+          {/* Help on every screen (24 Nov, Alex: B of docs/boards/coach-help-mockup.html): fixed, so it takes no cell. */}
+          <HelpButton view={view} rail={latest?.rail ?? null} reread={reread} />
         </div>
       ) : (
         children

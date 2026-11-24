@@ -7,6 +7,7 @@ import { fetchCoachFood } from "../../../lib/food/rows";
 import { fetchEveryCheckIn } from "../../../lib/checkins/rows";
 import { fetchEverySet } from "../../../lib/sets/rows";
 import { listSupportThreads } from "../../../lib/support";
+import { listGuidesForOwner } from "../../../lib/guides";
 import { billingOn, billingView } from "../../../lib/billing";
 import { startTiming } from "../../../lib/timing";
 import { loadChatDock } from "../loaders";
@@ -55,7 +56,7 @@ export default async function CoachesPage() {
     <>
       <ChatDock chats={t.time("chatDock", () => loadChatDock(coach, chat.dock))} />
       <div className="rd-page">
-        <CoachesDraft accounts={accounts} support={t.time("supportThreads", () => listSupportThreads())} billingOn={billingOn()} />
+        <CoachesDraft accounts={accounts} support={t.time("supportThreads", () => listSupportThreads())} guides={listGuidesForOwner()} billingOn={billingOn()} />
       </div>
     </>
   );

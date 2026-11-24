@@ -1,0 +1,160 @@
+/* Help on every admin screen (24 Nov, Alex: B of docs/boards/coach-help-mockup.html; HelpButton.tsx, guideMedia.tsx).
+   The round ? at the bottom right, in the 60px every page keeps on its right for the chat's tab (messages.css), so it
+   covers neither the tab (at the top right) nor the page; the panel over the page in the .dlh card's voice, ending
+   where that gutter begins, so the tab never sits on it. Ink, never
+   navy (the coach's brand where an action is ink); weights 500 and 600. Prefix hlp-. */
+
+/* ---- The ? : 40px, inside the gutter (10px in from the edge, 10px clear of the page), 16px up, level with the page's
+   sticky bars, which stay in the page's column. The coach's brand fills it, as the chat's tab. No shadow. */
+.hlp-fab { position: fixed; right: 10px; bottom: 16px; z-index: 44; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 999px; background: var(--brand, #141a24); color: var(--brand-ink, #fff); font-family: var(--font-archivo), system-ui, sans-serif; font-size: 17px; font-weight: 600; line-height: 1; cursor: pointer; transition: opacity 0.18s ease, transform 0.18s ease, background 0.18s, visibility 0s; }
+.hlp-fab:hover { background: color-mix(in srgb, var(--brand, #141a24) 88%, #fff); }
+.hlp-fab:focus-visible { outline: 2px solid var(--brand, #141a24); outline-offset: 2px; }
+.hlp-fab > span { translate: 0 -0.5px; }
+/* The team's lines not read: the rail's rust dot, ringed white. */
+.hlp-fab-dot { position: absolute; top: 1px; right: 1px; width: 9px; height: 9px; border-radius: 999px; background: #b8471f; box-shadow: 0 0 0 2px #fff; }
+/* It stands aside while its panel is open, while the chat is open (the chat holds that side), and while a toast is up in
+   the same corner (Sonner's, bottom right), so nothing ever sits over it; hidden as well once faded, so the keyboard
+   never lands on it unseen (as .rd-chatpanel). */
+.hlp-fab.away, .rd-frame[data-chat="open"] .hlp-fab, body:has([data-sonner-toast]) .hlp-fab { visibility: hidden; opacity: 0; pointer-events: none; transform: scale(0.9); transition: opacity 0.18s ease, transform 0.18s ease, background 0.18s, visibility 0s linear 0.18s; }
+/* A framed page with no chat tab (Clients with none yet) keeps the same 60px for the ?, so it never sits on the page. */
+.rd-frame:has(.hlp-fab):not(:has(.rd-chattab)) > .rd-page { padding-right: 60px; }
+
+/* ---- The panel over the page: a faint dim, the card fixed 16px from the top and foot and 60px from the right, where the
+   chat tab's gutter begins (the tab sits over the dim at the top right, messages.css), so the tab never covers it. */
+.hlp-dim { position: fixed; inset: 0; z-index: 44; background: rgba(20, 26, 36, 0.08); animation: hlp-fade 0.2s ease; }
+.hlp-panel { position: fixed; top: 16px; right: 60px; bottom: 16px; z-index: 45; display: flex; flex-direction: column; width: min(380px, calc(100vw - 76px)); overflow: hidden; border-radius: 20px; background: #fff; box-shadow: 0 30px 60px -24px rgba(16, 24, 40, 0.35), 0 0 0 1px #e1e5eb; font-family: var(--font-archivo), system-ui, sans-serif; color: #141a24; outline: none; animation: hlp-in 0.24s cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes hlp-fade { from { opacity: 0; } }
+@keyframes hlp-in { from { opacity: 0; transform: translateY(6px); } }
+
+.hlp-head { flex: none; display: flex; align-items: center; gap: 6px; padding: 18px 14px 12px 18px; }
+.hlp-head .hlp-back { margin-left: -8px; }
+.hlp-title { flex: 1; min-width: 0; margin: 0; font-size: 18px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; color: #141a24; overflow-wrap: anywhere; }
+/* The round ghost ✕ and ‹, as the .dlh card's (28px, grey, the page grey and ink on hover). */
+.hlp-round { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; color: #8b93a1; cursor: pointer; }
+.hlp-round:hover { background: #f5f6f8; color: #141a24; }
+.hlp-round:focus-visible { outline: 2px solid #141a24; outline-offset: 1px; color: #141a24; }
+.hlp-round svg { width: 16px; height: 16px; }
+
+.hlp-search { flex: none; padding: 0 18px 8px; }
+.hlp-search .rd-search { width: 100%; }
+
+/* Its own scroll, so the panel keeps its height; the scrollbar's room kept from the start. */
+.hlp-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: #e1e5eb transparent; padding-bottom: 8px; }
+.hlp-group + .hlp-group { margin-top: 6px; }
+.hlp-label { margin: 0; padding: 12px 18px 4px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #5b6474; }
+.hlp-none { margin: 0; padding: 10px 18px; font-size: 13px; font-weight: 500; color: #8b93a1; }
+
+/* A guide: its poster (64×40), the title, its length grey and the quiet green tick once watched. The row hover. */
+.hlp-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 18px; border: 0; background: none; box-sizing: border-box; font: inherit; text-align: left; color: #141a24; cursor: pointer; }
+.hlp-row:hover { background: #fafbfd; }
+.hlp-row:focus-visible { outline: none; }
+.hlp-row:focus-visible .hlp-row-t { text-decoration: underline; text-decoration-color: #c5ccd8; text-underline-offset: 4px; }
+.hlp-row-w { display: flex; flex-direction: column; min-width: 0; }
+.hlp-row-t { font-size: 13.5px; font-weight: 600; line-height: 1.3; }
+.hlp-row-s { display: inline-flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 12px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; }
+.hlp-tick { flex: none; color: #2f7a3f; }
+.hlp-thumb { position: relative; flex: none; display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 40px; overflow: hidden; border-radius: 8px; background: #eef0f3; }
+.hlp-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.hlp-thumb svg { position: relative; width: 20px; height: 20px; padding: 5px 4px 5px 6px; border-radius: 999px; background: rgba(20, 26, 36, 0.72); box-sizing: border-box; color: #fff; }
+
+/* ---- A guide opened: its video, one fact line, then its steps as short numbered lines. */
+.hlp-guide { display: flex; flex-direction: column; gap: 12px; padding: 2px 18px 12px; }
+.hlp-player { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; padding: 0; border: 0; border-radius: 12px; background: #141a24; }
+.hlp-player video, .hlp-player iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #141a24; }
+.hlp-player video { object-fit: contain; }
+.hlp-poster { background: #eef0f3; cursor: pointer; }
+.hlp-poster img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.hlp-playmark { position: absolute; left: 50%; top: 50%; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 999px; background: rgba(20, 26, 36, 0.82); color: #fff; transition: transform 0.18s ease; }
+.hlp-playmark svg { width: 20px; height: 20px; translate: 1px 0; }
+.hlp-poster:hover .hlp-playmark { transform: scale(1.06); }
+.hlp-poster:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; }
+.hlp-fact { display: flex; align-items: center; flex-wrap: wrap; margin: 0; font-size: 12.5px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; }
+.hlp-watched { display: inline-flex; align-items: center; gap: 4px; color: #2f7a3f; }
+.hlp-steps { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.hlp-steps li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; font-size: 14px; font-weight: 500; line-height: 1.45; color: #3a4250; }
+.hlp-stepn { font-weight: 600; color: #8b93a1; font-variant-numeric: tabular-nums; }
+
+/* ---- The foot: Message us, the screen's one ink pill, on the right. No line over it. */
+.hlp-foot { flex: none; display: flex; justify-content: flex-end; padding: 10px 16px 16px; }
+.hlp-go { height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--brand, #141a24); font: inherit; font-size: 13.5px; font-weight: 600; color: var(--brand-ink, #fff); cursor: pointer; }
+.hlp-go:hover { background: color-mix(in srgb, var(--brand, #141a24) 88%, #fff); }
+.hlp-go:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(20, 26, 36, 0.18); }
+/* The team's lines not read: the dot trail's next step after the ?'s, the shared 6px .rd-due after the words, ringed. */
+.hlp-go { display: inline-flex; align-items: center; gap: 7px; }
+.hlp-go .rd-due { box-shadow: 0 0 0 1.5px #fff; }
+
+/* ---- Message us: Settings' Support thread (SupportSection's CoachSupport, look "panel") filling the panel, the line at
+   its foot with Report a problem and Send under it. */
+.hlp-chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.hlp-chat .sup-card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.hlp-chat .sup-thread { flex: 1; min-height: 0; max-height: none; padding: 4px 18px 8px; }
+.hlp-chat .sup-compose { flex-wrap: wrap; align-items: center; gap: 10px; margin-top: auto; padding: 10px 16px 16px 18px; }
+.hlp-chat .sup-compose .sup-line { flex-basis: 100%; }
+.hlp-chat .sup-compose .sup-report { margin-right: auto; }
+.hlp-chat .sup-problem { margin-top: auto; padding: 12px 18px 16px; }
+.hlp-chat .sup-problem textarea.dlh-line.sup-line { min-height: 66px; }
+.hlp-chat .sup-foot .sup-attach { margin-left: 0; }
+/* The thread's state pills (a problem's rust `Problem`, its green `Done`): the page's .trn-state is scoped under .rd.trn,
+   which the panel is not in, so the same pill here (as .dlh.wgd does in draft.css). */
+.hlp-chat .trn-state { display: inline-flex; flex: none; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #e1e5eb; font-size: 11.5px; font-weight: 600; color: #8b93a1; white-space: nowrap; }
+.hlp-chat .trn-state.good { box-shadow: inset 0 0 0 1px rgba(47, 122, 63, 0.35); color: #2f7a3f; }
+.hlp-chat .trn-state.warn { box-shadow: inset 0 0 0 1px rgba(184, 71, 31, 0.35); color: #b8471f; }
+.hlp-chat .trn-state.sup-done { margin-left: auto; }
+.hlp-chat .dlh-go:not(:disabled) { background: var(--brand, #141a24); color: var(--brand-ink, #fff); }
+.sup-panelpill { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; cursor: pointer; }
+.sup-panelpill:hover { background: #fafbfd; }
+.sup-panelpill:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; }
+.sup-panelpill svg { translate: 0 -0.5px; }
+
+@media print { .hlp-fab, .hlp-dim, .hlp-panel { display: none; } }
+@media (prefers-reduced-motion: reduce) { .hlp-fab, .hlp-playmark { transition: none; } .hlp-dim, .hlp-panel { animation: none; } }
+
+/* ---- The owner's Guides on Coaches (coaches/GuidesSection.tsx): a guide a row in one hairline card, its edit pop-up
+   in the .dlh voice. */
+.rd.rls.rco .hlp-gcard { padding: 0; }
+.hlp-grow { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 52px; padding: 10px 16px 10px 18px; border: 0; border-top: 1px solid #eef0f3; background: none; box-sizing: border-box; font: inherit; text-align: left; color: #141a24; cursor: pointer; }
+.hlp-grow:first-child { border-top: 0; }
+.hlp-grow:hover { background: #fafbfd; }
+.hlp-grow:focus-visible { outline: none; }
+.hlp-grow:focus-visible .hlp-grow-t { text-decoration: underline; text-decoration-color: #c5ccd8; text-underline-offset: 4px; }
+/* One line a row, the facts grey after the title (as the Support inbox's last line), so the row keeps rule 8's 52px. */
+.hlp-grow-w { flex: 1; display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.hlp-grow-t { flex: 0 1 auto; min-width: 0; overflow: hidden; font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.hlp-grow-s { flex: 0 1 auto; display: flex; align-items: center; min-width: 0; overflow: hidden; font-size: 13px; font-weight: 500; color: #8b93a1; white-space: nowrap; }
+/* The list row's 52px (rule 8): the poster 32px tall on it. */
+.hlp-grow .hlp-thumb { width: 52px; height: 32px; border-radius: 7px; }
+.hlp-grow .hlp-thumb svg { width: 18px; height: 18px; padding: 4px 3px 4px 5px; }
+.rd.trn .trn-state.hlp-gstate { flex: none; justify-content: center; width: 84px; box-sizing: border-box; }
+
+.dlh.dlh.hlp-edit { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; scrollbar-width: thin; }
+.hlp-form { display: flex; flex-direction: column; gap: 14px; margin-top: 4px; }
+.hlp-pair { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 20px; }
+.hlp-topic { position: relative; }
+/* The topics: the floating list in the ⋯ menu's look (rule 6). */
+.hlp-menu { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 5; display: flex; flex-direction: column; max-height: 214px; margin: 0; padding: 5px; overflow-y: auto; border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(20, 30, 50, 0.16); list-style: none; }
+.hlp-menu button { display: flex; align-items: center; width: 100%; height: 34px; padding: 0 10px; border: 0; border-radius: 7px; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: #141a24; text-align: left; cursor: pointer; }
+.hlp-menu button:hover, .hlp-menu button.on { background: #fafbfd; }
+/* The screens: separate white chips with the hairline, the picked ones ink (rule: chips swap at once). */
+.hlp-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.hlp-chips + .hlp-chips { margin-top: 8px; }
+.hlp-chip { height: 30px; padding: 0 12px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; font: inherit; font-size: 12.5px; font-weight: 600; color: #5b6474; cursor: pointer; }
+.hlp-chip:hover { color: #141a24; }
+.hlp-chip.on { background: var(--brand, #141a24); box-shadow: none; color: var(--brand-ink, #fff); }
+.hlp-chip:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; }
+/* The video: its poster and where it lives, Remove in red words; or the link on its clean line with Upload a file. */
+.hlp-vid { display: flex; align-items: center; gap: 12px; min-height: 48px; margin-top: 6px; }
+.hlp-vid-w { flex: 1; min-width: 0; overflow: hidden; font-size: 13.5px; font-weight: 500; color: #3a4250; text-overflow: ellipsis; white-space: nowrap; }
+.hlp-vidline { display: flex; align-items: flex-end; gap: 12px; }
+.hlp-vidline .dlh-line { flex: 1; min-width: 0; }
+.hlp-word { flex: none; height: 32px; padding: 0 10px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; cursor: pointer; white-space: nowrap; }
+.hlp-word:hover { background: #f5f6f8; }
+.hlp-word.red { color: #b42318; }
+.hlp-word:disabled { color: #98a2b3; cursor: default; background: none; }
+.hlp-word:focus-visible { outline: none; text-decoration: underline; text-underline-offset: 4px; }
+.hlp-progress { flex: none; font-size: 12.5px; font-weight: 600; color: #8b93a1; font-variant-numeric: tabular-nums; }
+.hlp-form textarea.dlh-line { resize: none; field-sizing: content; min-height: 88px; max-height: 240px; }
+.hlp-form .dlh-seg { margin-top: 6px; }
+/* A real problem as a short fact under its field (rule 1), in rust. */
+.hlp-fieldfact { display: block; margin: 6px 0 0; font-size: 12.5px; font-weight: 500; color: #b8471f; }
+.hlp-form .dlh-seg > button.on { background: var(--brand, #141a24); color: var(--brand-ink, #fff); }
+.hlp-edit .dlh-foot .dlh-delete { margin-right: auto; margin-left: -14px; }
