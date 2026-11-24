@@ -7,7 +7,7 @@ export const GUIDE_TOPICS = ["Getting started", "Clients", "Plan", "Check-ins", 
 
 /** The screens a guide can belong to: the views over every client, then a client's tabs, each by its address's name
  *  (paths.ts: COACH_VIEWS, CLIENT_TAB_SLUG) and the word the coach reads. No Chat: the chat is a panel over a client's
- *  Home, not a screen, and the ? stands aside while it is open, so a guide on it would never be For this screen; a
+ *  Home, not a screen, and help opening shuts it (one panel on the right at a time), so a guide on it would never be For this screen; a
  *  guide about the chat takes a topic instead. */
 export const GUIDE_SCREENS: readonly { key: string; label: string; group: "views" | "client" }[] = [
   { key: "feed", label: "Feed", group: "views" },

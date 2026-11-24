@@ -24,6 +24,7 @@ import { useReportHere } from "./RailFrame";
 import type { DraftInvoices } from "./loaders";
 import { todoRows, type DotTab, type DotTrail } from "./dots";
 import { TodoButton, TodoContext, TodoPanel, type TodoHandlers } from "./TodoStrip";
+import { useSidePanel } from "./help/sidePanels";
 import { useCloseOnEmptyClick } from "./useCloseOnEmptyClick";
 import { PopupTabZone, PopupWhoProvider } from "./PopupWho";
 import { SHOW_TAB_EVENT } from "./followLink";
@@ -195,6 +196,9 @@ export default function RedesignShell({ clientId, clientName, firstName, units, 
   const handlerOf = useCallback((t: DotTab) => handlers.current.get(t), []);
   // A click on empty space closes it, one on anything with a function doesn't (24 Oct, Alex).
   useCloseOnEmptyClick(chat.open, closeChat);
+  // One panel on the right at a time with help too (24 Nov, Alex: docs/boards/help-docked-mockup.html; help/sidePanels.ts).
+  useSidePanel("chat", chat.open, closeChat);
+  useSidePanel("todo", todo.open, closeTodo, "data-todo");
   const openTodo = () => {
     closeChat();
     // The waits as of now.

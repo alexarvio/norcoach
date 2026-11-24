@@ -5,6 +5,7 @@ import { Dialog, DialogClose, DialogContent } from "../../../components/ui/dialo
 import { PlusIcon } from "../../../components/icons";
 import type { GuideFields, GuideView } from "../../../lib/guides";
 import { GUIDE_SCREENS, GUIDE_TOPICS } from "../../../lib/guideScreens";
+import { stepLine, type GuideStep } from "../../../lib/guideSteps";
 import { deleteGuideAction, discardGuideUploadsAction, saveGuideAction, uploadGuideVideoAction } from "../../../lib/guidesActions";
 import { uploadFirst } from "../../../lib/uploadFirst";
 import { SepJoin } from "../Sep";
@@ -19,7 +20,8 @@ import "../help/help.css";
 // topic, length and screens grey after the drawn bar, and its state pill (Published green, Draft grey). A row opens the
 // edit pop-up in the .dlh voice: the title, the topic (the floating list of the usual ones, or typed) and order, the
 // screens it belongs to as chips, the video (a YouTube or Vimeo link, or a file uploaded as the Library's demos are),
-// its length (taken from an uploaded file, else typed), the steps one a line, Draft | Published; Delete in red words
+// its length (taken from an uploaded file, else typed), the steps one a line (a line may start with the moment in the
+// video it starts at, `0:45 Open the tab`, 24 Nov: the panel inks that step as the video reaches it), Draft | Published; Delete in red words
 // asking first. Coaches see the published ones the next time they open the panel.
 
 const BLANK: GuideFields = { title: "", topic: GUIDE_TOPICS[0], screens: [], video: null, seconds: null, steps: [], published: false, order: 0 };
@@ -138,7 +140,9 @@ function GuideDialog({ guide, nextOrder, onSaved, onDelete }: { guide: GuideView
   const [video, setVideo] = useState<string | null>(start.video);
   const [link, setLink] = useState("");
   const [length, setLength] = useState(lengthText(start.seconds));
-  const [steps, setSteps] = useState(start.steps.join("\n"));
+  // A timed step as its line, its time first (`0:45 Open the tab`; lib/guideSteps.ts, 24 Nov).
+  const [steps, setSteps] = useState(start.steps.map(stepLine).join("\n"));
+  const plainBefore = new Set(start.steps.filter((s): s is string => typeof s === "string"));
   const [published, setPublished] = useState(start.published);
   const [order, setOrder] = useState(String(start.order));
   const [uploading, setUploading] = useState(false);
@@ -214,7 +218,9 @@ function GuideDialog({ guide, nextOrder, onSaved, onDelete }: { guide: GuideView
       screens,
       video: link.trim() ? link.trim() : video,
       seconds,
-      steps: steps.split("\n"),
+      // A step saved before times were read (`3:00 rest between sets`) and sent back unchanged stays words, never
+      // turning into a seek point by itself; only a line typed with a time is read as timed.
+      steps: steps.split("\n").map((l) => (plainBefore.has(l.trim().replace(/\s+/g, " ")) ? { text: l } : l)) as GuideStep[],
       published,
       order: Number(order) || 0,
     };
