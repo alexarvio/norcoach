@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 
 /** Tables that are about sign-in or the company, never part of a coach's export. */
 // notes-door: the notifications' outbox and its dead letters (NOTES_STORE=pg) are the store's plumbing, their rows in the table.
-const LEFT_OUT = new Set(["users", "login_lock_events", "support_messages", "join_requests", "coach_reset_applied", "workspace_reset_applied", "sessions_migrated", "_seq", "notes_outbox", "notes_outbox_dead", "notes_shadow_totals"]);
+const LEFT_OUT = new Set(["users", "login_lock_events", "support_messages", "join_requests", "help_guides", "coach_reset_applied", "workspace_reset_applied", "sessions_migrated", "_seq", "notes_outbox", "notes_outbox_dead", "notes_shadow_totals"]);
 
 export async function GET(request: Request) {
   const user = await getRequestUser(request);
