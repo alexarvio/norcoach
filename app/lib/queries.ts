@@ -2764,6 +2764,10 @@ function progressExercise(clientId: number, exerciseId: number, look: ProgressLo
     });
   }
   const stopOf = stopsOf(rows);
+  // A deleted gym's weights are left as they were (24 Nov, the dry run on the live snapshot: a gym once home held copies
+  // of the home lane, and working them out again moved 62 lanes of a gym nobody trains at). Brought back, it is worked
+  // out again then (restoreClientGym marks the client).
+  const gone = new Set(getData().client_gyms.filter((g) => g.client_id === clientId && g.archived).map((g) => g.id));
   let changed = 0;
   for (const o of rows) {
     if (logged.has(o.row.id) || o.row.swap || look.weekDone(clientId, o.slot.week_number)) continue;
@@ -2772,6 +2776,7 @@ function progressExercise(clientId: number, exerciseId: number, look: ProgressLo
     const assisted = assistedRow(ex, o.row.variation_id);
     let moved = false;
     for (const lane of lanesOf(o.row, sources)) {
+      if (lane != null && gone.has(lane)) continue;
       const best = freshLane(dest, lane, sources, rows, assisted, stopOf);
       if (best === undefined) continue;
       const before = record ? { kg: laneKg(o.row, lane), coach: storedCoachKg(o.row, lane) } : null;
@@ -8583,7 +8588,7 @@ function clientHomeOf(full: boolean, clientId: number, chat: ChatCoachView, food
   for (const m of listMeetings(clientId)) {
     if (!callToComplete(m)) continue;
     const name = (m.summary_title ?? "").trim() || m.topic.trim() || `${meetingTypeOf(m.meeting_type ?? "checkin").label} call`;
-    actions.push({ id: `complete-${m.id}`, tone: "due", group: "reply", title: "Call to complete", detail: name, tab: "meetings", at: callEndsAt(m), href: `/admin/redesign/meetings?client=${clientId}#call-${m.id}` });
+    actions.push({ id: `complete-${m.id}`, tone: "due", group: "reply", title: "Call to complete", detail: name, tab: "meetings", at: callEndsAt(m), href: `/clients/${clientId}/meetings#call-${m.id}` });
   }
   // An invoice past its due date, still unpaid.
   const today = localDateStr();
@@ -8598,7 +8603,7 @@ function clientHomeOf(full: boolean, clientId: number, chat: ChatCoachView, food
       detail: inv.description,
       tab: "invoices",
       at: stampMs(`${inv.due_date} 00:00:00`),
-      href: `/admin/redesign/invoices/${inv.id}`,
+      href: `/invoices/${inv.id}`,
     });
   }
   // No phase live on training or nutrition (8 Oct): the client's Home says

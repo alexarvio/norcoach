@@ -199,7 +199,11 @@ function* raisingSets(dest: Dest, lane: Lane, sources: Source[], assisted: boole
   const typedMs = typed ? stampMs(typed) : NaN;
   const ownRange = repWindow(dest.reps);
   for (const src of sources) {
-    if (!laterSlot(dest.slot, src.slot) || src.program !== dest.program || src.variation !== dest.variation) continue;
+    if (!laterSlot(dest.slot, src.slot) || src.variation !== dest.variation) continue;
+    // The home figure counts this programme's sets alone; a gym's weight follows what was lifted at that gym whatever the
+    // programme (24 Nov, the dry run on the live snapshot: the programme check blanked 48 gym weights carried from the
+    // programme before; DESIGN-RULES.md §6, a gym's sets keep their own weights).
+    if (lane == null && src.program !== dest.program) continue;
     if (!beforeStop(dest.slot, stopOf(src, lane))) continue;
     // A row with no range of its own (AMRAP, a time, none typed) reads the logged row's (24 Nov); with neither, a set
     // sits inside no range, so it raises nothing.
