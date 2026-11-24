@@ -489,6 +489,17 @@ export function PlayIcon() {
   );
 }
 
+// A figure back down (24 Nov, Alex: docs/boards/target-rule-mockup.html): Training's "Back to 120 kg", in the row's ⋯
+// and on the to-do strip.
+export function ArrowDownIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 5v13" />
+      <path d="M6.5 12.5 12 18l5.5-5.5" />
+    </svg>
+  );
+}
+
 export function ColumnsIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

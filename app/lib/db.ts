@@ -632,6 +632,15 @@ type WorkoutAssignment = {
   // the prescription stays, so the coach sees what was asked against what
   // was done. Absent when nothing was swapped.
   swap?: { library_exercise_id: number | null; custom_name: string | null; at: string };
+  // The ids of the sets logged while a swap was on the row, marked as the
+  // server takes each one (logSet, online or from the phone's outbox), so they
+  // stay the substitute's once the swap is taken back (24 Nov, Alex: Smith
+  // machine sets raised the chest press once the swap was undone): the weight
+  // rule, last time and personal bests leave them out (lib/targetRule.ts
+  // underSwap). Never a window of time: an offline set carries the phone's
+  // clock, the swap the server's. Gone with the sets when the session is
+  // discarded; never copied. Lives in the Postgres row's `extra`.
+  swap_set_ids?: number[];
   /** In a free session, an exercise the client named that is not in the library (exercise_id 0). */
   custom_name?: string | null;
   // What the coach offers instead when the machine is taken: exercises from
@@ -1566,6 +1575,16 @@ export type Data = {
   // When every client from before the locked app was marked opened (19 Nov, app/lib/appLock.ts), so the one-time sweep
   // never runs again and never opens a client let in after it.
   app_lock_swept?: string;
+  // The first full pass of the fresh weight rule (24 Nov, lib/targetRule.ts freshLane: a raise no set backs any more
+  // goes): when, how many rows it changed, and every lane it changed (the first 1000), its weight before and after and
+  // the coach's own figure kept beside it before, so what it took back can be read and put back by hand. Written once
+  // (queries.ts noteTargetsRecomputed); the pass itself runs as every full pass does, flag or not.
+  targets_recomputed_v1?: {
+    at: string;
+    rows: number;
+    lanes: number;
+    changes: { rowId: number; lane: number | null; before: number | null; after: number | null; coach_kg_before?: number | null }[];
+  };
   // Sign-in locks as they started (lib/loginLockout.ts), oldest first, the
   // last 200 kept. Shown to the coach and the owner in the Feed.
   login_lock_events?: { id: number; at: string; email: string; ip: string; scope: "device" | "account"; cleared?: boolean }[];

@@ -2,6 +2,7 @@ import { GYM_COLORS, isGymColor } from "../../lib/gymColors";
 import { openJoinRequestsFor } from "../../lib/joinRequests";
 import { appLocked } from "../../lib/appLock";
 import { setsDue } from "../../lib/setsDue";
+import { laneOfGym, raisedBy, repWindow, underSwap, type Occurrence, type Source } from "../../lib/targetRule";
 import { billingAccess, billingOn, type BillingAccess } from "../../lib/billing";
 import { clientLastActive } from "../../lib/presence";
 import { redirect } from "next/navigation";
@@ -107,6 +108,8 @@ import {
   laterSameSlotSessionsIn,
   getPlanPhases,
   getWeightGoalViews,
+  missedTargets,
+  type MissedTarget,
 } from "../../lib/queries";
 import { isAssisted } from "../../lib/progressRules";
 import { phaseCovers, phaseLastDay, phaseWeekIndex, phaseWeeks } from "../../lib/phases";
@@ -400,6 +403,74 @@ export function loadTraining(coachId: number, clientId: number, params: { week?:
     }
     return list;
   };
+  // A weight the rule raised, on the week it went up (24 Nov, Alex: docs/boards/target-rule-mockup.html, "Up from 115: Alex
+  // did 120 × 6 in week 5, inside 4–6."): the coach's own figure kept beside it (coach_kg), higher than the same lift in
+  // the same session the week before, and the set behind it found by the rule's own test (raisedBy), so the two never
+  // disagree. The home gym's weight alone, as the cell shows it. An assisted lift, whose kg is help, has none for now.
+  const programOver = (week: number) => getData().training_programs.find((p) => p.client_id === clientId && week >= p.start_week && week < p.start_week + p.total_weeks);
+  const ruleRows = new Map<number, { planned: Occurrence[]; sources: Source[] }>();
+  const ruleOf = (exerciseId: number) => {
+    let got = ruleRows.get(exerciseId);
+    if (got) return got;
+    got = { planned: [], sources: [] };
+    // As the rule reads them (queries.ts progressExercise): the plan's rows for the coach's resets, the plan's and its
+    // duplicates' sets, never a rogue session's, a swapped row's, or those logged under a swap since undone.
+    for (const pd of ix.daysOf.get(clientId) ?? []) {
+      if (pd.free && pd.copy_of == null) continue;
+      for (const wa of rowsOf(pd.id)) {
+        if (wa.exercise_id !== exerciseId) continue;
+        if (!pd.free) got.planned.push({ slot: pd, row: wa });
+        if (wa.swap) continue;
+        const logs = logsOf(wa.id);
+        if (logs.length === 0) continue;
+        got.sources.push({
+          slot: pd,
+          row: wa,
+          program: programOver(pd.week_number)?.id ?? null,
+          variation: wa.variation_id ?? null,
+          reps: wa.reps,
+          sets: logs.filter((s) => !underSwap(wa, s.id)).map((s) => ({ weight_kg: s.weight_kg, reps: s.reps, logged_at: s.logged_at, lane: laneOfGym(s.gym_id, homeId) })),
+        });
+      }
+    }
+    ruleRows.set(exerciseId, got);
+    return got;
+  };
+  const raisedFromOf = (a: ReturnType<typeof rowsOf>[number], d: (typeof days)[number]) => {
+    const kg = a.target_weight_kg;
+    if (d.free || d.copy_of != null || a.swap || a.coach_kg === undefined || kg == null || a.exercise_id === 0 || assistedRow(a)) return null;
+    const over = programOver(d.week_number);
+    if (!over || programOver(d.week_number - 1)?.id !== over.id) return null;
+    const prevDay = weekOf(d.week_number - 1).find((x) => x.day_of_week === d.day_of_week);
+    const prev = prevDay && rowsOf(prevDay.id).find((p) => p.exercise_id === a.exercise_id && (p.variation_id ?? null) === (a.variation_id ?? null));
+    if (!prev || prev.target_weight_kg == null || !(kg > prev.target_weight_kg)) return null;
+    const rule = ruleOf(a.exercise_id);
+    const why = raisedBy({ slot: d, row: a, program: over.id, variation: a.variation_id ?? null, reps: a.reps }, null, kg, rule.sources, rule.planned, false);
+    if (!why) return null;
+    const range = repWindow(a.reps);
+    return {
+      from: prev.target_weight_kg,
+      kg,
+      reps: why.set.reps ?? null,
+      week: why.src.slot.week_number - over.start_week + 1,
+      range: range ? (range.max === Infinity ? `${range.min} or more` : `${range.min}–${range.max}`) : null,
+    };
+  };
+  // A figure not reached in 3 sessions in a row (24 Nov, Alex: B of docs/boards/target-rule-mockup.html), on every row of
+  // the live programme still asking it: the rust figure and its dot, and the ⋯'s Back to. Let go with the to-do strip's
+  // check, all of it goes, as the strip's row and its dots do.
+  const missedOf = new Map<number, MissedTarget>();
+  if (stateOf(program) === "live") {
+    const dismissed = getData().clients.find((c) => c.id === clientId)?.coach_dismissed ?? {};
+    for (const m of sub("missed", () => missedTargets(sr, clientId))) {
+      if (m.programId !== program.id || dismissed[m.key] != null) continue;
+      for (const id of m.rows) missedOf.set(id, m);
+    }
+  }
+  const missedFor = (rowId: number) => {
+    const m = missedOf.get(rowId);
+    return m ? { sessions: m.sessions, fromKg: m.fromKg, best: m.best, to: m.to, weeks: m.weeks } : null;
+  };
   const buildSession = (d: (typeof days)[number], si: number) => {
     const assignments = rowsOf(d.id);
     const videos = videoRequestsFor(assignments.map((a) => a.id));
@@ -456,6 +527,8 @@ export function loadTraining(coachId: number, clientId: number, params: { week?:
         d30: trend?.d30 ?? null,
         d7Since: trend?.d7Since ?? null,
         d30Since: trend?.d30Since ?? null,
+        raisedFrom: sub("raised", () => raisedFromOf(a, d)),
+        missed: missedFor(a.id),
       };
     });
     const cardio = cardioOf(d.id).map((c) => ({ id: c.id, name: c.name, time: c.time, pace: c.pace, incline: c.incline, distance: c.distance ?? "", notes: c.notes, done: ticked(c.id), swap: c.swap?.name ?? null, alternatives: (c.alternatives ?? []).map((a) => ({ name: a.name, note: a.note ?? "" })) }));
@@ -792,6 +865,30 @@ export function loadDots(clientId: number, chat: ChatCoachView, food: FoodRows, 
       }
     }
     // reply-<id>, a message: the chat tab's own dot.
+  }
+  // A target not reached in 3 sessions (24 Nov, Alex: B of docs/boards/target-rule-mockup.html): Training's strip and its
+  // dot trail (the tab, a week's card and its session asking it) alone, never through clientActions, so
+  // neither the Feed nor the rail's count ever has it. Every one has a figure to offer (missedTargets), the one condition
+  // the cell and the ⋯ show it on too. Let go with the strip's check, it goes as every row does.
+  for (const m of missedTargets(sr, clientId)) {
+    if (client.coach_dismissed?.[m.key] != null) continue;
+    // One week for the week card's dot, the session's dot and the link (24 Nov, review): the NOW week's row asking it,
+    // the week the coach opens on, else the first row's (m.at).
+    once((dots.training.weeks[m.programId] ??= []), m.at.weekIdx);
+    once(dots.training.days, m.at.dayId);
+    todo("training", {
+      key: m.key,
+      kind: "missed",
+      what: m.name,
+      words: null,
+      facts: [m.at.dayName, `${m.fromKg} kg`, m.best ? `best ${m.best.kg} × ${m.best.reps}` : null],
+      wait: `${m.sessions} sessions`,
+      since: null,
+      action: `${m.to.back ? "Back to" : "Set to"} ${m.to.kg} kg`,
+      href: route("training", `&program=${m.programId}&week=${m.at.weekIdx}#session-${m.at.dayId}-ex-${m.at.rowId}`),
+      ref: m.at.rowId,
+      missed: { assignmentId: m.at.rowId, dayId: m.at.dayId, fromKg: m.fromKg, toKg: m.to.kg, back: m.to.back, best: m.best, session: m.at.dayName, sessions: m.sessions },
+    });
   }
   // A call today is no dot (25 Oct, Alex: "this is not the calendar"): nothing is owed for it until it is over.
   return dots;

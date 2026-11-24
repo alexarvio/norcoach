@@ -6,7 +6,7 @@ import type React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { PhaseDialog, phaseForm as planPhaseForm, type DraftPlan } from "../plan/PlanDraft";
-import { addExerciseToLibraryAction, markProgramNoteSeenAction, markSeenAction, markVideoSeenAction, setRowDemoHiddenAction, addGymAction, addProgramWeekAction, addSessionAction, applyDayChangesAction, applyDayToLaterWeeksAction, addClientPhaseAction, cancelProgramScheduleAction, clearExerciseDemoAction, copyProgramDayAction, copyProgramWeekAction, deployProgramAction, removeGymAction, removeProgramWeekAction, deletePhaseAction, removeSessionAction, removeVideoRequestAction, renameProgramAction, reorderSessionsAction, requestExerciseVideoAction, scheduleProgramDeployAction, sendChatMessageAction, sendVideoReplyAction, setExerciseAlternativesAction, setCardioAlternativesAction, setExerciseDemoLinkAction, setHomeGymAction, updateClientPhaseAction, uploadExerciseVideoAction, type DayChangesPayload } from "../../../lib/actions";
+import { addExerciseToLibraryAction, backToTargetAction, markProgramNoteSeenAction, markSeenAction, markVideoSeenAction, setRowDemoHiddenAction, addGymAction, addProgramWeekAction, addSessionAction, applyDayChangesAction, applyDayToLaterWeeksAction, addClientPhaseAction, cancelProgramScheduleAction, clearExerciseDemoAction, copyProgramDayAction, copyProgramWeekAction, deployProgramAction, removeGymAction, removeProgramWeekAction, deletePhaseAction, removeSessionAction, removeVideoRequestAction, renameProgramAction, reorderSessionsAction, requestExerciseVideoAction, scheduleProgramDeployAction, sendChatMessageAction, sendVideoReplyAction, setExerciseAlternativesAction, setCardioAlternativesAction, setExerciseDemoLinkAction, setHomeGymAction, updateClientPhaseAction, uploadExerciseVideoAction, type DayChangesPayload } from "../../../lib/actions";
 import type { MessageLink } from "../../../lib/messageLinks";
 import { uploadFirst } from "../../../lib/uploadFirst";
 import { newOnceKey } from "../../../lib/onceKey";
@@ -14,7 +14,7 @@ import type { MuscleMapData } from "../../../lib/muscles";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
 import { Dialog, DialogClose, DialogContent, DialogDescription } from "../../../components/ui/dialog";
 import { Popover, PopoverAnchor, PopoverContent } from "../../../components/ui/popover";
-import { ApplyIcon, IntoIcon, CalendarIcon, ChatIcon, NoteIcon, ChevronDownIcon, ChevronRightIcon, ColumnsIcon, CompassIcon, CopyIcon, DumbbellIcon, MoreIcon, PlayIcon, PlusIcon, TrashIcon } from "../../../components/icons";
+import { ApplyIcon, ArrowDownIcon, IntoIcon, CalendarIcon, ChatIcon, NoteIcon, ChevronDownIcon, ChevronRightIcon, ColumnsIcon, CompassIcon, CopyIcon, DumbbellIcon, MoreIcon, PlayIcon, PlusIcon, TrashIcon } from "../../../components/icons";
 import { PhotoIcon, VideoIcon } from "../../VideoRequestButton";
 import HelpTip from "../HelpTip";
 import ClientNote from "./ClientNote";
@@ -122,6 +122,18 @@ export type DraftRow = {
   /** A lift newer than the window before: its change counts from its first day, this one (30 Oct, Alex). */
   d7Since: string | null;
   d30Since: string | null;
+  /**
+   * The weight rule raised this row's weight above the same session's the week before (24 Nov, Alex; docs/boards/
+   * target-rule-mockup.html): from what, and the set behind it (its weight and reps, its week of the programme, the
+   * range it sat in as words). Null for a weight the coach typed, one that stayed, or one the rule can't account for.
+   */
+  raisedFrom?: { from: number; kg: number; reps: number | null; week: number; range: string | null } | null;
+  /**
+   * A figure not reached in 3 sessions in a row (24 Nov, Alex: B of docs/boards/target-rule-mockup.html): how many, the
+   * figure asked, the best set inside the range in that run, what the ⋯ puts back (the coach's own when the rule raised
+   * it, else that best) and the weeks of the programme still asking it. Null when it was reached or let go.
+   */
+  missed?: { sessions: number; fromKg: number; best: { kg: number; reps: number } | null; to: { kg: number; back: boolean } | null; weeks: number[] } | null;
 };
 /** swap: what the client did instead; alternatives: what the coach offers (names, with a note). */
 export type DraftCardio = { id: number; name: string; time: string; pace: string; incline: string; distance: string; notes: string; done: boolean; swap?: string | null; alternatives?: { name: string; note: string }[] };
@@ -196,6 +208,18 @@ const LB = 2.20462;
 // with long decimals (110 lb is 49.8952 kg), which read as noise.
 const half = (x: number) => Math.round(x * 2) / 2;
 const kgOf = (v: number | null, lbs: boolean) => (v == null ? "—" : `${half(lbs ? v * LB : v)}`);
+/** The green arrow's words (24 Nov, Alex: "Up from 115: Alex did 120 × 6 in week 5, inside 4–6."), in the unit picked. */
+const raisedWords = (r: Pick<DraftRow, "raisedFrom">, first: string, lbs: boolean) => {
+  const x = r.raisedFrom;
+  if (!x) return null;
+  const set = x.reps != null ? `${kgOf(x.kg, lbs)} × ${x.reps}` : kgOf(x.kg, lbs);
+  const range = x.range ? (/or more$/.test(x.range) ? `, at ${x.range}` : `, inside ${x.range}`) : "";
+  return `Up from ${kgOf(x.from, lbs)}: ${first} did ${set} in week ${x.week}${range}.`;
+};
+/** A figure not reached, its words (24 Nov, Alex: "Not reached in 3 sessions | best 120 × 6"), in the unit picked. */
+const missedWords = (m: NonNullable<DraftRow["missed"]>, lbs: boolean) => `Not reached in ${m.sessions} sessions${m.best ? ` | best ${kgOf(m.best.kg, lbs)} × ${m.best.reps}` : ""}`;
+/** The ⋯'s and the strip's action for it: back to the coach's own, or to the run's best. */
+const missedAction = (to: { kg: number; back: boolean }, lbs: boolean) => `${to.back ? "Back to" : "Set to"} ${kgOf(to.kg, lbs)} ${lbs ? "lbs" : "kg"}`;
 const restOf = (s: number | null) => (s == null ? null : s >= 60 && s % 60 === 0 ? `${s / 60} min` : s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : `${s}s`);
 const MAX_SESSIONS = 7;
 /** The clock, for autosave's pauses (kept out of render). */
@@ -683,13 +707,48 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
     }, 2000);
     return () => clearInterval(t);
   }, [landing, router]);
-  const weekFailed = Object.values(failed).some(Boolean);
-  const weekSaving = anyPending || Object.values(saving).some(Boolean);
+  // A Back to that didn't go, by row (24 Nov): Retry sends it again with its own one-time key, so one that did land after
+  // all changes nothing more. Its own state, apart from the queue's (24 Nov, review): only backTo and Retry set or clear
+  // it, so a session's later save never clears a Back to still unsent, nor a Back to the queue's failure.
+  const [backFailed, setBackFailed] = useState<Record<number, { sessionId: number; fromKg: number; key: string }>>({});
+  const [backBusy, setBackBusy] = useState<Record<number, boolean>>({});
+  const weekFailed = Object.values(failed).some(Boolean) || Object.keys(backFailed).length > 0;
+  const weekSaving = anyPending || Object.values(saving).some(Boolean) || Object.values(backBusy).some(Boolean);
   // Changes waiting, saving or failed: the page doesn't read itself again meanwhile (RefreshOnReturn).
   useHoldRefresh(weekSaving || weekFailed);
   const retry = () => {
     setFailed({});
     for (const [key, p] of Object.entries(pending)) if (pendingCount(p) > 0) flush(Number(key));
+    for (const [rowId, b] of Object.entries(backFailed)) backTo(b.sessionId, Number(rowId), b.fromKg, b.key);
+  };
+  // Back to 120 kg (24 Nov, Alex: B of docs/boards/target-rule-mockup.html): from the row's ⋯ or the to-do strip, saved
+  // at once through the tab's own status as the queue's saves are, no toast unless it fails. What the session still has
+  // waiting goes first, so the figure lands on what is saved.
+  const backTo = (sessionId: number, rowId: number, fromKg: number, key: string = newOnceKey()) => {
+    noteSaving(sessionId);
+    setBackBusy((x) => ({ ...x, [rowId]: true }));
+    // Going again: the status says Saving, not Not saved, while it is out.
+    setBackFailed((x) => {
+      if (!(rowId in x)) return x;
+      const next = { ...x };
+      delete next[rowId];
+      return next;
+    });
+    const fail = (why: string) => {
+      setBackFailed((x) => ({ ...x, [rowId]: { sessionId, fromKg, key } }));
+      toast.error("Not saved", { description: why });
+    };
+    void settle([sessionId])
+      .then(() => backToTargetAction(rowId, fromKg, key))
+      .then((r) => {
+        if (r && r.ok === false) fail(r.error);
+      })
+      .catch(() => fail("Check the connection, then Retry."))
+      .finally(() => {
+        setBackBusy((x) => ({ ...x, [rowId]: false }));
+        noteSaving(sessionId);
+        router.refresh();
+      });
   };
   // A demo set or taken off in this sitting, by row; a row not touched reads its own.
   const [demos, setDemos] = useState<Record<number, DraftRow["demo"]>>({});
@@ -1266,6 +1325,9 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
                     const video = videos[r.id] ?? null;
                     const shownName = e.name ?? r.name;
                     const under = e.note !== undefined ? e.note : (r.note ?? "");
+                    // A figure not reached (24 Nov): one condition for the rust figure and the ⋯'s Back to, a figure to
+                    // offer on a saved row of a week still to run, the coach not typing one of their own.
+                    const missed = r.missed?.to && e.kg === undefined && !weekLocked && r.id > 0 ? { ...r.missed, to: r.missed.to } : null;
                     return (
                       <SortableItem key={r.id} id={r.id} anchor={`row-${r.id}`} className={`rd-row${Object.keys(e).length ? " edited" : ""}${r.id < 0 ? " trn-landing" : ""}`}>
                         {(rowGrip) => (
@@ -1343,7 +1405,16 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
                           {cols.sets && <Cell value={e.sets ?? String(r.sets)} onChange={(v) => edit({ sets: v })} label="Sets" width="sm" fixed={weekLocked} />}
                           {cols.weight && (
                             <span title={multiGym ? r.gymKg.map((g) => `${g.gym}: ${kgOf(g.kg, lbs)} ${unit}`).join("\n") : undefined}>
-                              <WeightCell key={unit} kg={e.kg !== undefined ? e.kg : r.kg} lbs={lbs} onChange={(v) => edit({ kg: v })} fixed={weekLocked} />
+                              <WeightCell
+                                key={unit}
+                                kg={e.kg !== undefined ? e.kg : r.kg}
+                                lbs={lbs}
+                                onChange={(v) => edit({ kg: v })}
+                                fixed={weekLocked}
+                                raised={e.kg === undefined ? raisedWords(r, firstName, lbs) : null}
+                                // Gone the moment the coach types a figure of their own, as the arrow; the gyms after it on hover.
+                                missed={missed ? [missedWords(missed, lbs), ...(multiGym ? r.gymKg.map((g) => `${g.gym}: ${kgOf(g.kg, lbs)} ${unit}`) : [])].join("\n") : null}
+                              />
                             </span>
                           )}
                           {cols.reps && <Cell value={e.reps ?? r.reps} onChange={(v) => edit({ reps: v })} label="Reps" placeholder="8-10" fixed={weekLocked} />}
@@ -1476,6 +1547,17 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
                                 <MoreIcon />
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="pb-menu">
+                                {/* A figure not reached in 3 sessions (24 Nov, Alex: B of the board): first, the figure back,
+                                    the weeks it reaches grey on the right; saved at once. */}
+                                {missed && (
+                                  <>
+                                    <DropdownMenuItem onSelect={() => backTo(s.id, r.id, missed.fromKg)}>
+                                      <ArrowDownIcon /> {missedAction(missed.to, lbs)}
+                                      {missed.weeks.length > 0 && <small className="rd-menu-reach">{(() => { const w = weeksWords(missed.weeks); return w.charAt(0).toUpperCase() + w.slice(1); })()}</small>}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                  </>
+                                )}
                                 <DropdownMenuItem onSelect={() => setDlg({ kind: "demo", rowId: r.id })}>
                                   <PlayIcon />{" "}
                                   {/* One word for what it does (25 Oct, Alex: "Demo video | change" → Change demo). */}
@@ -1924,7 +2006,21 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
           showing opens in place; on another week, that week comes and the session opens once it is here. */}
       <TodoStrip
         tab="training"
+        // A target not reached (24 Nov, Alex): its figures in the unit picked, as the row's ⋯ says them.
+        describe={(item) =>
+          item.missed
+            ? {
+                facts: [item.missed.session, `${kgOf(item.missed.fromKg, lbs)} ${unit}`, item.missed.best ? `best ${kgOf(item.missed.best.kg, lbs)} × ${item.missed.best.reps}` : null],
+                action: missedAction({ kg: item.missed.toKg, back: item.missed.back }, lbs),
+              }
+            : null
+        }
         onAct={(item) => {
+          // Back to 120 kg, done in place: saved at once, the row's figure and the strip's row following.
+          if (item.kind === "missed" && item.missed) {
+            backTo(item.missed.dayId, item.missed.assignmentId, item.missed.fromKg);
+            return true;
+          }
           const to = new URL(item.href, window.location.origin);
           // A session (Review, Read), or the week's Add session (a live phase with no sessions).
           if (!/^#session(-\d+|s$)/.test(to.hash)) return false;
@@ -2866,7 +2962,7 @@ function Cell({ value, onChange, label, placeholder, width, fixed }: { value: st
 
 /** A weight cell: kept in kg, typed and shown in the unit picked. Keyed by
  *  unit where it is used, so a flip re-reads the figure. */
-function WeightCell({ kg, lbs, label, onChange, fixed }: { kg: number | null; lbs: boolean; label?: string; onChange: (kg: number | null) => void; /** A done week's: the figure read, in the unit picked. */ fixed?: boolean }) {
+function WeightCell({ kg, lbs, label, onChange, fixed, raised, missed }: { kg: number | null; lbs: boolean; label?: string; onChange: (kg: number | null) => void; /** A done week's: the figure read, in the unit picked. */ fixed?: boolean; /** The weight rule raised it (24 Nov, Alex): the arrow's words, else none. */ raised?: string | null; /** Not reached in 3 sessions (24 Nov, Alex): its words, else none. It wins over the arrow. */ missed?: string | null }) {
   const show = (v: number | null) => (v == null ? "" : String(half(lbs ? v * LB : v)));
   const [text, setText] = useState(show(kg));
   // A new saved figure (a page read after a save) shows, unless the box is being typed in.
@@ -2876,30 +2972,65 @@ function WeightCell({ kg, lbs, label, onChange, fixed }: { kg: number | null; lb
     setSeenKg(kg);
     setText(show(kg));
   }
+  // A raised weight wears a green arrow up right after its figure, in the cell's own room (24 Nov, Alex:
+  // docs/boards/target-rule-mockup.html), so no other cell moves. The wrapper is always there (no box of its own
+  // without the arrow), so the arrow going as the coach types never remounts the field under the caret.
+  // A figure not reached in 3 sessions (24 Nov, Alex: B of the board) is rust at 600 with the shared 6px dot right after
+  // it, in the same room; it wins over the arrow. Its words on hover, over the figure as over the dot.
+  const on = !!(raised || missed);
+  const fig = (box: React.ReactNode, editable = false) => (
+    <span className={`rd-kgfig${on ? " on" : ""}${on && editable ? " box" : ""}${missed ? " miss" : ""}`} title={missed ?? undefined}>
+      {box}
+      {missed ? (
+        <i className="rd-due" role="img" aria-label={missed} />
+      ) : raised && (
+        <span className="rd-raised" title={raised} role="img" aria-label={raised}>
+          <RaisedIcon />
+        </span>
+      )}
+    </span>
+  );
   if (fixed)
     return (
       <span className="rd-cell">
         {label && <small>{label}</small>}
-        <Fixed value={show(kg)} />
+        {fig(<Fixed value={show(kg)} />)}
       </span>
     );
   return (
     <span className="rd-cell">
       {label && <small>{label}</small>}
-      <input
-        className="rd-cell-box"
-        value={text}
-        placeholder={lbs ? "lbs" : "kg"}
-        aria-label={label ? `Weight at ${label}` : "Weight"}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        onChange={(e) => {
-          setText(e.target.value);
-          const n = parseFloat(e.target.value.replace(",", "."));
-          onChange(Number.isFinite(n) ? Math.round((lbs ? n / LB : n) * 10000) / 10000 : null);
-        }}
-      />
+      {fig(
+        <input
+          className="rd-cell-box"
+          // While a mark is on, the field is as wide as its figure (24 Nov), so the mark sits right after the text as on a
+          // done week's figure, not at the cell's edge: the digits are tabular, one ch each; the box's own left room and
+          // edges (13px: 9px in, 3px out, the 1px edge) on top. The cell's track is the column's, so nothing else moves.
+          style={on ? { width: `calc(${Math.max(text.length, 2)}ch + 13px)` } : undefined}
+          value={text}
+          placeholder={lbs ? "lbs" : "kg"}
+          aria-label={label ? `Weight at ${label}` : "Weight"}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onChange={(e) => {
+            setText(e.target.value);
+            const n = parseFloat(e.target.value.replace(",", "."));
+            onChange(Number.isFinite(n) ? Math.round((lbs ? n / LB : n) * 10000) / 10000 : null);
+          }}
+        />,
+        true,
+      )}
     </span>
+  );
+}
+
+/** A weight the rule raised (24 Nov, Alex): an arrow up, on the 12 grid at 1.6. */
+function RaisedIcon() {
+  return (
+    <svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 10V2.5" />
+      <path d="M2.8 5.6 6 2.4l3.2 3.2" />
+    </svg>
   );
 }
 
@@ -3756,6 +3887,9 @@ function TrainingLegend() {
       {row(<span className="rd-extradot static">+2</span>, <><b>Extra sets</b> beyond what you set.</>)}
       {row(<span className="rd-extradot minus static">−1</span>, <><b>Sets taken off</b> what you set.</>)}
       {row(<span className="rd-pbdot">PB</span>, <><b>Personal best</b>: heavier than ever, reps on target.</>)}
+      {/* The weight's own two marks (24 Nov, Alex: docs/boards/target-rule-mockup.html), drawn as the KG cell draws them. */}
+      {row(<span className="rd-raised"><RaisedIcon /></span>, <><b>Raised</b>: by the weight rule, after a set above it.</>)}
+      {row(<span className="rd-kg-miss">120<i className="rd-due" /></span>, <><b>Not reached</b>: 3 sessions in a row under it.</>)}
       {row(<span className="rd-copydot static"><CopyIcon /></span>, <><b>Duplicated</b>: they did this session again this week.</>)}
       {row(<i className="rd-due" />, <><b>Needs you</b>: something here waits for you.</>)}
       <div className="rd-legend-head">What they did</div>

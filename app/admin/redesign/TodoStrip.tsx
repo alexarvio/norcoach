@@ -3,11 +3,12 @@
 import { createContext, useContext, useState, useTransition, type CSSProperties } from "react";
 import { logDate, logDateWidth } from "../../lib/dayMonth";
 import { useRouter } from "next/navigation";
-import { CalendarIcon, CheckIcon, EyeIcon, LockIcon, PhaseFlagIcon, PlayIcon, PlusIcon } from "../../components/icons";
+import { ArrowDownIcon, CalendarIcon, CheckIcon, EyeIcon, LockIcon, PhaseFlagIcon, PlayIcon, PlusIcon } from "../../components/icons";
 import { TrackIcon } from "./plan/PlanDraft";
 import { dismissHomeActionAction, markSeenAction } from "../../lib/actions";
 import { Dialog } from "../../components/ui/dialog";
 import { ConfirmDialog } from "./training/TrainingDraft";
+import { SepJoin } from "./Sep";
 import { landOnSoon } from "../../lib/landOn";
 import type { DotTab, TodoItem } from "./dots";
 
@@ -58,6 +59,8 @@ function iconOf(kind: TodoItem["kind"]) {
       return <CheckIcon />;
     case "read":
       return <EyeIcon />;
+    case "missed":
+      return <ArrowDownIcon />;
   }
 }
 
@@ -66,14 +69,15 @@ function iconOf(kind: TodoItem["kind"]) {
  *  track, that track's own icon (training the dumbbell, nutrition the apple, lifestyle the heart); the rest, as the action. */
 function markOf(item: TodoItem) {
   if (item.key === "setup" || item.key.startsWith("track-")) return <PhaseFlagIcon />;
-  if (item.key === "week") return <TrackIcon track="training" size={16} />;
+  // A target not reached (24 Nov): the training mark, as the week's.
+  if (item.key === "week" || item.kind === "missed") return <TrackIcon track="training" size={16} />;
   if (item.key.startsWith("empty-")) return <TrackIcon track={item.tab === "measurements" ? "lifestyle" : item.tab === "nutrition" ? "nutrition" : "training"} size={16} />;
   return iconOf(item.kind);
 }
 
 /** The tab's strip. `onAct` does a row's action in place (Meetings' Mark completed and Book, Plan's New phase) and says
  *  so; anything it leaves goes to the row's place: on this tab its # (the tab opens the thing and lands on it), else there. */
-export function TodoStrip({ tab, onAct }: { tab: DotTab; onAct?: (item: TodoItem) => boolean }) {
+export function TodoStrip({ tab, onAct, describe }: { tab: DotTab; onAct?: (item: TodoItem) => boolean; /** A row's facts and action in the tab's own words (Training's kg or lbs, 24 Nov); null keeps the server's. */ describe?: (item: TodoItem) => { facts?: (string | null)[]; action?: string } | null }) {
   const { clientId, items: all } = useContext(TodoContext);
   const router = useRouter();
   const [now] = useState(() => Date.now());
@@ -81,7 +85,12 @@ export function TodoStrip({ tab, onAct }: { tab: DotTab; onAct?: (item: TodoItem
   // Marked done by hand (2 Nov, Alex: "a button to override this"): gone at once, while the server lets them go.
   const [gone, setGone] = useState<ReadonlySet<string>>(() => new Set());
   const [asking, setAsking] = useState<TodoItem | null>(null);
-  const items = (all ?? []).filter((i) => i.tab === tab && !gone.has(i.key));
+  const items = (all ?? [])
+    .filter((i) => i.tab === tab && !gone.has(i.key))
+    .map((i) => {
+      const d = describe?.(i);
+      return d ? { ...i, ...(d.facts ? { facts: d.facts } : {}), ...(d.action ? { action: d.action } : {}) } : i;
+    });
   if (!items.length) return null;
   /** The rows the coach can let go: what the Feed's round check clears (not a sign-in lock, which ends by itself, nor a
    *  new client's first phase, which is no Needs-you item). */
@@ -118,7 +127,7 @@ export function TodoStrip({ tab, onAct }: { tab: DotTab; onAct?: (item: TodoItem
   return (
     <section className={`rd-todo${dated ? "" : " nodate"}`} aria-label="To do" style={{ "--todo-date": `${dateW}px` } as CSSProperties}>
       {items.map((item) => {
-        const wait = waitOf(item, now);
+        const wait = item.wait ?? waitOf(item, now);
         return (
           <div key={item.key} className="rd-todo-row">
             {dated && <span className="rd-logdate rd-todo-date">{item.since != null ? logDate(new Date(item.since)) : ""}</span>}
@@ -127,7 +136,16 @@ export function TodoStrip({ tab, onAct }: { tab: DotTab; onAct?: (item: TodoItem
             </span>
             <span className="rd-todo-thing">
               <span className="rd-todo-what">{item.what}</span>
-              {item.words && <span className="rd-todo-words">&ldquo;{item.words}&rdquo;</span>}
+              {item.words ? (
+                <span className="rd-todo-words">&ldquo;{item.words}&rdquo;</span>
+              ) : (
+                // Facts of the app's, grey, parted by the drawn bar (a target not reached: `Push | 150 kg | best 120 × 6`).
+                item.facts?.some(Boolean) && (
+                  <span className="rd-todo-words">
+                    <SepJoin parts={item.facts} />
+                  </span>
+                )
+              )}
             </span>
             {/* Worked out on the server and again in the browser: an hour may tick over between them. */}
             <span className="rd-todo-wait" suppressHydrationWarning>
@@ -150,7 +168,7 @@ export function TodoStrip({ tab, onAct }: { tab: DotTab; onAct?: (item: TodoItem
       <Dialog open={asking != null} onOpenChange={(o) => !o && setAsking(null)}>
         {asking && (
           <ConfirmDialog
-            thing={{ name: asking.what, facts: [asking.words ? `“${asking.words}”` : null] }}
+            thing={{ name: asking.what, facts: asking.words ? [`“${asking.words}”`] : asking.facts ?? [null] }}
             title="Mark as done?"
             // A confirm pop-up's words (11 Nov, Alex: A of docs/boards/popup-anatomy-mockup.html): who does what, the choice
             // starting with its verb, the verb alone on the pill.

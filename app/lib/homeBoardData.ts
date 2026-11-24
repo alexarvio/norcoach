@@ -36,6 +36,7 @@ import { phaseLastDay, phaseWeekIndex, phaseWeeks } from "./phases";
 import { invoicingFor } from "./countries";
 import { isAssisted, liftedKg } from "./progressRules";
 import { insideTarget, repTarget, type PbBar } from "./repTarget";
+import { swapSet } from "./targetRule";
 import { sub } from "./timing";
 
 type ProgramDayRow = Data["program_days"][number];
@@ -271,7 +272,10 @@ function context(clientId: number, today: string, food: FoodRows | null, ck: Che
     const lifted = weight == null ? null : liftedKg(weight, assisted, assisted ? bodyOn(day) : null);
     const volume = lifted != null && reps != null && lifted > 0 && reps > 0 ? lifted * reps : 0;
     const group = doneGroup(a);
-    sets.push({ assignmentId: a.id, day, ms: stampMs(l.logged_at), group, exerciseKey: doneKey(a), assisted, weight: lifted, reps, counts, volume, log: l });
+    // A set logged while a swap since taken back was on its row is the substitute's (24 Nov, underSwap), and which one is
+    // no longer known: no lift's, so the trends, Last session, Strength and the bests all leave it out alike.
+    const exerciseKey = !a.swap && swapSet(a, l.id) ? null : doneKey(a);
+    sets.push({ assignmentId: a.id, day, ms: stampMs(l.logged_at), group, exerciseKey, assisted, weight: lifted, reps, counts, volume, log: l });
     if (group && counts) {
       let d = perDay.get(day);
       if (!d) perDay.set(day, (d = { sets: zero(), volume: zero() }));
@@ -1052,6 +1056,7 @@ function bestIndex(ctx: Ctx): { rowOf: Map<number, AssignmentRow>; byKey: Map<st
   for (const list of ctx.byDay.values()) for (const a of list) rowOf.set(a.id, a);
   const byKey = new Map<string, LoggedSet[]>();
   for (const s of ctx.sets) {
+    // A set logged under a swap since taken back has no key (context): no best of the lift.
     if (!s.exerciseKey || s.weight == null || !(s.weight > 0) || s.reps == null || !(s.reps > 0)) continue;
     const list = byKey.get(s.exerciseKey);
     if (list) list.push(s);

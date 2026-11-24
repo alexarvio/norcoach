@@ -98,6 +98,7 @@ import {
   addMeetingSeries,
   setAssignmentVariation,
   setAssignmentDemoHidden,
+  setTargetFromNow,
   setExerciseVariationVideo,
   addExerciseVariation,
   removeExerciseVariation,
@@ -4350,6 +4351,30 @@ export async function setRowDemoHiddenAction(assignmentId: number, hidden: boole
   setAssignmentDemoHidden(id, !!hidden);
   revalidatePath("/admin");
   revalidatePath("/client");
+}
+
+// A target not reached in 3 sessions (24 Nov, Alex: B of docs/boards/target-rule-mockup.html): the row's ⋯ and the to-do
+// strip's Back to 120 kg put the figure on every row still asking it, as the coach's typed weight (setTargetFromNow).
+// Taken once (one-time key), so sent again after a dropped signal it changes nothing more. `fromKg` is the figure the
+// screen showed: a figure changed meanwhile is left as it is, and that is no failure (the page read after it shows what
+// is there), so the tab's Retry never meets a save it can't make. The client is told nothing new (24 Nov, Alex: the
+// board, "the client's app shows nothing of it"): their next session simply opens on the figure.
+export async function backToTargetAction(assignmentId: number, fromKg: number, onceKey?: string): Promise<{ ok: true; changed: number } | { ok: false; error: string }> {
+  const id = Number(assignmentId);
+  const owner = Number.isInteger(id) ? getClientIdForAssignment(id) : null;
+  if (owner == null || !(await coachForClient(owner))) return { ok: false, error: "Unknown exercise" };
+  try {
+    return await once(`backToTargetAction:${id}`, onceKeyOf(onceKey), () =>
+      withClientSetsLocked("action.training", owner, (sr): { ok: true; changed: number } => {
+        const r = setTargetFromNow(sr, id, Number(fromKg));
+        revalidatePath("/admin");
+        revalidatePath("/client");
+        return { ok: true, changed: r?.changed ?? 0 };
+      })
+    );
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Something went wrong" };
+  }
 }
 
 // Which of the exercise's variations a row asks for (the row's ⋯ menu); null: the exercise as it is.
