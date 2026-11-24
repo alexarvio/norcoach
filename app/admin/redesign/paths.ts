@@ -50,8 +50,8 @@ export function clientTab(tab: string, clientId: number | string, rest = ""): st
 /** A view over every client: /feed, /settings. */
 export const adminView = (view: CoachView | (typeof OTHER_VIEWS)[number], rest = "") => `/${view}${rest}`;
 
-/** Where the admin starts (after signing in, the welcome steps, a coach going back to it): the client they last had,
- *  else their first (the page picks, and moves the address onto them), else New client. */
+/** Where the admin starts (after signing in, the welcome steps, a coach going back to it): a client picked as the pages
+ *  always picked one (pickClient), the address then moved onto them; with no clients, New client. */
 export const ADMIN_HOME = "/clients";
 
 /** A client's screen in an address: the client (null for /clients alone) and the tab (home for /clients/1). */
