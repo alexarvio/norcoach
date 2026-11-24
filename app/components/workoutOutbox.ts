@@ -141,8 +141,19 @@ let gone = new Map<string, number>();
 let cleared: Record<string, string> = {};
 let refusedSlots: Record<string, string> = {};
 const inFlight = new Set<string>();
-/** Sessions thrown away on this page, by day and start. */
-const discarded = new Set<string>();
+/** Sessions thrown away on this page, by day and start, with when. A save made in the moment after (a set's 300ms on its
+    way out of the page) belongs to nothing and is not queued; past DISCARD_GUARD_MS the guard lets go (24 Nov, a live
+    session's sets vanishing: a discard that never reached the server left the guard up for good, every tick after it
+    dropped). A save after a discard the server did take finds no session there and is answered stale, harmlessly. */
+const discarded = new Map<string, number>();
+const DISCARD_GUARD_MS = 30_000;
+const guardUp = (key: string) => {
+  const at = discarded.get(key);
+  if (at == null) return false;
+  if (Date.now() - at < DISCARD_GUARD_MS) return true;
+  discarded.delete(key);
+  return false;
+};
 let view: OutboxView = EMPTY;
 const listeners = new Set<() => void>();
 
@@ -272,17 +283,20 @@ export function enqueueWorkout(change: WorkoutChangeIn, at: string = new Date().
   if (active == null) return;
   const entry = { ...change, id: newOnceKey(), at, slot: slotOf(change) } as WorkoutEntry;
   // A save that was still on its way out of a page as its session was thrown away (a set's 300ms) belongs to nothing.
-  if (entry.kind !== "start" && !outlivesSession(entry) && entry.startedAt != null && discarded.has(`${entry.dayId}|${entry.startedAt}`)) return;
+  if (entry.kind !== "start" && !outlivesSession(entry) && entry.startedAt != null && guardUp(`${entry.dayId}|${entry.startedAt}`)) return;
   // Saved again: what the server refused for it is no longer what the screen says.
   if (refusedSlots[entry.slot]) refusedSlots = Object.fromEntries(Object.entries(refusedSlots).filter(([k]) => k !== entry.slot));
   // Another tab's latest first, so the order (and what this replaces) is the shared one.
   sync();
   if (entry.kind === "discard") {
-    if (entry.startedAt != null) discarded.add(`${entry.dayId}|${entry.startedAt}`);
+    if (entry.startedAt != null) discarded.set(`${entry.dayId}|${entry.startedAt}`, Date.now());
     const dropped = entries.filter((e) => e.dayId === entry.dayId && !inFlight.has(e.id) && !outlivesSession(e));
     letGo(dropped);
     entries = entries.filter((e) => !dropped.includes(e));
-    if (!dropped.some((e) => e.kind === "start")) entries = [...entries, entry];
+    // Sent even when the start it throws away still waits here (24 Nov): a start whose answer was lost on the way back (the
+    // gym's signal) is on the server all the same, and a discard kept back left that session running there while the
+    // phone hid it. With no session to throw away the server answers stale and nothing changes.
+    entries = [...entries, entry];
   } else {
     const last = entries[entries.length - 1];
     // A lower count deletes sets, so it is never folded into a higher one after it (10 Nov: remove then add, offline).
@@ -642,6 +656,8 @@ export function applyWorkoutOutbox(days: SessionDay[], list: readonly WorkoutEnt
         break;
       }
       case "discard":
+        // Only the session it was made for (24 Nov): one begun after it, on the server's word, is never hidden by it.
+        if (e.startedAt != null && d.startedAt != null && Date.parse(d.startedAt) > Date.parse(e.startedAt)) break;
         // A rogue session discarded is gone altogether, as on the server.
         if (d.free || d.copy) gone.add(d.key);
         next = fresh(d);
