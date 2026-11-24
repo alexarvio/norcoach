@@ -22,8 +22,8 @@ import ChatList, { ChatsBack, type DockChat } from "./ChatList";
 import InvoicesDraft from "./invoices/InvoicesDraft";
 import { useReportHere } from "./RailFrame";
 import type { DraftInvoices } from "./loaders";
-import type { DotTab, DotTrail } from "./dots";
-import { TodoContext } from "./TodoStrip";
+import { todoRows, type DotTab, type DotTrail } from "./dots";
+import { TodoButton, TodoContext, TodoPanel, type TodoHandlers } from "./TodoStrip";
 import { useCloseOnEmptyClick } from "./useCloseOnEmptyClick";
 import { PopupTabZone, PopupWhoProvider } from "./PopupWho";
 import { SHOW_TAB_EVENT } from "./followLink";
@@ -144,8 +144,65 @@ export default function RedesignShell({ clientId, clientName, firstName, units, 
   // so each one sets what the reply is about (and the message to land on).
   const [chat, setChat] = useState<ChatState>({ mounted: false, open: false, about: null, opened: 0, focus: null });
   const closeChat = () => setChat((c) => ({ ...c, open: false }));
+  // The client's To do (24 Nov, Alex: "Build B", B of docs/boards/todo-button-mockup.html): its panel from the right, as
+  // the chat's, mounted on first use and kept so it slides both ways. One of the two at a time: opening either closes
+  // the other.
+  const [todo, setTodo] = useState<{ mounted: boolean; open: boolean; at: number }>({ mounted: false, open: false, at: 0 });
+  const closeTodo = useCallback(() => setTodo((t) => (t.open ? { ...t, open: false } : t)), []);
+  // Rows let go on the screen (the round check, a note read): gone at once, the count with them, while the server lets
+  // them go (2 Nov, Alex: "a button to override this").
+  const [gone, setGone] = useState<ReadonlySet<string>>(() => new Set());
+  const onGone = useCallback((keys: string[]) => setGone((g) => new Set([...g, ...keys])), []);
+  // A save the server refused brings its rows back (24 Nov, Alex: a failed save never hides a row for good).
+  const onBack = useCallback((keys: string[]) => setGone((g) => (keys.some((k) => g.has(k)) ? new Set([...g].filter((k) => !keys.includes(k))) : g)), []);
+  // A fresh read that no longer lists a row lets its key go too, so `gone` only ever holds rows still on the page's list
+  // (24 Nov, Alex): one owed again later shows again.
+  const [seenTodo, setSeenTodo] = useState(dots.todo);
+  if (seenTodo !== dots.todo) {
+    setSeenTodo(dots.todo);
+    const listed = new Set((dots.todo ?? []).flatMap((i) => [i.key, ...(i.keys ?? [])]));
+    setGone((g) => ([...g].every((k) => listed.has(k)) ? g : new Set([...g].filter((k) => listed.has(k)))));
+  }
+  // What each drawn tab does in place for a row (useTodoHandlers), and an action asked of a tab before it was drawn,
+  // run once it hands them over (or, failing that, after a moment without).
+  const handlers = useRef(new Map<DotTab, TodoHandlers>());
+  const parked = useRef<{ tab: DotTab; run: (h: TodoHandlers | undefined) => void; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const registerTodo = useCallback((t: DotTab, h: TodoHandlers) => {
+    handlers.current.set(t, h);
+    const p = parked.current;
+    if (p && p.tab === t) {
+      parked.current = null;
+      clearTimeout(p.timer);
+      requestAnimationFrame(() => requestAnimationFrame(() => p.run(h)));
+    }
+    return () => {
+      if (handlers.current.get(t) === h) handlers.current.delete(t);
+    };
+  }, []);
+  const parkTodo = useCallback((t: DotTab, run: (h: TodoHandlers | undefined) => void) => {
+    if (parked.current) clearTimeout(parked.current.timer);
+    parked.current = null;
+    const h = handlers.current.get(t);
+    // Two frames, so a tab just brought forward is on screen before its thing is opened and landed on.
+    if (h) return void requestAnimationFrame(() => requestAnimationFrame(() => run(h)));
+    const timer = setTimeout(() => {
+      if (parked.current?.run !== run) return;
+      parked.current = null;
+      run(handlers.current.get(t));
+    }, 1500);
+    parked.current = { tab: t, run, timer };
+  }, []);
+  const handlerOf = useCallback((t: DotTab) => handlers.current.get(t), []);
   // A click on empty space closes it, one on anything with a function doesn't (24 Oct, Alex).
   useCloseOnEmptyClick(chat.open, closeChat);
+  const openTodo = () => {
+    closeChat();
+    // The waits as of now.
+    const at = Date.now();
+    setTodo((t) => ({ mounted: true, open: t.mounted, at }));
+    // In closed first, then open a frame later, so even the first one slides (as the chat).
+    if (!todo.mounted) requestAnimationFrame(() => requestAnimationFrame(() => setTodo({ mounted: true, open: true, at })));
+  };
   // Open stays open (4 Nov, Alex: a click on a week closed it; "if it's open, it stays open"): a week loaded from the
   // server, another tab's screen or the Feed mounts a new page, so whether the chat is open lives in sessionStorage,
   // the same key as the dock's (ChatDock.tsx), and a new screen puts it back in place, no slide.
@@ -197,7 +254,8 @@ export default function RedesignShell({ clientId, clientName, firstName, units, 
     mountedRef.current = chat.mounted;
   }, [chat.mounted]);
   const openChat = useCallback((about?: Parameters<OpenChat>[0], focus: number | null = null) => {
-    // Opened from the page (its tab, a reply), it is this client's thread.
+    // Opened from the page (its tab, a reply), it is this client's thread. The To do panel makes way.
+    setTodo((t) => (t.open ? { ...t, open: false } : t));
     setView("own");
     picking.current = null;
     const next = (c: ChatState) => ({ mounted: true, open: true, about: about ? { ...about, gone: false } : null, opened: c.opened + 1, focus });
@@ -304,6 +362,8 @@ export default function RedesignShell({ clientId, clientName, firstName, units, 
     setTab(pageTab(initialTab));
     setDrawn({ id: clientId, tabs: [pageTab(initialTab)] });
     setChat({ mounted: false, open: false, about: null, opened: 0, focus: null });
+    setTodo({ mounted: false, open: false, at: 0 });
+    setGone(new Set());
     setView("own");
     setOther(null);
     // The page's client now: their thread is the page's own, never a second copy behind it.
@@ -390,23 +450,33 @@ export default function RedesignShell({ clientId, clientName, firstName, units, 
   const noMacros = (m: { protein: number | null; carbs: number | null; fats: number | null }) => m.protein == null && m.carbs == null && m.fats == null;
   const nutritionBlank = !hasPhase("nutrition") && noMacros(nutrition.training) && noMacros(nutrition.rest) && nutrition.waterL == null && !nutrition.note.trim() && nutrition.supplements.length === 0 && nutrition.logged.days.length === 0;
   // A metric line with no phase and nothing logged is no lifestyle set up (22 Oct, Alex: "has to be completely empty").
-  // The to-do strip's rows (2 Nov, TodoStrip.tsx), one object per read of the page.
-  const todoValue = useMemo(() => ({ clientId, items: dots.todo ?? [] }), [clientId, dots.todo]);
+  // The dot trail's rows for the tabs (Lifestyle's check-ins read theirs) and the handing over of what each tab does in
+  // place, one object per read of the page.
+  const todoValue = useMemo(() => ({ clientId, items: dots.todo ?? [], register: registerTodo }), [clientId, dots.todo, registerTodo]);
+  // The To do's rows and its count (24 Nov, Alex: "Build B"): every row the strips showed, on every tab, less those let go.
+  const owed = useMemo(() => todoRows(dots, gone), [dots, gone]);
+  // Nothing owed any more: the pill goes, and the panel with it.
+  if (todo.open && owed.length === 0) setTodo((t) => ({ ...t, open: false }));
   const measurementsBlank =!hasPhase("lifestyle") && measurements.daily.periods.length === 0 && measurements.weekly.periods.length === 0 && (measurements.monthly?.periods.length ?? 0) === 0 && measurements.notes.length === 0;
   return (
     <OpenChatContext.Provider value={openChat}>
     <TodoContext.Provider value={todoValue}>
     <>
       <div className="rd-page">
-        <nav className="rd-nav" aria-label="Redesign drafts">
-          {TABS.map((t) => (
-            <button key={t.key} type="button" className={t.key === tab ? "on" : ""} data-label={t.label} aria-current={t.key === tab ? "page" : undefined} onClick={() => show(t.key)}>
-              {t.label}
-              {/* Something owed on this tab (22 Oct, Alex: the dot trail from the rail's number down to the thing). */}
-              {dots.tabs.includes(t.key as DotTab) && <i className="rd-due rd-nav-due" role="img" aria-label="needs you" />}
-            </button>
-          ))}
-        </nav>
+        {/* The tabs, then the client's To do at their end (24 Nov, Alex: B of docs/boards/todo-button-mockup.html), beside
+            the tabs' track and never inside it (SlidePills takes each child of the track as a tab). */}
+        <div className="rd-navrow">
+          <nav className="rd-nav" aria-label="Redesign drafts">
+            {TABS.map((t) => (
+              <button key={t.key} type="button" className={t.key === tab ? "on" : ""} data-label={t.label} aria-current={t.key === tab ? "page" : undefined} onClick={() => show(t.key)}>
+                {t.label}
+                {/* Something owed on this tab (22 Oct, Alex: the dot trail from the rail's number down to the thing). */}
+                {dots.tabs.includes(t.key as DotTab) && <i className="rd-due rd-nav-due" role="img" aria-label="needs you" />}
+              </button>
+            ))}
+          </nav>
+          {owed.length > 0 && <TodoButton count={owed.length} open={todo.open} onClick={() => (todo.open ? closeTodo() : openTodo())} />}
+        </div>
         <PopupWhoProvider id={clientId} name={clientName} photo={clientPhoto}>
         <PopupTabZone tab="home" hidden={tab !== "home"}>
           {isDrawn("home") && (
@@ -480,7 +550,7 @@ export default function RedesignShell({ clientId, clientName, firstName, units, 
       {/* The chat's tab alone (19 Nov, Alex: the client's phone tab under it taken out, "leaving only the chat"). */}
       <button
         type="button"
-        className={`rd-chattab${chat.open ? " open" : ""}`}
+        className={`rd-chattab${chat.open ? " open" : ""}${todo.open ? " todo" : ""}`}
         onClick={() => (chat.open ? closeChat() : openChat())}
         aria-label={chat.open ? "Close the chat" : `Chat with ${firstName}${chatDot ? ", new message" : ""}`}
         title={chat.open ? "Close the chat" : `Chat with ${firstName}`}
@@ -509,6 +579,12 @@ export default function RedesignShell({ clientId, clientName, firstName, units, 
           )}
           </div>
         </aside>
+      )}
+      {/* The client's To do from the right (24 Nov, Alex: "Build B"), over the page: it never makes room, so nothing moves. */}
+      {todo.mounted && (
+        <PopupWhoProvider id={clientId} name={clientName} photo={clientPhoto}>
+          <TodoPanel open={todo.open} now={todo.at} onClose={closeTodo} clientId={clientId} clientName={clientName} items={owed} tab={tab} show={show} handler={handlerOf} park={parkTodo} onGone={onGone} onBack={onBack} units={units} />
+        </PopupWhoProvider>
       )}
       <Toaster />
     </>

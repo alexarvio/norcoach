@@ -19,7 +19,7 @@ import { stateTagStyle } from "../../phaseChrome";
 import PhaseDatesDialog from "../PhaseDatesDialog";
 import { PhaseDialog, phaseForm as planPhaseForm, type DraftPlan } from "../plan/PlanDraft";
 import PhaseSwitcher from "../PhaseSwitcher";
-import { TodoStrip } from "../TodoStrip";
+import { useTodoHandlers } from "../TodoStrip";
 import { SortableItem, SortableList } from "../Sortable";
 import { useOpenChat } from "../ChatPanel";
 import { dayMonth, logDate } from "../../../lib/dayMonth";
@@ -168,6 +168,8 @@ export default function NutritionDraft({
   dueFood?: Record<string, string[]>;
 }) {
   const router = useRouter();
+  // Drawn, for the client's To do (24 Nov, Alex: "Build B"; this tab's strip before, 2 Nov): a food day's note opens here.
+  useTodoHandlers("nutrition");
   const [, startTransition] = useTransition();
   // A header action goes to the server, then the page re-reads; what is on screen follows.
   // No Saved toast (16 Nov, Alex: the audit): the tab's status says it; `said` stays as the note of what each save is.
@@ -646,8 +648,6 @@ export default function NutritionDraft({
           </DropdownMenu>
         </div>
       </header>
-      {/* What the coach owes here (2 Nov, Alex): a note on a food day to read. */}
-      <TodoStrip tab="nutrition" />
 
       {/* ---- Daily targets: the kcal as a ring on the left, split by the macros typed in on the right. */}
       {/* Where the strip's Set targets lands (2 Nov: a live phase with no targets). */}

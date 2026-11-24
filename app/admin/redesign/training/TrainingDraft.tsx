@@ -25,7 +25,7 @@ import { changedWeeks } from "./applyShape";
 import MediaReviewModal, { reviewable, type MediaReview, type ThreadItem } from "../media-review/MediaReviewModal";
 import PhaseDatesDialog from "../PhaseDatesDialog";
 import PhaseSwitcher from "../PhaseSwitcher";
-import { goToHash, TodoStrip } from "../TodoStrip";
+import { goToHash, useTodoHandlers } from "../TodoStrip";
 import { landOn, landOnSoon } from "../../../lib/landOn";
 import { pinOnScreen, putOnScreen } from "./pinOnScreen";
 import { AfterWorkoutCheck, GoalsNotePills, GripIcon, WeekRail } from "./TrainingParts";
@@ -801,7 +801,8 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
       return next;
     });
   }
-  // The strip's Review or Read for a session on another week (2 Nov): once that week is here, its # is arrived at.
+  // The To do's Review or Read for a session on another week (2 Nov, the strip's then): once that week is here, its # is
+  // arrived at.
   const landAfterWeek = useRef<string | null>(null);
   useEffect(() => {
     const hash = landAfterWeek.current;
@@ -811,6 +812,30 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
     // What no listener opens (#sessions, the Add session button) is landed on all the same.
     landOnSoon(() => document.getElementById(hash.slice(1)), "center", 240);
   }, [program.weekIdx]);
+  // What the coach owes here, from the client's To do (24 Nov, Alex: "Build B"; was this tab's strip, 2 Nov): an empty
+  // week, a video to review, a note to read, a target not reached. A session on the week showing opens in place; on
+  // another week, that week comes and the session opens once it is here. Its weights in the unit picked.
+  useTodoHandlers("training", {
+    unit: () => (lbs ? "lbs" : "kg"),
+    // Back to 120 kg (or Set to the best), done in place for every session of the lift asking that figure: each saved at
+    // once through the tab's own status, the row's figure and the To do's row following.
+    act: (item) => {
+      if (item.kind !== "missed" || !item.missed) return false;
+      for (const p of item.missed.parts) backTo(p.dayId, p.assignmentId, p.fromKg);
+      return true;
+    },
+    go: (item) => {
+      const to = new URL(item.href, window.location.origin);
+      // A session (Review, Read), or the week's Add session (a live phase with no sessions).
+      if (!/^#session(-\d+|s$)/.test(to.hash)) return false;
+      if (Number(to.searchParams.get("program")) === program.id && Number(to.searchParams.get("week")) === viewIdx) goToHash(to.hash);
+      else {
+        landAfterWeek.current = to.hash;
+        router.push(item.href);
+      }
+      return true;
+    },
+  });
   // Arriving from a link in a message (#session-ID, or #session-ID-ex-ROW for
   // an exercise): that session unfolds and comes into view; an exercise's row
   // is scrolled to and marked for a moment. After the first paint, so the
@@ -2002,36 +2027,6 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
           </DropdownMenu>
         </div>
       </header>
-      {/* What the coach owes here (2 Nov, Alex): an empty week, a video to review, a note to read. A session's on the week
-          showing opens in place; on another week, that week comes and the session opens once it is here. */}
-      <TodoStrip
-        tab="training"
-        // A target not reached (24 Nov, Alex): its figures in the unit picked, as the row's ⋯ says them.
-        describe={(item) =>
-          item.missed
-            ? {
-                facts: [item.missed.session, `${kgOf(item.missed.fromKg, lbs)} ${unit}`, item.missed.best ? `best ${kgOf(item.missed.best.kg, lbs)} × ${item.missed.best.reps}` : null],
-                action: missedAction({ kg: item.missed.toKg, back: item.missed.back }, lbs),
-              }
-            : null
-        }
-        onAct={(item) => {
-          // Back to 120 kg, done in place: saved at once, the row's figure and the strip's row following.
-          if (item.kind === "missed" && item.missed) {
-            backTo(item.missed.dayId, item.missed.assignmentId, item.missed.fromKg);
-            return true;
-          }
-          const to = new URL(item.href, window.location.origin);
-          // A session (Review, Read), or the week's Add session (a live phase with no sessions).
-          if (!/^#session(-\d+|s$)/.test(to.hash)) return false;
-          if (Number(to.searchParams.get("program")) === program.id && Number(to.searchParams.get("week")) === viewIdx) goToHash(to.hash);
-          else {
-            landAfterWeek.current = to.hash;
-            router.push(item.href);
-          }
-          return true;
-        }}
-      />
 
       {/* ---- The weeks: a card each, one bar a session, NOW on this calendar week. Its ? (27 Oct, Alex) at the top right,
           on the fact line's level, says what the bars mean. */}

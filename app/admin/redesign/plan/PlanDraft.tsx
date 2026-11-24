@@ -23,7 +23,7 @@ import Picker from "../Picker";
 import DateText from "../DateText";
 import DatePick from "../DatePick";
 import { MonthRange } from "../MonthRange";
-import { TodoStrip } from "../TodoStrip";
+import { useTodoHandlers } from "../TodoStrip";
 import { dayMonth } from "../../../lib/dayMonth";
 import { newOnceKey } from "../../../lib/onceKey";
 import { phaseDays, phaseLengthLabel, phaseWeeks } from "../../../lib/phases";
@@ -194,6 +194,17 @@ export default function PlanDraft({ clientId, firstName, plan }: { clientId: num
   };
   const [dlg, setDlg] = useState<Dlg>(null);
   const close = () => setDlg(null);
+  // What the coach owes here, done from the client's To do (24 Nov, Alex: "Build B"; was this tab's strip, 2 Nov): a new
+  // client's first phase, or a track with nothing live: its draft over today opens (to make it live), else New phase on
+  // that track.
+  useTodoHandlers("plan", {
+    act: (item) => {
+      if (item.kind !== "setup") return false;
+      const draft = item.ref != null ? phases.find((p) => p.id === item.ref) : undefined;
+      setDlg(draft ? { kind: "phase", phase: draft } : { kind: "phase", phase: null, ...(item.track ? { track: item.track } : {}) });
+      return true;
+    },
+  });
   const [drag, setDrag] = useState<{ id: number; edge: "start" | "end" | "move"; start: string; end: string; moved: boolean; origStart: string; origEnd: string; anchor: string | null } | null>(null);
   const justDragged = useRef(false);
   const areaRef = useRef<HTMLDivElement>(null);
@@ -315,17 +326,6 @@ export default function PlanDraft({ clientId, firstName, plan }: { clientId: num
           </h1>
         </div>
       </header>
-      {/* What the coach owes here (2 Nov, Alex): a new client's first phase, or a track with nothing live: its draft over
-          today opens (to make it live), else New phase on that track. */}
-      <TodoStrip
-        tab="plan"
-        onAct={(item) => {
-          if (item.kind !== "setup") return false;
-          const draft = item.ref != null ? phases.find((p) => p.id === item.ref) : undefined;
-          setDlg(draft ? { kind: "phase", phase: draft } : { kind: "phase", phase: null, ...(item.track ? { track: item.track } : {}) });
-          return true;
-        }}
-      />
 
       {/* ---- Phases. */}
       {/* As Training's weeks (20 Oct, Alex): the heading and its controls on the page, the timeline in a white card under them. */}

@@ -3,8 +3,9 @@
 // video mark, rust while it waits). The same things the rail counts (the Feed's Needs you), worked out once on the
 // server (loadDots in loaders.ts) and handed to every tab. A dot goes when the thing is done (replied, reviewed, read,
 // booked), never just by looking. The chat keeps its own dot on the chat tab (unread, gone on opening). Styles: .rd-due
-// in training/draft.css. At the top of each tab the same things say what they are and carry their action (todo,
-// TodoStrip.tsx; 2 Nov, Alex).
+// in training/draft.css. The same things say what they are and carry their action in the client's To do panel, one
+// button at the end of their tabs (todo; 2 Nov, Alex, as a strip on each tab; since 24 Nov, Alex: "Build B", B of
+// docs/boards/todo-button-mockup.html).
 
 /** The client tabs as RedesignShell keys them. */
 export type DotTab = "home" | "plan" | "measurements" | "training" | "nutrition" | "pictures" | "meetings" | "invoices";
@@ -28,12 +29,12 @@ export type DotTrail = {
   meetings: boolean;
   /** Locked out of signing in: App access on Home. */
   unlock: boolean;
-  /** The to-do strip at the top of each tab (2 Nov, Alex: "if we just use dots, it can be a little bit confusing"): every
-   *  thing the rail counts, on the tab it is done on, in the rail's order. */
+  /** The To do panel's rows (2 Nov, Alex: "if we just use dots, it can be a little bit confusing"; one panel for all the
+   *  client's tabs since 24 Nov, `todoRows`): every thing the rail counts, on the tab it is done on, in the rail's order. */
   todo: TodoItem[];
 };
 
-/** One row of a tab's to-do strip (TodoStrip.tsx): what it is, since when it waits, and the action that does it. */
+/** One row of the To do panel: what it is, since when it waits, and the action that does it (its words, 24 Nov). */
 export type TodoItem = {
   /** The Needs-you id ("week", "complete-12", "read-…"), unique on one client. */
   key: string;
@@ -58,14 +59,44 @@ export type TodoItem = {
   /** Facts in grey after it, parted by the drawn bar, in place of their words (a target not reached: `Push | 150 kg |
    *  best 120 × 6`). */
   facts?: (string | null)[];
-  /** How long it has waited, when it is not a time (a target not reached: `3 sessions`). */
+  /** How long it has waited, when it is not a time. */
   wait?: string;
-  /** A target not reached in 3 sessions (24 Nov, Alex: B of docs/boards/target-rule-mockup.html): the row, the figure it
-   *  asks and what Back to puts there, in kg; the session it sits in. Training's strip says it in the unit picked. */
-  missed?: { assignmentId: number; dayId: number; fromKg: number; toKg: number; back: boolean; best: { kg: number; reps: number } | null; session: string; sessions: number };
+  /** What happened, in rust between the bars (a target not reached: `60 kg not reached in 4 sessions`). */
+  happened?: string;
+  /** Every Needs-you id the row stands for, when it is more than its own `key` (a lift's missed figure in several
+   *  sessions): its round check lets them all go, or the others come back as a row. */
+  keys?: string[];
+  /** A target not reached in 3 sessions (24 Nov, Alex: B of docs/boards/target-rule-mockup.html), one row a lift (24 Nov,
+   *  Alex: B of docs/boards/todo-button-mockup.html, "Build B"): every session of the programme asking the same figure
+   *  with the same offer, as `parts` (a row each, the figure it asks), the sessions' names in programme order, the figure
+   *  and what Back to (or Set to) puts there, in kg, the run's best and its sessions. Its action acts on every part
+   *  (backToTargetsAction). `assignmentId`, `dayId` and `session` are the first part's. Training says it in the unit
+   *  picked. */
+  missed?: {
+    parts: { assignmentId: number; dayId: number; fromKg: number }[];
+    sessionNames: string[];
+    assignmentId: number;
+    dayId: number;
+    fromKg: number;
+    toKg: number;
+    back: boolean;
+    best: { kg: number; reps: number } | null;
+    session: string;
+    sessions: number;
+  };
 };
 
 export const NO_DOTS: DotTrail = { tabs: [], training: { weeks: {}, days: [], exercises: [] }, food: {}, meetings: false, unlock: false, todo: [] };
+
+/** The tabs a To do row can be on (24 Nov, Alex: "Build B"): every tab that had a to-do strip. Invoices never had one, so
+ *  its dot leads to no row. */
+export const TODO_TABS: readonly DotTab[] = ["home", "plan", "measurements", "training", "nutrition", "pictures", "meetings"];
+
+/** Every row of the client's To do panel, across their tabs, and so its button's count: exactly the rows the strips
+ *  showed, less any let go on the screen (`gone`, its keys). */
+export function todoRows(dots: DotTrail | undefined, gone?: ReadonlySet<string>): TodoItem[] {
+  return (dots?.todo ?? []).filter((i) => TODO_TABS.includes(i.tab) && !(gone && (gone.has(i.key) || i.keys?.some((k) => gone.has(k)))));
+}
 
 /** A week of this programme has a dot. */
 export const weekDue = (dots: DotTrail | undefined, programId: number, weekIndex: number) => !!dots?.training.weeks[programId]?.includes(weekIndex);

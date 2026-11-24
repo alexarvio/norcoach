@@ -27,7 +27,7 @@ import type { PhaseTrack } from "../../../lib/db";
 import type { PlanChoice } from "../../../lib/planText";
 import KindMark from "../KindMark";
 import HelpTip from "../HelpTip";
-import { TodoStrip } from "../TodoStrip";
+import { useTodoHandlers } from "../TodoStrip";
 import type { ActivityMark } from "../../../lib/activityMark";
 import { monotoneSegments } from "../../../lib/monotoneCurve";
 // Values from weightGoal.ts are safe here: it is pure (no store, no queries).
@@ -191,6 +191,9 @@ export default function HomeDraft({
   dueUnlock?: boolean;
 }) {
   const router = useRouter();
+  // What the coach owes here, from the client's To do (24 Nov, Alex: "Build B"; was this tab's strip, 2 Nov): a sign-in
+  // lock, Unlock opening App access.
+  useTodoHandlers("home", { act: (item) => item.kind === "locked" && (document.querySelector<HTMLButtonElement>(".trn-pill.rh-due")?.click(), true) });
   const [details, setDetails] = useState(false);
   const detailsPick = useRef(false);
   const [deleting, setDeleting] = useState(false);
@@ -298,9 +301,6 @@ export default function HomeDraft({
           </DropdownMenu>
         </div>
       </header>
-      {/* What the coach owes here (2 Nov, Alex): a sign-in lock, Unlock opening App access. */}
-      <TodoStrip tab="home" onAct={(item) => item.kind === "locked" && (document.querySelector<HTMLButtonElement>(".trn-pill.rh-due")?.click(), true)} />
-
       {/* Nothing under the name (27 Oct, Alex: the Since line taken out, "we do not need anything there"). */}
 
       {/* ---- The three tracks, in their order: the phase, its week, the one figure. A tile opens its tab (Plan when none). */}

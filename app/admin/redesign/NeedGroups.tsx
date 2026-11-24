@@ -14,7 +14,8 @@ import { TrackIcon } from "./plan/PlanDraft";
 // category's icon in its colour, its name and its count, over its own hairline card; a row the date, the face and name,
 // the thing and their words, then (as the row has them) a bar, the wait, the action as its icon alone (3 Nov, Alex: "the
 // icons should be self explanatory"; its word the tooltip), and the round check on hover. Styles: .nd- in feed/feed.css.
-// The rust to-do strip on a client's tab keeps its own look.
+// The client's To do panel (TodoStrip.tsx; 24 Nov, Alex: "Build B", the rust strip on each tab before) borrows the
+// groups' heads and draws its rows its own way, the action in words.
 
 const CALL = meetingTypeOf("checkin");
 

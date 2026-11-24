@@ -1,0 +1,65 @@
+/* ---- The client's To do (24 Nov, Alex: "Build B", B of docs/boards/todo-button-mockup.html; TodoStrip.tsx): one rust
+   pill at the end of the client's tabs, opening a panel from the window's right as the chat does. Was the to-do strip on
+   top of each tab (2 Nov). */
+
+/* The tabs and the pill on one line; the pill is no child of the tabs' track (SlidePills takes each child as a tab). */
+.rd-navrow { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0 0 16px; }
+.rd-navrow > .rd-nav { margin: 0; }
+
+/* The pill: white, a 1.5px rust edge, rust words, the count a rust disc with white figures; a soft rust tint while open. */
+.rd-todobtn { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 6px 0 12px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1.5px #b8471f; font: inherit; font-size: 13px; font-weight: 600; color: #b8471f; cursor: pointer; transition: background-color 0.2s ease; }
+.rd-todobtn b { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #b8471f; color: #fff; font-size: 10.5px; font-weight: 600; font-variant-numeric: tabular-nums; display: inline-grid; place-items: center; }
+.rd-todobtn.open { background: rgba(184, 71, 31, 0.08); }
+@media (hover: hover) { .rd-todobtn:hover { background: rgba(184, 71, 31, 0.08); } }
+.rd-todobtn:focus-visible { outline: 2px solid #b8471f; outline-offset: 2px; }
+
+/* The panel: white, 520px, a soft shadow on its left edge, over the page (it never makes room, so the page never moves),
+   under every dialog and menu as the chat panel is (z 46). */
+.rd-todopanel { position: fixed; top: 0; right: 0; bottom: 0; z-index: 46; width: min(520px, 100vw); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 18px 10px 24px; background: #fff; box-shadow: -18px 0 40px rgba(20, 30, 50, 0.12); font-family: var(--font-archivo), system-ui, sans-serif; color: #141a24; transform: translateX(105%); visibility: hidden; transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.28s; }
+.rd-todopanel.open { transform: none; visibility: visible; transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
+@media (prefers-reduced-motion: reduce) { .rd-todopanel, .rd-todopanel.open { transition: none; } }
+
+/* Its head: To do at 18px/600, the client's name grey after it, the round ghost ✕. */
+.tdp-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 4px 8px 14px; }
+.tdp-head h2 { margin: 0; font-size: 18px; font-weight: 600; line-height: 28px; }
+.tdp-head h2 small { margin-left: 8px; font-size: 13px; font-weight: 500; color: #8b93a1; }
+.tdp-x { flex: none; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 14px; line-height: 1; color: #8b93a1; cursor: pointer; display: inline-grid; place-items: center; }
+.tdp-x:hover { background: #f5f6f8; color: #141a24; }
+.tdp-x:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; color: #141a24; }
+
+/* A group, a tab each: the small caps head in its colour with its icon and count (the needs-you lists' .nd-head). */
+.tdp-group + .tdp-group { margin-top: 6px; }
+.tdp-ghead { display: flex; align-items: center; gap: 7px; padding: 10px 12px 4px; font-size: 10.5px; font-weight: 600; line-height: 16px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--c); }
+.tdp-ghead svg { flex: none; width: 14px; height: 14px; stroke-width: 1.6; } /* every head icon at one weight, as .nd-head's (24 Nov) */
+.tdp-ghead small { font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; color: #98a2b3; font-variant-numeric: tabular-nums; }
+
+/* A row: its name over its facts, the action in words, the round check (on hover). The one row hover. */
+.tdp-row { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 8px 6px 12px; border-radius: 9px; transition: opacity 0.2s ease; }
+.tdp-row:hover, .tdp-row:focus-within { background: #fafbfd; }
+.tdp-row.busy { opacity: 0.45; pointer-events: none; }
+.tdp-thing { flex: 1; min-width: 0; }
+.tdp-name { display: block; max-width: 100%; padding: 0; border: 0; background: none; font: inherit; font-size: 14px; font-weight: 600; line-height: 19px; color: #141a24; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.tdp-name:hover { text-decoration: underline; text-decoration-color: #c9cfd8; text-underline-offset: 3px; }
+.tdp-name:focus-visible { outline: none; text-decoration: underline; text-underline-offset: 3px; }
+.tdp-thing small { display: block; margin-top: 2px; font-size: 12.5px; font-weight: 500; line-height: 1.4; color: #8b93a1; overflow-wrap: anywhere; }
+/* What happened, in rust (`60 kg not reached in 4 sessions`, `2 days`). */
+.tdp-thing small em { font-style: normal; font-weight: 600; color: #b8471f; }
+/* The action as its words (the one word action, docs/DESIGN-RULES-ADMIN.md §8): 32px, ink, the page grey under the pointer. */
+.tdp-act { flex: none; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; white-space: nowrap; cursor: pointer; }
+.tdp-act:hover, .tdp-act:focus-visible { outline: none; background: #f5f6f8; }
+/* The round check, on the row's hover (always on a touch screen): grey, green under the pointer; asks first. A row that
+   can't be let go keeps its room, so every action lines up. */
+.tdp-done, .tdp-done-room { flex: none; width: 28px; height: 28px; margin-left: -6px; }
+.tdp-done { display: inline-grid; place-items: center; padding: 0; border: 0; border-radius: 999px; background: none; color: #8b93a1; cursor: pointer; opacity: 0; transition: opacity 0.15s ease, background-color 0.2s ease, color 0.2s ease; }
+.tdp-done svg { width: 14px; height: 14px; }
+.tdp-row:hover .tdp-done, .tdp-done:focus-visible { opacity: 1; }
+.tdp-done:hover, .tdp-done:focus-visible { outline: none; background: rgba(47, 122, 63, 0.12); color: #2f7a3f; }
+@media (any-hover: none) { html:not([data-mouse]) .tdp-done { opacity: 1; } }
+
+/* The rest of a group behind `N more`, in words, opening them in place on the shared fold (RowFold). */
+.tdp-more { display: block; margin: 2px 0 0; padding: 8px 12px 6px; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; cursor: pointer; }
+.tdp-more:hover, .tdp-more:focus-visible { outline: none; color: #141a24; }
+
+/* The chat's tab on the panel's edge while it is open, so it never covers the ✕; a click on it opens the chat instead. */
+.rd-chattab.todo { right: min(520px, 100vw); transform: none; }
+@media (max-width: 560px) { .rd-chattab.todo { opacity: 0; pointer-events: none; } }

@@ -11,7 +11,7 @@ import { ConfirmChoice } from "../ConfirmParts";
 import Compare from "./Compare";
 import { Fold } from "../Fold";
 import { RowFold } from "../RowFold";
-import { TodoStrip } from "../TodoStrip";
+import { useTodoHandlers } from "../TodoStrip";
 import { Dialog, DialogClose, DialogContent, DialogDescription } from "../../../components/ui/dialog";
 import { Popover, PopoverAnchor, PopoverContent } from "../../../components/ui/popover";
 import { CameraIcon, ChevronLeftIcon, PlusIcon, TrashIcon } from "../../../components/icons";
@@ -106,6 +106,8 @@ export default function PicturesDraft(props: Props) {
 
 function Pictures({ clientId, firstName, plan }: Props) {
   const router = useRouter();
+  // Drawn, for the client's To do (24 Nov, Alex: "Build B"; this tab's strip before, 2 Nov): a shape update's note opens here.
+  useTodoHandlers("pictures");
   const [, startRefresh] = useTransition();
   const reRead = () => startRefresh(() => router.refresh());
   const q = useSaveQueue(reRead);
@@ -255,8 +257,6 @@ function Pictures({ clientId, firstName, plan }: Props) {
           {/* No ⋯ (23 Oct, Alex): it held Message alone; the chat panel is a tab away. */}
         </div>
       </header>
-      {/* What the coach owes here (2 Nov, Alex): a note on a shape update to read. */}
-      <TodoStrip tab="pictures" />
 
       {!top ? (
         // The shared card and empty word (3 Nov, Alex: was its own card and "No sheets yet").
