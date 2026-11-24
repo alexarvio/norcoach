@@ -5,6 +5,11 @@
 // paper with the star alone in the middle; `revealing`, the NORCOACH word shoots out from behind the star, the two
 // staying centred as one, and the paper fades off what is under it. Styles: "Opening" at the end of globals.css.
 
+// With a coach's own logo (24 Nov, Alex: "whenever the coach sets their logo, that we have their logo in there, and
+// like below we can say powered by Norcoach"), the client app's opening is that logo alone, and on the reveal
+// `Powered by` and the NORCOACH word come in under it: `.nc-boot-coach`, drawn only in the client app while the body
+// says `has-coach-logo` (the root layout, which also sets `--bg-mark`, the logo as one dark shape). opening-coach.css.
+import "./opening-coach.css";
 import { NorCoachMark, NorCoachWordmark } from "./NorCoachLogo";
 
 type Props = {
@@ -31,6 +36,15 @@ export default function OpeningLogo({ revealing = false, plain = false, classNam
           <NorCoachMark className="nc-boot-star" />
           <span className="nc-boot-wordwrap">
             <NorCoachWordmark className="nc-boot-word" />
+          </span>
+        </div>
+      )}
+      {!plain && (
+        <div className="nc-boot-coach">
+          <span className="nc-boot-coach-logo" />
+          <span className="nc-boot-powered">
+            <span className="nc-boot-powered-by">Powered by</span>
+            <NorCoachWordmark className="nc-boot-powered-word" />
           </span>
         </div>
       )}
