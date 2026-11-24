@@ -265,7 +265,10 @@ export default function CheckInDialog({
         fd.set("clientId", String(clientId));
         fd.set("date", form.date);
         fd.set("frequency", source);
-        mine.forEach((r) => fd.set(`metric_${r.metric.id}`, send(r)));
+        // Only the rows the client changed (24 Nov: a client's Apple Health weight went missing): a row left as the pop-up
+        // opened it is not on the form, so a figure the phone filled meanwhile is never sent back empty over it (the action
+        // leaves a field not on the form untouched).
+        mine.forEach((r) => changedRow(r) && fd.set(`metric_${r.metric.id}`, send(r)));
         fd.set("note", withNote ? note : form.sections.find((s) => s.id === source)?.note ?? "");
         await logMetricPeriodAction(fd);
       }

@@ -4639,7 +4639,8 @@ export function listMeasurementFields(clientId: number): MeasurementFieldDef[] {
 /** A body weight's name (23 Oct, Alex): "Weight", "Body weight", "Bodyweight (AM)"; a lift's weight never. Kept with the
  *  phone's kinds (healthKind.ts), which read it too. */
 export { WEIGHT_NAME };
-const LB_UNIT = /^lbs?\.?$/i;
+// lbs, lb, pounds (24 Nov: a Weight metric in pounds took the phone's kg as they were, healthKindOf accepting it).
+const LB_UNIT = /^(lbs?|pounds?)\.?$/i;
 const KG_PER_LB = 0.45359237;
 const DAY_ISO = /^\d{4}-\d{2}-\d{2}$/;
 

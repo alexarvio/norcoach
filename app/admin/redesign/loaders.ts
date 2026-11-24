@@ -21,7 +21,7 @@ import { getHomeBoard, type HomeBoard } from "../../lib/homeBoard";
 import { activityMarkOf } from "../../lib/activityMark";
 import { SERVER_TZ, zonedToUtc } from "../../lib/timezones";
 import { hasBankDetails, invoicingFor } from "../../lib/countries";
-import { clientActions, coachNeeds } from "../../lib/coachNeeds";
+import { actionsFrom, clientActions, coachNeeds } from "../../lib/coachNeeds";
 import { fetchCoachChat, type ChatCoachView, type ChatDockView, type ChatThread } from "../../lib/chat/rows";
 import { fetchCoachFood, noFoodRows, type FoodRows } from "../../lib/food/rows";
 import { fetchCoachCheckIns, type CheckInRows } from "../../lib/checkins/rows";
@@ -804,14 +804,15 @@ export function loadRail(coach: { id: number; email: string; role: "coach" | "cl
   // The coach's feed and every client's Needs you, read once a request and shared with the Feed, the Phases screen and
   // the dot trail (4 Nov, Alex: "just a tiny bit slow"; coachNeeds.ts). Timed as rail.feed and rail.needsYou when the
   // rail reads it first.
-  const { byId } = coachNeeds(coach.id, chat, food, ck, sr);
+  const needs = coachNeeds(coach.id, chat, food, ck, sr);
+  const { byId } = needs;
   const data = getData();
   const clients = sub("needsYou", () => {
     const list = listClients(coach.id);
     return list.map((c) => {
       const user = getUserForClient(c.id);
       const isNew = listClientPhases(c.id).length === 0 && !data.training_programs.some((p) => p.client_id === c.id);
-      return { id: c.id, name: c.name, avatarPath: c.avatar_path ?? null, ...railSpots(c.id, clientActions(coach.id, c.id, chat, food, ck, sr), byId, isNew), notSignedIn: !user || (!user.clerk_user_id && (user.must_change_password || !user.password_hash)) };
+      return { id: c.id, name: c.name, avatarPath: c.avatar_path ?? null, ...railSpots(c.id, actionsFrom(needs, coach.id, c.id, chat, food, ck, sr), byId, isNew), notSignedIn: !user || (!user.clerk_user_id && (user.must_change_password || !user.password_hash)) };
     });
   });
   return sub("coach", () => {
