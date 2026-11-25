@@ -211,6 +211,10 @@ export async function removeCoachAction(formData: FormData) {
   const owner = await requireOwner();
   const coachId = Number(formData.get("coachId"));
   if (coachId === owner.id) redirect(`${COACHES}&coachError=self`);
+  // Their example client goes with them, never a reason to keep the account (25 Nov; lib/exampleClient.ts).
+  if (!getData().clients.some((c) => c.coach_id === coachId && !c.example)) {
+    for (const c of getData().clients.filter((c) => c.coach_id === coachId && c.example)) await eraseClient(c.id, { selfDeleted: false });
+  }
   if (!deleteCoachAccount(coachId)) redirect(`${COACHES}&coachError=hasclients`);
   redirect(`${COACHES}&coachOk=removed`);
 }

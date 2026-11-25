@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type
 import Link from "next/link";
 import { dayMonth } from "../../lib/dayMonth";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import RailTour from "./RailTour";
+import "./onboarding-tour.css";
 import { AccountIcon, BusinessIcon, CalendarIcon, FeedIcon, GearIcon, PhasesIcon, PlusIcon, SearchIcon } from "../../components/icons";
 import { TRAINING_ICON } from "../../lib/eventTypes";
 import { logoutAction } from "../../lib/auth-actions";
@@ -278,8 +278,6 @@ export default function RedesignRail({ rail, clientId, settings = false, onArriv
   // Settings is a view of its own now, a row under the views (22 Nov, Alex): nothing folds in the rail.
   const settingsOpen = false;
   const onSettings = settings || !!path?.startsWith(SETTINGS_HREF);
-  // "Take a tour" from the welcome steps.
-  const touring = useSearchParams().get("tour") === "1";
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "needs">(() => keptFilter);
   useEffect(() => {
@@ -535,7 +533,7 @@ export default function RedesignRail({ rail, clientId, settings = false, onArriv
                     <ViewLink
                       href={`/clients/${c.id}/home`}
                       armAfter={CLIENT_ARM_MS}
-                      className={`rr-row${active ? " active" : ""}${pendingId === c.id ? " loading" : ""}`}
+                      className={`rr-row${active ? " active" : ""}${pendingId === c.id ? " loading" : ""}${(c as RailClient & { example?: boolean }).example ? " example" : ""}`}
                       aria-current={active ? "page" : undefined}
                       onClick={(e) => {
                         setPendingId(c.id);
@@ -553,6 +551,9 @@ export default function RedesignRail({ rail, clientId, settings = false, onArriv
                         )}
                       </span>
                       <span className="rr-name">{c.name}</span>
+                      {/* The example client a new coach finds already there (25 Nov, Alex: docs/boards/coach-onboarding-mockup.html):
+                          the grey state pill after the name, a flag on the client, never their name. */}
+                      {(c as RailClient & { example?: boolean }).example && <span className="rr-example">Example</span>}
                     </ViewLink>
                     {/* How many things need you, a rust number and nothing more said (22 Oct, Alex); a click drops the
                         screens they are on open under the row. */}
@@ -594,7 +595,6 @@ export default function RedesignRail({ rail, clientId, settings = false, onArriv
 
       </div>
 
-      {touring && <RailTour />}
       {adding && <NewClientDialog look="hairline" inviteReady={rail.inviteReady} clerk={rail.clerk} onClose={() => setAdding(false)} />}
     </aside>
   );

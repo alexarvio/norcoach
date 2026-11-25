@@ -291,7 +291,8 @@ export function ensureOwnerFromEnv() {
 export function deleteCoachAccount(coachId: number): boolean {
   const data = getData();
   const coach = data.users.find((u) => u.id === coachId && u.role === "coach");
-  if (!coach || data.clients.some((c) => c.coach_id === coachId)) return false;
+  // Their example client is no client (25 Nov; the callers erase it first, lib/exampleClient.ts).
+  if (!coach || data.clients.some((c) => c.coach_id === coachId && !c.example)) return false;
   const templateIds = new Set(data.metric_template_categories.filter((t) => t.coach_id === coachId).map((t) => t.id));
   const reportIds = new Set(data.report_templates.filter((t) => t.coach_id === coachId).map((t) => t.id));
   const blockIds = new Set(data.meetings.filter((m) => m.client_id == null && m.coach_id === coachId).map((m) => m.id));

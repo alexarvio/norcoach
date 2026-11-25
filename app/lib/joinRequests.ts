@@ -236,7 +236,8 @@ export function linkableClients(coachId: number): { id: number; name: string; av
   return data.clients
     // A phase the coach made live, or their Open {First}'s app, opens it before they join; only `before` (opened by the
     // lock's first sweep, or by their own logging) is someone who has been in.
-    .filter((c) => c.coach_id === coachId && !c.last_active_at && c.app_opened_by !== "before")
+    // Never the example client (25 Nov, Alex; lib/exampleClient.ts): no person can become him.
+    .filter((c) => c.coach_id === coachId && !c.example && !c.last_active_at && c.app_opened_by !== "before")
     .flatMap((c) => {
       const login = data.users.find((u) => u.role === "client" && u.client_id === c.id);
       if (login && (login.clerk_user_id || login.password_hash)) return [];

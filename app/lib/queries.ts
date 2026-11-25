@@ -1529,6 +1529,8 @@ async function applyDueClientReminders() {
   // done, or its day, week or photo period has passed. So clients with an
   // unread reminder are looked at too, whatever they have set up now.
   for (const id of await fetchUnreadReminderClients("job.reminders.unread")) clientIds.add(id);
+  // Never the example client (25 Nov, Alex; lib/exampleClient.ts): nobody is there to be reminded.
+  for (const c of data.clients) if (c.example) clientIds.delete(c.id);
 
   // Each client's newest check-in periods fetched first (quest 9), then their due items and keys, worked out as before.
   const ck = await fetchDueCheckIns([...clientIds], "job.reminders", dueCheckInDefIds);
@@ -4850,8 +4852,9 @@ export function listCoachAccounts(chat: ChatCoachView, food: FoodRows, ck: Check
       return {
         id: u.id,
         email: u.email,
-        clients: data.clients.filter((c) => c.coach_id === u.id).length,
-        lastActivity: latest ? feedTimeLabel(latest.at, latest.timeKnown) : null,
+        // Their example client is no client (25 Nov), nor what he "did".
+        clients: data.clients.filter((c) => c.coach_id === u.id && !c.example).length,
+        lastActivity: latest && !data.clients.find((c) => c.id === latest.clientId)?.example ? feedTimeLabel(latest.at, latest.timeKnown) : null,
         mustChangePassword: u.must_change_password,
       };
     });
@@ -7468,7 +7471,9 @@ export type MeetingConflict = { a: MeetingWithClient; b: MeetingWithClient };
 // the warning appears or clears automatically, no separate notification
 // state to keep in sync.
 export function getMeetingConflicts(coachId: number): MeetingConflict[] {
-  const meetings = listAllMeetings(coachId).filter((m) => m.status === "scheduled" && m.time);
+  // The example client's calls never clash (25 Nov, Alex; lib/exampleClient.ts): nobody is double-booked by him.
+  const example = new Set(getData().clients.filter((c) => c.example && c.coach_id === coachId).map((c) => c.id));
+  const meetings = listAllMeetings(coachId).filter((m) => m.status === "scheduled" && m.time && !(m.client_id != null && example.has(m.client_id)));
   const conflicts: MeetingConflict[] = [];
   for (let i = 0; i < meetings.length; i++) {
     for (let j = i + 1; j < meetings.length; j++) {

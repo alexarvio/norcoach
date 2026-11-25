@@ -158,7 +158,9 @@ const shownKg = (v: unknown) => {
 export function pickClient(coachId: number, asked: string | undefined) {
   const clients = listClients(coachId);
   const id = Number(asked);
-  const client = clients.find((c) => c.id === id) ?? clients.find((c) => c.name === "Demo Client") ?? clients.find((c) => getDeployedProgram(c.id)) ?? clients[0] ?? null;
+  // A real client before the example one (25 Nov), who always has a programme out.
+  const real = clients.filter((c) => !(c as { example?: boolean }).example);
+  const client = clients.find((c) => c.id === id) ?? clients.find((c) => c.name === "Demo Client") ?? real.find((c) => getDeployedProgram(c.id)) ?? real[0] ?? clients[0] ?? null;
   return { clients, client, firstName: client ? (client.name ?? "").split(" ")[0] || "the client" : "the client" };
 }
 
@@ -711,7 +713,7 @@ export type RailSpot = { screen: string; href: string; count: number };
 /** spots: the screens needing the coach, in the Feed's order; total: how many things across them, the rail's number
  *  (22 Oct, Alex: a number by the name, its screens in a list under it, nothing more said in the rail). A client with no
  *  phase or programme set yet, any state, counts one on Plan. */
-export type RailClient = { id: number; name: string; avatarPath: string | null; spots: RailSpot[]; total: number; /** total without a new client's set-up: what the Feed's Needs you lists for them. */ owed: number; /** What the Phases screen lists for them (2 Nov): a phase missing, a draft, an empty live phase, or no phase yet. */ phases: number; notSignedIn: boolean };
+export type RailClient = { id: number; name: string; avatarPath: string | null; spots: RailSpot[]; total: number; /** total without a new client's set-up: what the Feed's Needs you lists for them. */ owed: number; /** What the Phases screen lists for them (2 Nov): a phase missing, a draft, an empty live phase, or no phase yet. */ phases: number; notSignedIn: boolean; /** The coach's example client (25 Nov, Alex; lib/exampleClient.ts): never owing anything (spots empty, every count 0), drawn with the grey Example pill. */ example?: boolean };
 
 // What the coach owes, as the Feed's Needs you has it (needFrom in feedBoardData.ts); statuses are the Feed's alone.
 // A call to complete is the Meetings tab's alone (2 Nov, Alex: off the Feed, "unnecessary and bulky"): its strip and its
@@ -760,6 +762,8 @@ export function loadPhaseNeeds(coachId: number, chat: ChatCoachView, food: FoodR
   const data = getData();
   const rows: NeedRow[] = [];
   for (const c of listClients(coachId)) {
+    // The example client owes no phase (25 Nov, Alex; lib/exampleClient.ts).
+    if (c.example) continue;
     const base = { clientId: c.id, client: c.name ?? "Client", avatarPath: c.avatar_path ?? null, time: null, words: null, since: null };
     if (listClientPhases(c.id).length === 0 && !data.training_programs.some((p) => p.client_id === c.id)) {
       rows.push({ ...base, key: `${c.id}:setup`, cat: "plan", kind: "phase", what: "No phase yet", action: "New phase", href: `/clients/${c.id}/plan`, dismissId: null });
@@ -782,7 +786,8 @@ export function loadDots(clientId: number, chat: ChatCoachView, food: FoodRows, 
   const data = getData();
   const client = data.clients.find((c) => c.id === clientId);
   const dots: DotTrail = { tabs: [], training: { weeks: {}, days: [], exercises: [] }, food: {}, meetings: false, unlock: false, todo: [] };
-  if (!client) return dots;
+  // The example client owes nothing (25 Nov, Alex; lib/exampleClient.ts): no dot, no To do row, no pill.
+  if (!client || client.example) return dots;
   const tab = (t: DotTab) => {
     if (!dots.tabs.includes(t)) dots.tabs.push(t);
   };
@@ -945,7 +950,10 @@ export function loadRail(coach: { id: number; email: string; role: "coach" | "cl
   const data = getData();
   const clients = sub("needsYou", () => {
     const list = listClients(coach.id);
-    return list.map((c) => {
+    return list.map((c): RailClient => {
+      // The example client (25 Nov, Alex; lib/exampleClient.ts): in the list, owing nothing, so no number by his name
+      // and nothing in the Feed's or the Phases row's counts; never "not signed in", since there is nobody to sign in.
+      if (c.example) return { id: c.id, name: c.name, avatarPath: c.avatar_path ?? null, spots: [], total: 0, owed: 0, phases: 0, notSignedIn: false, example: true };
       const user = getUserForClient(c.id);
       const isNew = listClientPhases(c.id).length === 0 && !data.training_programs.some((p) => p.client_id === c.id);
       const counted = railSpots(c.id, actionsFrom(needs, coach.id, c.id, chat, food, ck, sr), byId, isNew);
@@ -960,7 +968,7 @@ export function loadRail(coach: { id: number; email: string; role: "coach" | "cl
         else counted.spots.push({ screen, href: row.href, count: 1 });
         counted.total++;
       }
-      return { id: c.id, name: c.name, avatarPath: c.avatar_path ?? null, ...counted, notSignedIn: !user || (!user.clerk_user_id && (user.must_change_password || !user.password_hash)) };
+      return { id: c.id, name: c.name, avatarPath: c.avatar_path ?? null, ...counted, notSignedIn: !user || (!user.clerk_user_id && (user.must_change_password || !user.password_hash)), example: false };
     });
   });
   return sub("coach", () => {
@@ -1486,6 +1494,8 @@ export function loadHome(clientId: number, chat: { coach: ChatCoachView; thread:
     board: sub("consistencyLinks", () => withDayLinks(clientId, board)),
     // The locked app (19 Nov, Alex; app/lib/appLock.ts): the ⋯'s Open {First}'s app while it is.
     appLocked: sub("appLock", () => appLocked(clientId, food, ck, sr)),
+    // The example client (25 Nov): its pill and its Delete from the first frame, not once the rail has come in.
+    example: !!getData().clients.find((c) => c.id === clientId)?.example,
   };
 }
 

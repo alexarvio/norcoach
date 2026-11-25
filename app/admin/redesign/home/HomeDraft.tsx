@@ -15,7 +15,10 @@ import { openClientAppAction } from "../../../lib/appLockActions";
 import type { OverviewInfoRow, OverviewPanel } from "../../../lib/queries";
 // Types only: homeBoard.ts re-exports the server's reader, which must never reach the browser.
 import type { HomeBoard, MuscleGroup, MuscleWindow, PerGroup } from "../../../lib/homeBoard";
-import { ConfirmThing } from "../ConfirmParts";
+import { ConfirmText, ConfirmThing } from "../ConfirmParts";
+import { deleteExampleClientAction } from "../../../lib/tourActions";
+import { useRail } from "../RailFrame";
+import type { RailClient } from "../loaders";
 import AppAccessButton from "./AppAccessButton";
 import type { ClientAccess } from "../../../lib/access-actions";
 import { dayMonth, logDate, logDateWidth } from "../../../lib/dayMonth";
@@ -78,6 +81,9 @@ export type DraftHome = {
   board: HomeBoard;
   /** The client's app is still locked (19 Nov, Alex: app/lib/appLock.ts): the ⋯ offers Open {First}'s app. */
   appLocked?: boolean;
+  /** The example client a new coach finds already there (25 Nov, Alex: docs/boards/coach-onboarding-mockup.html): the
+      Example pill after the name, Delete asking with no name to type, no Open {First}'s app. */
+  example?: boolean;
 };
 
 // The tabs' ids, as the shell names them.
@@ -201,7 +207,10 @@ export default function HomeDraft({
   // Open {First}'s app (19 Nov): gone from the ⋯ the moment it is picked, back only if the open fails.
   const [openedFor, setOpenedFor] = useState<number | null>(null);
   const [, startOpening] = useTransition();
-  const locked = !!home.appLocked && openedFor !== clientId;
+  // The example client (25 Nov): the page's flag, else the rail's row for them.
+  const { rail } = useRail();
+  const example = !!home.example || !!(rail?.clients.find((c) => c.id === clientId) as (RailClient & { example?: boolean }) | undefined)?.example;
+  const locked = !!home.appLocked && !example && openedFor !== clientId;
   const panel = useMemo(() => ({ ...home.panel, memberInfo: dated(home.panel.memberInfo), coachingInfo: dated(home.panel.coachingInfo) }), [home.panel]);
   const board = home.board;
 
@@ -253,7 +262,10 @@ export default function HomeDraft({
                 home.initial
               )}
             </button>
-            <h1 className="trn-name rh-name">{home.name}</h1>
+            <h1 className="trn-name rh-name">
+              {home.name}
+              {example && <span className="trn-state rh-example">Example</span>}
+            </h1>
           </div>
         </div>
         <div className="trn-head-actions">
@@ -444,7 +456,7 @@ export default function HomeDraft({
 
       {/* Deleting: what goes, and their name typed to be sure. */}
       <Dialog open={deleting} onOpenChange={(o) => !o && setDeleting(false)}>
-        {deleting && <DeleteClientDialog clientId={clientId} name={home.name} firstName={firstName} />}
+        {deleting && (example ? <DeleteExampleDialog clientId={clientId} name={home.name} /> : <DeleteClientDialog clientId={clientId} name={home.name} firstName={firstName} />)}
       </Dialog>
 
       {/* The photo, large. */}
@@ -1435,6 +1447,42 @@ function InvoicesCard({ owed, paid, next, onOpen }: { owed: HomeBoard["outstandi
         </span>
       )}
     </button>
+  );
+}
+
+// ---- Delete the example client (25 Nov, Alex: docs/boards/coach-onboarding-mockup.html): the confirm anatomy with no
+// name to type, nothing of a real person's to lose; gone whole, never counted as a client who left.
+function DeleteExampleDialog({ clientId, name }: { clientId: number; name: string }) {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [busy, start] = useTransition();
+  const go = () =>
+    start(async () => {
+      const err = await deleteExampleClientAction(clientId).catch(() => "Not deleted. Try again");
+      if (err) return setError(err);
+      toast.success(`${name} deleted`);
+      router.push("/feed");
+    });
+  return (
+    <DialogContent className="dlh">
+      <div className="dlh-head">
+        <PopupTitle>Delete {name}?</PopupTitle>
+        <DialogClose className="dlh-x" aria-label="Close">
+          ✕
+        </DialogClose>
+      </div>
+      <ConfirmThing name={name} />
+      <ConfirmText>His programme, check-ins and meals are deleted with him. He doesn&rsquo;t come back.</ConfirmText>
+      {error && <p className="dlh-error">{error}</p>}
+      <div className="dlh-foot">
+        <DialogClose className="dlh-cancel" disabled={busy}>
+          Cancel
+        </DialogClose>
+        <button type="button" className="dlh-danger" onClick={go} disabled={busy}>
+          {busy ? "Deleting…" : "Delete"}
+        </button>
+      </div>
+    </DialogContent>
   );
 }
 

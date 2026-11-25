@@ -16,6 +16,7 @@ import { countryOf } from "./countries";
 import { COACH_PROFILE_LIMITS as LIMIT } from "./coachProfileView";
 import { getCoachProfile, saveCoachProfile } from "./queries";
 import { sendCoachWelcomeOnce } from "./welcomeEmails";
+import { makeExampleClientOnce } from "./exampleClient";
 
 // The welcome steps a new coach goes through once the owner lets them in
 // (/welcome): who they are, their business, then off to add a client. Each
@@ -169,6 +170,9 @@ export async function saveWelcomeBusinessAction(input: { business: string; count
   persist();
   // Their welcome, once (25 Nov, Alex; lib/welcomeEmails.ts): the first save of this step, never waited for.
   void sendCoachWelcomeOnce(coach.id).catch(() => {});
+  // Their example client, once, built in the background so he is there by Open Norcoach (25 Nov, Alex:
+  // docs/boards/coach-onboarding-mockup.html; lib/exampleClient.ts). Coaches from before never pass this step again.
+  void makeExampleClientOnce(coach.id).catch(() => {});
   return { ok: true };
 }
 
