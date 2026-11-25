@@ -62,6 +62,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
     });
   }
   const parts = ((await params).path ?? []).filter(Boolean);
+  // One address a page (25 Nov, Alex: clean URLs): /training.html goes to /training, /index.html to /.
+  const last = parts[parts.length - 1] ?? "";
+  if (last.endsWith(".html")) {
+    const clean = last === "index.html" ? parts.slice(0, -1) : [...parts.slice(0, -1), last.slice(0, -5)];
+    // A relative address: request.url here is the rewritten /site/… on the server's own host.
+    const query = new URL(request.url).search;
+    return new Response(null, { status: 308, headers: { Location: `/${clean.join("/")}${query}` } });
+  }
   if (parts.some((p) => p === ".." || p.startsWith("."))) return new Response("Not found", { status: 404 });
   let file = path.join(ROOT, ...parts);
   if (!file.startsWith(ROOT)) return new Response("Not found", { status: 404 });
