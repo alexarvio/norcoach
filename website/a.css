@@ -423,9 +423,10 @@ html:not(.js) .tt { position: static; opacity: 1; visibility: visible; grid-area
 .letter { padding-left: clamp(0px, 3vw, 40px); box-shadow: inset 1px 0 0 var(--dark-line); }
 .duo { display: flex; flex-wrap: wrap; gap: 16px clamp(28px, 4vw, 48px); margin-bottom: 30px; }
 .who { display: flex; align-items: center; gap: 14px; }
-.who .face { width: 56px; height: 56px; }
+.who .face { width: 72px; height: 72px; }
 .who .name { display: block; margin: 0 0 3px; }
 .who .role { display: block; }
+.who .role .sep { margin: 0 7px; }
 .letter p { max-width: 36em; font-size: clamp(17px, 1.45vw, 20px); line-height: 1.6; color: var(--dark-text); }
 .letter p + p { margin-top: 18px; }
 .letter p.first { color: #fff; }
