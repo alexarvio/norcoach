@@ -48,7 +48,7 @@ export type Draft = {
 const EMPTY: Draft = { firstName: "", lastName: "", birthdate: "", gender: "", heightCm: "", startingWeightKg: "", email: "", phoneCode: DEFAULT_DIAL, phone: "", address: "", postcode: "", city: "", region: "", countryCode: "", country: "" };
 
 /** The draft, what is still missing, the age and the email check, in one place. */
-function useNewClientForm(start: Partial<Draft> | undefined, requireEmail: boolean) {
+function useNewClientForm(start: Partial<Draft> | undefined, requireEmail: boolean, firstNameOnly = false) {
   const [draft, setDraft] = useState<Draft>({ ...EMPTY, ...start });
   // The address the uniqueness check last answered for, and its answer.
   const [checked, setChecked] = useState<{ email: string; taken: boolean } | null>(null);
@@ -64,11 +64,13 @@ function useNewClientForm(start: Partial<Draft> | undefined, requireEmail: boole
     setChecked({ email, taken });
   };
 
+  // The redesign asks a first name alone (25 Nov, Alex: "it's not necessary to put a last name, just the name"): no email,
+  // the client is made with nothing sent, joining later by the coach's code. The old admin asks as it did.
   const missing = [
     !draft.firstName.trim() && "first name",
-    !draft.lastName.trim() && "last name",
+    !firstNameOnly && !draft.lastName.trim() && "last name",
     // With Clerk the email is where the invite goes now; otherwise it can wait for App access.
-    requireEmail && !email && "email",
+    !firstNameOnly && requireEmail && !email && "email",
   ].filter(Boolean) as string[];
   const emailBad = !!email && !EMAIL_RE.test(email);
   const step1Ok = missing.length === 0 && !emailBad && !emailTaken;
@@ -95,7 +97,7 @@ export default function NewClientDialog({
 }) {
   const hl = look === "hairline";
   const router = useRouter();
-  const form = useNewClientForm(preview?.draft, clerk);
+  const form = useNewClientForm(preview?.draft, clerk, hl);
   const { draft, set } = form;
   // The email left (hairline look): only then is an address that doesn't look right a problem worth a line, never mid-typing.
   const [emailLeft, setEmailLeft] = useState(false);
@@ -154,7 +156,9 @@ export default function NewClientDialog({
   // one that doesn't look right once it is left. What is still missing just holds the button back.
   const hlProblem = made != null || !!error || form.emailTaken || (form.emailBad && emailLeft);
   const statusShown = !hl || hlProblem;
-  const createLabel = hl ? (clerk ? (saving ? "Sending…" : "Send invite") : saving ? "Creating…" : "Create") : clerk ? "Create and invite" : "Create client";
+  // The invite goes only with an email typed (25 Nov): Send invite then, Create without one.
+  const inviting = clerk && !!draft.email.trim();
+  const createLabel = hl ? (inviting ? (saving ? "Sending…" : "Send invite") : saving ? "Creating…" : "Create") : clerk ? "Create and invite" : "Create client";
 
   return createPortal(
     <div className={`nc-scrim${hl ? " nc-hl-scrim" : ""}`} role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -224,10 +228,10 @@ export default function NewClientDialog({
             // client brings with the account they make; the payload still carries those fields, empty.
             <div className="nc-grid">
               <InfoRow label="First name">
-                <input className="nc-input" value={draft.firstName} onChange={(e) => set("firstName", e.target.value)} placeholder="Alex" autoFocus autoComplete="off" maxLength={40} />
+                <input className="nc-input" value={draft.firstName} onChange={(e) => set("firstName", e.target.value)} onKeyDown={(e) => e.key === "Enter" && form.step1Ok && create()} placeholder="Alex" autoFocus autoComplete="off" maxLength={40} />
               </InfoRow>
               <InfoRow label="Last name">
-                <input className="nc-input" value={draft.lastName} onChange={(e) => set("lastName", e.target.value)} placeholder="Arvio" autoComplete="off" maxLength={40} />
+                <input className="nc-input" value={draft.lastName} onChange={(e) => set("lastName", e.target.value)} onKeyDown={(e) => e.key === "Enter" && form.step1Ok && create()} placeholder="Arvio" autoComplete="off" maxLength={40} />
               </InfoRow>
               <InfoRow label="Email" full bad={form.emailTaken || (form.emailBad && emailLeft)}>
                 <input

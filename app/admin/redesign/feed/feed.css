@@ -191,3 +191,16 @@
 .rd .nd-row.still:hover .nd-act, .rd .nd-row.still:focus-within .nd-act, .rd .nd-row.still .nd-act[data-state="open"] { opacity: 1; }
 @media (any-hover: none) { html:not([data-mouse]) { .rd .nd-row .nd-act { opacity: 1; } } }
 .rd .rfd-titled > span.nd-count { align-self: center; display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px rgba(184, 71, 31, 0.35); font-size: 12px; font-weight: 600; color: #b8471f; }
+
+/* Accept's choice (25 Nov, Alex): New client, or a client made already, a row each in the floating lists' look, their
+   faces and names A to Z, the pick ringed with its check; six rows, then it scrolls. In a pop-up, so outside .rd. */
+.rfd-onto { display: grid; gap: 2px; max-height: 236px; overflow-y: auto; margin: 14px -6px 4px; padding: 2px 6px; scrollbar-gutter: stable; }
+.rfd-onto-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 6px 10px; border: 0; border-radius: 9px; background: none; font: inherit; font-size: 14px; font-weight: 600; color: #141a24; text-align: left; cursor: pointer; }
+.rfd-onto-row:hover { background: #fafbfd; }
+.rfd-onto-row.on { background: #f5f6f8; box-shadow: inset 0 0 0 1px var(--brand, #141a24); }
+.rfd-onto-row:focus-visible { outline: none; box-shadow: inset 0 0 0 1.5px #141a24; }
+.rfd-onto-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rfd-onto-row > svg { flex: none; width: 14px; height: 14px; color: var(--brand-text, var(--brand, #141a24)); }
+.rfd-onto .nd-face, .rfd-onto-new { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; overflow: hidden; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #e1e5eb; font-size: 11px; font-weight: 600; line-height: 1; color: #141a24; }
+.rfd-onto .nd-face img { width: 100%; height: 100%; object-fit: cover; }
+.rfd-onto-new svg { width: 12px; height: 12px; }

@@ -83,6 +83,9 @@ export type FeedBoard = {
   /** Asking to join with the coach's code (18 Nov, Alex; lib/joinRequests.ts), oldest first: no client yet, so not a
       NeedRow; Accept or Decline on the row. */
   joins: JoinRow[];
+  /** The coach's clients with no account in the app yet, A to Z: Accept can put a request onto one of them (25 Nov,
+      Alex; linkableClients in joinRequests.ts). Read only while someone is asking. */
+  linkable: { id: number; name: string; avatarPath: string | null; email: string | null }[];
   /** Newest first: each kind's newest 200. */
   activity: ActivityRow[];
   /** The coach's clients A to Z, for Activity's client filter (26 Oct, Alex). */

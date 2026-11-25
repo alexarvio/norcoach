@@ -2,7 +2,7 @@ import "server-only";
 import { randomInt } from "crypto";
 import { allocId, getData, persist, type JoinRequest } from "./db";
 import { isNorcode, NORCODE_ALPHABET, NORCODE_LENGTH, typedNorcode } from "./norcode";
-import { getCoachProfileView, getCoachSettings } from "./queries";
+import { getClientProfile, getCoachProfileView, getCoachSettings } from "./queries";
 
 // A client asking to join a coach by the coach's code (18 Nov, Alex: docs/boards/client-signup-mockup.html). Each coach
 // has a Norcode, NC- and eight letters and digits (lib/norcode.ts), made for them and shown in Settings, Profile (the
@@ -224,4 +224,24 @@ export function ageOf(birthdate: string, now = new Date()): number | null {
   let age = now.getFullYear() - Number(m[1]);
   if (now.getMonth() + 1 < Number(m[2]) || (now.getMonth() + 1 === Number(m[2]) && now.getDate() < Number(m[3]))) age--;
   return age;
+}
+
+/** The coach's clients a join request can be put onto (25 Nov, Alex: Accept's Existing client): theirs, never in the
+ *  app: no client login at all (made with a first name alone), or an invite nobody has taken up (made with no password,
+ *  never claimed by any Clerk account). Never a login with a password or a claim, nor a client who has used the app:
+ *  those are real people, however long since they signed in. With the email it carries (the login's, else the card's),
+ *  so Accept can pick the one the request matches. A to Z. */
+export function linkableClients(coachId: number): { id: number; name: string; avatarPath: string | null; email: string | null }[] {
+  const data = getData();
+  return data.clients
+    // A phase the coach made live, or their Open {First}'s app, opens it before they join; only `before` (opened by the
+    // lock's first sweep, or by their own logging) is someone who has been in.
+    .filter((c) => c.coach_id === coachId && !c.last_active_at && c.app_opened_by !== "before")
+    .flatMap((c) => {
+      const login = data.users.find((u) => u.role === "client" && u.client_id === c.id);
+      if (login && (login.clerk_user_id || login.password_hash)) return [];
+      const email = (login?.email || getClientProfile(c.id).email || "").trim().toLowerCase() || null;
+      return [{ id: c.id, name: c.name.trim(), avatarPath: c.avatar_path ?? null, email }];
+    })
+    .sort((x, y) => x.name.localeCompare(y.name));
 }
