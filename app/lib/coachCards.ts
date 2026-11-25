@@ -26,18 +26,22 @@ export function coachCardPictures(coachId: number | null | undefined): TrackPict
 }
 
 /** Default chosen over their own (22 Nov, Alex: "a toggle for card pics if we want default or not"): their clients see
- *  Norcoach's pictures, the coach's own kept for when they switch back. */
+ *  Norcoach's pictures, the coach's own kept for when they switch back. Never chosen, it is Default (25 Nov, Alex: "show
+ *  default by default"), unless the coach has pictures of their own already, which their clients have been seeing. */
 export function coachCardsDefault(coachId: number | null | undefined): boolean {
-  return coachId != null && !!coachRow(coachId)?.coach_settings?.brand?.cardsDefault;
+  if (coachId == null) return true;
+  const brand = coachRow(coachId)?.coach_settings?.brand;
+  if (typeof brand?.cardsDefault === "boolean") return brand.cardsDefault;
+  return !Object.values(brand?.cards ?? {}).some((list) => list && list.length > 0);
 }
 
-/** Default or their own: kept on the brand; never deletes a picture. */
+/** Default or their own: kept on the brand, the choice itself either way, so a choice never flips back; never deletes a
+ *  picture. */
 export function setCoachCardsDefault(coachId: number, on: boolean) {
   const user = coachRow(coachId);
   if (!user) return;
   const brand = { ...(user.coach_settings?.brand ?? {}) };
-  if (on) brand.cardsDefault = true;
-  else delete brand.cardsDefault;
+  brand.cardsDefault = on;
   const { brand: _gone, ...rest } = user.coach_settings ?? {};
   void _gone;
   user.coach_settings = Object.keys(brand).length ? { ...rest, brand } : rest;
