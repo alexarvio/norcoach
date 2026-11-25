@@ -11,7 +11,7 @@ people, never real clients.
 2. The routes here (`.ts.txt`, so this repo never type-checks them) go in its `app/api/dev/<name>/route.ts` (seed-site, emma-login, legs-now): Finlay's profile and photo (no business name: Norcoach's own pictures never carry one coach's brand, 25 Nov, Alex), Emma and 14
    made-up clients with the site's avatars, her weight goal and To focus on; a login for Emma; her Legs half done today.
 3. Start it (launch config `demo`, port 3010), sign in once as the coach, open the three routes in that order.
-4. `MSYS_NO_PATHCONV=1 node shoot-demo.cjs <outDir> 1 coach-home=/clients/1/home …` for the laptop (1600×1000 at 1.25);
+4. `MSYS_NO_PATHCONV=1 node shoot-demo.cjs <outDir> 1 coach-home=/clients/1/home …` for the laptop (2000×1250 at 1, so Training's whole table fits: Emma's sets, Last session and 30 days);
    `VW=390 VH=844 DPR=2 MOBILE=1` with the coach's preview (`/client?phone=1&client=1&screen=home|nutrition`) or Emma's
    own login (user 2) for the phone, adding `native-app` and `--sat: 50px` so the clock has its room;
    `node statusbar.cjs <snaps> <out> phone-home:w …` draws 9:41 and the island over it.
