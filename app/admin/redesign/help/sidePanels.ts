@@ -8,7 +8,7 @@ import { useEffect, useRef } from "react";
 // and the others close as they hear it. A panel may also mark the frame while it is open (`data-help`, `data-todo`),
 // so the edge tabs and the page can follow it in CSS, as `data-chat` does for the chat (messages.css).
 
-export type SidePanel = "chat" | "help" | "todo";
+export type SidePanel = "chat" | "help" | "todo" | "joins";
 
 const EVENT = "norcoach:side-panel";
 

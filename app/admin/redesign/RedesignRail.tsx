@@ -17,6 +17,7 @@ import { onRefreshFree } from "./holdRefresh";
 import { pic } from "../../lib/pic";
 import { BrandLogo } from "../../components/BrandLogo";
 import { pageKeyOf } from "./paths";
+import JoinRequests from "./JoinRequests";
 
 // The left rail, in the redesign's sheet: the brand, the coach's cross-client
 // views as icon rows, every client in one scrolling list, and the coach at
@@ -286,7 +287,8 @@ export default function RedesignRail({ rail, clientId, settings = false, onArriv
   // Needs you: something owed, or a new client still to set up (22 Oct, Alex).
   const needsMe = (c: RailClient) => c.total > 0;
   const needsYou = rail.clients.filter(needsMe).length;
-  const feedOwed = rail.clients.reduce((n, c) => n + c.owed, 0) + (rail.joinRequests ?? 0);
+  // Join requests have their own pill by Clients now (25 Nov), so the Feed row counts the rest of Needs you.
+  const feedOwed = rail.clients.reduce((n, c) => n + c.owed, 0);
   // What the Phases screen lists (2 Nov, Alex: "if anyone is missing a phase have the notification appear there just like in
   // feed where there is a number").
   const phasesOwed = rail.clients.reduce((n, c) => n + c.phases, 0);
@@ -502,6 +504,8 @@ export default function RedesignRail({ rail, clientId, settings = false, onArriv
       <div className="rr-clients-head">
         <span className="rr-label">Clients</span>
         <span className="rr-count">{q || filter === "needs" ? `${shown.length} of ${rail.clients.length}` : rail.clients.length}</span>
+        {/* Join requests behind a pill on this line (25 Nov, Alex: "add it there where the client's thing is"). */}
+        <JoinRequests joins={rail.joinList ?? []} linkable={rail.linkable ?? []} />
       </div>
       <div className="rr-clients">
         <label className="rr-search">

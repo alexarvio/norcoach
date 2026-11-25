@@ -1,0 +1,18 @@
+/* ---- Join requests behind a pill next to Clients (25 Nov, Alex; JoinRequests.tsx): the To do pill's look made for the
+   rail's head, and its panel the To do's (todo-panel.css), a row each with the face and Accept and Decline in words. */
+.rr-joins { display: inline-flex; align-items: center; gap: 6px; height: 24px; margin-left: auto; padding: 0 4px 0 10px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1.5px #b8471f; font: inherit; font-size: 11.5px; font-weight: 600; color: #b8471f; cursor: pointer; transition: background-color 0.2s ease; }
+.rr-joins b { min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: #b8471f; color: #fff; font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; display: inline-grid; place-items: center; }
+.rr-joins.open { background: rgba(184, 71, 31, 0.08); }
+@media (hover: hover) { .rr-joins:hover { background: rgba(184, 71, 31, 0.08); } }
+.rr-joins:focus-visible { outline: 2px solid #b8471f; outline-offset: 2px; }
+.jr-face { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; overflow: hidden; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #e1e5eb; font-size: 13px; font-weight: 600; line-height: 1; color: #141a24; }
+.jr-face img { width: 100%; height: 100%; object-fit: cover; }
+.rfd-onto .jr-face { width: 24px; height: 24px; font-size: 11px; }
+.jr-name { display: block; font-size: 14px; font-weight: 600; line-height: 19px; color: #141a24; }
+.tdp-act.jr-decline { color: #b42318; }
+/* While open, the edge tabs ride the panel's left edge, as they do the To do's and help's. */
+.rd-frame[data-joins="open"] :is(.rd-chattab, .hlp-tab) { right: min(520px, 100vw); transform: none; }
+@media (max-width: 560px) { .rd-frame[data-joins="open"] :is(.rd-chattab, .hlp-tab) { opacity: 0; pointer-events: none; } }
+/* An email or a phone never broken across two lines: the line wraps between facts. */
+.jr-row .tdp-thing small { overflow-wrap: normal; }
+.jr-whole { white-space: nowrap; }
