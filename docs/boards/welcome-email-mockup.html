@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Welcome emails</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#141a24; --body:#3a4250; --muted:#8b93a1; --faint:#98A2B3; --line:#E1E5EB; --page:#F5F6F8; }
+  * { box-sizing: border-box; }
+  /* The board's own chrome in Archivo; the emails in the mail apps' font stack, as the code email is sent. */
+  body { margin: 0; background: #eceff3; font-family: Archivo, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); }
+  header.board { padding: 36px 32px 8px; max-width: 1280px; margin: 0 auto; }
+  header.board h1 { margin: 0; font-size: 26px; font-weight: 600; }
+  header.board p { margin: 6px 0 0; color: var(--muted); font-size: 14px; font-weight: 500; }
+  .opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 28px; padding: 24px 32px 40px; max-width: 1280px; margin: 0 auto; }
+  .opt h2 { margin: 0 0 4px; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: #5b6474; }
+  .opt .what { margin: 0 0 14px; font-size: 14px; font-weight: 500; color: var(--body); line-height: 20px; min-height: 60px; }
+
+  .phone { width: 360px; max-width: 100%; margin: 0 auto; border-radius: 40px; background: #fff; box-shadow: 0 0 0 10px #141a24, 0 30px 60px -24px rgba(16,24,40,.45); overflow: hidden; }
+  .notif { margin: 14px 12px 0; padding: 10px 12px; border-radius: 16px; background: rgba(245,246,248,.95); box-shadow: inset 0 0 0 1px var(--line); display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: center; }
+  .notif i { width: 30px; height: 30px; border-radius: 8px; background: #2f6fd6; display: grid; place-items: center; color: #fff; font-style: normal; font-size: 15px; }
+  .notif b { display: block; font-size: 12.5px; font-weight: 600; }
+  .notif span { display: block; font-size: 12px; color: var(--body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mail { height: 870px; overflow: hidden; margin-top: 12px; background: var(--page); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .from { padding: 8px 16px 12px; font-size: 12px; color: var(--muted); font-weight: 500; background: #fff; }
+  .from b { color: var(--ink); font-weight: 600; }
+  .wrap { padding: 24px 12px; }
+
+  /* The code email's frame: an ink head with the star (email-star.png at right top), the paper rising with 28px corners. */
+  .card { background: #fff; border-radius: 20px; overflow: hidden; }
+  .dark { --d: #141a24; --on: #fff; --soft: rgba(255,255,255,.62); background: var(--d) url(../../public/brand/email-star.png) no-repeat right top / 113px 177px; color: var(--on); padding: 26px 28px 34px; position: relative; overflow: hidden; }
+  .logo { width: 120px; height: 24px; display: block; }
+  .face { width: 48px; height: 48px; border-radius: 999px; object-fit: cover; display: block; box-shadow: 0 0 0 2px rgba(255,255,255,.9); }
+  .who { display: flex; align-items: center; gap: 12px; position: relative; }
+  .who b { display: block; font-size: 15px; font-weight: 600; }
+  .who span { display: block; font-size: 10.5px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--soft); padding-top: 3px; }
+  .title { font-size: 26px; line-height: 32px; font-weight: 600; padding-top: 26px; position: relative; }
+  .rise { background: var(--d); }
+  .rise div { background: #fff; height: 28px; border-radius: 28px 28px 0 0; }
+  .paper { padding: 2px 28px 30px; }
+  .p { font-size: 15px; line-height: 22px; font-weight: 500; color: var(--body); margin: 0; }
+  .p + .p { padding-top: 12px; }
+  .pill { display: inline-block; margin-top: 22px; background: var(--pill, #141a24); color: var(--pill-ink, #fff); border-radius: 999px; padding: 12px 22px; font-size: 15px; font-weight: 600; }
+  .small { font-size: 13px; line-height: 19px; font-weight: 500; color: var(--muted); padding-top: 22px; }
+  .foot { text-align: center; font-size: 12px; color: var(--faint); font-weight: 500; padding-top: 16px; }
+  .foot b { color: #5b6474; font-weight: 600; }
+
+  /* The coach's steps. */
+  .steps { margin: 4px 0 0; padding: 0; list-style: none; }
+  .steps li { display: grid; grid-template-columns: 28px 1fr; gap: 4px; padding-top: 16px; }
+  .steps li > i { font-style: normal; font-size: 22px; line-height: 22px; font-weight: 500; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .steps b { display: block; font-size: 15px; line-height: 20px; font-weight: 600; color: var(--ink); }
+  .steps span { display: block; font-size: 14px; line-height: 20px; font-weight: 500; color: var(--body); padding-top: 3px; }
+  .code { margin-top: 10px; display: inline-block; background: var(--page); border-radius: 10px; padding: 8px 12px; font-size: 16px; font-weight: 600; letter-spacing: .08em; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  /* A coach with a bright brand colour: the head is that colour, its words ink (lib/brandColour.ts); their logo whole on the
+     right at 14%, as Home's dark draws a coach's own logo; no star. */
+  .brand .dark { --d: #c8e46a; --on: #141a24; --soft: rgba(20,26,36,.62); background-image: none; }
+  .brand .face { box-shadow: 0 0 0 2px rgba(20,26,36,.85); }
+  .brand { --pill: #c8e46a; --pill-ink: #141a24; }
+  .coachlogo { position: absolute; right: 22px; top: 22px; width: 84px; height: 84px; border-radius: 999px; border: 10px solid var(--on); opacity: .14; }
+
+  .notes { max-width: 1280px; margin: 0 auto; padding: 0 32px 48px; font-size: 14px; color: var(--body); line-height: 22px; display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 28px; }
+  .notes h3 { font-size: 13px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: #5b6474; margin: 0 0 8px; }
+  .notes ul { margin: 0; padding-left: 18px; }
+  .notes li + li { margin-top: 4px; }
+</style>
+</head>
+<body>
+<header class="board">
+  <h1>Welcome emails</h1>
+  <p>In the code email's dark frame. One for a client when their coach lets them in, one for a coach when they sign up.</p>
+</header>
+
+<div class="opts">
+  <!-- Client, no brand -->
+  <section class="opt">
+    <h2>Client · coach without a brand</h2>
+    <p class="what">Sent when Finlay accepts their request, or on their first sign-in after his invite. From Finlay by name; a reply goes to him.</p>
+    <div class="phone">
+      <div class="notif"><i>✉</i><div><b>Finlay Chedd</b><span>Welcome to Full Potential Coaching</span></div></div>
+      <div class="mail">
+        <div class="from"><b>Finlay Chedd</b> · to you</div>
+        <div class="wrap">
+          <div class="card">
+            <div class="dark">
+              <div class="who"><img class="face" src="../../public/brand/profile-photo.png" alt=""><div><b>Finlay Chedd</b><span>Full Potential Coaching</span></div></div>
+              <div class="title">You're in, Alex</div>
+            </div>
+            <div class="rise"><div></div></div>
+            <div class="paper">
+              <p class="p">Finlay is setting up your plan. You'll get a notification when it's ready.</p>
+              <p class="p">Until then, message Finlay in the app.</p>
+              <span class="pill">Open Norcoach</span>
+              <div class="small">Sign in with Apple.</div>
+            </div>
+          </div>
+          <div class="foot">Norcoach</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Client, coach's brand -->
+  <section class="opt brand">
+    <h2>Client · coach with a brand</h2>
+    <p class="what">The same email in Finlay's colour, his logo whole and faint on the right as on the client's Home. On a bright colour the words turn ink.</p>
+    <div class="phone">
+      <div class="notif"><i>✉</i><div><b>Finlay Chedd</b><span>Welcome to Full Potential Coaching</span></div></div>
+      <div class="mail">
+        <div class="from"><b>Finlay Chedd</b> · to you</div>
+        <div class="wrap">
+          <div class="card">
+            <div class="dark">
+              <div class="coachlogo"></div>
+              <div class="who"><img class="face" src="../../public/brand/profile-photo.png" alt=""><div><b>Finlay Chedd</b><span>Full Potential Coaching</span></div></div>
+              <div class="title">You're in, Alex</div>
+            </div>
+            <div class="rise"><div></div></div>
+            <div class="paper">
+              <p class="p">Finlay is setting up your plan. You'll get a notification when it's ready.</p>
+              <p class="p">Until then, message Finlay in the app.</p>
+              <span class="pill">Open Norcoach</span>
+              <div class="small">Sign in with alex@example.com.</div>
+            </div>
+          </div>
+          <div class="foot">Powered by <b>Norcoach</b></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Coach -->
+  <section class="opt">
+    <h2>Coach · after signing up</h2>
+    <p class="what">Sent once, the first time they save Your business. From Norcoach.</p>
+    <div class="phone">
+      <div class="notif"><i>✉</i><div><b>Norcoach</b><span>Welcome to Norcoach, Finlay</span></div></div>
+      <div class="mail">
+        <div class="from"><b>Norcoach</b> · to you</div>
+        <div class="wrap">
+          <div class="card">
+            <div class="dark">
+              <img class="logo" src="../../public/brand/email-logo.png" alt="Norcoach">
+              <div class="title">Welcome to Norcoach, Finlay</div>
+            </div>
+            <div class="rise"><div></div></div>
+            <div class="paper">
+              <p class="p">Your account is ready. Three things to start with:</p>
+              <ol class="steps">
+                <li><i>1</i><div><b>Add your first client</b><span>Click New client and type their name and email. We email them an invite.</span></div></li>
+                <li><i>2</i><div><b>Or share your code</b><span>Clients type it when they sign up in the Norcoach app. You accept them in your Feed.</span><span class="code">NC-K7M2XQ9T</span></div></li>
+                <li><i>3</i><div><b>Set your logo and colour</b><span>Upload your logo and pick your colour in Settings, Branding. Clients see them in their app.</span></div></li>
+              </ol>
+              <span class="pill">Open Norcoach</span>
+              <div class="small">Stuck? Click the ? on the right of any screen to message us.</div>
+            </div>
+          </div>
+          <div class="foot">Norcoach</div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="notes">
+  <div>
+    <h3>Client</h3>
+    <ul>
+      <li>Subject: <b>Welcome to Full Potential Coaching</b> (the coach's business; their name when there is none).</li>
+      <li>The sign-in line says how they signed up: <b>Sign in with Apple.</b>, <b>Sign in with Google.</b> or <b>Sign in with alex@example.com.</b></li>
+      <li>Already open (a phase is live, or Finlay opened it): "Your plan is ready in the app." in place of both lines.</li>
+      <li>Open Norcoach opens the app on the web for now: the iPhone app is on TestFlight, not the App Store yet.</li>
+      <li>Sent once a client.</li>
+    </ul>
+  </div>
+  <div>
+    <h3>Coach</h3>
+    <ul>
+      <li>Subject: <b>Welcome to Norcoach, Finlay</b>.</li>
+      <li>Their own Norcode, as Settings, Profile shows it.</li>
+      <li>Open Norcoach opens the admin.</li>
+      <li>Sent once a coach; the coaches from before never get it.</li>
+    </ul>
+  </div>
+  <div>
+    <h3>To build with it</h3>
+    <ul>
+      <li>The coach's face and logo need a public link a mail app can load (today they need a sign-in). Until then: their initial on white, and the colour alone in the head.</li>
+      <li>Both go through Resend, off until MAIL_FROM is set on Railway, as the code email.</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>
