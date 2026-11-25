@@ -143,12 +143,14 @@ export default function CheckInDialog({
   if (month.length) groups.push({ id: "month", label: form.monthLabel ?? "This month", rows: month });
   const rows = groups.flatMap((g) => g.rows);
   // Apple Health connected in the app (23 Nov, Alex: "can we still have it show with 0 steps on our app", "with all the
-  // metrics"): every metric the phone could fill sits in the From Apple Health block, not only the ones it filled. Steps
-  // reads 0 until the phone counts some (nothing saved for it, so the phone's figure takes it when it comes); weight,
-  // sleep and heart rate stay typeable in the block until the phone has a figure, which then takes their place.
+  // metrics"): steps sits in the From Apple Health block, reading 0 until the phone counts some (nothing saved for it, so
+  // the phone's figure takes it when it comes). Weight, sleep and heart rate join it only once the phone has sent one in
+  // the last 30 days (25 Nov, Alex: "I only have the means of tracking steps… the weight I will keep putting manually"),
+  // typeable there until this period's figure comes; a phone that never sends one leaves them ordinary fields in the list.
   const healthOn = useHealthConnected() && nativePlatform() != null;
-  const inBlock = (r: Row) => !!r.metric.live || (healthOn && !!r.metric.phone);
-  const stepsWait = (r: Row) => healthOn && !!r.metric.phone && !r.metric.live && r.source === "daily" && /\bsteps?\b/i.test(r.metric.name);
+  const isSteps = (r: Row) => r.source === "daily" && /\bsteps?\b/i.test(r.metric.name);
+  const inBlock = (r: Row) => !!r.metric.live || (healthOn && !!r.metric.phone && (isSteps(r) || !!r.metric.fed));
+  const stepsWait = (r: Row) => healthOn && !!r.metric.phone && !r.metric.live && isSteps(r);
   const { source: noteSource, saved: savedNote } = noteOf(form.sections, rows);
 
   const [typed, setValues] = useState<Record<string, string>>(() => seedOf(rows));

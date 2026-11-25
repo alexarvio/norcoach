@@ -9301,6 +9301,10 @@ export type CheckInMetric = {
   category?: string;
   /** This period's figure came from the phone's health store: shown live, not typed in (16 Nov). */
   live?: boolean;
+  /** One the phone's health store could fill (healthKindOf). */
+  phone?: boolean;
+  /** The phone has sent a figure for it in the last 30 days (25 Nov, Alex): only then does it sit in the phone's block. */
+  fed?: boolean;
 };
 
 export type CheckInSection = {
@@ -9601,6 +9605,7 @@ function checkInTrackerSection(
   // A Weight row's last reading is the client's last weigh-in from anywhere (23 Oct, Alex): a new phase's Weight said
   // "First time" over a reading logged the day before under the old one.
   const weights = defs.some((d) => WEIGHT_NAME.test(d.name.trim())) ? bodyWeightReadings(ck, clientId) : [];
+  const fedSince = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
   return {
     id: frequency,
     label,
@@ -9638,6 +9643,9 @@ function checkInTrackerSection(
         // One the phone could fill once Apple Health or Health Connect is connected (17 Nov, Alex): the pop-up says when
         // it isn't yet.
         phone: !!healthKindOf(def),
+        // The phone has sent one lately (25 Nov, Alex: "I only have the means of tracking steps… the weight I will keep
+        // putting manually"): a phone with no scale or sleep tracking never fills them, so they stay the client's to type.
+        fed: entries.some((e) => e.metric_definition_id === def.id && e.source === "health" && e.value != null && (e.logged_at ?? e.period) >= fedSince),
       };
     }),
   };
