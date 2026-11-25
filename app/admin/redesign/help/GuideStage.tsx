@@ -53,15 +53,16 @@ const MINI_MIN = 200;
 /** What it rises above in a bottom corner, never covering it: Settings' Save bar, a tab's pending bar, a toast. */
 const BELOW = ".rd.rst .rst-bar, .rd-pending.rd-pending-sticky, [data-sonner-toast]";
 
-/** Where the small player sits in a corner: just left of the right-edge gutter, and beside an open chat or To do (they
- *  hold the right side, their tabs riding their edge) rather than on them or their tabs, narrower when the room beside
+/** Where the small player sits in a corner: just left of the right-edge gutter, and beside an open chat (it holds the
+ *  right side, the tabs riding its edge) rather than on them or their tabs, narrower when the room beside
  *  them is short; with not even that, it lies under them (`under`), still playing. In a bottom corner it rises above a
  *  Save bar or a toast under it. */
 function miniBox(corner: Corner): Box & { under: boolean } {
   const vw = document.documentElement.clientWidth || window.innerWidth;
   const vh = window.innerHeight;
   const frame = document.querySelector(".rd-frame");
-  const side = frame?.getAttribute("data-chat") === "open" ? Math.min(460, vw) : frame?.getAttribute("data-todo") === "open" ? Math.min(520, vw) : 0;
+  // The To do drops from its pill now (25 Nov), holding no side: only the chat does.
+  const side = frame?.getAttribute("data-chat") === "open" ? Math.min(460, vw) : 0;
   // The tabs ride the panel's edge, so the player keeps the same gutter from it as from the window's edge.
   const right = side + EDGE;
   const room = vw - right - AIR;
@@ -165,10 +166,10 @@ export function GuideStage({ video, title, place, slot, view, controlRef, onInfo
     window.addEventListener("resize", follow);
     const ro = slot && typeof ResizeObserver !== "undefined" ? new ResizeObserver(follow) : null;
     if (ro && slot) ro.observe(slot);
-    // The chat or the To do opening moves the corner it sits in.
+    // The chat opening moves the corner it sits in.
     const frame = document.querySelector(".rd-frame");
     const mo = frame ? new MutationObserver(follow) : null;
-    if (mo && frame) mo.observe(frame, { attributes: true, attributeFilter: ["data-chat", "data-todo", "data-help"] });
+    if (mo && frame) mo.observe(frame, { attributes: true, attributeFilter: ["data-chat", "data-help"] });
     // In the corner, a Save bar or a toast coming in (or a page scrolled to its foot, where a sticky bar rests higher)
     // lifts it: looked at a few times a second and on scrolling, cheap, nothing drawn unless it moves.
     const mini = place === "mini";

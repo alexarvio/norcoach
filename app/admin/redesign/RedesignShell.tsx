@@ -145,10 +145,11 @@ export default function RedesignShell({ clientId, clientName, firstName, units, 
   // so each one sets what the reply is about (and the message to land on).
   const [chat, setChat] = useState<ChatState>({ mounted: false, open: false, about: null, opened: 0, focus: null });
   const closeChat = () => setChat((c) => ({ ...c, open: false }));
-  // The client's To do (24 Nov, Alex: "Build B", B of docs/boards/todo-button-mockup.html): its panel from the right, as
-  // the chat's, mounted on first use and kept so it slides both ways. One of the two at a time: opening either closes
-  // the other.
+  // The client's To do (24 Nov, Alex: "Build B", B of docs/boards/todo-button-mockup.html): a pop-over under its pill
+  // (25 Nov, Alex: docs/boards/todo-popover-mockup.html; was a panel from the right as the chat's), mounted on first use
+  // and kept so it fades both ways. One of it, the chat and help at a time: opening one closes the others.
   const [todo, setTodo] = useState<{ mounted: boolean; open: boolean; at: number }>({ mounted: false, open: false, at: 0 });
+  const todoPill = useRef<HTMLButtonElement>(null);
   const closeTodo = useCallback(() => setTodo((t) => (t.open ? { ...t, open: false } : t)), []);
   // Rows let go on the screen (the round check, a note read): gone at once, the count with them, while the server lets
   // them go (2 Nov, Alex: "a button to override this").
@@ -198,13 +199,13 @@ export default function RedesignShell({ clientId, clientName, firstName, units, 
   useCloseOnEmptyClick(chat.open, closeChat);
   // One panel on the right at a time with help too (24 Nov, Alex: docs/boards/help-docked-mockup.html; help/sidePanels.ts).
   useSidePanel("chat", chat.open, closeChat);
-  useSidePanel("todo", todo.open, closeTodo, "data-todo");
+  useSidePanel("todo", todo.open, closeTodo);
   const openTodo = () => {
     closeChat();
     // The waits as of now.
     const at = Date.now();
     setTodo((t) => ({ mounted: true, open: t.mounted, at }));
-    // In closed first, then open a frame later, so even the first one slides (as the chat).
+    // In closed first, then open a frame later, so even the first one fades in.
     if (!todo.mounted) requestAnimationFrame(() => requestAnimationFrame(() => setTodo({ mounted: true, open: true, at })));
   };
   // Open stays open (4 Nov, Alex: a click on a week closed it; "if it's open, it stays open"): a week loaded from the
@@ -479,7 +480,7 @@ export default function RedesignShell({ clientId, clientName, firstName, units, 
               </button>
             ))}
           </nav>
-          {owed.length > 0 && <TodoButton count={owed.length} open={todo.open} onClick={() => (todo.open ? closeTodo() : openTodo())} />}
+          {owed.length > 0 && <TodoButton anchor={todoPill} count={owed.length} open={todo.open} onClick={() => (todo.open ? closeTodo() : openTodo())} />}
         </div>
         <PopupWhoProvider id={clientId} name={clientName} photo={clientPhoto}>
         <PopupTabZone tab="home" hidden={tab !== "home"}>
@@ -554,7 +555,7 @@ export default function RedesignShell({ clientId, clientName, firstName, units, 
       {/* The chat's tab alone (19 Nov, Alex: the client's phone tab under it taken out, "leaving only the chat"). */}
       <button
         type="button"
-        className={`rd-chattab${chat.open ? " open" : ""}${todo.open ? " todo" : ""}`}
+        className={`rd-chattab${chat.open ? " open" : ""}`}
         onClick={() => (chat.open ? closeChat() : openChat())}
         aria-label={chat.open ? "Close the chat" : `Chat with ${firstName}${chatDot ? ", new message" : ""}`}
         title={chat.open ? "Close the chat" : `Chat with ${firstName}`}
@@ -584,10 +585,11 @@ export default function RedesignShell({ clientId, clientName, firstName, units, 
           </div>
         </aside>
       )}
-      {/* The client's To do from the right (24 Nov, Alex: "Build B"), over the page: it never makes room, so nothing moves. */}
+      {/* The client's To do under its pill (25 Nov, Alex: docs/boards/todo-popover-mockup.html), over the page: it never
+          makes room, so nothing moves. */}
       {todo.mounted && (
         <PopupWhoProvider id={clientId} name={clientName} photo={clientPhoto}>
-          <TodoPanel open={todo.open} now={todo.at} onClose={closeTodo} clientId={clientId} clientName={clientName} items={owed} tab={tab} show={show} handler={handlerOf} park={parkTodo} onGone={onGone} onBack={onBack} units={units} />
+          <TodoPanel open={todo.open} now={todo.at} onClose={closeTodo} clientId={clientId} clientName={clientName} items={owed} tab={tab} show={show} handler={handlerOf} park={parkTodo} onGone={onGone} onBack={onBack} units={units} anchor={todoPill} />
         </PopupWhoProvider>
       )}
       <Toaster />

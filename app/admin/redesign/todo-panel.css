@@ -1,6 +1,7 @@
 /* ---- The client's To do (24 Nov, Alex: "Build B", B of docs/boards/todo-button-mockup.html; TodoStrip.tsx): one rust
-   pill at the end of the client's tabs, opening a panel from the window's right as the chat does. Was the to-do strip on
-   top of each tab (2 Nov). */
+   pill at the end of the client's tabs, its list dropping right under it as a pop-over (25 Nov, Alex:
+   docs/boards/todo-popover-mockup.html; was a panel from the window's right as the chat's). Was the to-do strip on top
+   of each tab (2 Nov). */
 
 /* The tabs and the pill on one line; the pill is no child of the tabs' track (SlidePills takes each child as a tab). */
 .rd-navrow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 12px; margin: 0 0 16px; }
@@ -15,61 +16,68 @@
 @media (hover: hover) { .rd-todobtn:hover { background: rgba(184, 71, 31, 0.08); } }
 .rd-todobtn:focus-visible { outline: 2px solid #b8471f; outline-offset: 2px; }
 
-/* The panel: white, 520px, a soft shadow on its left edge, over the page (it never makes room, so the page never moves),
-   under every dialog and menu as the chat panel is (z 46). */
-.rd-todopanel { position: fixed; top: 0; right: 0; bottom: 0; z-index: 46; width: min(520px, 100vw); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 18px 10px 24px; background: #fff; box-shadow: -18px 0 40px rgba(20, 30, 50, 0.12); font-family: var(--font-archivo), system-ui, sans-serif; color: #141a24; transform: translateX(105%); visibility: hidden; transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.28s; }
-.rd-todopanel.open { transform: none; visibility: visible; transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
-@media (prefers-reduced-motion: reduce) { .rd-todopanel, .rd-todopanel.open { transition: none; } }
+/* The pop-over (Join requests' too, join-requests.css): the floating lists' look made for a list this size, white,
+   radius 16, the soft shadow and no edge, fixed on the window where usePopoverPlace puts it under its pill (left, top,
+   width, max-height), as tall as its rows up to the room under the pill, then it scrolls inside. Over the page, under
+   every dialog and menu (z 46, as the chat panel). Comes in with a short fade and a 4px drop on the fold's curve. */
+.rd-todopanel { position: fixed; z-index: 46; width: 520px; border-radius: 16px; background: #fff; box-shadow: 0 18px 40px rgba(20, 30, 50, 0.18), 0 0 0 1px rgba(20, 30, 50, 0.04); font-family: var(--font-archivo), system-ui, sans-serif; color: #141a24; opacity: 0; transform: translateY(-4px); visibility: hidden; transition: opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1), transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.2s; }
+.rd-todopanel.open { opacity: 1; transform: none; visibility: visible; transition: opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1), transform 0.2s cubic-bezier(0.22, 1, 0.36, 1); }
+@media (prefers-reduced-motion: reduce) { .rd-todopanel, .rd-todopanel.open { transition: none; transform: none; } }
+/* Its nub: a white square turned, its point on the pill's middle (--nub), half out of the box's top. The box clips
+   nothing; its rows scroll in the box inside it (.tdp-scroll), as tall as the room left (--pop-max). */
+.rd-todopanel::before { content: ""; position: absolute; top: -6px; left: calc(var(--nub, 40px) - 6px); width: 12px; height: 12px; background: #fff; rotate: 45deg; box-shadow: -1px -1px 0 rgba(20, 30, 50, 0.04); pointer-events: none; }
+.tdp-scroll { position: relative; max-height: var(--pop-max, 70vh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 14px 8px 10px; border-radius: 16px; }
 
-/* Its head: To do at 18px/600, the client's name grey after it, the round ghost ✕. */
-.tdp-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 4px 8px 14px; }
-.tdp-head h2 { margin: 0; font-size: 18px; font-weight: 600; line-height: 28px; }
-.tdp-head h2 small { margin-left: 8px; font-size: 13px; font-weight: 500; color: #8b93a1; }
-.tdp-x { flex: none; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 14px; line-height: 1; color: #8b93a1; cursor: pointer; display: inline-grid; place-items: center; }
-.tdp-x:hover { background: #f5f6f8; color: #141a24; }
-.tdp-x:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; color: #141a24; }
+/* Its head: To do alone at 15px/600, no client name and no ✕ (25 Nov, Alex: "we know where we are"). */
+.tdp-head { padding: 0 12px 4px; }
+.tdp-head h2 { margin: 0; font-size: 15px; font-weight: 600; line-height: 22px; }
+
+/* One grid down the whole list (25 Nov, Alex: "the icons for the chat… are not aligned"): the words, the chat's 30px
+   column, the action's as wide as the widest (its words on its right edge), the round check's 28px. Each row takes the
+   list's columns (subgrid), so every chat sits in one column and every action ends on one edge. */
+.tdp-list { display: grid; grid-template-columns: minmax(0, 1fr) 30px max-content 28px; column-gap: 2px; }
+.tdp-group { display: contents; }
 
 /* A group, a tab each: the small caps head in its colour with its icon and count (the needs-you lists' .nd-head). */
-.tdp-group + .tdp-group { margin-top: 6px; }
-.tdp-ghead { display: flex; align-items: center; gap: 7px; padding: 10px 12px 4px; font-size: 10.5px; font-weight: 600; line-height: 16px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--c); }
+.tdp-ghead { grid-column: 1 / -1; display: flex; align-items: center; gap: 7px; padding: 10px 12px 4px; font-size: 10.5px; font-weight: 600; line-height: 16px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--c); }
+.tdp-group + .tdp-group .tdp-ghead { margin-top: 6px; }
 .tdp-ghead svg { flex: none; width: 14px; height: 14px; stroke-width: 1.6; } /* every head icon at one weight, as .nd-head's (24 Nov) */
 .tdp-ghead small { font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; color: #98a2b3; font-variant-numeric: tabular-nums; }
 
-/* A row: its name over its facts, the action in words, the round check (on hover). The one row hover. */
-.tdp-row { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 8px 6px 12px; border-radius: 9px; transition: opacity 0.2s ease; }
+/* A row: its name over its facts, the chat, the action in words, the round check (on hover). The one row hover, across
+   the whole row. */
+.tdp-item { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; }
+.tdp-item > .rd-rowfold { grid-column: 1 / -1; }
+.tdp-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; min-height: 52px; padding: 6px 0 6px 12px; border-radius: 9px; }
 .tdp-row:hover, .tdp-row:focus-within { background: #fafbfd; }
-.tdp-row.busy { opacity: 0.45; pointer-events: none; }
-.tdp-thing { flex: 1; min-width: 0; }
-.tdp-name { display: block; max-width: 100%; padding: 0; border: 0; background: none; font: inherit; font-size: 14px; font-weight: 600; line-height: 19px; color: #141a24; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.tdp-thing { min-width: 0; }
+.tdp-nameline { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.tdp-nameline i { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: normal; font-size: 12.5px; font-weight: 500; color: #8b93a1; }
+.tdp-name { flex: 0 1 auto; display: block; max-width: 100%; padding: 0; border: 0; background: none; font: inherit; font-size: 14px; font-weight: 600; line-height: 19px; color: #141a24; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
 .tdp-name:hover { text-decoration: underline; text-decoration-color: #c9cfd8; text-underline-offset: 3px; }
 .tdp-name:focus-visible { outline: none; text-decoration: underline; text-underline-offset: 3px; }
 .tdp-thing small { display: block; margin-top: 2px; font-size: 12.5px; font-weight: 500; line-height: 1.4; color: #8b93a1; overflow-wrap: anywhere; }
+/* A target's line: what happened and the best on one line, an ellipsis only where it truly can't fit. */
+.tdp-thing small.tdp-oneline { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
 /* What happened, in rust (`60 kg not reached in 4 sessions`, `2 days`). */
 .tdp-thing small em { font-style: normal; font-weight: 600; color: #b8471f; }
-/* The action as its words (the one word action, docs/DESIGN-RULES-ADMIN.md §8): 32px, ink, the page grey under the pointer. */
-/* A missed target's chat (24 Nov, Alex): Training's round tool, the icon alone, before the action in words. */
-.tdp-tool { display: inline-grid; flex: none; place-items: center; width: 30px; height: 30px; margin-right: -6px; padding: 0; border: 0; border-radius: 999px; background: none; color: #5b6474; cursor: pointer; }
+/* A missed target's chat (24 Nov, Alex): Training's round tool, the icon alone, in the chat's column. */
+.tdp-tool { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 999px; background: none; color: #5b6474; cursor: pointer; }
 .tdp-tool svg { width: 16px; height: 16px; }
 .tdp-tool svg[viewBox="0 0 18 18"] * { stroke-width: 1.2; }
 .tdp-tool:hover, .tdp-tool:focus-visible { outline: none; background: #f5f6f8; color: #141a24; }
-.tdp-act { flex: none; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; white-space: nowrap; cursor: pointer; }
+/* The action as its words (the one word action, docs/DESIGN-RULES-ADMIN.md §8): 32px, ink, the page grey under the
+   pointer, on the column's right edge. */
+.tdp-act { justify-self: end; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; white-space: nowrap; cursor: pointer; }
 .tdp-act:hover, .tdp-act:focus-visible { outline: none; background: #f5f6f8; }
 /* The round check, on the row's hover (always on a touch screen): grey, green under the pointer; asks first. A row that
    can't be let go keeps its room, so every action lines up. */
-.tdp-done, .tdp-done-room { flex: none; width: 28px; height: 28px; margin-left: -6px; }
+.tdp-done, .tdp-done-room { width: 28px; height: 28px; }
 .tdp-done { display: inline-grid; place-items: center; padding: 0; border: 0; border-radius: 999px; background: none; color: #8b93a1; cursor: pointer; opacity: 0; transition: opacity 0.15s ease, background-color 0.2s ease, color 0.2s ease; }
 .tdp-done svg { width: 14px; height: 14px; }
 .tdp-row:hover .tdp-done, .tdp-done:focus-visible { opacity: 1; }
 .tdp-done:hover, .tdp-done:focus-visible { outline: none; background: rgba(47, 122, 63, 0.12); color: #2f7a3f; }
 @media (any-hover: none) { html:not([data-mouse]) .tdp-done { opacity: 1; } }
-
-/* The rest of a group behind `N more`, in words, opening them in place on the shared fold (RowFold). */
-.tdp-more { display: block; margin: 2px 0 0; padding: 8px 12px 6px; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; cursor: pointer; }
-.tdp-more:hover, .tdp-more:focus-visible { outline: none; color: #141a24; }
-
-/* The chat's tab on the panel's edge while it is open, so it never covers the ✕; a click on it opens the chat instead. */
-.rd-chattab.todo { right: min(520px, 100vw); transform: none; }
-@media (max-width: 560px) { .rd-chattab.todo { opacity: 0; pointer-events: none; } }
 
 /* A target not reached opens on its sessions (25 Nov, Alex: "I have to see the data of all of those sessions"): its rust
    words are the way in, a small chevron after them turning down when open, as every fold's. */
@@ -77,17 +85,39 @@
 .tdp-runbtn svg { margin-left: 4px; vertical-align: middle; color: #b8471f; transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
 .tdp-runbtn.open svg { transform: rotate(90deg); }
 .tdp-runbtn:hover em { text-decoration: underline; text-decoration-color: rgba(184, 71, 31, 0.35); text-underline-offset: 3px; }
-.tdp-runbtn:focus-visible { outline: 2px solid #b8471f; outline-offset: 2px; border-radius: 4px; }
+/* The keyboard's mark inside the line's clip, as .tdp-name's (25 Nov, review: a ring was cut by it). */
+.tdp-runbtn:focus-visible { outline: none; }
+.tdp-runbtn:focus-visible em { text-decoration: underline; text-underline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) { .tdp-runbtn svg { transition: none; } }
 /* The run: the target, then a line a session, its day as a log's and its sets parted by the drawn bar, a set inside the
-   range in ink, one outside it grey. Set in under the row's words. */
-.tdp-run { display: grid; grid-template-columns: max-content 1fr; column-gap: 14px; padding: 2px 12px 12px 12px; }
+   range in ink, one outside it grey. Set in under the row's words; its right edge the actions' (the check's 28px and
+   the gap), so the pill at its foot ends on theirs. */
+.tdp-run { display: grid; grid-template-columns: max-content 1fr; column-gap: 14px; padding: 2px 30px 14px 12px; }
 .tdp-run-target { grid-column: 1 / -1; margin: 0 0 6px; font-size: 12.5px; font-weight: 600; color: #3a4250; }
 .tdp-run-row { display: contents; font-size: 13px; font-weight: 500; line-height: 19px; }
 .tdp-run-row > * { padding: 3px 0; font-size: 13px; font-weight: 500; line-height: 19px; }
 .tdp-run-day { color: #3a4250; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tdp-run-sets { color: #141a24; font-variant-numeric: tabular-nums; }
 .tdp-run-sets .off { color: #98a2b3; }
+
+/* Your own weight and a note to the client at the run's foot (25 Nov, Alex: the board, and "also add the option of adding
+   a comment on this… so it is delivered to the chat"): `Set to` and the figure on a 1px ink underline, no box; the note
+   under its small caps label on the hairline underline, ink while typing (docs/DESIGN-RULES-ADMIN.md §4); one brand pill
+   on the right saying what it puts there. Both fields 16px, empty until typed. */
+.tdp-own { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; column-gap: 14px; row-gap: 12px; margin-top: 12px; }
+.tdp-own-kg { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 600; color: #3a4250; }
+.tdp-own-kg input { width: 64px; padding: 2px 2px 3px; border: 0; border-bottom: 1px solid #141a24; border-radius: 0; background: none; font: inherit; font-size: 16px; font-weight: 500; line-height: 22px; color: #141a24; text-align: right; font-variant-numeric: tabular-nums; outline: none; }
+.tdp-own-kg input[aria-invalid="true"] { border-bottom-color: #b8471f; color: #b8471f; }
+.tdp-own-kg .u { font-weight: 500; color: #8b93a1; }
+.tdp-own-note { display: block; min-width: 0; }
+.tdp-own-note span { display: block; margin-bottom: 4px; font-size: 10.5px; font-weight: 600; line-height: 16px; letter-spacing: 0.16em; text-transform: uppercase; color: #5b6474; }
+.tdp-own-note textarea { display: block; width: 100%; min-height: 30px; padding: 3px 0 4px; border: 0; border-bottom: 1px solid #c9cfd8; border-radius: 0; background: none; font: inherit; font-size: 16px; font-weight: 500; line-height: 22px; color: #141a24; resize: none; overflow: hidden; outline: none; transition: border-color 0.2s ease; }
+.tdp-own-note textarea:focus { border-bottom-color: #141a24; }
+.tdp-own-go { height: 32px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--brand, #141a24); color: var(--brand-ink, #fff); font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: opacity 0.2s ease; }
+.tdp-own-go:hover { background: color-mix(in srgb, var(--brand, #141a24) 88%, #fff); }
+.tdp-own-go:focus-visible { outline: 2px solid var(--brand, #141a24); outline-offset: 2px; }
+.tdp-own-go[aria-disabled="true"] { opacity: 0.35; cursor: default; }
+.tdp-own-go[aria-disabled="true"]:hover { background: var(--brand, #141a24); }
 
 /* A row being sent back fades whole, its open run with it. */
 .tdp-item.busy { opacity: 0.45; pointer-events: none; transition: opacity 0.2s ease; }

@@ -3116,6 +3116,30 @@ export function setTargetFromNow(sr: SetRows, assignmentId: number, fromKg: numb
   return { changed };
 }
 
+/**
+ * The To do's own weight (25 Nov, Alex: docs/boards/todo-popover-mockup.html, "Set to" and a figure to type): `kg` on
+ * every row of the live programme still asking the missed figure `fromKg`, as the coach's typed weight, as
+ * setTargetFromNow types it (stamped now, the figure kept beside a raise gone). Worked out afresh here, so a screen out
+ * of date changes nothing: null when the row asks no missed figure, or another than `fromKg`.
+ */
+export function setTargetToNow(sr: SetRows, assignmentId: number, fromKg: number, kg: number): { changed: number } | null {
+  const data = getData();
+  const wa = data.workout_assignments.find((x) => x.id === assignmentId);
+  const day = wa && data.program_days.find((pd) => pd.id === wa.program_day_id);
+  if (!wa || !day || !Number.isFinite(kg) || kg <= 0) return null;
+  const m = missedTargetsOf(sr, day.client_id).find((x) => x.rows.includes(assignmentId));
+  if (!m || m.fromKg !== fromKg) return null;
+  let changed = 0;
+  for (const id of m.rows) {
+    const row = data.workout_assignments.find((x) => x.id === id);
+    if (!row || row.target_weight_kg !== fromKg) continue;
+    typeWeight(sr, row, null, kg, true);
+    changed++;
+  }
+  if (changed) persist();
+  return { changed };
+}
+
 /** The lists the rule reads, and their lengths: a row, day, gym or exercise added or removed, or sets removed (every
     removal makes a new list), shows as a change, so no write has to mark it. A set added is marked by logSet instead,
     so a client training doesn't make every pass a full one. */
