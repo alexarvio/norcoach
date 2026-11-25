@@ -9,6 +9,8 @@ import { newOnceKey } from "../../lib/onceKey";
 import { Dialog } from "../../components/ui/dialog";
 import { ConfirmDialog } from "./training/TrainingDraft";
 import { SepJoin } from "./Sep";
+import { RowFold } from "./RowFold";
+import { logDate } from "../../lib/dayMonth";
 import { NEED_LOOK } from "./NeedGroups";
 import { PopupTabZone } from "./PopupWho";
 import { TRACK_ACCENT } from "../phaseChrome";
@@ -165,6 +167,15 @@ export function TodoPanel({
   const [asking, setAsking] = useState<TodoItem | null>(null);
   // Rows going (a target sent back): faded until the next read of the page.
   const [busy, setBusy] = useState<ReadonlySet<string>>(() => new Set());
+  // A target not reached opened on its sessions, by its key (25 Nov).
+  const [openRuns, setOpenRuns] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleRun = (key: string) =>
+    setOpenRuns((s) => {
+      const next = new Set(s);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   const [seenItems, setSeenItems] = useState(items);
   if (seenItems !== items) {
     setSeenItems(items);
@@ -291,14 +302,30 @@ export function TodoPanel({
       {groups.map((g) => {
         const row = (item: TodoItem) => {
           const wait = item.happened ?? item.wait ?? waitOf(item, now);
+          const m = item.missed;
+          const runOpen = !!m && openRuns.has(item.key);
+          // A target not reached opens on its sessions (25 Nov, Alex: "I have to see the data of all of those sessions…
+          // I don't have enough information for me to see what the solution could be"): what was said in rust is the way in.
+          const happened =
+            m && m.run.length > 0 ? (
+              <button key="w" type="button" className={`tdp-runbtn${runOpen ? " open" : ""}`} aria-expanded={runOpen} onClick={() => toggleRun(item.key)}>
+                <em>{wait}</em>
+                <svg viewBox="0 0 12 12" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M4.5 2.5 8 6l-3.5 3.5" />
+                </svg>
+              </button>
+            ) : wait ? (
+              <em key="w">{wait}</em>
+            ) : null;
           return (
-            <div key={item.key} className={`tdp-row${busy.has(item.key) ? " busy" : ""}`}>
+            <div key={item.key} className={`tdp-item${busy.has(item.key) ? " busy" : ""}`}>
+            <div className="tdp-row">
               <div className="tdp-thing">
                 <button type="button" className="tdp-name" onClick={() => openThing(item)}>
                   {item.what}
                 </button>
                 <small>
-                  <SepJoin parts={[...(item.words ? [`“${item.words}”`] : (item.facts ?? []).slice(0, 1)), wait ? <em key="w">{wait}</em> : null, ...(item.words ? [] : (item.facts ?? []).slice(1))]} />
+                  <SepJoin parts={[...(item.words ? [`“${item.words}”`] : (item.facts ?? []).slice(0, 1)), happened, ...(item.words ? [] : (item.facts ?? []).slice(1))]} />
                 </small>
               </div>
               {item.missed && openChat && (
@@ -317,6 +344,32 @@ export function TodoPanel({
               ) : (
                 <span className="tdp-done-room" aria-hidden="true" />
               )}
+            </div>
+            {/* The run, newest first: the target, then each session's day and every set of the lift in it, a set inside
+                the range in ink and one outside it grey, on the shared fold. */}
+            {m && m.run.length > 0 && (
+              <RowFold open={runOpen}>
+                <div className="tdp-run">
+                  <p className="tdp-run-target">
+                    Target {weight(m.fromKg, lbs)} {lbs ? "lbs" : "kg"} × {m.range.max == null ? `${m.range.min}+` : m.range.min === m.range.max ? m.range.min : `${m.range.min}–${m.range.max}`}
+                  </p>
+                  {m.run.map((s, si) => (
+                    <div key={`${s.date}-${si}`} className="tdp-run-row">
+                      <span className="tdp-run-day">{logDate(new Date(`${s.date}T12:00:00`))}</span>
+                      <span className="tdp-run-sets">
+                        <SepJoin
+                          parts={s.sets.map((x, i) => (
+                            <span key={i} className={x.reps < m.range.min || (m.range.max != null && x.reps > m.range.max) ? "off" : undefined}>
+                              {weight(x.kg, lbs)} × {x.reps}
+                            </span>
+                          ))}
+                        />
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </RowFold>
+            )}
             </div>
           );
         };

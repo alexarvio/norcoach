@@ -70,3 +70,24 @@
 /* The chat's tab on the panel's edge while it is open, so it never covers the ✕; a click on it opens the chat instead. */
 .rd-chattab.todo { right: min(520px, 100vw); transform: none; }
 @media (max-width: 560px) { .rd-chattab.todo { opacity: 0; pointer-events: none; } }
+
+/* A target not reached opens on its sessions (25 Nov, Alex: "I have to see the data of all of those sessions"): its rust
+   words are the way in, a small chevron after them turning down when open, as every fold's. */
+.tdp-runbtn { display: inline; padding: 0; border: 0; background: none; font: inherit; line-height: inherit; color: inherit; text-align: left; cursor: pointer; }
+.tdp-runbtn svg { margin-left: 4px; vertical-align: middle; color: #b8471f; transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
+.tdp-runbtn.open svg { transform: rotate(90deg); }
+.tdp-runbtn:hover em { text-decoration: underline; text-decoration-color: rgba(184, 71, 31, 0.35); text-underline-offset: 3px; }
+.tdp-runbtn:focus-visible { outline: 2px solid #b8471f; outline-offset: 2px; border-radius: 4px; }
+@media (prefers-reduced-motion: reduce) { .tdp-runbtn svg { transition: none; } }
+/* The run: the target, then a line a session, its day as a log's and its sets parted by the drawn bar, a set inside the
+   range in ink, one outside it grey. Set in under the row's words. */
+.tdp-run { display: grid; grid-template-columns: max-content 1fr; column-gap: 14px; padding: 2px 12px 12px 12px; }
+.tdp-run-target { grid-column: 1 / -1; margin: 0 0 6px; font-size: 12.5px; font-weight: 600; color: #3a4250; }
+.tdp-run-row { display: contents; font-size: 13px; font-weight: 500; line-height: 19px; }
+.tdp-run-row > * { padding: 3px 0; font-size: 13px; font-weight: 500; line-height: 19px; }
+.tdp-run-day { color: #3a4250; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tdp-run-sets { color: #141a24; font-variant-numeric: tabular-nums; }
+.tdp-run-sets .off { color: #98a2b3; }
+
+/* A row being sent back fades whole, its open run with it. */
+.tdp-item.busy { opacity: 0.45; pointer-events: none; transition: opacity 0.2s ease; }

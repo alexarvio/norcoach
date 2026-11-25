@@ -83,6 +83,10 @@ export type TodoItem = {
     best: { kg: number; reps: number } | null;
     session: string;
     sessions: number;
+    /** The sessions of the run, newest first: the day (yyyy-mm-dd) and every set of the lift in it, in kg (25 Nov). */
+    run: { date: string; sets: { kg: number; reps: number }[] }[];
+    /** The row's rep range; `max` null for "that many or more". */
+    range: { min: number; max: number | null };
   };
 };
 
