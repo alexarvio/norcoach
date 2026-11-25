@@ -29,7 +29,7 @@
   .wrap { padding: 24px 12px; }
 
   /* The code email's frame: an ink head with the star (email-star.png at right top), the paper rising with 28px corners. */
-  .card { background: #fff; border-radius: 20px; overflow: hidden; }
+  .card { --d: #141a24; background: #fff; border-radius: 20px; overflow: hidden; }
   .dark { --d: #141a24; --on: #fff; --soft: rgba(255,255,255,.62); background: var(--d) url(../../public/brand/email-star.png) no-repeat right top / 113px 177px; color: var(--on); padding: 26px 28px 34px; position: relative; overflow: hidden; }
   .logo { width: 120px; height: 24px; display: block; }
   .face { width: 48px; height: 48px; border-radius: 999px; object-fit: cover; display: block; box-shadow: 0 0 0 2px rgba(255,255,255,.9); }
@@ -57,6 +57,7 @@
 
   /* A coach with a bright brand colour: the head is that colour, its words ink (lib/brandColour.ts); their logo whole on the
      right at 14%, as Home's dark draws a coach's own logo; no star. */
+  .brand .card { --d: #c8e46a; }
   .brand .dark { --d: #c8e46a; --on: #141a24; --soft: rgba(20,26,36,.62); background-image: none; }
   .brand .face { box-shadow: 0 0 0 2px rgba(20,26,36,.85); }
   .brand { --pill: #c8e46a; --pill-ink: #141a24; }
