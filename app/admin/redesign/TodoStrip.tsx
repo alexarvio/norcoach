@@ -190,14 +190,14 @@ export function TodoPanel({
   const lbs = (handler("training")?.unit?.() ?? units) === "lbs";
   // A target not reached, told to the client in the chat (24 Nov, Alex: "the option here of texting the client, linking
   // the exercise… so the client also can see what am I talking about"): the chat opens on their thread linked to the
-  // exercise in the session it was last missed in, as Training's exercise chat links it, the bar empty (nothing
-  // pre-written). Opening the chat closes this panel (RedesignShell).
+  // exercise in this week's session still asking the figure (missed.dayId, where a tap on the row lands too), as
+  // Training's exercise chat links it, its week in the label, the bar empty (nothing pre-written). Opening the chat closes this panel (RedesignShell).
   const openChat = useOpenChat();
   const firstName = clientName.split(" ")[0] || clientName;
   const messageAbout = (item: TodoItem) => {
     const m = item.missed;
     if (!m || !openChat) return;
-    const week = /[?&]week=(d+)/.exec(item.href)?.[1];
+    const week = /[?&]week=(\d+)/.exec(item.href)?.[1];
     openChat({ area: "Training", label: `${item.what} · ${m.session}${week ? `, Week ${week}` : ""}`, link: { kind: "exercise", dayId: m.dayId, assignmentId: m.assignmentId } });
   };
   /** A row's words: a target's in the unit shown (24 Nov), the rest as the server says them. */
