@@ -519,8 +519,9 @@ export default function RedesignRail({ rail, clientId, settings = false, onArriv
           </button>
         </div>
         <div className="rr-list" ref={listRef} onScroll={keepListTop}>
+          {/* No clients yet: the list says it by being empty (25 Nov, Alex: "take out the none yet"). */}
           {shown.length === 0 ? (
-            <p className="rr-empty">{rail.clients.length === 0 ? "None yet" : "No match"}</p>
+            rail.clients.length === 0 ? null : <p className="rr-empty">No match</p>
           ) : (
             shown.map((c) => {
               const active = c.id === markedId;
