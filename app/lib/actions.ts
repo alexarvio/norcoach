@@ -893,9 +893,12 @@ export async function createClientWithLoginAction(
   const last = s(p?.lastName);
   const email = s(p?.email).toLowerCase();
   const password = String(p?.password ?? "");
-  if (!first || !last) return { ok: false, error: "A first and a last name are needed." };
-  // Without Clerk the email can wait: the login is made later, from App access.
-  if ((clerkOn() || email) && !EMAIL_RE.test(email)) return { ok: false, error: "That email doesn't look right." };
+  // A first name is enough (25 Nov, Alex: "it's not necessary to put a last name, just the name"), and so is no email:
+  // the client is made for the coach to build their plan, nothing sent and no login made; they come in later by the
+  // coach's code, Accept putting them onto this client (acceptJoinRequestAction's linkTo, or by itself when the email on
+  // their card is the one they asked with).
+  if (!first) return { ok: false, error: "A first name is needed." };
+  if (email && !EMAIL_RE.test(email)) return { ok: false, error: "That email doesn't look right." };
   // With Clerk there is no password: the client gets an invite link instead.
   if (!clerkOn() && password && password.length < 8) return { ok: false, error: "The password needs at least 8 characters." };
   // Taken once (6 Nov, one-time key): sent again after a dropped signal, it answers the client the first made, never a
@@ -906,10 +909,11 @@ export async function createClientWithLoginAction(
     // The record, then the login. If the login cannot be made, the record goes
     // too: a client with no way in, that the coach did not ask for, is worse
     // than trying again.
-    const client = createClient(`${first} ${last}`, coach.id);
+    const client = createClient(`${first} ${last}`.trim(), coach.id);
     try {
-      if (clerkOn()) createPasswordlessUser(email, "client", client.id);
-      else if (password) createUser(email, password, "client", client.id, true);
+      if (clerkOn()) {
+        if (email) createPasswordlessUser(email, "client", client.id);
+      } else if (password) createUser(email, password, "client", client.id, true);
     } catch (error) {
       await removeClient(client.id);
       return { ok: false, error: error instanceof Error ? error.message : "The login could not be made." };
@@ -922,6 +926,8 @@ export async function createClientWithLoginAction(
       height_cm: num(p.heightCm),
       starting_weight_kg: num(p.startingWeightKg),
       email: email || null,
+      // No login to date them (a first name alone, 25 Nov): their start is today, so Business counts them as joining now.
+      ...(clerkOn() && !email ? { coaching_start_date: new Date().toISOString().slice(0, 10) } : {}),
       // The dial code and the national number are kept apart, and joined only
       // for show, so a country is never guessed back out of a typed string.
       phone_code: /^\+[0-9]{1,4}$/.test(phoneCode) ? phoneCode : null,
@@ -937,6 +943,7 @@ export async function createClientWithLoginAction(
     // With Clerk the invite always goes: it is the only way in. Clerk sends it,
     // and the link lands on /invite, which greets them by name.
     if (clerkOn()) {
+      if (!email) return { ok: true, clientId: client.id, invited: false, inviteFailed: false };
       const invited = await sendClerkInvite(email, `${proto}://${host}/invite?c=${inviteToken(client.id)}`);
       return { ok: true, clientId: client.id, invited, inviteFailed: !invited };
     }

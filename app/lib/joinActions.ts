@@ -10,7 +10,7 @@ import { createClient, getClientProfile, patchClientProfile, removeClient, renam
 import { once } from "./once";
 import { pushCoachJoin } from "./coachPush";
 import { sendClientWelcome } from "./welcomeEmails";
-import { coachCard, coachCardByCode, createJoinRequest, declinedBy, forgetRequestsOf, joinRequestById, latestRequestFor, pushedToday, requestsToday, settleJoinRequest, tooManyTries, withdrawJoinRequest, type CoachCard } from "./joinRequests";
+import { coachCard, coachCardByCode, createJoinRequest, linkableClients, declinedBy, forgetRequestsOf, joinRequestById, latestRequestFor, pushedToday, requestsToday, settleJoinRequest, tooManyTries, withdrawJoinRequest, type CoachCard } from "./joinRequests";
 
 // The client's side of joining a coach by their code (18 Nov, Alex; lib/joinRequests.ts) and the coach's Accept and
 // Decline. The client's actions are for someone signed in to Clerk with no account here yet, and answer nothing else.
@@ -115,7 +115,7 @@ export async function joinStatusAction(): Promise<JoinStatus> {
 
 /** Accept: the person becomes the coach's client, their name, birthdate and email filled in, signed in with the account
  *  they made (its Clerk id set now, so every route knows them at once). */
-export async function acceptJoinRequestAction(id: number, onceKey?: string | null): Promise<{ ok: true; clientId: number } | { ok: false; error: string; gone?: boolean }> {
+export async function acceptJoinRequestAction(id: number, onceKey?: string | null, linkTo?: number | null): Promise<{ ok: true; clientId: number } | { ok: false; error: string; gone?: boolean }> {
   const coach = await requireCoach();
   return once(`acceptJoinRequest:${coach.id}`, onceKey, async () => {
     const r = joinRequestById(Number(id));
@@ -123,6 +123,17 @@ export async function acceptJoinRequestAction(id: number, onceKey?: string | nul
     if (!r || r.coach_id !== coach.id) return { ok: false as const, error: "No longer asking", gone: true };
     if (r.status === "accepted" && r.client_id != null) return { ok: true as const, clientId: r.client_id };
     if (r.status !== "open") return { ok: false as const, error: "No longer asking", gone: true };
+    // Onto a client the coach already made (25 Nov, Alex: "create a new client and maybe start creating the plans… and
+    // connect the client after"): that client takes the account they made, whatever email it has.
+    if (linkTo != null) {
+      const linked = linkToClient(r, coach.id, Number(linkTo));
+      if (typeof linked === "string") return { ok: false as const, error: linked };
+      settleJoinRequest(r.id, "accepted", linked);
+      await persistNow().catch(() => {});
+      revalidatePath("/admin");
+      void sendClientWelcome(linked, r.email, r.clerk_user_id).catch(() => {});
+      return { ok: true as const, clientId: linked };
+    }
     const existing = findUserByEmail(r.email);
     if (existing) {
       // Invited, then joined by the code instead (22 Nov, Alex): the coach's own client whose invite nobody has claimed yet
@@ -133,6 +144,17 @@ export async function acceptJoinRequestAction(id: number, onceKey?: string | nul
       await persistNow().catch(() => {});
       revalidatePath("/admin");
       // Their welcome, from the coach (25 Nov, Alex; lib/welcomeEmails.ts): never waited for.
+      void sendClientWelcome(linked, r.email, r.clerk_user_id).catch(() => {});
+      return { ok: true as const, clientId: linked };
+    }
+    // A client the coach made with no login and this email on their card is this person too: never a second client.
+    const byCard = linkableClients(coach.id).find((c) => c.email === r.email.trim().toLowerCase());
+    if (byCard) {
+      const linked = linkToClient(r, coach.id, byCard.id);
+      if (typeof linked === "string") return { ok: false as const, error: linked };
+      settleJoinRequest(r.id, "accepted", linked);
+      await persistNow().catch(() => {});
+      revalidatePath("/admin");
       void sendClientWelcome(linked, r.email, r.clerk_user_id).catch(() => {});
       return { ok: true as const, clientId: linked };
     }
@@ -185,6 +207,61 @@ function linkInvitedClient(user: NonNullable<ReturnType<typeof findUserByEmail>>
     ...(!profile.email ? { email: r.email } : {}),
   });
   return client.id;
+}
+
+/** A request put onto a client the coach picked (Accept, Existing client): the client's login takes the Clerk account
+ *  and the request's email (one made if the client had none), and what the person filled in about themselves fills the
+ *  client (25 Nov, Alex: "once we link it… the information from the client is added… everything fills out"): their full
+ *  name, their birthdate where none was set, their email. A reason in words when it can't: not theirs, already in the
+ *  app, or the email or account another login's. */
+function linkToClient(r: JoinRequest, coachId: number, clientId: number): number | string {
+  const data = getData();
+  const client = data.clients.find((c) => c.id === clientId);
+  if (!client || client.coach_id !== coachId) return "That client isn't yours.";
+  if (!linkableClients(coachId).some((c) => c.id === clientId)) return `${client.name} is in the app already.`;
+  const login = data.users.find((u) => u.role === "client" && u.client_id === clientId);
+  const email = r.email.trim().toLowerCase();
+  const holder = findUserByEmail(email);
+  if (holder && holder !== login) {
+    const theirs = holder.role === "client" ? data.clients.find((c) => c.id === holder.client_id && c.coach_id === coachId) : null;
+    return theirs ? `${theirs.name} is invited with that email.` : "That email already has an account.";
+  }
+  if (data.users.some((u) => u !== login && u.clerk_user_id === r.clerk_user_id)) return "That account is linked to someone else.";
+  // An invite still out under another email goes with it, so its link can't make a second account later.
+  const oldEmail = login?.email && login.email !== email ? login.email : null;
+  let row = login;
+  if (!row) {
+    try {
+      const made = createPasswordlessUser(email, "client", clientId);
+      row = data.users.find((u) => u.id === made.id);
+    } catch {
+      return "That email already has an account.";
+    }
+  }
+  if (!row) return "Not saved. Try again.";
+  row.email = email;
+  row.clerk_user_id = r.clerk_user_id;
+  (row as typeof row & { clerk_instance?: string }).clerk_instance = (process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "").slice(-12);
+  // Their own full name where the coach's was empty or its start ("Alex" becomes "Alex Arvio"); a name of the coach's
+  // own choosing stays.
+  const name = `${r.first_name} ${r.last_name}`.trim();
+  const had = client.name.trim().toLowerCase();
+  if (name && (!had || name.toLowerCase().startsWith(had))) renameClient(clientId, name);
+  const profile = getClientProfile(clientId);
+  patchClientProfile(clientId, { email, ...(!profile.birthdate ? { birthdate: r.birthdate } : {}) });
+  if (oldEmail) void revokeInvitesTo(oldEmail);
+  return clientId;
+}
+
+/** Revokes Clerk's invitations still pending to an address. Never throws. */
+async function revokeInvitesTo(email: string) {
+  try {
+    const clerk = await clerkClient();
+    const { data } = await clerk.invitations.getInvitationList({ status: "pending", query: email });
+    await Promise.all(data.filter((i) => i.emailAddress.toLowerCase() === email).map((i) => clerk.invitations.revokeInvitation(i.id)));
+  } catch (error) {
+    console.error("[join] invite not revoked:", error instanceof Error ? error.message : error);
+  }
 }
 
 /** Decline: the person is told on their screen and can send their code to another coach. Nothing else is kept. */

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { useMemo, useState, useTransition, type CSSProperties, type KeyboardEvent as KeyEvent, type MouseEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { Popover as PopoverPrimitive } from "radix-ui";
 import { useRouter } from "next/navigation";
@@ -73,7 +73,7 @@ export default function FeedDraft({ board, now, kind }: { board: FeedBoard; /** 
         </div>
       </header>
 
-      <NeedsYou needs={board.needs} joins={board.joins} now={now} />
+      <NeedsYou needs={board.needs} joins={board.joins} linkable={board.linkable} now={now} />
       <Activity rows={board.activity} kind={kind} clients={board.clients} />
       <Toaster />
     </div>
@@ -136,7 +136,19 @@ const CrossIcon = () => (
   </svg>
 );
 
-export function NeedsYou({ needs, now, joins = [] }: { needs: NeedRow[]; now: number; /** Asking to join with the coach's code (the Feed's alone). */ joins?: JoinRow[] }) {
+export function NeedsYou({
+  needs,
+  now,
+  joins = [],
+  linkable = [],
+}: {
+  needs: NeedRow[];
+  now: number;
+  /** Asking to join with the coach's code (the Feed's alone). */
+  joins?: JoinRow[];
+  /** The coach's clients not in the app yet, which Accept can put a request onto (25 Nov). */
+  linkable?: FeedBoard["linkable"];
+}) {
   const router = useRouter();
   const open = useRowOpen();
   const [, start] = useTransition();
@@ -147,6 +159,10 @@ export function NeedsYou({ needs, now, joins = [] }: { needs: NeedRow[]; now: nu
   // Join requests (18 Nov, Alex): Accept makes them a client at once, Decline asks first; either way the row fades and goes.
   const asking = joins.filter((j) => !gone.has(`join:${j.id}`));
   const [declining, setDeclining] = useState<JoinRow | null>(null);
+  // Accept asks where they go when the coach has clients not in the app yet (25 Nov, Alex: "create a new client… and
+  // connect the client after"): a new client, or one already made; with none, Accept makes them a client at once.
+  const [accepting, setAccepting] = useState<JoinRow | null>(null);
+  const [onto, setOnto] = useState<number | null>(null);
   const left = rows.filter((n) => !out.has(n.key)).length + asking.filter((j) => !out.has(`join:${j.id}`)).length;
   const without = (key: string) => (s: ReadonlySet<string>) => {
     const next = new Set(s);
@@ -183,7 +199,37 @@ export function NeedsYou({ needs, now, joins = [] }: { needs: NeedRow[]; now: nu
       toast.error(r.error ?? "Not saved. Try again.");
     });
   };
-  const accept = (j: JoinRow) => settle(j, () => acceptJoinRequestAction(j.id, `${j.id}-${Date.now()}`));
+  const accept = (j: JoinRow, linkTo: number | null = null) => settle(j, () => acceptJoinRequestAction(j.id, `${j.id}-${Date.now()}`, linkTo));
+  const askAccept = (j: JoinRow) => {
+    if (linkable.length === 0) return accept(j);
+    // The client already made for them, only on a match that can't be someone else's: the email they asked with on that
+    // client, else the one client of their full name, else the one of their first name; otherwise New client.
+    const one = (list: typeof linkable) => (list.length === 1 ? list[0].id : null);
+    const email = j.email.trim().toLowerCase();
+    const full = j.name.trim().toLowerCase();
+    const first = full.split(/\s+/)[0] ?? "";
+    setOnto(
+      linkable.find((c) => c.email && c.email === email)?.id ??
+        one(linkable.filter((c) => c.name.toLowerCase() === full)) ??
+        one(linkable.filter((c) => first && c.name.toLowerCase().split(/\s+/)[0] === first))
+    );
+    setAccepting(j);
+  };
+  // What is picked, still one of them (a read meanwhile may have taken it off the list): else New client.
+  const pick = onto != null && linkable.some((c) => c.id === onto) ? onto : null;
+  const pickedName = linkable.find((c) => c.id === pick)?.name ?? null;
+  // Up and down move the pick, as a radio group does; one Tab stop, the picked row.
+  const ontoIds: (number | null)[] = [null, ...linkable.map((c) => c.id)];
+  const ontoKey = (e: KeyEvent<HTMLDivElement>) => {
+    const group = e.currentTarget;
+    const step = e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : e.key === "ArrowUp" || e.key === "ArrowLeft" ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const at = ontoIds.indexOf(pick);
+    const next = ontoIds[(at + step + ontoIds.length) % ontoIds.length];
+    setOnto(next);
+    window.requestAnimationFrame(() => (group.querySelector('[aria-checked="true"]') as HTMLElement | null)?.focus());
+  };
   const decline = (j: JoinRow) => settle(j, () => declineJoinRequestAction(j.id));
 
   // Every row's date in one column width, the whole list's (logDateWidth).
@@ -223,7 +269,7 @@ export function NeedsYou({ needs, now, joins = [] }: { needs: NeedRow[]; now: nu
                     </span>
                     <span className={`nd-wait${w.late ? " late" : ""}`}>{w.text}</span>
                     <span className="nd-acts">
-                      <NeedAction label="Accept" icon={<CheckIcon />} onClick={() => accept(j)} />
+                      <NeedAction label="Accept" icon={<CheckIcon />} onClick={() => askAccept(j)} />
                       <NeedAction label="Decline" icon={<CrossIcon />} onClick={() => setDeclining(j)} />
                     </span>
                     <span className="nd-more" />
@@ -276,6 +322,66 @@ export function NeedsYou({ needs, now, joins = [] }: { needs: NeedRow[]; now: nu
           ))}
         </div>
       )}
+      {/* Accept with clients not in the app yet: New client, or one of them (their faces and names A to Z), the pick
+          ringed; the ink Accept. What the person filled in about themselves fills the client picked. */}
+      <Dialog open={accepting != null} onOpenChange={(o) => !o && setAccepting(null)}>
+        {accepting && (
+          <DialogContent className="dlh" aria-describedby="accept-join-text">
+            <div className="dlh-head">
+              <PopupTitle>Accept {accepting.name}?</PopupTitle>
+              <DialogClose className="dlh-x" aria-label="Close">
+                ✕
+              </DialogClose>
+            </div>
+            <ConfirmThing name={accepting.name} facts={["Wants to join", accepting.age != null ? String(accepting.age) : null, accepting.email]} />
+            {/* What happens, said for the pick; one line either way, so nothing under it moves. */}
+            <ConfirmText id="accept-join-text">
+              {pickedName ? `${pickedName} becomes their account in the app, with their birthdate and email. Its plan stays.` : "They become a new client, with their name, birthdate and email."}
+            </ConfirmText>
+            <div className="rfd-onto" role="radiogroup" aria-label="Add them as" onKeyDown={ontoKey}>
+              <button type="button" role="radio" aria-checked={pick == null} tabIndex={pick == null ? 0 : -1} className={`rfd-onto-row${pick == null ? " on" : ""}`} onClick={() => setOnto(null)}>
+                <span className="rfd-onto-new" aria-hidden="true">
+                  <PlusIcon />
+                </span>
+                <span className="rfd-onto-name">New client</span>
+                {pick == null && <CheckIcon />}
+              </button>
+              {linkable.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={pick === c.id}
+                  tabIndex={pick === c.id ? 0 : -1}
+                  // An existing client picked to start: the focus on it, seen and in reach, never a one-key Accept.
+                  autoFocus={pick === c.id}
+                  className={`rfd-onto-row${pick === c.id ? " on" : ""}`}
+                  onClick={() => setOnto(c.id)}
+                >
+                  <NeedFace name={c.name} src={c.avatarPath} />
+                  <span className="rfd-onto-name">{c.name}</span>
+                  {pick === c.id && <CheckIcon />}
+                </button>
+              ))}
+            </div>
+            <div className="dlh-foot">
+              <DialogClose className="dlh-cancel">Cancel</DialogClose>
+              <button
+                type="button"
+                className="dlh-go"
+                autoFocus={pick == null}
+                onClick={() => {
+                  const j = accepting;
+                  setAccepting(null);
+                  accept(j, pick);
+                }}
+              >
+                Accept
+              </button>
+            </div>
+          </DialogContent>
+        )}
+      </Dialog>
       {/* Decline asks first (nothing taken away on one click): the confirm anatomy, the red pill. */}
       <Dialog open={declining != null} onOpenChange={(o) => !o && setDeclining(null)}>
         {declining && (
