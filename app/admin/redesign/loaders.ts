@@ -1,5 +1,6 @@
 import { GYM_COLORS, isGymColor } from "../../lib/gymColors";
-import { openJoinRequestsFor } from "../../lib/joinRequests";
+import { ageOf, linkableClients, openJoinRequestsFor } from "../../lib/joinRequests";
+import type { FeedBoard, JoinRow } from "../../lib/feedBoard";
 import { appLocked } from "../../lib/appLock";
 import { setsDue } from "../../lib/setsDue";
 import { laneOfGym, raisedBy, repWindow, underSwap, type Occurrence, type Source } from "../../lib/targetRule";
@@ -779,7 +780,15 @@ export function loadPhaseNeeds(coachId: number, chat: ChatCoachView, food: FoodR
   }
   return rows;
 }
-export type RailData = { clients: RailClient[]; coach: { name: string; photoPath: string | null; /** Weights shown in by default (Settings, Preferences, 27 Oct). */ units: "kg" | "lbs"; /** Settings, Business details: the one line under the logo, empty when none is set (16 Nov, the audit). */ business: string; /** Their banner in NORCOACH's place (19 Nov, Alex; lib/brandMark.ts), its width over its height. */ banner?: string; bannerRatio?: number }; isOwner: boolean; inviteReady: boolean; /** Sign-in through Clerk: New client sends an invite link, no password. */ clerk: boolean; /** Support lines not read: the company's to a coach (the Support row), every coach's to the owner (Coaches). */ supportUnread: number; /** What the coach pays Norcoach (28 Oct; lib/billing.ts): a failed payment or read-only says so in the rail. */ billing: BillingAccess; /** Subscriptions set up on the server: the Billing row shows. */ billingOn: boolean; /** Asking to join with the coach's code (18 Nov): counted on the Feed row with the rest of Needs you. */ joinRequests: number };
+/** The coach's join requests for the rail's pill (25 Nov, Alex): each as the Feed drew it, and the clients Accept can put
+ *  one onto (only read while someone is asking). */
+function joinsOf(coachId: number): { joinRequests: number; joinList: JoinRow[]; linkable: FeedBoard["linkable"] } {
+  const open = openJoinRequestsFor(coachId);
+  const joinList = open.map((r) => ({ id: r.id, name: `${r.first_name} ${r.last_name}`.trim(), age: ageOf(r.birthdate), email: r.email, since: r.created_at, photo: r.image_url ?? null, phone: r.phone ?? null }));
+  return { joinRequests: open.length, joinList, linkable: open.length ? linkableClients(coachId) : [] };
+}
+
+export type RailData = { clients: RailClient[]; coach: { name: string; photoPath: string | null; /** Weights shown in by default (Settings, Preferences, 27 Oct). */ units: "kg" | "lbs"; /** Settings, Business details: the one line under the logo, empty when none is set (16 Nov, the audit). */ business: string; /** Their banner in NORCOACH's place (19 Nov, Alex; lib/brandMark.ts), its width over its height. */ banner?: string; bannerRatio?: number }; isOwner: boolean; inviteReady: boolean; /** Sign-in through Clerk: New client sends an invite link, no password. */ clerk: boolean; /** Support lines not read: the company's to a coach (the Support row), every coach's to the owner (Coaches). */ supportUnread: number; /** What the coach pays Norcoach (28 Oct; lib/billing.ts): a failed payment or read-only says so in the rail. */ billing: BillingAccess; /** Subscriptions set up on the server: the Billing row shows. */ billingOn: boolean; /** Asking to join with the coach's code (18 Nov): how many, and since 25 Nov the requests themselves, behind the pill next to Clients (JoinRequests.tsx), with the coach's clients never in the app that Accept can assign them to. */ joinRequests: number; joinList: JoinRow[]; linkable: FeedBoard["linkable"] };
 
 /** The dot trail on one client's screens (dots.ts): what the rail counts for them, each placed where it is. */
 export function loadDots(clientId: number, chat: ChatCoachView, food: FoodRows, ck: CheckInRows, sr: SetRows, /** The coach's Needs you read already in hand (the rail's, so its count reads every client's To do without rebuilding it). */ read?: ReturnType<typeof coachNeeds>): DotTrail {
@@ -974,7 +983,7 @@ export function loadRail(coach: { id: number; email: string; role: "coach" | "cl
   return sub("coach", () => {
     const profile = getCoachProfile(coach.id);
     const owner = isOwner(coach);
-    return { clients, coach: { name: profile?.display_name?.trim() || nameFromEmail(coach.email), photoPath: profile?.avatar_path ?? null, units: getData().users.find((u) => u.id === coach.id)?.coach_settings?.units === "lbs" ? "lbs" : "kg", business: getCoachSettings(coach.id).business?.business_name?.trim() ?? "", ...railBanner(coach.id) }, isOwner: owner, inviteReady: mailConfigured(), clerk: clerkOn(), supportUnread: owner ? supportUnreadForOwner() : supportUnreadForCoach(coach.id), billing: billingAccess(coach.id, owner), billingOn: billingOn(), joinRequests: openJoinRequestsFor(coach.id).length };
+    return { clients, coach: { name: profile?.display_name?.trim() || nameFromEmail(coach.email), photoPath: profile?.avatar_path ?? null, units: getData().users.find((u) => u.id === coach.id)?.coach_settings?.units === "lbs" ? "lbs" : "kg", business: getCoachSettings(coach.id).business?.business_name?.trim() ?? "", ...railBanner(coach.id) }, isOwner: owner, inviteReady: mailConfigured(), clerk: clerkOn(), supportUnread: owner ? supportUnreadForOwner() : supportUnreadForCoach(coach.id), billing: billingAccess(coach.id, owner), billingOn: billingOn(), ...joinsOf(coach.id) };
   });
 }
 

@@ -1,15 +1,11 @@
 "use client";
 
-import { useMemo, useState, useTransition, type CSSProperties, type KeyboardEvent as KeyEvent, type MouseEvent, type ReactNode } from "react";
+import { useMemo, useState, useTransition, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { Popover as PopoverPrimitive } from "radix-ui";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { dismissHomeActionAction } from "../../../lib/actions";
-import { acceptJoinRequestAction, declineJoinRequestAction } from "../../../lib/joinActions";
-import { Dialog, DialogClose, DialogContent, DialogTitle } from "../../../components/ui/dialog";
-import { ConfirmText, ConfirmThing } from "../ConfirmParts";
-import { SepJoin } from "../Sep";
 import { Toaster } from "../../../components/ui/toast";
 import { CalendarIcon, ChatIcon, CheckIcon, EyeIcon, LockIcon, PencilIcon, PhaseFlagIcon, PlayIcon, PlusIcon } from "../../../components/icons";
 import { byNeedCat, NeedAction, NeedFace, NeedGroup } from "../NeedGroups";
@@ -18,8 +14,7 @@ import KindMark from "../KindMark";
 import { logDate, logDateWidth } from "../../../lib/dayMonth";
 import { pic } from "../../../lib/pic";
 // Types only: feedBoard.ts re-exports the server's reader, which must never reach the browser.
-import type { ActivityKind, ActivityRow, FeedBoard, JoinRow, NeedRow } from "../../../lib/feedBoard";
-import { PopupTitle } from "../PopupWho";
+import type { ActivityKind, ActivityRow, FeedBoard, NeedRow } from "../../../lib/feedBoard";
 
 // The coach's Feed (21 Oct, Alex: built from the Feed mockup, root "rd trn rls rh rfd"): every client at once, clear at a
 // glance. Training's header (no Since line: 24 Oct, Alex), then
@@ -73,7 +68,7 @@ export default function FeedDraft({ board, now, kind }: { board: FeedBoard; /** 
         </div>
       </header>
 
-      <NeedsYou needs={board.needs} joins={board.joins} linkable={board.linkable} now={now} />
+      <NeedsYou needs={board.needs} now={now} />
       <Activity rows={board.activity} kind={kind} clients={board.clients} />
       <Toaster />
     </div>
@@ -129,26 +124,9 @@ function waitOf(n: NeedRow, now: number): { text: string; late: boolean } {
   return { text: `${d} ${d === 1 ? "day" : "days"}`, late: true };
 }
 
-/** Join requests' actions (18 Nov, Alex): Accept a check, Decline a cross, each its icon alone, the word its tooltip. */
-const CrossIcon = () => (
-  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
-    <path d="M6.5 6.5l11 11M17.5 6.5l-11 11" />
-  </svg>
-);
-
-export function NeedsYou({
-  needs,
-  now,
-  joins = [],
-  linkable = [],
-}: {
-  needs: NeedRow[];
-  now: number;
-  /** Asking to join with the coach's code (the Feed's alone). */
-  joins?: JoinRow[];
-  /** The coach's clients not in the app yet, which Accept can put a request onto (25 Nov). */
-  linkable?: FeedBoard["linkable"];
-}) {
+// Join requests are no longer a group here: they sit behind their pill next to Clients in the rail (25 Nov, Alex;
+// JoinRequests.tsx).
+export function NeedsYou({ needs, now }: { needs: NeedRow[]; now: number }) {
   const router = useRouter();
   const open = useRowOpen();
   const [, start] = useTransition();
@@ -156,14 +134,7 @@ export function NeedsYou({
   const [out, setOut] = useState<ReadonlySet<string>>(() => new Set());
   const [gone, setGone] = useState<ReadonlySet<string>>(() => new Set());
   const rows = needs.filter((n) => !gone.has(n.key));
-  // Join requests (18 Nov, Alex): Accept makes them a client at once, Decline asks first; either way the row fades and goes.
-  const asking = joins.filter((j) => !gone.has(`join:${j.id}`));
-  const [declining, setDeclining] = useState<JoinRow | null>(null);
-  // Accept asks where they go when the coach has clients not in the app yet (25 Nov, Alex: "create a new client… and
-  // connect the client after"): a new client, or one already made; with none, Accept makes them a client at once.
-  const [accepting, setAccepting] = useState<JoinRow | null>(null);
-  const [onto, setOnto] = useState<number | null>(null);
-  const left = rows.filter((n) => !out.has(n.key)).length + asking.filter((j) => !out.has(`join:${j.id}`)).length;
+  const left = rows.filter((n) => !out.has(n.key)).length;
   const without = (key: string) => (s: ReadonlySet<string>) => {
     const next = new Set(s);
     next.delete(key);
@@ -186,54 +157,8 @@ export function NeedsYou({
     });
   };
 
-  const settle = (j: JoinRow, act: () => Promise<{ ok: boolean; error?: string; gone?: boolean }>) => {
-    const key = `join:${j.id}`;
-    setOut((s) => new Set(s).add(key));
-    window.setTimeout(() => setGone((s) => new Set(s).add(key)), 220);
-    start(async () => {
-      const r = await act().catch(() => ({ ok: false, error: "Not saved. Try again.", gone: false }));
-      // Done, or no longer there to answer (withdrawn, answered on another screen): the row stays gone.
-      if (r.ok || r.gone) return router.refresh();
-      setOut(without(key));
-      setGone(without(key));
-      toast.error(r.error ?? "Not saved. Try again.");
-    });
-  };
-  const accept = (j: JoinRow, linkTo: number | null = null) => settle(j, () => acceptJoinRequestAction(j.id, `${j.id}-${Date.now()}`, linkTo));
-  const askAccept = (j: JoinRow) => {
-    if (linkable.length === 0) return accept(j);
-    // The client already made for them, only on a match that can't be someone else's: the email they asked with on that
-    // client, else the one client of their full name, else the one of their first name; otherwise New client.
-    const one = (list: typeof linkable) => (list.length === 1 ? list[0].id : null);
-    const email = j.email.trim().toLowerCase();
-    const full = j.name.trim().toLowerCase();
-    const first = full.split(/\s+/)[0] ?? "";
-    setOnto(
-      linkable.find((c) => c.email && c.email === email)?.id ??
-        one(linkable.filter((c) => c.name.toLowerCase() === full)) ??
-        one(linkable.filter((c) => first && c.name.toLowerCase().split(/\s+/)[0] === first))
-    );
-    setAccepting(j);
-  };
-  // What is picked, still one of them (a read meanwhile may have taken it off the list): else New client.
-  const pick = onto != null && linkable.some((c) => c.id === onto) ? onto : null;
-  const pickedName = linkable.find((c) => c.id === pick)?.name ?? null;
-  // Up and down move the pick, as a radio group does; one Tab stop, the picked row.
-  const ontoIds: (number | null)[] = [null, ...linkable.map((c) => c.id)];
-  const ontoKey = (e: KeyEvent<HTMLDivElement>) => {
-    const group = e.currentTarget;
-    const step = e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : e.key === "ArrowUp" || e.key === "ArrowLeft" ? -1 : 0;
-    if (!step) return;
-    e.preventDefault();
-    const at = ontoIds.indexOf(pick);
-    const next = ontoIds[(at + step + ontoIds.length) % ontoIds.length];
-    setOnto(next);
-    window.requestAnimationFrame(() => (group.querySelector('[aria-checked="true"]') as HTMLElement | null)?.focus());
-  };
-  const decline = (j: JoinRow) => settle(j, () => declineJoinRequestAction(j.id));
-
   // Every row's date in one column width, the whole list's (logDateWidth).
-  const dateW = logDateWidth([...rows.filter((n) => n.since).map((n) => new Date(n.since!)), ...asking.map((j) => new Date(j.since))]);
+  const dateW = logDateWidth(rows.filter((n) => n.since).map((n) => new Date(n.since!)));
 
   return (
     <section className="rls-section" aria-label="Needs you">
@@ -242,42 +167,14 @@ export function NeedsYou({
           {left > 0 ? left : null}
         </Titled>
       </div>
-      {rows.length === 0 && asking.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="rls-card rfd-card">
           <p className="rls-none">None</p>
         </div>
       ) : (
         // By category (3 Nov, Alex: option C of docs/boards/needs-rows-mockup.html): a head and a card a group.
         // Two actions on a join request: every row's actions column as wide as two, so the columns line up group to group.
-        <div className={`nd-groups owed${rows.some((n) => n.since) || asking.length ? "" : " nodate"}`} style={{ "--nd-date": `${dateW}px`, ...(asking.length ? { "--nd-acts": "64px" } : {}) } as CSSProperties}>
-          {asking.length > 0 && (
-            <NeedGroup cat="join" count={asking.filter((j) => !out.has(`join:${j.id}`)).length}>
-              {asking.map((j) => {
-                const w = waitOf({ since: j.since } as NeedRow, now);
-                return (
-                  <div key={j.id} className={`nd-row nd-join${out.has(`join:${j.id}`) ? " out" : ""}`}>
-                    <span className="rd-logdate">{logDate(new Date(j.since))}</span>
-                    <span className="nd-who">
-                      <NeedFace name={j.name} src={j.photo} />
-                      <span className="nd-name">{j.name}</span>
-                    </span>
-                    <span className="nd-thing">
-                      <span className="nd-what">Wants to join</span>
-                      <span className="nd-words">
-                        <SepJoin parts={[j.age != null ? String(j.age) : null, j.email, j.phone]} />
-                      </span>
-                    </span>
-                    <span className={`nd-wait${w.late ? " late" : ""}`}>{w.text}</span>
-                    <span className="nd-acts">
-                      <NeedAction label="Accept" icon={<CheckIcon />} onClick={() => askAccept(j)} />
-                      <NeedAction label="Decline" icon={<CrossIcon />} onClick={() => setDeclining(j)} />
-                    </span>
-                    <span className="nd-more" />
-                  </div>
-                );
-              })}
-            </NeedGroup>
-          )}
+        <div className={`nd-groups owed${rows.some((n) => n.since) ? "" : " nodate"}`} style={{ "--nd-date": `${dateW}px` } as CSSProperties}>
           {byNeedCat(rows, (n) => n.cat).map(([cat, group]) => (
             <NeedGroup key={cat} cat={cat} count={group.filter((n) => !out.has(n.key)).length}>
               {group.map((n) => {
@@ -322,110 +219,6 @@ export function NeedsYou({
           ))}
         </div>
       )}
-      {/* Accept with clients not in the app yet: New client, or one of them (their faces and names A to Z), the pick
-          ringed; the ink Accept. What the person filled in about themselves fills the client picked. */}
-      <Dialog open={accepting != null} onOpenChange={(o) => !o && setAccepting(null)}>
-        {accepting && (
-          <DialogContent className="dlh" aria-describedby="accept-join-text">
-            {/* The head as a client's pop-ups have it: their face (their own picture when they have one, else the initial),
-                `Wants to join` over the title. Nothing more under it (25 Nov, Alex: "keep it simple… remove also the text
-                below the title"). */}
-            <div className="dlh-head">
-              <div className="dlh-whohead">
-                <span className="dlh-whoface" aria-hidden="true">
-                  {accepting.photo ? <img src={accepting.photo} alt="" decoding="async" referrerPolicy="no-referrer" /> : accepting.name.trim().charAt(0).toUpperCase()}
-                </span>
-                <div>
-                  <span className="dlh-whoeye">Wants to join</span>
-                  <DialogTitle className="dlh-title">Accept {accepting.name}?</DialogTitle>
-                  {/* How to reach them, under the name (25 Nov, Alex: "show phone number… and also email… below the name"). */}
-                  <span className="rfd-reach">
-                    <SepJoin parts={[accepting.email, accepting.phone]} />
-                  </span>
-                </div>
-              </div>
-              <DialogClose className="dlh-x" aria-label="Close">
-                ✕
-              </DialogClose>
-            </div>
-            {/* What Accept does, said for the pick, in one plain line (25 Nov, Alex: "say assign maya to (client name)"). */}
-            <ConfirmText id="accept-join-text">
-              {pickedName ? `Assign ${accepting.name.split(/\s+/)[0]} to ${pickedName}.` : `Add ${accepting.name.split(/\s+/)[0]} as a new client.`}
-            </ConfirmText>
-            <div className="rfd-onto" role="radiogroup" aria-label="Add them as" onKeyDown={ontoKey}>
-              <button type="button" role="radio" aria-checked={pick == null} tabIndex={pick == null ? 0 : -1} className={`rfd-onto-row${pick == null ? " on" : ""}`} onClick={() => setOnto(null)}>
-                <span className="rfd-onto-new" aria-hidden="true">
-                  <PlusIcon />
-                </span>
-                <span className="rfd-onto-name">New client</span>
-                {pick == null && <CheckIcon />}
-              </button>
-              {linkable.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={pick === c.id}
-                  tabIndex={pick === c.id ? 0 : -1}
-                  // An existing client picked to start: the focus on it, seen and in reach, never a one-key Accept.
-                  autoFocus={pick === c.id}
-                  className={`rfd-onto-row${pick === c.id ? " on" : ""}`}
-                  onClick={() => setOnto(c.id)}
-                >
-                  <NeedFace name={c.name} src={c.avatarPath} />
-                  <span className="rfd-onto-name">{c.name}</span>
-                  {pick === c.id && <CheckIcon />}
-                </button>
-              ))}
-            </div>
-            <div className="dlh-foot">
-              <DialogClose className="dlh-cancel">Cancel</DialogClose>
-              <button
-                type="button"
-                className="dlh-go"
-                autoFocus={pick == null}
-                onClick={() => {
-                  const j = accepting;
-                  setAccepting(null);
-                  accept(j, pick);
-                }}
-              >
-                Accept
-              </button>
-            </div>
-          </DialogContent>
-        )}
-      </Dialog>
-      {/* Decline asks first (nothing taken away on one click): the confirm anatomy, the red pill. */}
-      <Dialog open={declining != null} onOpenChange={(o) => !o && setDeclining(null)}>
-        {declining && (
-          <DialogContent className="dlh" aria-describedby="decline-join-text">
-            <div className="dlh-head">
-              <PopupTitle>Decline {declining.name}?</PopupTitle>
-              <DialogClose className="dlh-x" aria-label="Close">
-                ✕
-              </DialogClose>
-            </div>
-            <ConfirmThing name={declining.name} facts={["Wants to join", declining.age != null ? String(declining.age) : null, declining.email]} />
-            <ConfirmText id="decline-join-text">They can send their request to another coach.</ConfirmText>
-            <div className="dlh-foot">
-              <DialogClose className="dlh-cancel">Cancel</DialogClose>
-              <button
-                type="button"
-                className="dlh-danger"
-                autoFocus
-                onClick={() => {
-                  const j = declining;
-                  setDeclining(null);
-                  decline(j);
-                }}
-              >
-                Decline
-              </button>
-            </div>
-          </DialogContent>
-        )}
-      </Dialog>
     </section>
   );
 }
