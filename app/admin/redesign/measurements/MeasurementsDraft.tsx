@@ -636,11 +636,12 @@ export default function MeasurementsDraft({ clientId, firstName, plan }: { clien
             // Ended with nothing on this rhythm: the one word, no + Metric (6 Nov, Alex: an ended phase look-only).
             <p className="rls-none">None</p>
           ) : shown.length === 0 ? (
-            // Nothing asked on this rhythm: the one empty box, + Metric on its right (9 Nov, Alex; rls-empty).
-            <div className="rls-empty">
-              <span>None yet</span>
+            // Nothing asked on this rhythm: + Metric alone, on the left where it sits under the rows once there are some, so
+            // the first metric added never makes it jump across the card (25 Nov, Alex: "it jumps to the left… keep it on
+            // the left"; was the empty box with + Metric on its right, 9 Nov).
+            <div className="rls-addonly">
               {adding ? (
-                <AddMetricRow library={plan.library} groups={plan.groups} cadence={cadence} have={rows.map((r) => r.name.toLowerCase())} onAdd={addMetric} onClose={() => setAdding(false)} alignEnd />
+                <AddMetricRow library={plan.library} groups={plan.groups} cadence={cadence} have={rows.map((r) => r.name.toLowerCase())} onAdd={addMetric} onClose={() => setAdding(false)} />
               ) : (
                 <button type="button" className="rls-add" onClick={() => setAdding(true)}>
                   <PlusIcon /> Metric
