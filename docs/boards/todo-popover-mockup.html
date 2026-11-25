@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>To do as a pop-over</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#141a24; --body:#3a4250; --muted:#8b93a1; --faint:#98A2B3; --line:#E1E5EB; --page:#f4f7fc; --rust:#b8471f; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #e9edf2; font-family: Archivo, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); }
+  .wrap { max-width: 1360px; margin: 0 auto; padding: 36px 32px 60px; }
+  h1 { margin: 0; font-size: 26px; font-weight: 600; }
+  .lede { margin: 6px 0 0; color: var(--muted); font-size: 14px; font-weight: 500; max-width: 860px; line-height: 21px; }
+  h2 { margin: 40px 0 6px; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: #5b6474; }
+  .what { margin: 0 0 16px; font-size: 14px; font-weight: 500; color: var(--body); line-height: 21px; max-width: 860px; }
+  .sep { display: inline-block; width: 1px; height: .9em; background: currentColor; opacity: .45; margin: 0 7px; vertical-align: -1px; }
+
+  .admin { position: relative; display: grid; grid-template-columns: 236px 1fr; height: 680px; border-radius: 16px; overflow: hidden; background: var(--page); box-shadow: 0 24px 50px -24px rgba(16,24,40,.4); }
+  .rail { background: #1c1c1e; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+  .rail::before { content: ""; position: absolute; right: -70px; top: 120px; width: 210px; height: 210px; background: #fff; opacity: .07; -webkit-mask: url(../../public/brand/mark.svg) center / contain no-repeat; mask: url(../../public/brand/mark.svg) center / contain no-repeat; }
+  .top { padding: 18px 20px 6px; color: #fff; position: relative; }
+  .word { font-size: 22px; font-weight: 600; letter-spacing: .18em; }
+  .coach { display: flex; gap: 10px; align-items: center; padding-top: 14px; }
+  .coach i { width: 30px; height: 30px; border-radius: 999px; background: #fff; color: var(--ink); display: grid; place-items: center; font-style: normal; font-weight: 600; font-size: 13px; }
+  .coach b { display: block; font-size: 13px; font-weight: 600; }
+  .coach small { display: block; font-size: 11px; color: rgba(255,255,255,.55); font-weight: 500; }
+  .views { padding: 8px 10px 14px; display: grid; gap: 1px; position: relative; }
+  .views span { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 10px; font-size: 13.5px; font-weight: 500; color: rgba(255,255,255,.86); }
+  .views span::before { content: ""; width: 14px; height: 14px; border-radius: 4px; box-shadow: inset 0 0 0 1.3px currentColor; opacity: .7; }
+  .paper { flex: 1; background: #fff; border-radius: 20px 20px 0 0; padding: 14px 12px; position: relative; }
+  .chead { display: flex; align-items: center; gap: 8px; padding: 0 6px 10px; }
+  .chead .lab { font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: #5b6474; }
+  .chead .n { font-size: 12px; color: var(--muted); }
+  .rpill { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 4px 0 10px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1.5px var(--rust); font-size: 11.5px; font-weight: 600; color: var(--rust); }
+  .rpill b { min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--rust); color: #fff; font-size: 10px; display: inline-grid; place-items: center; }
+  .rpill.open { background: rgba(184,71,31,.08); }
+  .search { height: 32px; border-radius: 999px; box-shadow: inset 0 0 0 1.5px var(--ink); font-size: 12.5px; color: var(--faint); display: flex; align-items: center; padding: 0 12px; margin-bottom: 8px; }
+  .cap { display: flex; margin: 0 0 8px; padding: 3px; border-radius: 999px; box-shadow: inset 0 0 0 1px #DCE1E8; font-size: 12px; font-weight: 600; }
+  .cap span { flex: 1; text-align: center; padding: 5px 0; border-radius: 999px; color: var(--body); }
+  .cap span.on { background: var(--ink); color: #fff; }
+  .cl { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 9px; font-size: 13.5px; font-weight: 500; }
+  .cl.on { background: #EEF0F3; font-weight: 600; }
+  .cl i { width: 24px; height: 24px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); display: grid; place-items: center; font-style: normal; font-size: 11px; font-weight: 600; }
+  .cl .k { margin-left: auto; color: var(--rust); font-size: 12px; font-weight: 600; }
+  .main { position: relative; padding: 22px 86px 22px 26px; overflow: hidden; }
+  .navrow { display: flex; align-items: stretch; gap: 12px; }
+  .tabs { display: inline-flex; gap: 2px; padding: 4px; border-radius: 999px; background: #e9edf3; }
+  .tabs span { padding: 8px 13px; border-radius: 999px; font-size: 12.5px; font-weight: 500; color: var(--body); }
+  .tabs span.on { background: #fff; font-weight: 600; color: var(--ink); }
+  .todo { display: inline-flex; align-items: center; gap: 8px; padding: 0 8px 0 16px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1.5px var(--rust); font-size: 13px; font-weight: 600; color: var(--rust); }
+  .todo b { min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--rust); color: #fff; font-size: 11.5px; display: inline-grid; place-items: center; }
+  .todo.open { background: rgba(184,71,31,.08); }
+  .eyebrow { margin-top: 22px; font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: #5b6474; }
+  .title { font-size: 26px; font-weight: 600; padding-top: 4px; }
+  .ghost { margin-top: 18px; height: 120px; border-radius: 18px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); }
+  .ghost + .ghost { height: 200px; margin-top: 12px; }
+  .edge { position: absolute; right: 0; top: 80px; display: grid; gap: 6px; }
+  .edge span { width: 34px; height: 40px; border-radius: 10px 0 0 10px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); display: grid; place-items: center; font-size: 13px; font-weight: 600; }
+
+  /* The pop-over: the floating lists' look (radius 10 → 16 for a panel this size), the soft shadow, no edge, under its pill. */
+  .pop { position: absolute; width: 480px; max-height: 520px; overflow: hidden; background: #fff; border-radius: 16px; box-shadow: 0 18px 40px rgba(20,30,50,.18), 0 0 0 1px rgba(20,30,50,.04); padding: 14px 8px 10px; }
+  .pop::before { content: ""; position: absolute; top: -6px; width: 12px; height: 12px; background: #fff; transform: rotate(45deg); box-shadow: -1px -1px 0 rgba(20,30,50,.04); left: var(--nub, 40px); }
+  .phead { display: flex; align-items: baseline; padding: 0 12px 4px; }
+  .phead h3 { margin: 0; font-size: 15px; font-weight: 600; }
+  .phead small { font-size: 13px; color: var(--muted); margin-left: 8px; }
+  .ghead { display: flex; align-items: center; gap: 7px; padding: 10px 12px 2px; font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; }
+  .ghead small { font-weight: 600; letter-spacing: .06em; color: var(--faint); }
+  /* One grid down the whole list (25 Nov, Alex: "the icons for the chat… are not aligned"): the words, then a 30px
+     column for the chat, then the action's column, as wide as the widest action, its words on its right edge. */
+  .rows { display: grid; grid-template-columns: 1fr 30px max-content; column-gap: 6px; }
+  .rows > .g { display: contents; }
+  .g > .t { padding: 8px 0 8px 12px; min-width: 0; }
+  .g > .t b { display: flex; align-items: baseline; gap: 8px; font-size: 14px; font-weight: 600; }
+  .g > .t b i { font-style: normal; font-size: 12.5px; font-weight: 500; color: var(--muted); }
+  .g > .t small { display: block; font-size: 12.5px; font-weight: 500; color: var(--muted); padding-top: 3px; white-space: nowrap; }
+  .g > .t small em { font-style: normal; font-weight: 600; color: var(--rust); }
+  .g > .c { align-self: center; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 999px; color: #5b6474; }
+  .g > .c svg { width: 16px; height: 16px; }
+  .g > .a { align-self: center; justify-self: end; font-size: 13px; font-weight: 600; padding: 7px 10px; border-radius: 8px; white-space: nowrap; margin-right: 4px; }
+  .g.hov > * { background: #fafbfd; }
+  .g.hov > .t { border-radius: 9px 0 0 9px; }
+  .g > .run { grid-column: 1 / -1; }
+  .own { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; font-weight: 600; color: var(--body); }
+  .own .fld { width: 64px; border-bottom: 1px solid var(--ink); font-size: 16px; font-weight: 500; color: var(--ink); text-align: right; padding: 2px 2px; font-variant-numeric: tabular-nums; }
+  .own .u { color: var(--muted); font-weight: 500; }
+  .own .go { margin-left: auto; height: 30px; padding: 0 14px; border-radius: 999px; background: var(--ink); color: #fff; display: inline-grid; place-items: center; font-size: 12.5px; }
+  .row { display: flex; align-items: center; gap: 10px; min-height: 50px; padding: 5px 8px 5px 12px; border-radius: 9px; }
+  .row.hov { background: #fafbfd; }
+  .row .t { flex: 1; min-width: 0; }
+  .row .t b { display: block; font-size: 14px; font-weight: 600; }
+  .row .t small { display: block; font-size: 12.5px; font-weight: 500; color: var(--muted); padding-top: 2px; }
+  .row .t small em { font-style: normal; font-weight: 600; color: var(--rust); }
+  .chev { display: inline-block; margin-left: 3px; color: var(--rust); font-size: 10px; }
+  .act { font-size: 13px; font-weight: 600; padding: 7px 8px; border-radius: 8px; white-space: nowrap; }
+  .act.red { color: #b42318; }
+  .tool { width: 28px; height: 28px; display: grid; place-items: center; color: #5b6474; font-size: 13px; }
+  .run { display: grid; grid-template-columns: max-content 1fr; column-gap: 14px; padding: 0 12px 10px 12px; font-size: 13px; }
+  .run p { grid-column: 1 / -1; margin: 0 0 5px; font-size: 12.5px; font-weight: 600; color: var(--body); }
+  .run span { padding: 2px 0; font-variant-numeric: tabular-nums; }
+  .run .d { color: var(--body); }
+  .run .off { color: var(--faint); }
+  .face { flex: none; width: 30px; height: 30px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+  .fade { position: absolute; left: 0; right: 0; bottom: 0; height: 40px; background: linear-gradient(transparent, #fff); }
+
+  .notes ul { margin: 0; padding-left: 18px; font-size: 14px; line-height: 22px; color: var(--body); max-width: 900px; }
+  .notes li + li { margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>To do as a pop-over</h1>
+  <p class="lede">The list opens right under its pill, attached to it, instead of sliding in from the window's right edge where the chat and help live. The same for the Requests pill by Clients.</p>
+
+  <h2>1 · A client's To do</h2>
+  <p class="what">Under the To do pill, its little point on the pill: the floating lists' look (white, rounded, the soft shadow, no edge), 480 wide, as tall as its rows up to most of the window, then it scrolls inside. Every row: the exercise with its session grey, what happened and the best under it, the chat and the action in one aligned column each; a target not reached opens on its sessions and your own weight. A click outside, Esc or the pill again closes it. The page stays where it is under it.</p>
+  <div class="admin">
+    <aside class="rail">
+      <div class="top"><div class="word">NORCOACH</div><div class="coach"><i>F</i><div><b>Finlay Chedd</b><small>Full Potential Coaching</small></div></div></div>
+      <div class="views"><span>Feed</span><span>Phases</span><span>Calendar</span><span>Library</span><span>Business</span><span>Settings</span></div>
+      <div class="paper">
+        <div class="chead"><span class="lab">Clients</span><span class="n">24</span></div>
+        <div class="search">Search clients</div>
+        <div class="cap"><span class="on">All</span><span>Needs you 22</span></div>
+        <div class="cl on"><i>A</i>Awes<span class="k">9</span></div>
+        <div class="cl"><i>E</i>Elena<span class="k">3</span></div>
+        <div class="cl"><i>E</i>Esmee Grit<span class="k">2</span></div>
+      </div>
+    </aside>
+    <main class="main">
+      <div class="navrow">
+        <div class="tabs"><span>Home</span><span>Plan</span><span>Lifestyle</span><span class="on">Training</span><span>Nutrition</span><span>Shape update</span><span>Meetings</span><span>Invoices</span></div>
+        <span class="todo open">To do <b>9</b></span>
+      </div>
+      <div class="eyebrow">Training</div>
+      <div class="title">Cut</div>
+      <div class="ghost"></div><div class="ghost"></div>
+      <div class="pop" style="top: 74px; left: 470px; --nub: 214px;">
+        <div class="phead"><h3>To do</h3></div>
+        <div class="ghead" style="color:#3a3390">Training <small>9</small></div>
+        <div class="rows">
+          <div class="g hov"><div class="t"><b>Seated Leg Curl <i>Legs</i></b><small><em>70 kg not reached in 6 sessions</em><span class="chev">▾</span><span class="sep"></span>best 65 × 8</small></div><span class="c"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg></span><span class="a">Set to 65 kg</span>
+            <div class="run"><p>Target 70 kg × 8–10</p>
+              <span class="d">Mon, 23 Nov</span><span>65 × 8<span class="sep"></span>65 × 8<span class="sep"></span><span class="off">65 × 7</span></span>
+              <span class="d">Thu, 19 Nov</span><span>65 × 8<span class="sep"></span>65 × 8<span class="sep"></span>65 × 8</span>
+              <span class="d">Mon, 16 Nov</span><span>65 × 9<span class="sep"></span>65 × 8<span class="sep"></span><span class="off">65 × 6</span></span>
+              <div class="own">Set to <span class="fld">67.5</span><span class="u">kg</span><span class="go">Set</span></div>
+            </div>
+          </div>
+          <div class="g"><div class="t"><b>Lying Triceps extension <i>Push, Upper</i></b><small><em>95 kg not reached in 7 sessions</em><span class="chev">▸</span><span class="sep"></span>best 85 × 10</small></div><span class="c"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg></span><span class="a">Set to 85 kg</span></div>
+          <div class="g"><div class="t"><b>Lat Pull In <i>Pull, Upper</i></b><small><em>85 kg not reached in 5 sessions</em><span class="chev">▸</span><span class="sep"></span>best 82.5 × 10</small></div><span class="c"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg></span><span class="a">Set to 82.5 kg</span></div>
+          <div class="g"><div class="t"><b>Standing Calf Raise <i>Legs</i></b><small><em>100 kg not reached in 5 sessions</em><span class="chev">▸</span><span class="sep"></span>best 30 × 12</small></div><span class="c"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg></span><span class="a">Set to 30 kg</span></div>
+        </div>
+        <div class="fade"></div>
+      </div>
+    </main>
+    <div class="edge"><span>✉</span><span>?</span></div>
+  </div>
+
+  <h2>2 · Join requests by Clients</h2>
+  <p class="what">The same under the Requests pill in the rail: the list drops from the pill over the page, its point on the pill, a row a request with Accept and Decline in words.</p>
+  <div class="admin" style="height: 560px">
+    <aside class="rail">
+      <div class="top"><div class="word">NORCOACH</div><div class="coach"><i>F</i><div><b>Finlay Chedd</b><small>Full Potential Coaching</small></div></div></div>
+      <div class="views"><span>Feed</span><span>Phases</span><span>Calendar</span><span>Library</span><span>Business</span><span>Settings</span></div>
+      <div class="paper">
+        <div class="chead"><span class="lab">Clients</span><span class="n">24</span><span class="rpill open">Requests <b>2</b></span></div>
+        <div class="search">Search clients</div>
+        <div class="cap"><span class="on">All</span><span>Needs you 22</span></div>
+        <div class="cl"><i>A</i>Awes<span class="k">9</span></div>
+      </div>
+    </aside>
+    <main class="main"><div class="title">Feed</div><div class="ghost"></div></main>
+    <div class="pop" style="top: 330px; left: 150px; width: 460px; --nub: 30px; max-height: 220px;">
+      <div class="phead"><h3>Join requests</h3></div>
+      <div class="row hov"><span class="face">M</span><div class="t"><b>Maya Brooks</b><small>Wants to join<span class="sep"></span>30<span class="sep"></span>today</small><small>maya@example.com<span class="sep"></span>+31 6 12345678</small></div><span class="act">Accept</span><span class="act red">Decline</span></div>
+      <div class="row"><span class="face">J</span><div class="t"><b>Jonas Weber</b><small>Wants to join<span class="sep"></span>27<span class="sep"></span><em>2 days</em></small><small>jonas@example.com</small></div><span class="act">Accept</span><span class="act red">Decline</span></div>
+    </div>
+  </div>
+
+  <h2>What changes</h2>
+  <div class="notes"><ul>
+    <li>Nothing slides in from the window's edge for these two any more: the right side stays the chat's and help's.</li>
+    <li>The page never moves for it, and the edge tabs stay where they are.</li>
+    <li>No client name after To do: you are on their screens already.</li>
+    <li>One grid down the list: the chat icons in one column, the actions in the next, their right edges level, whatever the figure.</li>
+    <li>The session goes grey after the exercise's name, so what happened and the best fit on one line, never wrapping.</li>
+    <li>Your own weight: opening a row's sessions ends on <b>Set to</b> and a figure to type, with Set; the suggested one stays the row's action.</li>
+  </ul></div>
+</div>
+</body>
+</html>
