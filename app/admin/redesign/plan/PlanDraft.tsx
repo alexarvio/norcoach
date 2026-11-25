@@ -875,18 +875,21 @@ export function PhaseDialog({ clientId, firstName, today, thisWeek, phase, track
       <div className="npd-head">
         <PopupTitle className="npd-title">{editing ? phase.name : "New phase"}</PopupTitle>
         <span className="npd-tools">
-          {/* Straight to the tab where the phase's contents live. */}
+          {/* Straight to the tab where the phase's contents live, the pop-up closing on the way (25 Nov, Alex: "it opened it, but
+              it didn't close this pop-up"; a client's tabs are one page since 24 Nov, so nothing reloads to close it). */}
           {editing && (
-            <Link
-              className="npd-open"
-              href={
-                track === "training"
-                  ? `/clients/${clientId}/training${phase.program ? `?program=${phase.program.id}` : ""}`
-                  : `/clients/${clientId}/${track === "nutrition" ? "nutrition" : "lifestyle"}?phase=${phase.id}`
-              }
-            >
-              Open
-            </Link>
+            <DialogClose asChild>
+              <Link
+                className="npd-open"
+                href={
+                  track === "training"
+                    ? `/clients/${clientId}/training${phase.program ? `?program=${phase.program.id}` : ""}`
+                    : `/clients/${clientId}/${track === "nutrition" ? "nutrition" : "lifestyle"}?phase=${phase.id}`
+                }
+              >
+                Open
+              </Link>
+            </DialogClose>
           )}
           <DialogClose className="npd-x" aria-label="Close">
             ✕
