@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { dismissHomeActionAction } from "../../../lib/actions";
 import { acceptJoinRequestAction, declineJoinRequestAction } from "../../../lib/joinActions";
-import { Dialog, DialogClose, DialogContent } from "../../../components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogTitle } from "../../../components/ui/dialog";
 import { ConfirmText, ConfirmThing } from "../ConfirmParts";
 import { SepJoin } from "../Sep";
 import { Toaster } from "../../../components/ui/toast";
@@ -258,7 +258,7 @@ export function NeedsYou({
                   <div key={j.id} className={`nd-row nd-join${out.has(`join:${j.id}`) ? " out" : ""}`}>
                     <span className="rd-logdate">{logDate(new Date(j.since))}</span>
                     <span className="nd-who">
-                      <NeedFace name={j.name} src={null} />
+                      <NeedFace name={j.name} src={j.photo} />
                       <span className="nd-name">{j.name}</span>
                     </span>
                     <span className="nd-thing">
@@ -327,16 +327,26 @@ export function NeedsYou({
       <Dialog open={accepting != null} onOpenChange={(o) => !o && setAccepting(null)}>
         {accepting && (
           <DialogContent className="dlh" aria-describedby="accept-join-text">
+            {/* The head as a client's pop-ups have it: their face (their own picture when they have one, else the initial),
+                `Wants to join` over the title. Nothing more under it (25 Nov, Alex: "keep it simple… remove also the text
+                below the title"). */}
             <div className="dlh-head">
-              <PopupTitle>Accept {accepting.name}?</PopupTitle>
+              <div className="dlh-whohead">
+                <span className="dlh-whoface" aria-hidden="true">
+                  {accepting.photo ? <img src={accepting.photo} alt="" decoding="async" referrerPolicy="no-referrer" /> : accepting.name.trim().charAt(0).toUpperCase()}
+                </span>
+                <div>
+                  <span className="dlh-whoeye">Wants to join</span>
+                  <DialogTitle className="dlh-title">Accept {accepting.name}?</DialogTitle>
+                </div>
+              </div>
               <DialogClose className="dlh-x" aria-label="Close">
                 ✕
               </DialogClose>
             </div>
-            <ConfirmThing name={accepting.name} facts={["Wants to join", accepting.age != null ? String(accepting.age) : null, accepting.email]} />
-            {/* What happens, said for the pick; one line either way, so nothing under it moves. */}
+            {/* What Accept does, said for the pick, in one plain line (25 Nov, Alex: "say assign maya to (client name)"). */}
             <ConfirmText id="accept-join-text">
-              {pickedName ? `${pickedName} becomes their account in the app, with their birthdate and email. Its plan stays.` : "They become a new client, with their name, birthdate and email."}
+              {pickedName ? `Assign ${accepting.name.split(/\s+/)[0]} to ${pickedName}.` : `Add ${accepting.name.split(/\s+/)[0]} as a new client.`}
             </ConfirmText>
             <div className="rfd-onto" role="radiogroup" aria-label="Add them as" onKeyDown={ontoKey}>
               <button type="button" role="radio" aria-checked={pick == null} tabIndex={pick == null ? 0 : -1} className={`rfd-onto-row${pick == null ? " on" : ""}`} onClick={() => setOnto(null)}>

@@ -70,7 +70,7 @@ export type ActivityRow = {
 };
 
 /** Someone asking to join the coach (18 Nov): as they gave it, their age from the birthdate. */
-export type JoinRow = { id: number; name: string; age: number | null; email: string; since: string };
+export type JoinRow = { id: number; name: string; age: number | null; email: string; since: string; /** Their profile picture, when they have one. */ photo: string | null };
 
 export type FeedBoard = {
   today: string;
