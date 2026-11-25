@@ -820,6 +820,15 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
       for (const p of item.missed.parts) backTo(p.dayId, p.assignmentId, p.fromKg);
       return true;
     },
+    // The To do's own weight and note (25 Nov, Alex: docs/boards/todo-popover-mockup.html): sent by the To do itself, one
+    // action for every session and the note once; what those sessions still have waiting goes first, as Back to's does,
+    // so no edit of the coach's still in the queue lands after the figure and writes the old one back over it.
+    settle: (item) => {
+      if (item.kind !== "missed" || !item.missed) return Promise.resolve();
+      const ids = [...new Set(item.missed.parts.map((p) => p.dayId))];
+      for (const id of ids) noteSaving(id);
+      return settle(ids);
+    },
     go: (item) => {
       const to = new URL(item.href, window.location.origin);
       // A session (Review, Read), or the week's Add session (a live phase with no sessions).

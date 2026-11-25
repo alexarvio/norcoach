@@ -99,6 +99,7 @@ import {
   setAssignmentVariation,
   setAssignmentDemoHidden,
   setTargetFromNow,
+  setTargetToNow,
   setExerciseVariationVideo,
   addExerciseVariation,
   removeExerciseVariation,
@@ -4406,6 +4407,69 @@ export async function backToTargetsAction(parts: { assignmentId: number; fromKg:
         return { ok: true, changed };
       })
     );
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Something went wrong" };
+  }
+}
+
+// The To do's own weight and a word to the client (25 Nov, Alex: docs/boards/todo-popover-mockup.html; "also add the
+// option of adding a comment on this so the coach can say i noticed you're struggling with the weight so i thought of
+// decreasing it… so it is delivered to the chat and the client is aware that the coach is on top of them"): `kg` on
+// every session of the lift still asking its missed figure, as the coach's typed weight (setTargetToNow), under one
+// lock and one one-time key; `kg` null (nothing typed) is the row's own action instead, each row's own figure back or
+// the best on the rows of its range (setTargetFromNow, as backToTargetsAction). Then, when the note has words, the note
+// in the client's chat as the coach's, linked to the exercise, so they read it under that exercise. Only once the
+// weight went on (25 Nov, review: a note saying it was lowered while the plan still asked the old figure): a screen out
+// of date sets nothing, sends nothing and says so. The weight and the note each under the one-time key, apart, so a
+// retry after a note that failed finds the weight taken and sends the note alone, never twice.
+export async function setTargetsToAction(
+  parts: { assignmentId: number; fromKg: number }[],
+  kg: number | null,
+  note: string,
+  link: { dayId: number; assignmentId: number } | null,
+  onceKey?: string
+): Promise<{ ok: true; changed: number } | { ok: false; error: string }> {
+  const list = (Array.isArray(parts) ? parts : [])
+    .map((p) => ({ id: Number(p?.assignmentId), fromKg: Number(p?.fromKg) }))
+    .filter((p) => Number.isInteger(p.id) && Number.isFinite(p.fromKg));
+  // To the nearest quarter, as the weights are kept.
+  const to = kg == null ? null : Math.round(Number(kg) * 4) / 4;
+  if (!list.length) return { ok: false, error: "Unknown exercise" };
+  if (to != null && (!Number.isFinite(to) || to <= 0 || to >= 1000)) return { ok: false, error: "Not a weight" };
+  const owners = new Set(list.map((p) => getClientIdForAssignment(p.id)));
+  const owner = owners.size === 1 ? [...owners][0] : null;
+  if (owner == null || !(await coachForClient(owner))) return { ok: false, error: "Unknown exercise" };
+  const text = String(note ?? "").trim().slice(0, 2000);
+  const k = onceKeyOf(onceKey);
+  const partsKey = list.map((p) => `${p.id}@${p.fromKg}`).join(",");
+  try {
+    // Refused (nothing set) is answered, not kept (once.ts), so a retry runs it again.
+    const r = await once(`setTargetsToAction:${partsKey}:${to ?? "own"}`, k, () =>
+      withClientSetsLocked("action.training", owner, (sr): { ok: true; changed: number } | { ok: false; error: string } => {
+        let changed = 0;
+        for (const p of list) changed += (to == null ? setTargetFromNow(sr, p.id, p.fromKg) : setTargetToNow(sr, p.id, p.fromKg, to))?.changed ?? 0;
+        revalidatePath("/admin");
+        revalidatePath("/client");
+        return changed > 0 ? { ok: true, changed } : { ok: false, error: "The weight changed meanwhile" };
+      })
+    );
+    if (r.ok === false) return r;
+    // The weight is on; a note that fails says so alone, and the same key sends it again (the weight answered as taken).
+    if (text) {
+      const sent = await once(`setTargetsToActionNote:${owner}:${partsKey}`, k, async () => {
+        // Only a link that parses and that the client can open (as a chat send's linkOf): else the note goes unlinked.
+        let msgLink: MessageLink | null = link ? parseMessageLink({ kind: "exercise", dayId: link.dayId, assignmentId: link.assignmentId }) : null;
+        if (msgLink && describeMessageLink(noFoodRows("action.setLink"), owner, msgLink).gone) msgLink = null;
+        // With CHAT_STORE=pg its own once key too, from the device's, so a crash between the chat's commit and the store's
+        // save can't post it a second time (as chatOnceKeyOf does for a review's reply).
+        await sendChatMessage(owner, "coach", text, undefined, msgLink, null, { path: "w.insert.send", onceKey: CHAT_PG && k ? { key: `targetNote${owner}:${k}`, at: Date.now() } : null });
+        revalidatePath("/admin");
+        revalidatePath("/client");
+        return { ok: true as const };
+      }).catch(() => null);
+      if (!sent) return { ok: false, error: "The weight is set; the note wasn't sent" };
+    }
+    return r;
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Something went wrong" };
   }

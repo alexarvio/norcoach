@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore, useTransition, type KeyboardEvent as KeyEvent } from "react";
+import { useRef, useState, useSyncExternalStore, useTransition, type KeyboardEvent as KeyEvent } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -11,17 +11,20 @@ import { ConfirmText, ConfirmThing } from "./ConfirmParts";
 import { SepJoin } from "./Sep";
 import { PopupTitle } from "./PopupWho";
 import { useSidePanel } from "./help/sidePanels";
-import { useCloseOnEmptyClick } from "./useCloseOnEmptyClick";
+import { usePopoverClose, usePopoverPlace } from "./usePopover";
 import { pic } from "../../lib/pic";
 import type { FeedBoard, JoinRow } from "../../lib/feedBoard";
 import "./feed/feed.css";
+// The To do's pop-over look, on every page the rail is on (a client's screens load it with the To do).
+import "./todo-panel.css";
 import "./join-requests.css";
 
 // Join requests behind a pill next to Clients in the rail (25 Nov, Alex: "instead of stacking these actions… we just put
 // them in the to-do… it's the same thing… my idea was to add it there where the client's thing is"): the rust pill with
-// how many are asking, opening a panel from the right as a client's To do does (its look, todo-panel.css), one panel on
-// the right at a time. Each request a row: their face and name, what they told us, how long they have waited, Accept and
-// Decline in words. Accept asks where they go while the coach has clients never in the app (Assign Maya to Sam Taylor.),
+// how many are asking, its list dropping from it as a client's To do does from theirs (25 Nov, Alex:
+// docs/boards/todo-popover-mockup.html; its look, todo-panel.css; was a panel from the right), over the page, the nub on
+// the pill. Each request a row on one grid: their face and name, `Wants to join | 30 | today` and `email | phone` grey,
+// Accept and Decline in words. Accept asks where they go while the coach has clients never in the app (Assign Maya to Sam Taylor.),
 // Decline asks first. Was a group at the top of the Feed's Needs you (18 Nov).
 
 type Linkable = FeedBoard["linkable"];
@@ -60,16 +63,14 @@ export default function JoinRequests({ joins, linkable }: { joins: JoinRow[]; li
   );
 
   const close = () => setOpen(false);
-  // The frame marked while open, so the chat and ? tabs ride the panel's edge, never over its ✕ (join-requests.css).
-  useSidePanel("joins", open, close, "data-joins");
-  // Esc, the ✕ or a click on empty page closes it, as the To do's; never while one of its pop-ups is up.
-  useCloseOnEmptyClick(open && !accepting && !declining, close);
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !e.defaultPrevented && !accepting && !declining && close();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, accepting, declining]);
+  // One of it, the chat, help and a client's To do at a time; it marks nothing on the frame, so nothing moves for it.
+  useSidePanel("joins", open, close);
+  // Under the pill, the list running on to the right over the page (the rail never clips it: it goes to the body). The
+  // pill again, a press outside it or Esc closes it, as the To do's; never while one of its pop-ups is up.
+  const pillRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const place = usePopoverPlace(pillRef, open, 460, "start");
+  usePopoverClose(open, close, [popRef, pillRef], accepting != null || declining != null);
   // Nobody left asking: the panel goes with the pill.
   if (open && asking.length === 0) setOpen(false);
 
@@ -126,9 +127,11 @@ export default function JoinRequests({ joins, linkable }: { joins: JoinRow[]; li
     <>
       {asking.length > 0 && (
         <button
+          ref={pillRef}
           type="button"
           className={`rr-joins${open ? " open" : ""}`}
           aria-expanded={open}
+          aria-controls="rd-joins-pop"
           aria-label={`Join requests, ${asking.length}`}
           onClick={() => {
             setNow(Date.now());
@@ -140,36 +143,40 @@ export default function JoinRequests({ joins, linkable }: { joins: JoinRow[]; li
       )}
       {mounted &&
         createPortal(
-          <aside className={`rd-todopanel jr-panel${open ? " open" : ""}`} aria-label="Join requests" aria-hidden={!open} inert={open ? undefined : true}>
-            <div className="tdp-head">
-              <h2>
-                Join requests<small>{asking.length}</small>
-              </h2>
-              <button type="button" className="tdp-x" aria-label="Close" title="Close" onClick={close}>
-                ✕
-              </button>
+          <div ref={popRef} id="rd-joins-pop" className={`rd-todopanel jr-panel${open ? " open" : ""}`} style={place} role="region" aria-label="Join requests" aria-hidden={!open} inert={open ? undefined : true}>
+            <div className="tdp-scroll">
+              {/* Join requests alone (25 Nov, Alex: the board): no count, no ✕. */}
+              <div className="tdp-head">
+                <h2>Join requests</h2>
+              </div>
+              {/* One grid down the list: the face, the words, Accept, Decline. */}
+              <div className="jr-list">
+                {asking.map((j) => {
+                  const w = waited(j.since, now);
+                  return (
+                    <div key={j.id} className="tdp-row jr-row">
+                      <Face name={j.name} src={j.photo} />
+                      <div className="tdp-thing">
+                        <span className="jr-name">{j.name}</span>
+                        <small>
+                          <SepJoin parts={["Wants to join", j.age != null ? String(j.age) : null, w.late ? <em key="w">{w.text}</em> : w.text]} />
+                        </small>
+                        <small>
+                          <SepJoin parts={[<span key="e" className="jr-whole">{j.email}</span>, j.phone ? <span key="p" className="jr-whole">{j.phone}</span> : null]} />
+                        </small>
+                      </div>
+                      <button type="button" className="tdp-act" onClick={() => askAccept(j)}>
+                        Accept
+                      </button>
+                      <button type="button" className="tdp-act jr-decline" onClick={() => setDeclining(j)}>
+                        Decline
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            {asking.map((j) => {
-              const w = waited(j.since, now);
-              return (
-                <div key={j.id} className="tdp-row jr-row">
-                  <Face name={j.name} src={j.photo} />
-                  <div className="tdp-thing">
-                    <span className="jr-name">{j.name}</span>
-                    <small>
-                      <SepJoin parts={["Wants to join", j.age != null ? String(j.age) : null, <span key="e" className="jr-whole">{j.email}</span>, j.phone ? <span key="p" className="jr-whole">{j.phone}</span> : null, w.late ? <em key="w">{w.text}</em> : w.text]} />
-                    </small>
-                  </div>
-                  <button type="button" className="tdp-act" onClick={() => askAccept(j)}>
-                    Accept
-                  </button>
-                  <button type="button" className="tdp-act jr-decline" onClick={() => setDeclining(j)}>
-                    Decline
-                  </button>
-                </div>
-              );
-            })}
-          </aside>,
+          </div>,
           document.body
         )}
 

@@ -16,10 +16,9 @@
 .hlp-tab.open:hover, .hlp-tab.open:focus-visible { background: color-mix(in srgb, var(--brand, #141a24) 88%, #fff); }
 /* The team's lines not read: the chat tab's rust dot, ringed white, at its spot. */
 .hlp-tab-dot { position: absolute; top: 6px; left: 6px; width: 8px; height: 8px; border-radius: 999px; background: #b8471f; box-shadow: 0 0 0 2px #fff; }
-/* Both tabs ride the left edge of whichever panel is open (the chat's tab rides its own and the To do's: messages.css,
-   todo-panel.css). */
+/* Both tabs ride the left edge of whichever panel is open (the chat's tab rides its own: messages.css). The To do and
+   Join requests drop from their pills now (25 Nov, Alex: docs/boards/todo-popover-mockup.html), so nothing moves for them. */
 .hlp-tab.open, .rd-frame[data-chat="open"] .hlp-tab { right: min(460px, 100vw); transform: none; }
-.rd-frame[data-todo="open"] .hlp-tab { right: min(520px, 100vw); transform: none; }
 .rd-frame[data-help="open"] .rd-chattab { right: min(460px, 100vw); transform: none; }
 /* While help is open the chat's tab is shut, so it wears the shut look (white with the hairline, as messages.css's
    .rd-chattab.off), and only help's tab is filled: the board's frames. Stronger than the brand's fill
@@ -28,7 +27,6 @@ body .rd-frame[data-help="open"] .rd-chattab.rd-chattab.rd-chattab { background:
 body .rd-frame[data-help="open"] .rd-chattab.rd-chattab.rd-chattab:is(:hover, :focus-visible) { background: #f5f6f8; }
 /* Too narrow to have room beside the panel, the panel's own ✕ shuts it (as the chat's tab does there). */
 @media (max-width: 520px) { .hlp-tab.open, .rd-frame[data-chat="open"] .hlp-tab, .rd-frame[data-help="open"] .rd-chattab { opacity: 0; pointer-events: none; } }
-@media (max-width: 560px) { .rd-frame[data-todo="open"] .hlp-tab { opacity: 0; pointer-events: none; } }
 /* A framed page with no chat tab (Clients with none yet) keeps the tabs' 60px for the ?, so it never sits on the page. */
 .rd-frame:has(.hlp-tab):not(:has(.rd-chattab)) > .rd-page { padding-right: 60px; }
 
