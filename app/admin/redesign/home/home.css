@@ -191,9 +191,10 @@
 .rd.rh .rh-waxis span.today:not(.end) { transform: translateX(-50%); }
 .rd.rh .rh-wstrip b.rh-wstrip-ahead { flex-basis: 0; min-width: 0; }
 .rd.rh .rh-weight .rh-under { min-height: 18px; }
-/* + Goal: Training's white pill at the height of the capsule's options beside it, 28px, so it is no bigger than they
-   are (4 Nov, Alex: "still bigger than the rest of the items on the row"); its target at 12px. */
-.rd.trn.rh .trn-pill.rh-wgoal-add { height: 28px; gap: 6px; padding: 0 12px 0 10px; }
+/* + Goal: Training's white pill as tall as the window capsule beside it, 36px, its outer edge on the capsule's (25 Nov,
+   Alex: "the button does not match the size of the toggle of timeframe"; was 28px, its options' height, 4 Nov); its
+   target at 12px. */
+.rd.trn.rh .trn-pill.rh-wgoal-add { height: 36px; gap: 6px; padding: 0 14px 0 12px; }
 .rd.trn.rh .trn-pill.rh-wgoal-add svg { width: 12px; height: 12px; }
 /* The goal pop-up renders in a portal: the client's face beside "Added by" there. */
 .rd.rh .rh-pace { margin: 0; font-size: 12.5px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; }

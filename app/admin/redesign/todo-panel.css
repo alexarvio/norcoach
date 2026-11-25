@@ -3,12 +3,14 @@
    top of each tab (2 Nov). */
 
 /* The tabs and the pill on one line; the pill is no child of the tabs' track (SlidePills takes each child as a tab). */
-.rd-navrow { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0 0 16px; }
+.rd-navrow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 12px; margin: 0 0 16px; }
 .rd-navrow > .rd-nav { margin: 0; }
 
-/* The pill: white, a 1.5px rust edge, rust words, the count a rust disc with white figures; a soft rust tint while open. */
-.rd-todobtn { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 6px 0 12px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1.5px #b8471f; font: inherit; font-size: 13px; font-weight: 600; color: #b8471f; cursor: pointer; transition: background-color 0.2s ease; }
-.rd-todobtn b { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #b8471f; color: #fff; font-size: 10.5px; font-weight: 600; font-variant-numeric: tabular-nums; display: inline-grid; place-items: center; }
+/* The pill: white, a 1.5px rust edge, rust words, the count a rust disc with white figures; a soft rust tint while open.
+   As tall as the tabs' track beside it (25 Nov, Alex: "the to do button should be the same size as the nav bar"): the row
+   stretches it, the count disc a step bigger to sit in it. */
+.rd-todobtn { display: inline-flex; align-items: center; gap: 8px; height: auto; min-height: 30px; padding: 0 8px 0 18px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1.5px #b8471f; font: inherit; font-size: 13px; font-weight: 600; color: #b8471f; cursor: pointer; transition: background-color 0.2s ease; }
+.rd-todobtn b { min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #b8471f; color: #fff; font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; display: inline-grid; place-items: center; }
 .rd-todobtn.open { background: rgba(184, 71, 31, 0.08); }
 @media (hover: hover) { .rd-todobtn:hover { background: rgba(184, 71, 31, 0.08); } }
 .rd-todobtn:focus-visible { outline: 2px solid #b8471f; outline-offset: 2px; }
