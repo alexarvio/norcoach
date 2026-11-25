@@ -93,6 +93,8 @@
       .then(function () {
         document.getElementById("first").textContent = name.value.trim().split(/\s+/)[0];
         form.hidden = true;
+        // Sent, the thanks alone (25 Nov, Alex: "take away the apply for early access, only have the thanks").
+        document.querySelectorAll(".ap-title, .ap-head").forEach(function (h) { h.style.display = "none"; });
         document.getElementById("thanks").hidden = false;
       })
       .catch(function () {
