@@ -198,9 +198,7 @@ body:has(.npd.npd) .rt-boxpick-menu { min-width: var(--radix-dropdown-menu-trigg
 .rd.rt .rt-notes-nav button { height: 36px; padding: 0 12px; border: 0; border-radius: 10px; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: #5b6474; text-align: left; cursor: pointer; }
 @media (hover: hover) { .rd.rt .rt-notes-nav button:not(.on):hover { background: #fafbfd; color: #141a24; } }
 .rd.rt .rt-notes-nav button.on { background: #f5f6f8; color: #141a24; }
-/* Keyboard focus a quiet underline on the words, never a ring round the row (25 Nov, Alex: the ink ring round Summary for
-   Adonis; docs/DESIGN-RULES-ADMIN.md §9b, "never a ring round the row"). */
-.rd.rt .rt-notes-nav button:focus-visible { outline: none; text-decoration: underline; text-decoration-color: #8b93a1; text-underline-offset: 4px; color: #141a24; }
+.rd.rt .rt-notes-nav button:focus-visible { outline: 2px solid #141a24; outline-offset: 1px; }
 .rd.rt .rt-notes-pane { min-width: 0; min-height: 198px; }
 .rd.rt .rt-notes-nav button { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 900px) {
