@@ -2910,6 +2910,11 @@ export type MissedTarget = {
   sessions: number;
   /** The heaviest set inside the range in that run (the least help, on an assisted lift). */
   best: { kg: number; reps: number } | null;
+  /** The run itself, newest first (25 Nov, Alex: "as a coach, ideally, I have to see the data of all of those
+   *  sessions"): each session's day and every set of the lift in it, so the coach sees why it wasn't reached. */
+  run: { date: string; sets: { kg: number; reps: number }[] }[];
+  /** The row's rep range, a single figure being that many or more (`max` Infinity). */
+  range: { min: number; max: number };
   /** What the ⋯ offers: the coach's own figure back when the rule raised it, else the run's best. */
   to: { kg: number; back: boolean };
   /** The rows asking it, the earliest first, and their weeks of the programme. */
@@ -2960,7 +2965,7 @@ function missedTargetsOf(sr: SetRows, clientId: number): MissedTarget[] {
   const today = localDateStr();
   // Each lift's sessions, by the session: when it went in (its latest set), whether it is over, and its sets that answer
   // the home figure.
-  type Session = { dayId: number; ms: number; over: boolean; sets: { kg: number; reps: number }[] };
+  type Session = { dayId: number; ms: number; over: boolean; sets: { kg: number; reps: number; order: number }[] };
   const sessionsOf = new Map<string, Map<number, Session>>();
   for (const wa of rows) {
     const day = days.get(wa.program_day_id)!;
@@ -2973,7 +2978,8 @@ function missedTargetsOf(sr: SetRows, clientId: number): MissedTarget[] {
       if (!byDay) sessionsOf.set(liftOf(wa), (byDay = new Map()));
       const at = byDay.get(day.id) ?? { dayId: day.id, ms: -Infinity, over: !!day.session_ended_at, sets: [] };
       at.ms = Math.max(at.ms, stampMs(s.logged_at));
-      at.sets.push({ kg: s.weight_kg, reps: s.reps });
+      // In the order they were done (the row's place in the session, then the set's number), for the To do's run.
+      at.sets.push({ kg: s.weight_kg, reps: s.reps, order: (wa.order_index ?? 0) * 1000 + s.set_number });
       byDay.set(day.id, at);
     }
   }
@@ -3026,6 +3032,7 @@ function missedTargetsOf(sr: SetRows, clientId: number): MissedTarget[] {
     const sessions = [...(sessionsOf.get(liftOf(first))?.values() ?? [])].sort((a, b) => b.ms - a.ms);
     let n = 0;
     let best: { kg: number; reps: number } | null = null;
+    const run: MissedTarget["run"] = [];
     // Where the run began: the session that last reached it, else the floor.
     let runFrom = Number.isFinite(floor) ? `t${Math.round(floor / 1000)}` : "t0";
     for (const s of sessions) {
@@ -3036,6 +3043,7 @@ function missedTargetsOf(sr: SetRows, clientId: number): MissedTarget[] {
       }
       if (!s.over) continue;
       n++;
+      run.push({ date: localDateStr(new Date(s.ms)), sets: [...s.sets].sort((a, b) => a.order - b.order).map((x) => ({ kg: x.kg, reps: x.reps })) });
       for (const x of s.sets) {
         if (x.reps < range.min || x.reps > range.max) continue;
         if (!best || (assisted ? x.kg < best.kg : x.kg > best.kg) || (x.kg === best.kg && x.reps > best.reps)) best = x;
@@ -3060,6 +3068,8 @@ function missedTargetsOf(sr: SetRows, clientId: number): MissedTarget[] {
       fromKg: kg,
       sessions: n,
       best,
+      run,
+      range: { min: range.min, max: range.max },
       to,
       rows: list.map((wa) => wa.id),
       weeks: [...new Set(list.map((wa) => days.get(wa.program_day_id)!.week_number - p.start_week + 1))],

@@ -940,6 +940,9 @@ export function loadDots(clientId: number, chat: ChatCoachView, food: FoodRows, 
         best: run.best,
         session: m.at.dayName,
         sessions: run.sessions,
+        // The sessions behind it, to open on the row (25 Nov, Alex): their days and sets; the range's open top as null.
+        run: run.run,
+        range: { min: run.range.min, max: Number.isFinite(run.range.max) ? run.range.max : null },
       },
     });
   }
