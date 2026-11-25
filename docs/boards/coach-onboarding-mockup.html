@@ -103,6 +103,24 @@
   .welcome .foot { justify-content: flex-end; }
   .welcome .foot .txt { margin-left: 0; }
 
+
+  /* The tour card in Norcoach's C (25 Nov, Alex: "style these cards… like the black and the logo also"): the dark head
+     (the brand colour when set) with the faint star a third past its right edge, where it is and how far in small caps,
+     the title white; the paper rising over its foot with the words and the buttons. */
+  .tc { position: absolute; width: 320px; border-radius: 18px; overflow: hidden; background: #fff; box-shadow: 0 30px 60px -24px rgba(16,24,40,.45); }
+  .tc-head, .sc-head { position: relative; overflow: hidden; background: var(--brand, #1c1c1e); color: #fff; padding: 16px 18px 34px; }
+  .tc-head::before, .sc-head::before { content: ""; position: absolute; right: -44px; top: -6px; width: 130px; height: 130px; background: #fff; opacity: .07; -webkit-mask: url(../../public/brand/mark.svg) center / contain no-repeat; mask: url(../../public/brand/mark.svg) center / contain no-repeat; }
+  .tc-top { position: relative; display: flex; justify-content: space-between; font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: rgba(255,255,255,.62); }
+  .tc-top em { font-style: normal; letter-spacing: 0; text-transform: none; font-size: 12px; font-weight: 500; }
+  .tc-head h3, .sc-head h3 { position: relative; margin: 6px 0 0; font-size: 18px; font-weight: 600; color: #fff; }
+  .tc-body, .sc-body { position: relative; margin-top: -18px; border-radius: 18px 18px 0 0; background: #fff; }
+  .tc-body { padding: 18px 18px 14px; }
+  .tc-body p, .sc-body p { margin: 0; font-size: 14px; line-height: 20px; font-weight: 500; color: var(--body); }
+  .sc { background: #fff; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 0 rgba(16,24,40,.04), inset 0 0 0 1px var(--line); }
+  .sc-head { padding: 14px 18px 32px; }
+  .sc-head .tc-top span:first-child { display: flex; align-items: center; gap: 10px; }
+  .sc-head .tc-top b { font-size: 20px; font-weight: 300; letter-spacing: 0; color: rgba(255,255,255,.55); }
+  .sc-body { padding: 18px 18px 18px; }
   .steps { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
   .st { background: #fff; border-radius: 16px; padding: 16px 18px; box-shadow: inset 0 0 0 1px var(--line); }
   .st .n { font-size: 22px; font-weight: 300; color: var(--faint); font-variant-numeric: tabular-nums; }
@@ -151,8 +169,9 @@
           <div class="dh"><div>Welcome, Finlay</div><span class="x">✕</span></div>
           <div class="rise"><div></div></div>
           <div class="body">
-            <p>Sam Carter is an example client with eight weeks of training, check-ins and meals already logged. Delete him from his Home whenever you like.</p>
-            <p>The tour shows you each screen in twelve short steps.</p>
+            <p>Sam Carter is an example client, with eight weeks of training, check-ins and meals already logged, so every screen has something to show.</p>
+            <p>When you no longer need him, open his Home and choose Delete Sam in the ⋯ menu.</p>
+            <p>The tour takes you through each screen in thirteen short steps.</p>
             <div class="foot"><span class="txt">Not now</span><span class="go">Start tour</span></div>
           </div>
         </div>
@@ -161,7 +180,7 @@
 
     <div>
       <h2>2 · A step of the tour</h2>
-      <p class="what">The page dims; the part it is on stays lit, ringed in white; its card beside it, never past the window's edge: where it is, how far along (<em>9 of 12</em>), one or two sentences, Skip, Back and the brand pill Next (Done on the last). Esc or Skip ends it. The tour opens the tab it talks about.</p>
+      <p class="what">The page dims; the part it is on stays lit, ringed in white; its card beside it, never past the window's edge: where it is, how far along (<em>9 of 13</em>), one or two sentences, Skip, Back and the brand pill Next (Done on the last). Esc or Skip ends it. The tour opens the tab it talks about.</p>
       <div class="admin">
         <aside class="rail">
           <div class="top"><div class="word">NORCOACH</div><div class="coach"><i>F</i><div><b>Finlay Chedd</b><small>Full Potential Coaching</small></div></div></div>
@@ -178,31 +197,34 @@
         </main>
         <div class="edge"><span><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M3 4.5h12v8H7l-4 3z" stroke-linejoin="round"/></svg></span><span>?</span></div>
         <div class="lit" id="lit"></div>
-        <div class="card" id="tourcard">
-          <div class="top"><span>Sam<span class="sep"></span>Training</span><em>9 of 12</em></div>
-          <h3>Programme</h3>
-          <p>You write Sam's programme week by week, and every set he logs shows against your target. When he lifts heavier inside the rep range, the next weeks' target moves up to it.</p>
-          <div class="foot"><span class="txt">Skip</span><span class="txt ink">Back</span><span class="go">Next</span></div>
+        <div class="tc" id="tourcard">
+          <div class="tc-head"><div class="tc-top"><span>Sam<span class="sep"></span>Training</span><em>9 of 13</em></div><h3>Training</h3></div>
+          
+          <div class="tc-body">
+            <p>Here is where you create and deploy personalised programmes for every client's needs, week by week. Choose the columns you work with, and follow every set they log.</p>
+            <div class="foot"><span class="txt">Skip</span><span class="txt ink">Back</span><span class="go">Next</span></div>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
   <h2>3 · The steps</h2>
-  <p class="what">Twelve. The rail first, then into Sam's tabs, then Settings, the chat and help. The last card says where Sam goes.</p>
+  <p class="what">Thirteen. The rail first, then into Sam's tabs, then Settings, the chat and help.</p>
   <div class="steps">
-    <div class="st"><div class="n">1</div><div class="where">Rail<span class="sep"></span>Feed</div><h3>Feed</h3><p>Needs you lists what is waiting on you: messages, videos to review, notes to read. Under it, Activity shows what your clients did, newest first.</p></div>
-    <div class="st"><div class="n">2</div><div class="where">Rail<span class="sep"></span>Phases</div><h3>Phases</h3><p>Every client's phases on one timeline. The top lists who needs a new phase and whose phase ends soon.</p></div>
-    <div class="st"><div class="n">3</div><div class="where">Rail<span class="sep"></span>Calendar</div><h3>Calendar</h3><p>Your client calls and your own appointments, in one calendar.</p></div>
-    <div class="st"><div class="n">4</div><div class="where">Rail<span class="sep"></span>Library</div><h3>Library</h3><p>Your exercises and their demo videos. Clients can play the demo from the exercise in their workout.</p></div>
-    <div class="st"><div class="n">5</div><div class="where">Rail<span class="sep"></span>New client</div><h3>Add a client</h3><p>A first name is enough to start building their plan. Add an email to send them an invite, or share your Norcode so they can ask to join.</p></div>
-    <div class="st"><div class="n">6</div><div class="where">Sam<span class="sep"></span>Home</div><h3>Overview</h3><p>Sam's phases, strength, weight and consistency on one screen, with everything he did underneath.</p></div>
-    <div class="st"><div class="n">7</div><div class="where">Sam<span class="sep"></span>Plan</div><h3>Phases and events</h3><p>Sam's lifestyle, training and nutrition phases on one timeline, with his trips and other events under them.</p></div>
-    <div class="st"><div class="n">8</div><div class="where">Sam<span class="sep"></span>Lifestyle</div><h3>Check-ins</h3><p>You pick what Sam logs each day, week or month, like weight, sleep or steps. His answers come in here.</p></div>
-    <div class="st"><div class="n">9</div><div class="where">Sam<span class="sep"></span>Training</div><h3>Programme</h3><p>You write Sam's programme week by week, and every set he logs shows against your target. When he lifts heavier inside the rep range, the next weeks' target moves up to it.</p></div>
-    <div class="st"><div class="n">10</div><div class="where">Sam<span class="sep"></span>Nutrition</div><h3>Targets and meals</h3><p>Set Sam's calories, macros and supplements. Every meal he logs shows here.</p></div>
-    <div class="st"><div class="n">11</div><div class="where">Rail<span class="sep"></span>Settings</div><h3>Settings</h3><p>Your profile and Norcode, your logo and brand colour, and your invoice details.</p></div>
-    <div class="st last"><div class="n">12</div><div class="where">Edge<span class="sep"></span>Chat and ?</div><h3>Chat and help</h3><p>Every client's chat in one place, each message showing what it's about. The ? has short videos and a way to message us. When you're done with Sam, delete him from his Home.</p></div>
+    <div class="sc"><div class="sc-head"><div class="tc-top"><span><b>1</b>Rail<span class="sep"></span>Feed</span></div><h3>Feed</h3></div><div class="sc-body"><p>Your notification centre. Here you see what your clients are doing, and everything that needs your attention, such as messages to answer and videos to review.</p></div></div>
+    <div class="sc"><div class="sc-head"><div class="tc-top"><span><b>2</b>Rail<span class="sep"></span>Phases</span></div><h3>Phases</h3></div><div class="sc-body"><p>Every client's plan on one timeline. Here you see at a glance whose phase is ending and who needs a new one.</p></div></div>
+    <div class="sc"><div class="sc-head"><div class="tc-top"><span><b>3</b>Rail<span class="sep"></span>Calendar</span></div><h3>Calendar</h3></div><div class="sc-body"><p>Here you plan your week: calls with clients, one-to-one training sessions, and anything else of your own.</p></div></div>
+    <div class="sc"><div class="sc-head"><div class="tc-top"><span><b>4</b>Rail<span class="sep"></span>Library</span></div><h3>Library</h3></div><div class="sc-body"><p>Your exercises and their demo videos. You decide, client by client, whether they can watch a demo in their workout.</p></div></div>
+    <div class="sc"><div class="sc-head"><div class="tc-top"><span><b>5</b>Rail<span class="sep"></span>New client</span></div><h3>Add a client</h3></div><div class="sc-body"><p>Here is where you add your clients.</p></div></div>
+    <div class="sc"><div class="sc-head"><div class="tc-top"><span><b>6</b>Sam<span class="sep"></span>Home</span></div><h3>Overview</h3></div><div class="sc-body"><p>An overview of each client on one screen: their phases, strength, weight and consistency, together with their meetings and invoices.</p></div></div>
+    <div class="sc"><div class="sc-head"><div class="tc-top"><span><b>7</b>Sam<span class="sep"></span>Plan</span></div><h3>Plan</h3></div><div class="sc-body"><p>Their training, nutrition and lifestyle phases on one timeline, together with their events, such as trips and holidays.</p></div></div>
+    <div class="sc"><div class="sc-head"><div class="tc-top"><span><b>8</b>Sam<span class="sep"></span>Lifestyle</span></div><h3>Lifestyle</h3></div><div class="sc-body"><p>Deploy personalised metrics for your client to fill in each day, week or month, such as weight, sleep or steps, and collect their answers as they come in.</p></div></div>
+    <div class="sc"><div class="sc-head"><div class="tc-top"><span><b>9</b>Sam<span class="sep"></span>Training</span></div><h3>Training</h3></div><div class="sc-body"><p>Here is where you create and deploy personalised programmes for every client's needs, week by week. Choose the columns you work with, and follow every set they log.</p></div></div>
+    <div class="sc"><div class="sc-head"><div class="tc-top"><span><b>10</b>Sam<span class="sep"></span>Nutrition</span></div><h3>Nutrition</h3></div><div class="sc-body"><p>Here is where you set your client's nutritional targets, and which supplements they take, how much and when. You also see every meal they log in the app.</p></div></div>
+    <div class="sc"><div class="sc-head"><div class="tc-top"><span><b>11</b>Rail<span class="sep"></span>Settings</span></div><h3>Settings</h3></div><div class="sc-body"><p>Here is where you set up your profile and your business: your logo and brand colour, the Norcode your clients join you with, and your invoice details.</p></div></div>
+    <div class="sc"><div class="sc-head"><div class="tc-top"><span><b>12</b>Edge<span class="sep"></span>Chat</span></div><h3>Chat</h3></div><div class="sc-body"><p>Here is where you chat with each of your clients.</p></div></div>
+    <div class="sc"><div class="sc-head"><div class="tc-top"><span><b>13</b>Edge<span class="sep"></span>?</span></div><h3>Help</h3></div><div class="sc-body"><p>Here you find guides and tutorials for Norcoach, and you can contact our team whenever you have a question.</p></div></div>
   </div>
 
   <h2>Sam, the example client</h2>
@@ -236,7 +258,7 @@ function place() {
   const frame = tab.closest(".admin").getBoundingClientRect(), r = tab.getBoundingClientRect();
   const lit = document.getElementById("lit"), card = document.getElementById("tourcard");
   Object.assign(lit.style, { left: r.left - frame.left - 4 + "px", top: r.top - frame.top - 4 + "px", width: r.width + 8 + "px", height: r.height + 8 + "px" });
-  const left = Math.min(Math.max(16, r.left - frame.left + r.width / 2 - 155), frame.width - 310 - 16);
+  const left = Math.min(Math.max(16, r.left - frame.left + r.width / 2 - 160), frame.width - 320 - 16);
   Object.assign(card.style, { left: left + "px", top: r.bottom - frame.top + 16 + "px" });
 }
 addEventListener("load", place); addEventListener("resize", place);
