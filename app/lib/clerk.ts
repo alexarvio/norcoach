@@ -61,9 +61,17 @@ export async function clerkUserRow() {
   const row = (u: (typeof data.users)[number]) => u as typeof u & { clerk_instance?: string };
   const match = data.users.find((u) => (!u.clerk_user_id || row(u).clerk_instance !== instance) && who.emails.includes(String(u.email ?? "").trim().toLowerCase()));
   if (!match) return null;
+  const firstEver = !match.clerk_user_id;
   match.clerk_user_id = userId;
   row(match).clerk_instance = instance;
   persist();
+  // An invited client's first sign-in (25 Nov, Alex): their welcome, from the coach. Only a login no Clerk account ever
+  // claimed; sendClientWelcome itself sends once a client and never to one from before the lock (`before`) or the App
+  // Review account. Loaded when needed: this file is imported nearly everywhere.
+  if (firstEver && match.role === "client" && match.client_id != null && match.email) {
+    const clientId = match.client_id;
+    void import("./welcomeEmails").then((m) => m.sendClientWelcome(clientId, match.email, userId)).catch(() => {});
+  }
   return match;
 }
 

@@ -264,3 +264,117 @@ export async function sendClerkEmailAsWritten({ to, subject, html, text, what }:
   if (!mailConfigured()) return false;
   return send(to, subject, text, html, what, { fromName: "Norcoach" });
 }
+
+const mailFont = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+const siteUrl = () => (process.env.APP_URL ?? "https://app.norcoachapp.com").replace(/\/$/, "");
+
+/** The code email's dark frame (25 Nov, Alex: B of docs/boards/code-email-mockup.html), for the welcome emails: a card
+ *  on the page grey, its head (ink with the faint star, or the coach's brand colour), the paper rising over its foot with
+ *  28px corners, the foot under the card. */
+function darkFrame({ preheader, head, headBg, star, body, foot }: { preheader: string; head: string; headBg: string; star: boolean; body: string; foot: string }): string {
+  const bg = star
+    ? `background-color:${headBg};background-image:url(${escape(`${siteUrl()}/brand/email-star.png`)});background-repeat:no-repeat;background-position:right top;background-size:113px 177px`
+    : `background-color:${headBg}`;
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"></head><body style="margin:0;padding:0;background:#F5F6F8">
+<div style="display:none;max-height:0;overflow:hidden">${escape(preheader)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F5F6F8"><tr><td align="center" style="padding:32px 16px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:440px;background:#ffffff;border-radius:20px;border-collapse:separate;overflow:hidden">
+<tr><td bgcolor="${headBg}" style="${bg};padding:26px 28px 34px;border-radius:20px 20px 0 0">${head}</td></tr>
+<tr><td style="background:${headBg};padding:0;line-height:0;font-size:0"><div style="background:#ffffff;border-radius:28px 28px 0 0;height:28px;line-height:28px;font-size:0">&nbsp;</div></td></tr>
+<tr><td style="padding:2px 28px 30px">${body}</td></tr>
+</table>
+<div style="${mailFont};font-size:12px;line-height:16px;font-weight:500;color:#98A2B3;padding-top:16px">${foot}</div>
+</td></tr></table>
+</body></html>`;
+}
+
+const para = (words: string, first = false) => `<div style="${mailFont};font-size:15px;line-height:22px;font-weight:500;color:#3a4250;${first ? "" : "padding-top:12px"}">${escape(words)}</div>`;
+// On a light brand colour (ink words on it) the pill keeps the button hairline, so a pale one never vanishes on the paper.
+const mailPill = (href: string, words: string, bg: string, ink: string) =>
+  `<div style="padding-top:22px"><a href="${escape(href)}" style="display:inline-block;${mailFont};font-size:15px;line-height:20px;font-weight:600;text-decoration:none;border-radius:999px;padding:12px 22px;background:${bg};color:${ink}${ink === "#141a24" ? ";border:1px solid #DCE1E8" : ""}">${escape(words)}</a></div>`;
+const smallLine = (words: string) => `<div style="${mailFont};font-size:13px;line-height:19px;font-weight:500;color:#8b93a1;padding-top:22px">${escape(words)}</div>`;
+
+export type ClientWelcome = {
+  /** The client's first name. */
+  first: string;
+  coachName: string;
+  coachFirst: string;
+  business: string;
+  /** The coach's brand colour as the app draws it, and the words on it; none, Norcoach's ink with the faint star. */
+  brand: { hex: string; ink: string } | null;
+  /** The app is open already (a phase is live, or the coach opened it). */
+  open: boolean;
+  /** How they sign in: the button they used, or the email they typed. */
+  signIn: { with: "apple" | "google" } | { email: string } | null;
+  url: string;
+};
+
+/**
+ * A client's welcome, the moment their coach lets them in (25 Nov, Alex: docs/boards/welcome-email-mockup.html, "Yes,
+ * build them"): from the coach by name, in the code email's dark frame, the head in the coach's brand colour when they
+ * set one. The coach's initial on white stands in for their face (their picture needs a sign-in to load today).
+ */
+export function clientWelcomeEmail(w: ClientWelcome) {
+  const subject = `Welcome to ${w.business || w.coachName}`;
+  const title = `You're in, ${w.first}`;
+  const lines = w.open
+    ? ["Your plan is ready in the app."]
+    : [`${w.coachFirst} is setting up your plan. You'll get a notification when it's ready.`, `Until then, message ${w.coachFirst} in the app.`];
+  const signIn = !w.signIn ? null : "email" in w.signIn ? `Sign in with ${w.signIn.email}.` : `Sign in with ${w.signIn.with === "apple" ? "Apple" : "Google"}.`;
+  const text = [title, "", ...lines.flatMap((l) => [l, ""]), `Open Norcoach: ${w.url}`, ...(signIn ? ["", signIn] : []), "", w.brand ? "Powered by Norcoach" : "Norcoach"].join("\n");
+
+  const headBg = w.brand?.hex ?? "#141a24";
+  const on = w.brand?.ink ?? "#ffffff";
+  const soft = on === "#ffffff" ? "rgba(255,255,255,.62)" : "rgba(20,26,36,.62)";
+  const initial = (w.coachFirst.trim().charAt(0) || "C").toUpperCase();
+  const head = `<table role="presentation" cellpadding="0" cellspacing="0"><tr>
+<td width="48" height="48" style="width:48px;height:48px;border-radius:24px;background:#ffffff;text-align:center;vertical-align:middle;${mailFont};font-size:21px;line-height:48px;font-weight:600;color:#141a24">${escape(initial)}</td>
+<td style="padding-left:12px;vertical-align:middle"><div style="${mailFont};font-size:15px;line-height:20px;font-weight:600;color:${on}">${escape(w.coachName)}</div>${
+    w.business ? `<div style="${mailFont};font-size:10.5px;line-height:15px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:${soft};padding-top:3px">${escape(w.business)}</div>` : ""
+  }</td>
+</tr></table>
+<div style="${mailFont};font-size:26px;line-height:32px;font-weight:600;color:${on};padding-top:26px">${escape(title)}</div>`;
+  const body = lines.map((l, i) => para(l, i === 0)).join("") + mailPill(w.url, "Open Norcoach", headBg, on) + (signIn ? smallLine(signIn) : "");
+  const foot = w.brand ? `Powered by <b style="color:#5b6474;font-weight:600">Norcoach</b>` : "Norcoach";
+  return { subject, text, html: darkFrame({ preheader: lines[0], head, headBg, star: !w.brand, body, foot }) };
+}
+
+/** Sends the client's welcome, from the coach by name, a reply going to the coach. False rather than throwing. */
+export async function sendClientWelcomeEmail({ to, replyTo, ...w }: ClientWelcome & { to: string; replyTo: string | null }): Promise<boolean> {
+  if (!mailConfigured()) return false;
+  const { subject, text, html } = clientWelcomeEmail(w);
+  return send(to, subject, text, html, "client welcome", { fromName: w.coachName, replyTo });
+}
+
+/** A coach's welcome once they have signed up (25 Nov, Alex: the same board): three things to start with, their Norcode
+ *  among them, in the code email's frame. */
+export function coachWelcomeEmail({ first, code, url }: { first: string; code: string; url: string }) {
+  const subject = `Welcome to Norcoach${first ? `, ${first}` : ""}`;
+  const steps: [string, string][] = [
+    ["Add your first client", "Click New client and type their name and email. We email them an invite."],
+    ["Or share your code", "Clients type it when they sign up in the Norcoach app. You accept them in your Feed."],
+    ["Set your logo and colour", "Upload your logo and pick your colour in Settings, Branding. Clients see them in their app."],
+  ];
+  const lead = "Your account is ready. Three things to start with:";
+  const stuck = "Stuck? Click the ? on the right of any screen to message us.";
+  const text = [subject, "", lead, "", ...steps.flatMap(([t, d], i) => [`${i + 1}. ${t}`, d, ...(i === 1 ? [code] : []), ""]), `Open Norcoach: ${url}`, "", stuck, "", "Norcoach"].join("\n");
+
+  const head = `<img src="${escape(`${siteUrl()}/brand/email-logo.png`)}" width="120" height="24" alt="Norcoach" style="display:block;border:0;width:120px;height:24px">
+<div style="${mailFont};font-size:26px;line-height:32px;font-weight:600;color:#ffffff;padding-top:26px">${escape(subject)}</div>`;
+  const codeChip = `<div style="padding-top:10px"><span style="display:inline-block;background:#F5F6F8;border-radius:10px;padding:8px 12px;${mailFont};font-size:16px;line-height:20px;font-weight:600;letter-spacing:.08em;color:#141a24">${escape(code)}</span></div>`;
+  const stepRows = steps
+    .map(
+      ([t, d], i) => `<tr><td width="28" style="width:28px;vertical-align:top;padding-top:16px;${mailFont};font-size:22px;line-height:22px;font-weight:500;color:#98A2B3">${i + 1}</td>
+<td style="vertical-align:top;padding-top:16px"><div style="${mailFont};font-size:15px;line-height:20px;font-weight:600;color:#141a24">${escape(t)}</div><div style="${mailFont};font-size:14px;line-height:20px;font-weight:500;color:#3a4250;padding-top:3px">${escape(d)}</div>${i === 1 ? codeChip : ""}</td></tr>`
+    )
+    .join("");
+  const body = para(lead, true) + `<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:4px">${stepRows}</table>` + mailPill(url, "Open Norcoach", "#141a24", "#ffffff") + smallLine(stuck);
+  return { subject, text, html: darkFrame({ preheader: lead, head, headBg: "#141a24", star: true, body, foot: "Norcoach" }) };
+}
+
+/** Sends a coach's welcome, from Norcoach. False rather than throwing. */
+export async function sendCoachWelcomeEmail({ to, ...w }: { to: string; first: string; code: string; url: string }): Promise<boolean> {
+  if (!mailConfigured()) return false;
+  const { subject, text, html } = coachWelcomeEmail(w);
+  return send(to, subject, text, html, "coach welcome", { fromName: "Norcoach" });
+}
