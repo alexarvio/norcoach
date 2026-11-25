@@ -1493,7 +1493,9 @@ export function loadHome(clientId: number, chat: { coach: ChatCoachView; thread:
     events,
     board: sub("consistencyLinks", () => withDayLinks(clientId, board)),
     // The locked app (19 Nov, Alex; app/lib/appLock.ts): the ⋯'s Open {First}'s app while it is.
-    appLocked: sub("appLock", () => appLocked(clientId, food, ck, sr)),
+    // Only for someone in the app (25 Nov, Alex: "I clicked on it, and nothing happened"): a client with no account yet
+    // (a first name alone, or an invite not taken up) has nobody to open it for, so the ⋯ doesn't offer it.
+    appLocked: sub("appLock", () => appLocked(clientId, food, ck, sr) && getData().users.some((u) => u.role === "client" && u.client_id === clientId && (!!u.clerk_user_id || !!u.password_hash))),
     // The example client (25 Nov): its pill and its Delete from the first frame, not once the rail has come in.
     example: !!getData().clients.find((c) => c.id === clientId)?.example,
   };
