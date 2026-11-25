@@ -42,7 +42,7 @@ export async function GET() {
   const coach = await requireCoach();
   const data = getData();
   const user = data.users.find((u) => u.id === coach.id)!;
-  user.coach_settings = { ...(user.coach_settings ?? {}), business: { ...(user.coach_settings?.business ?? {}), business_name: "Full Potential Coaching" } };
+  user.coach_settings = { ...(user.coach_settings ?? {}), business: { ...(user.coach_settings?.business ?? {}), business_name: undefined } };
   let profile = data.coach_profiles.find((p) => p.coach_id === coach.id);
   if (!profile) {
     profile = { coach_id: coach.id } as (typeof data.coach_profiles)[number];

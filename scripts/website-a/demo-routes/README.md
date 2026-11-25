@@ -8,7 +8,7 @@ people, never real clients.
    WORKOUT_SHEET=all), `next.config.ts` with `turbopack.root` the parent folder and `devIndicators: false`.
    Its `app/lib/demoClient.ts` names Emma's phases as the site tells her story (Sleep and steps, Upper strength, a Cut at
    170 | 175 | 70) and her weigh-ins from 79.8 kg over 35 days.
-2. The routes here (`.ts.txt`, so this repo never type-checks them) go in its `app/api/dev/<name>/route.ts` (seed-site, emma-login, legs-now): Finlay's profile and photo, Emma and 14
+2. The routes here (`.ts.txt`, so this repo never type-checks them) go in its `app/api/dev/<name>/route.ts` (seed-site, emma-login, legs-now): Finlay's profile and photo (no business name: Norcoach's own pictures never carry one coach's brand, 25 Nov, Alex), Emma and 14
    made-up clients with the site's avatars, her weight goal and To focus on; a login for Emma; her Legs half done today.
 3. Start it (launch config `demo`, port 3010), sign in once as the coach, open the three routes in that order.
 4. `MSYS_NO_PATHCONV=1 node shoot-demo.cjs <outDir> 1 coach-home=/clients/1/home …` for the laptop (1600×1000 at 1.25);
