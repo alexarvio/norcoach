@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coach onboarding</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#141a24; --body:#3a4250; --muted:#8b93a1; --faint:#98A2B3; --line:#E1E5EB; --page:#f4f7fc; --rust:#b8471f; --green:#2f7a3f; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #e9edf2; font-family: Archivo, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); }
+  .wrap { max-width: 1360px; margin: 0 auto; padding: 36px 32px 60px; }
+  h1 { margin: 0; font-size: 26px; font-weight: 600; }
+  .lede { margin: 6px 0 0; color: var(--muted); font-size: 14px; font-weight: 500; max-width: 820px; line-height: 21px; }
+  h2 { margin: 44px 0 6px; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: #5b6474; }
+  .what { margin: 0 0 16px; font-size: 14px; font-weight: 500; color: var(--body); line-height: 21px; max-width: 760px; }
+  .sep { display: inline-block; width: 1px; height: .9em; background: currentColor; opacity: .45; margin: 0 7px; vertical-align: -1px; }
+
+  /* The admin, sketched: the rail in B1 (the dark top with the faint star, the coach, the views with their icons; the
+     paper with Clients, the search, All | Needs you), the page on its grey, the chat and ? tabs on the right edge. */
+  .admin { position: relative; display: grid; grid-template-columns: 236px 1fr; height: 600px; border-radius: 16px; overflow: hidden; background: var(--page); box-shadow: 0 24px 50px -24px rgba(16,24,40,.4); }
+  .rail { background: #1c1c1e; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+  .rail::before { content: ""; position: absolute; right: -70px; top: 120px; width: 210px; height: 210px; background: #fff; opacity: .07; -webkit-mask: url(../../public/brand/mark.svg) center / contain no-repeat; mask: url(../../public/brand/mark.svg) center / contain no-repeat; }
+  .rail .top { padding: 18px 20px 6px; color: #fff; position: relative; }
+  .rail .word { font-size: 22px; font-weight: 600; letter-spacing: .18em; }
+  .rail .coach { display: flex; gap: 10px; align-items: center; padding-top: 14px; }
+  .rail .coach i { width: 30px; height: 30px; border-radius: 999px; background: #fff; color: var(--ink); display: grid; place-items: center; font-style: normal; font-weight: 600; font-size: 13px; }
+  .rail .coach b { display: block; font-size: 13px; font-weight: 600; }
+  .rail .coach b::after { content: " ›"; color: rgba(255,255,255,.5); }
+  .rail .coach small { display: block; font-size: 11px; color: rgba(255,255,255,.55); font-weight: 500; }
+  .views { padding: 8px 10px 14px; display: grid; gap: 1px; position: relative; }
+  .views span { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 10px; font-size: 13.5px; font-weight: 500; color: rgba(255,255,255,.86); }
+  .views span::before { content: ""; width: 14px; height: 14px; border-radius: 4px; box-shadow: inset 0 0 0 1.3px currentColor; opacity: .7; }
+  .views span.on { background: #fff; color: var(--ink); font-weight: 600; }
+  .paper { flex: 1; background: #fff; border-radius: 20px 20px 0 0; padding: 14px 12px; position: relative; }
+  .paper .lab { font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: #5b6474; padding: 0 6px 8px; display: flex; justify-content: space-between; }
+  .search { height: 32px; border-radius: 999px; box-shadow: inset 0 0 0 1.5px var(--ink); font-size: 12.5px; color: var(--faint); display: flex; align-items: center; padding: 0 12px; }
+  .cap { display: flex; margin: 8px 0; padding: 3px; border-radius: 999px; box-shadow: inset 0 0 0 1px #DCE1E8; font-size: 12px; font-weight: 600; }
+  .cap span { flex: 1; text-align: center; padding: 5px 0; border-radius: 999px; color: var(--body); }
+  .cap span.on { background: var(--ink); color: #fff; }
+  .cl { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 9px; font-size: 13.5px; font-weight: 500; }
+  .cl.on { background: #EEF0F3; font-weight: 600; }
+  .cl i { width: 24px; height: 24px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); display: grid; place-items: center; font-style: normal; font-size: 11px; font-weight: 600; }
+  .pill { margin-left: auto; height: 22px; padding: 0 9px; border-radius: 999px; background: #fff; border: 1px solid #E1E5EB; font-size: 11px; font-weight: 600; color: #8b93a1; display: inline-flex; align-items: center; }
+  .newc { position: absolute; left: 12px; right: 12px; bottom: 14px; height: 34px; border-radius: 999px; box-shadow: inset 0 0 0 1px #DCE1E8; display: grid; place-items: center; font-size: 13px; font-weight: 600; }
+  .main { padding: 22px 86px 22px 26px; overflow: hidden; }
+  .tabrow { display: flex; align-items: center; gap: 10px; }
+  .tabs { display: inline-flex; gap: 2px; padding: 4px; border-radius: 999px; background: #e9edf3; }
+  .tabs span { padding: 7px 11px; border-radius: 999px; font-size: 12px; font-weight: 500; color: var(--body); white-space: nowrap; }
+  .tabs span.on { background: #fff; font-weight: 600; color: var(--ink); }
+  .eyebrow { margin-top: 20px; font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: #5b6474; }
+  .head { display: flex; align-items: center; gap: 12px; padding-top: 4px; }
+  .head i { width: 56px; height: 56px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); display: grid; place-items: center; font-style: normal; font-size: 22px; font-weight: 600; }
+  .title { font-size: 26px; font-weight: 600; }
+  .live { height: 22px; padding: 0 8px; border-radius: 6px; background: rgba(47,122,63,.12); color: var(--green); font-size: 10.5px; font-weight: 600; letter-spacing: .12em; display: inline-flex; align-items: center; }
+  .saved { font-size: 13px; font-weight: 500; color: var(--green); }
+  .fact { font-size: 13px; font-weight: 500; color: var(--body); padding-top: 4px; }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 18px; }
+  .tile { background: #fff; border-radius: 16px; box-shadow: inset 0 0 0 1px var(--line); padding: 14px; height: 120px; }
+  .tile small { font-size: 10px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; }
+  .tile b { display: block; font-size: 14px; font-weight: 600; padding-top: 8px; }
+  .tile em { display: block; font-style: normal; font-size: 12px; color: var(--body); padding-top: 3px; }
+  .tile div { height: 3px; border-radius: 3px; margin-top: 12px; background: #eef0f3; }
+  .tile div::before { content: ""; display: block; height: 3px; border-radius: 3px; width: var(--p); background: currentColor; }
+  .weeks { display: flex; gap: 8px; margin-top: 16px; }
+  .weeks > div { width: 98px; border-radius: 14px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); padding: 10px; font-size: 12px; font-weight: 600; position: relative; }
+  .weeks .now::after { content: "NOW"; position: absolute; right: 10px; top: 11px; font-size: 9px; letter-spacing: .14em; }
+  .bars { display: flex; gap: 3px; margin-top: 12px; }
+  .bars i { flex: 1; height: 3px; border-radius: 3px; background: var(--green); }
+  .bars i.no { background: #E1E5EB; }
+  .rows { margin-top: 14px; display: grid; gap: 8px; }
+  .rows div { height: 46px; border-radius: 16px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); display: flex; align-items: center; padding: 0 16px; font-size: 14px; font-weight: 600; }
+  .rows div span { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--green); border: 1px solid rgba(47,122,63,.35); border-radius: 999px; padding: 3px 10px; background: #fff; }
+  .rows div span.ns { color: #8b93a1; border-color: #E1E5EB; }
+  .edge { position: absolute; right: 0; top: 80px; display: grid; gap: 6px; }
+  .edge span { width: 34px; height: 40px; border-radius: 10px 0 0 10px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); display: grid; place-items: center; font-size: 13px; font-weight: 600; }
+  .edge svg { width: 16px; height: 16px; }
+
+  /* The tour: the page dims; the part it is on stays lit, ringed in white; its card beside it. */
+  .lit { position: absolute; border-radius: 999px; box-shadow: 0 0 0 4px rgba(255,255,255,.95), 0 0 0 9999px rgba(16,20,28,.5); }
+  .card { position: absolute; width: 310px; background: #fff; border-radius: 18px; padding: 18px 18px 14px; box-shadow: 0 30px 60px -24px rgba(16,24,40,.45); }
+  .card .top { display: flex; justify-content: space-between; font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: #5b6474; }
+  .card .top em { font-style: normal; letter-spacing: 0; text-transform: none; font-size: 12px; font-weight: 500; color: var(--faint); }
+  .card h3 { margin: 6px 0 0; font-size: 17px; font-weight: 600; }
+  .card p { margin: 6px 0 0; font-size: 14px; line-height: 20px; font-weight: 500; color: var(--body); }
+  .foot { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+  .txt { font-size: 13px; font-weight: 600; color: #5b6474; padding: 8px 2px; }
+  .txt.ink { color: var(--ink); margin-left: auto; }
+  .go { height: 36px; padding: 0 18px; border-radius: 999px; background: var(--brand, #141a24); color: var(--brand-ink, #fff); font-size: 13.5px; font-weight: 600; display: inline-flex; align-items: center; }
+  .dimmed { position: absolute; inset: 0; background: rgba(16,20,28,.5); }
+
+  /* The welcome, in the pop-ups' C: the dark head with the faint star a third past its edge and the soft ✕, the paper rising. */
+  .welcome { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 440px; border-radius: 20px; overflow: hidden; background: #fff; box-shadow: 0 30px 60px -24px rgba(16,24,40,.45); }
+  .welcome .dh { background: var(--brand, #1c1c1e); color: #fff; padding: 24px 24px 36px; position: relative; overflow: hidden; }
+  .welcome .dh::before { content: ""; position: absolute; right: -54px; top: 6px; width: 160px; height: 160px; background: #fff; opacity: .07; -webkit-mask: url(../../public/brand/mark.svg) center / contain no-repeat; mask: url(../../public/brand/mark.svg) center / contain no-repeat; }
+  .welcome .dh div { font-size: 22px; font-weight: 600; position: relative; }
+  .welcome .x { position: absolute; right: 16px; top: 16px; width: 28px; height: 28px; border-radius: 999px; display: grid; place-items: center; color: rgba(255,255,255,.7); font-size: 13px; }
+  .welcome .rise { background: var(--brand, #1c1c1e); } .welcome .rise div { background: #fff; height: 20px; border-radius: 20px 20px 0 0; }
+  .welcome .body { padding: 0 24px 18px; }
+  .welcome .body p { margin: 0; font-size: 14px; line-height: 21px; font-weight: 500; color: var(--body); }
+  .welcome .body p + p { margin-top: 8px; }
+  .welcome .foot { justify-content: flex-end; }
+  .welcome .foot .txt { margin-left: 0; }
+
+  .steps { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+  .st { background: #fff; border-radius: 16px; padding: 16px 18px; box-shadow: inset 0 0 0 1px var(--line); }
+  .st .n { font-size: 22px; font-weight: 300; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .st .where { font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: #5b6474; padding-top: 4px; }
+  .st h3 { margin: 4px 0 0; font-size: 15px; font-weight: 600; }
+  .st p { margin: 4px 0 0; font-size: 14px; line-height: 20px; font-weight: 500; color: var(--body); }
+  .st.last { box-shadow: inset 0 0 0 1.5px var(--ink); }
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 24px; }
+  .notes h3 { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+  .notes ul { margin: 0; padding-left: 18px; font-size: 14px; line-height: 22px; color: var(--body); }
+  .notes li + li { margin-top: 4px; }
+  .ask { background: #fff; border-radius: 16px; padding: 16px 18px; box-shadow: inset 0 0 0 1.5px var(--rust); margin-top: 16px; font-size: 14px; line-height: 21px; color: var(--body); }
+  .ask b { color: var(--rust); }
+  .two { display: grid; grid-template-columns: 1fr; gap: 8px; max-width: 1180px; }
+  @media (max-width: 1100px) { .two { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Coach onboarding</h1>
+  <p class="lede">A new coach finds an example client, Sam Carter, already there with every tab filled in, and a short tour shows where things are. The guide videos explain how.</p>
+
+  <div class="two">
+    <div>
+      <h2>1 · The welcome</h2>
+      <p class="what">The first time a coach opens the admin after signing up, over Sam's Home. In the pop-ups' C. Not now in words, Start tour the brand pill; afterwards Take the tour is the first row of the ? panel.</p>
+      <div class="admin">
+        <aside class="rail">
+          <div class="top"><div class="word">NORCOACH</div><div class="coach"><i>F</i><div><b>Finlay Chedd</b><small>Full Potential Coaching</small></div></div></div>
+          <div class="views"><span>Feed</span><span>Phases</span><span>Calendar</span><span>Library</span><span>Business</span><span>Settings</span></div>
+          <div class="paper"><div class="lab"><span>Clients</span><span>1</span></div><div class="search">Search clients</div><div class="cap"><span class="on">All</span><span>Needs you 0</span></div><div class="cl on"><i>S</i>Sam Carter<span class="pill">Example</span></div><div class="newc">+ New client</div></div>
+        </aside>
+        <main class="main">
+          <div class="tabrow"><div class="tabs"><span class="on">Home</span><span>Plan</span><span>Lifestyle</span><span>Training</span><span>Nutrition</span><span>Shape update</span><span>Meetings</span><span>Invoices</span></div></div>
+          <div class="eyebrow">Home</div>
+          <div class="head"><i>S</i><div class="title">Sam Carter</div><span class="pill" style="margin-left:4px">Example</span></div>
+          <div class="tiles">
+            <div class="tile" style="color:#a08a5c"><small>Lifestyle</small><b style="color:#141a24">Daily habits</b><em>Week 3 of 8</em><div style="--p:38%"></div></div>
+            <div class="tile" style="color:#3a3390"><small>Training</small><b style="color:#141a24">Hypertrophy Block</b><em>Week 9 of 12</em><div style="--p:70%"></div></div>
+            <div class="tile" style="color:#1d7a70"><small>Nutrition</small><b style="color:#141a24">Lean gain</b><em>Week 3 of 8</em><div style="--p:38%"></div></div>
+          </div>
+        </main>
+        <div class="edge"><span><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M3 4.5h12v8H7l-4 3z" stroke-linejoin="round"/></svg></span><span>?</span></div>
+        <div class="dimmed"></div>
+        <div class="welcome">
+          <div class="dh"><div>Welcome, Finlay</div><span class="x">✕</span></div>
+          <div class="rise"><div></div></div>
+          <div class="body">
+            <p>Sam Carter is an example client with eight weeks of training, check-ins and meals already logged. Delete him from his Home whenever you like.</p>
+            <p>The tour shows you each screen in twelve short steps.</p>
+            <div class="foot"><span class="txt">Not now</span><span class="go">Start tour</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h2>2 · A step of the tour</h2>
+      <p class="what">The page dims; the part it is on stays lit, ringed in white; its card beside it, never past the window's edge: where it is, how far along (<em>9 of 12</em>), one or two sentences, Skip, Back and the brand pill Next (Done on the last). Esc or Skip ends it. The tour opens the tab it talks about.</p>
+      <div class="admin">
+        <aside class="rail">
+          <div class="top"><div class="word">NORCOACH</div><div class="coach"><i>F</i><div><b>Finlay Chedd</b><small>Full Potential Coaching</small></div></div></div>
+          <div class="views"><span>Feed</span><span>Phases</span><span>Calendar</span><span>Library</span><span>Business</span><span>Settings</span></div>
+          <div class="paper"><div class="lab"><span>Clients</span><span>1</span></div><div class="search">Search clients</div><div class="cap"><span class="on">All</span><span>Needs you 0</span></div><div class="cl on"><i>S</i>Sam Carter<span class="pill">Example</span></div><div class="newc">+ New client</div></div>
+        </aside>
+        <main class="main">
+          <div class="tabrow"><div class="tabs"><span>Home</span><span>Plan</span><span>Lifestyle</span><span class="on">Training</span><span>Nutrition</span><span>Shape update</span><span>Meetings</span><span>Invoices</span></div></div>
+          <div class="eyebrow">Training</div>
+          <div class="head"><div class="title">Hypertrophy Block ▾</div><span class="live">LIVE</span><span class="saved">✓ All changes saved</span></div>
+          <div class="fact">12 weeks<span class="sep"></span>29/9 – 21/12<span class="sep"></span>week 9 of 12</div>
+          <div class="weeks"><div>Week 7<div class="bars"><i></i><i></i><i></i><i></i></div></div><div>Week 8<div class="bars"><i></i><i></i><i></i><i></i></div></div><div class="now">Week 9<div class="bars"><i></i><i></i><i class="no"></i><i class="no"></i></div></div><div>Week 10<div class="bars"><i class="no"></i><i class="no"></i><i class="no"></i><i class="no"></i></div></div></div>
+          <div class="rows"><div>Push<span>Completed</span></div><div>Pull<span>Completed</span></div><div>Legs<span class="ns">Not started</span></div></div>
+        </main>
+        <div class="edge"><span><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M3 4.5h12v8H7l-4 3z" stroke-linejoin="round"/></svg></span><span>?</span></div>
+        <div class="lit" id="lit"></div>
+        <div class="card" id="tourcard">
+          <div class="top"><span>Sam<span class="sep"></span>Training</span><em>9 of 12</em></div>
+          <h3>Programme</h3>
+          <p>You write Sam's programme week by week, and every set he logs shows against your target. When he lifts heavier inside the rep range, the next weeks' target moves up to it.</p>
+          <div class="foot"><span class="txt">Skip</span><span class="txt ink">Back</span><span class="go">Next</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2>3 · The steps</h2>
+  <p class="what">Twelve. The rail first, then into Sam's tabs, then Settings, the chat and help. The last card says where Sam goes.</p>
+  <div class="steps">
+    <div class="st"><div class="n">1</div><div class="where">Rail<span class="sep"></span>Feed</div><h3>Feed</h3><p>Needs you lists what is waiting on you: messages, videos to review, notes to read. Under it, Activity shows what your clients did, newest first.</p></div>
+    <div class="st"><div class="n">2</div><div class="where">Rail<span class="sep"></span>Phases</div><h3>Phases</h3><p>Every client's phases on one timeline. The top lists who needs a new phase and whose phase ends soon.</p></div>
+    <div class="st"><div class="n">3</div><div class="where">Rail<span class="sep"></span>Calendar</div><h3>Calendar</h3><p>Your client calls and your own appointments, in one calendar.</p></div>
+    <div class="st"><div class="n">4</div><div class="where">Rail<span class="sep"></span>Library</div><h3>Library</h3><p>Your exercises and their demo videos. Clients can play the demo from the exercise in their workout.</p></div>
+    <div class="st"><div class="n">5</div><div class="where">Rail<span class="sep"></span>New client</div><h3>Add a client</h3><p>A first name is enough to start building their plan. Add an email to send them an invite, or share your Norcode so they can ask to join.</p></div>
+    <div class="st"><div class="n">6</div><div class="where">Sam<span class="sep"></span>Home</div><h3>Overview</h3><p>Sam's phases, strength, weight and consistency on one screen, with everything he did underneath.</p></div>
+    <div class="st"><div class="n">7</div><div class="where">Sam<span class="sep"></span>Plan</div><h3>Phases and events</h3><p>Sam's lifestyle, training and nutrition phases on one timeline, with his trips and other events under them.</p></div>
+    <div class="st"><div class="n">8</div><div class="where">Sam<span class="sep"></span>Lifestyle</div><h3>Check-ins</h3><p>You pick what Sam logs each day, week or month, like weight, sleep or steps. His answers come in here.</p></div>
+    <div class="st"><div class="n">9</div><div class="where">Sam<span class="sep"></span>Training</div><h3>Programme</h3><p>You write Sam's programme week by week, and every set he logs shows against your target. When he lifts heavier inside the rep range, the next weeks' target moves up to it.</p></div>
+    <div class="st"><div class="n">10</div><div class="where">Sam<span class="sep"></span>Nutrition</div><h3>Targets and meals</h3><p>Set Sam's calories, macros and supplements. Every meal he logs shows here.</p></div>
+    <div class="st"><div class="n">11</div><div class="where">Rail<span class="sep"></span>Settings</div><h3>Settings</h3><p>Your profile and Norcode, your logo and brand colour, and your invoice details.</p></div>
+    <div class="st last"><div class="n">12</div><div class="where">Edge<span class="sep"></span>Chat and ?</div><h3>Chat and help</h3><p>Every client's chat in one place, each message showing what it's about. The ? has short videos and a way to message us. When you're done with Sam, delete him from his Home.</p></div>
+  </div>
+
+  <h2>Sam, the example client</h2>
+  <div class="notes">
+    <div>
+      <h3>What he holds</h3>
+      <ul>
+        <li>Made for every new coach the first time they save Your business, in the background, so he is there by Open Norcoach. The coaches from before never get one.</li>
+        <li><b>Training:</b> a 12-week Hypertrophy Block eight weeks in, Push, Pull, Legs and Upper, its sets logged at two gyms (as today's example builder; its exercises matched to the preset library's names).</li>
+        <li><b>Lifestyle:</b> a lifestyle phase with weight, sleep and steps, two weeks of daily answers. <b>New</b>: today's builder puts them on no phase, so the tab would be empty.</li>
+        <li><b>Nutrition:</b> a nutrition phase with targets, two supplements and a few days of meals. <b>New</b>: today's builder logs calories alone.</li>
+        <li><b>Plan:</b> one event, a trip. <b>Meetings:</b> a past call with its summary and one coming up. <b>Chat:</b> a few messages.</li>
+        <li>No login, no emails, no pushes, no invoices, no bell notifications.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Where he never counts</h3>
+      <ul>
+        <li>A grey <b>Example</b> pill after his name in the rail and on his Home. A flag on the client, never his name.</li>
+        <li>Never in Business (clients, by month, stay, not billed), never offered when Accept asks where a join request goes, never a clash on the Calendar.</li>
+        <li>His Home's ⋯ has <b>Delete Sam</b>, asking first with no name to type, and no Open Sam's app.</li>
+      </ul>
+      <div class="ask"><b>Your call:</b> should Sam owe one thing on purpose (an unread message), so Needs you, the To do and the rail's number have a row to show in the tour? Or should nothing of his ever count there?</div>
+    </div>
+  </div>
+</div>
+<script>
+// The ring round the tab the step is on, and the card under it kept inside the frame, measured as the tour will.
+function place() {
+  const tab = document.querySelector("#tourcard").closest(".admin").querySelector(".tabs span.on");
+  const frame = tab.closest(".admin").getBoundingClientRect(), r = tab.getBoundingClientRect();
+  const lit = document.getElementById("lit"), card = document.getElementById("tourcard");
+  Object.assign(lit.style, { left: r.left - frame.left - 4 + "px", top: r.top - frame.top - 4 + "px", width: r.width + 8 + "px", height: r.height + 8 + "px" });
+  const left = Math.min(Math.max(16, r.left - frame.left + r.width / 2 - 155), frame.width - 310 - 16);
+  Object.assign(card.style, { left: left + "px", top: r.bottom - frame.top + 16 + "px" });
+}
+addEventListener("load", place); addEventListener("resize", place);
+</script>
+</body>
+</html>
