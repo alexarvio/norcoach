@@ -67,7 +67,9 @@ function toCanonical(request: NextRequest): NextResponse | null {
 // The website on the bare domain (18 Nov, Alex: "connect it to the url already, just we set a username and password"):
 // once SITE_USER and SITE_PASSWORD are set on the server, norcoachapp.com (and www) shows website/ through
 // app/site/[[...path]]/route.ts, which asks for them; /api stays the app's. Until then the bare domain goes to the app.
-const SITE_ON = !!process.env.SITE_USER?.trim() && !!process.env.SITE_PASSWORD?.trim();
+// Public since 25 Nov (Alex: "lets make it public"): SITE_PUBLIC=1 opens it to everyone with no password and lets search
+// engines in; taking SITE_PUBLIC away puts the password back.
+const SITE_ON = process.env.SITE_PUBLIC?.trim() === "1" || (!!process.env.SITE_USER?.trim() && !!process.env.SITE_PASSWORD?.trim());
 // The privacy policy and support page live on the website's address (20 Nov, Alex: "should be norcoachapp.com"): there
 // they are the app's own pages, open to everyone, never behind the website's password; asked for at the app's
 // address (an old link, the App Store, a link inside the app), they go there.

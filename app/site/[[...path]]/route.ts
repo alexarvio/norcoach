@@ -48,9 +48,14 @@ function allowed(request: Request): boolean {
   return okUser && okPass;
 }
 
+// Public (25 Nov, Alex: "lets make it public"): with SITE_PUBLIC=1 every page is served to anyone and may be indexed;
+// without it, the password as before.
+const isPublic = () => process.env.SITE_PUBLIC?.trim() === "1";
+
 export async function GET(request: Request, { params }: { params: Promise<{ path?: string[] }> }) {
-  if (!process.env.SITE_USER?.trim() || !process.env.SITE_PASSWORD?.trim()) return new Response("Not found", { status: 404 });
-  if (!allowed(request)) {
+  const open = isPublic();
+  if (!open && (!process.env.SITE_USER?.trim() || !process.env.SITE_PASSWORD?.trim())) return new Response("Not found", { status: 404 });
+  if (!open && !allowed(request)) {
     return new Response("Sign in to see the Norcoach website.", {
       status: 401,
       headers: { "WWW-Authenticate": 'Basic realm="Norcoach", charset="UTF-8"', "X-Robots-Tag": "noindex", "Cache-Control": "no-store" },
@@ -69,6 +74,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
   if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return new Response("Not found", { status: 404 });
   const bytes = fs.readFileSync(file);
   return new Response(new Uint8Array(bytes), {
-    headers: { "Content-Type": TYPES[path.extname(file).toLowerCase()] ?? "application/octet-stream", "X-Robots-Tag": "noindex", "Cache-Control": "private, no-cache" },
+    headers: {
+      "Content-Type": TYPES[path.extname(file).toLowerCase()] ?? "application/octet-stream",
+      ...(open ? {} : { "X-Robots-Tag": "noindex" }),
+      "Cache-Control": open ? "public, no-cache" : "private, no-cache",
+    },
   });
 }
