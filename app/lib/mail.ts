@@ -207,32 +207,42 @@ export async function sendCoachApprovedEmail({ to, name, signInUrl }: { to: stri
 export type CodeKind = "verification_code" | "reset_password_code";
 
 /**
- * A sign-in code in Norcoach's own look (25 Nov, Alex: "I want the email with our design"), in place of Clerk's: the
- * invoice email's white card on the page grey, its head the logo on ink, the code big at 600 in tabular figures, one
- * line on what it is for and one on ignoring it. No IP address or place (Clerk's said "requested from 2001:fb1…,
+ * A sign-in code in Norcoach's own look (25 Nov, Alex: "I want the email with our design", then B of
+ * docs/boards/code-email-mockup.html, "dark frame"), in place of Clerk's: the sign-in screen's dark head holding the logo
+ * and the title, the paper rising over its foot with round corners, the code big at 600 in tabular figures under a small
+ * caps label, one line on what it is for and one on ignoring it. The rail's big faint star behind the head, cut off at
+ * its right edge (25 Nov, Alex). No IP address or place (Clerk's said "requested from 2001:fb1…,
  * Bangkok"). The code is in the subject too, so a phone's notification shows it.
  */
 export function codeEmail({ code, kind }: { code: string; kind: CodeKind }) {
   const reset = kind === "reset_password_code";
   const subject = reset ? `${code} is your Norcoach password reset code` : `${code} is your Norcoach code`;
-  const title = reset ? "Reset your password" : "Your Norcoach code";
+  const title = reset ? "Reset your password" : "Your sign-in code";
   const line = reset ? "Type it in Norcoach to choose a new password." : "Type it in Norcoach to carry on.";
   const ignore = "Didn't ask for it? You can ignore this email.";
   const text = [title, "", code, "", line, "", ignore, "", "Norcoach"].join("\n");
 
   const font = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
-  const logo = `${(process.env.APP_URL ?? "https://app.norcoachapp.com").replace(/\/$/, "")}/brand/email-logo.png`;
-  const html = `<!doctype html><html><head><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"></head><body style="margin:0;padding:0;background:#F5F6F8">
+  const site = (process.env.APP_URL ?? "https://app.norcoachapp.com").replace(/\/$/, "");
+  const logo = `${site}/brand/email-logo.png`;
+  // The rail's big faint star, a third past the head's right edge (25 Nov, Alex); brand/build-email-star.mjs.
+  const star = `${site}/brand/email-star.png`;
+  const dark = "#141a24";
+  const html = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"></head><body style="margin:0;padding:0;background:#F5F6F8">
 <div style="display:none;max-height:0;overflow:hidden">${escape(line)}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F5F6F8"><tr><td align="center" style="padding:32px 16px">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:440px;background:#ffffff;border:1px solid #E1E5EB;border-radius:20px;border-collapse:separate;overflow:hidden">
-<tr><td style="background:#141a24;padding:22px 28px;border-radius:19px 19px 0 0"><img src="${escape(logo)}" width="140" height="28" alt="Norcoach" style="display:block;border:0;width:140px;height:28px"></td></tr>
-<tr><td style="padding:30px 28px 0">
-<div style="${font};font-size:22px;line-height:28px;font-weight:600;color:#141a24">${escape(title)}</div>
-<div style="${font};font-size:40px;line-height:48px;font-weight:600;color:#141a24;letter-spacing:.14em;padding-top:20px;font-variant-numeric:tabular-nums">${escape(code)}</div>
-<div style="${font};font-size:15px;line-height:22px;font-weight:500;color:#3a4250;padding-top:18px">${escape(line)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:440px;background:#ffffff;border-radius:20px;border-collapse:separate;overflow:hidden">
+<tr><td bgcolor="${dark}" style="background-color:${dark};background-image:url(${escape(star)});background-repeat:no-repeat;background-position:right top;background-size:113px 177px;padding:26px 28px 34px;border-radius:20px 20px 0 0">
+<img src="${escape(logo)}" width="120" height="24" alt="Norcoach" style="display:block;border:0;width:120px;height:24px">
+<div style="${font};font-size:26px;line-height:32px;font-weight:600;color:#ffffff;padding-top:26px">${escape(title)}</div>
 </td></tr>
-<tr><td style="padding:28px 28px 28px">
+<tr><td style="background:${dark};padding:0;line-height:0;font-size:0"><div style="background:#ffffff;border-radius:28px 28px 0 0;height:28px;line-height:28px;font-size:0">&nbsp;</div></td></tr>
+<tr><td style="padding:2px 28px 0">
+<div style="${font};font-size:11px;line-height:16px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#5b6474">${reset ? "Reset code" : "Code"}</div>
+<div style="${font};font-size:42px;line-height:50px;font-weight:600;color:#141a24;letter-spacing:.14em;padding-top:6px;font-variant-numeric:tabular-nums">${escape(code)}</div>
+<div style="${font};font-size:15px;line-height:22px;font-weight:500;color:#3a4250;padding-top:16px">${escape(line)}</div>
+</td></tr>
+<tr><td style="padding:28px 28px 30px">
 <div style="${font};font-size:13px;line-height:19px;font-weight:500;color:#8b93a1">${escape(ignore)}</div>
 </td></tr>
 </table>
