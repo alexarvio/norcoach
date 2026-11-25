@@ -15,6 +15,7 @@ import { saveCoachPhoto } from "./queries";
 import { countryOf } from "./countries";
 import { COACH_PROFILE_LIMITS as LIMIT } from "./coachProfileView";
 import { getCoachProfile, saveCoachProfile } from "./queries";
+import { sendCoachWelcomeOnce } from "./welcomeEmails";
 
 // The welcome steps a new coach goes through once the owner lets them in
 // (/welcome): who they are, their business, then off to add a client. Each
@@ -166,6 +167,8 @@ export async function saveWelcomeBusinessAction(input: { business: string; count
   }
   user.coach_settings = { ...(user.coach_settings ?? {}), business, ...(timezone ? { timezone } : {}) };
   persist();
+  // Their welcome, once (25 Nov, Alex; lib/welcomeEmails.ts): the first save of this step, never waited for.
+  void sendCoachWelcomeOnce(coach.id).catch(() => {});
   return { ok: true };
 }
 

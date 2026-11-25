@@ -31,6 +31,10 @@ type ClientRow = ReturnType<typeof getData>["clients"][number];
  *  phase is its programme: begun only once that has gone out (deployed, or its scheduled moment come), never by its
  *  week alone, which a programme scheduled later in the week already reads as; and a programme out whose Plan phase
  *  was deleted counts too (19 Nov, review). */
+export function phaseHasBegun(clientId: number): boolean {
+  return hadPhaseLive(clientId);
+}
+
 function hadPhaseLive(clientId: number, today = localDateStr()): boolean {
   const data = getData();
   const now = new Date().toISOString();
@@ -72,7 +76,7 @@ function loggedAnything(clientId: number, logged: FoodRows, ck: CheckInRows, sr:
   return rowIds.size > 0 && sr.logs.some((s) => rowIds.has(s.workout_assignment_id));
 }
 
-function isReviewClient(clientId: number): boolean {
+export function isReviewClient(clientId: number): boolean {
   return getData().users.some((u) => u.role === "client" && u.client_id === clientId && isReviewEmail(u.email ?? ""));
 }
 

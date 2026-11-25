@@ -9,6 +9,7 @@ import { getData, persistNow, type JoinRequest } from "./db";
 import { createClient, getClientProfile, patchClientProfile, removeClient, renameClient } from "./queries";
 import { once } from "./once";
 import { pushCoachJoin } from "./coachPush";
+import { sendClientWelcome } from "./welcomeEmails";
 import { coachCard, coachCardByCode, createJoinRequest, declinedBy, forgetRequestsOf, joinRequestById, latestRequestFor, pushedToday, requestsToday, settleJoinRequest, tooManyTries, withdrawJoinRequest, type CoachCard } from "./joinRequests";
 
 // The client's side of joining a coach by their code (18 Nov, Alex; lib/joinRequests.ts) and the coach's Accept and
@@ -131,6 +132,8 @@ export async function acceptJoinRequestAction(id: number, onceKey?: string | nul
       settleJoinRequest(r.id, "accepted", linked);
       await persistNow().catch(() => {});
       revalidatePath("/admin");
+      // Their welcome, from the coach (25 Nov, Alex; lib/welcomeEmails.ts): never waited for.
+      void sendClientWelcome(linked, r.email, r.clerk_user_id).catch(() => {});
       return { ok: true as const, clientId: linked };
     }
     const client = createClient(`${r.first_name} ${r.last_name}`, coach.id);
@@ -150,6 +153,7 @@ export async function acceptJoinRequestAction(id: number, onceKey?: string | nul
     settleJoinRequest(r.id, "accepted", client.id);
     await persistNow().catch(() => {});
     revalidatePath("/admin");
+    void sendClientWelcome(client.id, r.email, r.clerk_user_id).catch(() => {});
     return { ok: true as const, clientId: client.id };
   });
 }
