@@ -11,7 +11,6 @@ import { ConfirmDialog } from "./training/TrainingDraft";
 import { SepJoin } from "./Sep";
 import { NEED_LOOK } from "./NeedGroups";
 import { PopupTabZone } from "./PopupWho";
-import { RowFold } from "./RowFold";
 import { TRACK_ACCENT } from "../phaseChrome";
 import { landOnSoon } from "../../lib/landOn";
 import { useCloseOnEmptyClick } from "./useCloseOnEmptyClick";
@@ -23,7 +22,7 @@ import "./todo-panel.css";
 // it's a bit too much"; "Build B", B of docs/boards/todo-button-mockup.html). Was a rust strip on top of each tab (2 Nov,
 // Alex: mockup A of docs/boards/needs-strip-mockup.html). One rust pill at the end of the client's tabs with the count
 // of everything owed on them (TodoButton), opening a panel from the window's right as the chat does (TodoPanel): the
-// rows by tab in the tracks' order, three a group and the rest behind `N more`; a row its name (a tap opens the thing on
+// rows by tab in the tracks' order, every row shown (25 Nov; was three a group, then `N more`); a row its name (a tap opens the thing on
 // its tab, landed on and lit), its facts grey with the drawn bar and what happened in rust, its action as its words, the
 // round check on hover. The rows come from the dot trail (loadDots, dots.ts) through RedesignShell; what a tab does in
 // place (Meetings' Mark completed and Book, Plan's New phase, Training's Back to) it hands the panel (useTodoHandlers).
@@ -99,8 +98,6 @@ const groupsOf = (): { tab: DotTab; label: string; color: string; icon: ReactNod
   { tab: "home", ...NEED_LOOK.account },
   { tab: "plan", ...NEED_LOOK.plan },
 ];
-/** Rows a group shows before `N more`. */
-const SHOWN = 3;
 
 const LB = 2.20462;
 /** A weight to the nearest half, in the unit shown (as Training's kgOf). */
@@ -166,8 +163,6 @@ export function TodoPanel({
   const router = useRouter();
   const [, start] = useTransition();
   const [asking, setAsking] = useState<TodoItem | null>(null);
-  // A group opened past its first three, by tab.
-  const [more, setMore] = useState<ReadonlySet<DotTab>>(() => new Set());
   // Rows going (a target sent back): faded until the next read of the page.
   const [busy, setBusy] = useState<ReadonlySet<string>>(() => new Set());
   const [seenItems, setSeenItems] = useState(items);
@@ -294,7 +289,6 @@ export function TodoPanel({
         </button>
       </div>
       {groups.map((g) => {
-        const opened = more.has(g.tab);
         const row = (item: TodoItem) => {
           const wait = item.happened ?? item.wait ?? waitOf(item, now);
           return (
@@ -333,17 +327,8 @@ export function TodoPanel({
               {g.label}
               <small>{g.rows.length}</small>
             </div>
-            {g.rows.slice(0, SHOWN).map(row)}
-            {g.rows.length > SHOWN && (
-              <>
-                <RowFold open={opened}>{g.rows.slice(SHOWN).map(row)}</RowFold>
-                {!opened && (
-                  <button type="button" className="tdp-more" onClick={() => setMore((s) => new Set([...s, g.tab]))}>
-                    {g.rows.length - SHOWN} more
-                  </button>
-                )}
-              </>
-            )}
+            {/* Every row, always (25 Nov, Alex: "can you always show all the items in the to do"; was three, then N more). */}
+            {g.rows.map(row)}
           </section>
         );
       })}
