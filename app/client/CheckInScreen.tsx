@@ -39,6 +39,8 @@ export type CheckInMetric = {
   live?: boolean;
   /** One the phone's health store could fill (healthKindOf), once it is connected (17 Nov). */
   phone?: boolean;
+  /** The phone has sent a figure for it in the last 30 days (25 Nov): only then is it in the phone's block. */
+  fed?: boolean;
 };
 export type CheckInSection = {
   id: "daily" | "weekly" | "monthly" | "measurements";
