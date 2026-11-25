@@ -146,7 +146,9 @@ function context(coachId: number, today: string): Ctx {
   const coach = data.users.find((u) => u.id === coachId && u.role === "coach");
   const settings = getCoachSettings(coachId);
   const currency = invoicingFor(settings.business ?? {}, settings.invoicing ?? {}).currency;
-  const clients = data.clients.filter((c) => c.coach_id === coachId).sort((a, b) => a.name.localeCompare(b.name));
+  // The example client is no client of the business (25 Nov, Alex; lib/exampleClient.ts): in no figure, no Since line,
+  // no month of Clients by month and never Not billed automatically. Every part below reads these clients and ids.
+  const clients = data.clients.filter((c) => c.coach_id === coachId && !c.example).sort((a, b) => a.name.localeCompare(b.name));
   const ids = new Set(clients.map((c) => c.id));
 
   const allInvoices = data.invoices.filter((i) => i.coach_id === coachId || ids.has(i.client_id));

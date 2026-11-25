@@ -17,6 +17,8 @@ export type OverviewClient = {
   phases: OverviewPhase[];
   events: OverviewEvent[];
   plan: { phases: PlanPhaseRow[]; programs: PlanProgramOption[] };
+  /** The coach's example client (25 Nov, Alex; lib/exampleClient.ts): on the timeline, never ending soon (soonPhases). */
+  example?: boolean;
 };
 export type PhasesOverviewData = {
   today: string;
@@ -58,7 +60,7 @@ export function loadPhasesOverview(coachId: number, sr: SetRows): PhasesOverview
       openEnded: !!p.openEnded,
     }));
     const events: OverviewEvent[] = listClientEvents(c.id).map((e) => ({ id: e.id, kind: e.kind, title: e.title, start: e.start_date, end: e.end_date, note: e.note, addedBy: e.added_by === "client" ? "client" : "coach", createdAt: String(e.created_at ?? "").slice(0, 10), repeat: e.repeat ?? null }));
-    return { id: c.id, name: c.name ?? "Client", avatarPath: c.avatar_path ?? null, phases, events, plan: { phases: plan.phases, programs: plan.programs } };
+    return { id: c.id, name: c.name ?? "Client", avatarPath: c.avatar_path ?? null, phases, events, plan: { phases: plan.phases, programs: plan.programs }, ...(c.example ? { example: true } : {}) };
   });
   const profile = getCoachProfile(coachId);
   const coach = { name: profile?.display_name?.trim() || "You", avatarPath: profile?.avatar_path ?? null };

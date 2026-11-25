@@ -1,9 +1,12 @@
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { requireCoach } from "../../lib/auth";
+import { resumeExampleClient } from "../../lib/exampleClient";
 import { getData } from "../../lib/db";
 import { startTiming } from "../../lib/timing";
 import { readRail, type StampedRail } from "./loaders";
 import RailFrame from "./RailFrame";
+import OnboardingTour from "./OnboardingTour";
 import "./rail.css";
 
 // The rail stays, only the page swaps (22 Nov, Alex: "if we have to touch the rail… to make it a proper product, then
@@ -20,7 +23,15 @@ export const dynamic = "force-dynamic";
 export default async function RedesignLayout({ children }: { children: React.ReactNode }) {
   const coach = await requireCoach();
   // A new coach sees the welcome steps first (loadRail's gate, here before anything streams).
-  if (getData().users.find((u) => u.id === coach.id)?.onboarding) redirect("/auth/coach-setup");
+  const me = getData().users.find((u) => u.id === coach.id);
+  if (me?.onboarding) redirect("/auth/coach-setup");
+  // The onboarding's welcome and tour (25 Nov, Alex: docs/boards/coach-onboarding-mockup.html; OnboardingTour.tsx): seen
+  // once, and the coach's example client, read with the layout.
+  const tourSeen = !!me?.coach_settings?.tour_seen_at;
+  // An example build cut short by a restart is built again, after this answer has gone (lib/exampleClient.ts).
+  if (me?.coach_settings?.example_made_at && !me.coach_settings.example_ready_at) after(() => resumeExampleClient(coach.id));
+  const exampleClient = getData().clients.find((c) => c.coach_id === coach.id && c.example);
+  const example = exampleClient ? { id: exampleClient.id, name: exampleClient.name } : null;
   // Timed as its own screen (app/lib/timing.ts, /api/timing): the rail's fetches and loadRail, as each page timed them.
   const t = startTiming("rail");
   t.client(null);
@@ -33,5 +44,11 @@ export default async function RedesignLayout({ children }: { children: React.Rea
       return null;
     }
   );
-  return <RailFrame rail={rail}>{children}</RailFrame>;
+  // The tour beside the page, inside the frame's rail context; it draws nothing off the framed views.
+  return (
+    <RailFrame rail={rail}>
+      {children}
+      <OnboardingTour seen={tourSeen} example={example} />
+    </RailFrame>
+  );
 }

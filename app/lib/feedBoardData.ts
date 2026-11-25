@@ -346,6 +346,8 @@ function needsOf(ctx: Ctx): NeedRow[] {
   // Each row with where it sorts: blockers (0), the rest (2); then a moment, earliest first.
   const ranked: { row: NeedRow; rank: number; ms: number }[] = [];
   for (const c of ctx.clients) {
+    // The example client owes nothing (25 Nov, Alex; lib/exampleClient.ts): his rows are Activity's alone.
+    if (c.example) continue;
     for (const a of ctx.actions.get(c.id) ?? []) {
       const row = safe(`need ${c.id} ${a.id}`, () => needFrom(ctx, c, a), null);
       if (!row) continue;

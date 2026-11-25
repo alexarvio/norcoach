@@ -37,10 +37,13 @@ export async function eraseClient(clientId: number, opts: { selfDeleted: boolean
   }
   // Every delete, the coach's or their own, leaves a line for the Business board (clients by month, how long clients
   // stay): written before the rows go, since their start is read from them, and kept by removeClient.
-  data.client_departures = [
-    ...(data.client_departures ?? []),
-    { id: allocId("client_departures"), coach_id: client.coach_id ?? null, client_id: clientId, name: client.name, start: clientStartDay(clientId), at, by: opts.selfDeleted ? "client" : "coach" },
-  ];
+  // Not the example client (25 Nov, Alex; lib/exampleClient.ts): he was never on the roster, so he never leaves it.
+  if (!client.example) {
+    data.client_departures = [
+      ...(data.client_departures ?? []),
+      { id: allocId("client_departures"), coach_id: client.coach_id ?? null, client_id: clientId, name: client.name, start: clientStartDay(clientId), at, by: opts.selfDeleted ? "client" : "coach" },
+    ];
+  }
   persist();
   // Their phone's health switch (lib/healthOn.ts, 23 Nov) goes with them.
   dropHealthOn(clientId);

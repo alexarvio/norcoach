@@ -89,13 +89,15 @@ export function leftLabel(days: number): string {
 
 // ---- Clients -----------------------------------------------------------------
 
-export type ClientLike = { id: number; name: string; phases: OverviewPhase[]; events: OverviewEvent[] };
+export type ClientLike = { id: number; name: string; phases: OverviewPhase[]; events: OverviewEvent[]; /** The coach's example client (lib/exampleClient.ts): never ending soon, never needing attention. */ example?: boolean };
 export type ClientStatus = { kind: "soon"; track: PhaseTrack; days: number } | { kind: "planned" } | { kind: "none" };
 
 /** The phases on the tracks that are switched on. */
 export const phasesOn = (c: ClientLike, tracksOn: Set<PhaseTrack>) => c.phases.filter((p) => tracksOn.has(p.track));
 
 export function soonPhases(c: ClientLike, tracksOn: Set<PhaseTrack>, today: string): OverviewPhase[] {
+  // The example client's phases never end soon for the coach (25 Nov, Alex): he is in no Ending soon and no Needs attention.
+  if (c.example) return [];
   // Judged against every phase of the client's (a follow-up on a hidden track still counts), listed only for the tracks shown.
   return phasesOn(c, tracksOn)
     .filter((p) => endingSoon(p, c.phases, today))

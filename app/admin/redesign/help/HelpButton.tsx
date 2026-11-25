@@ -14,6 +14,7 @@ import { CoachSupport } from "../settings/SupportSection";
 import { GuidePlayer, GuideThumb, minutes } from "./guideMedia";
 import { ExpandIcon, GuideStage, stageable, timeFact, type StageControl, type StageInfo, type StagePlace } from "./GuideStage";
 import { useSidePanel } from "./sidePanels";
+import { startTour } from "../tourTrigger";
 import "./help.css";
 
 // Help on every admin screen (24 Nov, Alex: "tutorials… and… the option for them to contact us", B of
@@ -373,7 +374,26 @@ export default function HelpButton({ view, rail, reread }: { /** The screen on s
                   </label>
                 </div>
               )}
-              <div className="hlp-body">{list}</div>
+              <div className="hlp-body">
+                {/* Take the tour, the list's first row (25 Nov, Alex: docs/boards/coach-onboarding-mockup.html): help shuts
+                    and the tour starts (OnboardingTour); not while searching. */}
+                {words.length === 0 && (
+                  <button
+                    type="button"
+                    className="hlp-row hlp-tourrow"
+                    onClick={() => {
+                      close();
+                      startTour();
+                    }}
+                  >
+                    <span className="hlp-thumb hlp-tourthumb" aria-hidden="true" />
+                    <span className="hlp-row-w">
+                      <span className="hlp-row-t">Take the tour</span>
+                    </span>
+                  </button>
+                )}
+                {list}
+              </div>
             </>
           )}
 
