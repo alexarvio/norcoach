@@ -536,8 +536,10 @@ function ClientBlock({
   const statusText = status.kind === "soon" ? `${TRACK_LABEL[status.track]} ends ${status.days <= 0 ? "today" : `in ${status.days} day${status.days === 1 ? "" : "s"}`}` : null;
   const { weeks, count, nowIdx, cols } = grid;
   const totalDays = count * 7;
-  // "None yet + Add" from this week on, as the Plan's; not when this week is off the window.
-  const emptyAt: React.CSSProperties | null = nowIdx < count ? { gridColumn: `${nowIdx + 1} / span ${Math.min(count - nowIdx, 8)}`, gridRow: 1 } : null;
+  // "None yet + Add" from this week on, as the Plan's; not when this week is off the window. Its words start just past the
+  // NOW line, never across it (25 Nov, Alex), as the Plan's EmptyLane does.
+  const emptySpan = Math.min(count - nowIdx, 8);
+  const emptyAt: React.CSSProperties | null = nowIdx < count ? { gridColumn: `${nowIdx + 1} / span ${emptySpan}`, gridRow: 1, paddingLeft: `calc(${intoWeek} * 100% / ${emptySpan} + 10px)` } : null;
   // An empty spot is a way in: the day under the pointer in its week's column, the lane's kind.
   const addAt = (week: string, ev: React.MouseEvent<HTMLElement>, kind?: string | null) => {
     const r = ev.currentTarget.getBoundingClientRect();

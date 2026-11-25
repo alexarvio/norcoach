@@ -57,7 +57,9 @@ export const rgbOf = (hex: string) => {
  * stopped short of it).
  */
 export function gridFor(win: number, thisWeek: string, intoWeek: number, /** Weeks stepped back into the past (21 Oct); 0 is today's window. */ pastBy = 0) {
-  const back = 1;
+  // A few weeks behind, to see what was just done, and the whole window ahead (25 Nov, Alex: "12 months in front… always a
+  // few weeks behind… we kind of focus on the future"); further back is ‹'s.
+  const back = 3;
   const first = addWeeks(thisWeek, -back - pastBy);
   const count = win + back;
   const weeks = Array.from({ length: count }, (_, i) => addWeeks(first, i));
@@ -75,7 +77,7 @@ export function gridFor(win: number, thisWeek: string, intoWeek: number, /** Wee
   const cols: React.CSSProperties = { gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))`, width: `${(count / win) * 100}%`, transform: `translateX(${-(shift / count) * 100}%)` };
   // The "now" line at today's spot; none when today is past the window's right edge.
   const nowLeft = nowCol >= 0 && nowCol <= win ? `calc(108px + (100% - 108px) * ${nowCol / win})` : null;
-  return { first, count, weeks, nowIdx, months, cols, nowLeft, shift };
+  return { first, count, weeks, nowIdx, months, cols, nowLeft, shift, intoWeek };
 }
 
 /**
@@ -280,8 +282,11 @@ export function AddCells({ grid, lanes, label, title, onAdd }: { grid: Grid; lan
 /** "None yet + Add" on a lane with nothing on it, from this week on; none when this week is off the window. */
 export function EmptyLane({ grid, onAdd }: { grid: Grid; onAdd: () => void }) {
   if (grid.nowIdx >= grid.count) return null;
+  const span = Math.min(grid.count - grid.nowIdx, 8);
+  // The words start just past the NOW line, never across it (25 Nov, Alex's screenshot: "N|one yet"): the line is that far
+  // into this week's column, and a grid item's padding reads its percent off its own area, the span's columns.
   return (
-    <button type="button" className="rq-empty" style={{ gridColumn: `${grid.nowIdx + 1} / span ${Math.min(grid.count - grid.nowIdx, 8)}`, gridRow: 1 }} onClick={onAdd}>
+    <button type="button" className="rq-empty" style={{ gridColumn: `${grid.nowIdx + 1} / span ${span}`, gridRow: 1, paddingLeft: `calc(${grid.intoWeek} * 100% / ${span} + 10px)` }} onClick={onAdd}>
       None yet <b>+ Add</b>
     </button>
   );
