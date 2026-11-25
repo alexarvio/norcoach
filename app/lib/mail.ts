@@ -201,3 +201,56 @@ export async function sendCoachApprovedEmail({ to, name, signInUrl }: { to: stri
 <p><a href="${escape(signInUrl)}">Sign in to Norcoach</a></p>`;
   return send(to, "You're in: your Norcoach coach account", text, html, "coach approved", { fromName: "Norcoach" });
 }
+
+/** The kinds of code Clerk asks us to send once its own delivery is off (Clerk Dashboard, Emails, each template's
+ *  "Delivered by Clerk"): a sign-in, sign-up or new-device code, and a password reset's. */
+export type CodeKind = "verification_code" | "reset_password_code";
+
+/**
+ * A sign-in code in Norcoach's own look (25 Nov, Alex: "I want the email with our design"), in place of Clerk's: the
+ * invoice email's white card on the page grey, its head the logo on ink, the code big at 600 in tabular figures, one
+ * line on what it is for and one on ignoring it. No IP address or place (Clerk's said "requested from 2001:fb1…,
+ * Bangkok"). The code is in the subject too, so a phone's notification shows it.
+ */
+export function codeEmail({ code, kind }: { code: string; kind: CodeKind }) {
+  const reset = kind === "reset_password_code";
+  const subject = reset ? `${code} is your Norcoach password reset code` : `${code} is your Norcoach code`;
+  const title = reset ? "Reset your password" : "Your Norcoach code";
+  const line = reset ? "Type it in Norcoach to choose a new password." : "Type it in Norcoach to carry on.";
+  const ignore = "Didn't ask for it? You can ignore this email.";
+  const text = [title, "", code, "", line, "", ignore, "", "Norcoach"].join("\n");
+
+  const font = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+  const logo = `${(process.env.APP_URL ?? "https://app.norcoachapp.com").replace(/\/$/, "")}/brand/email-logo.png`;
+  const html = `<!doctype html><html><head><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"></head><body style="margin:0;padding:0;background:#F5F6F8">
+<div style="display:none;max-height:0;overflow:hidden">${escape(line)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F5F6F8"><tr><td align="center" style="padding:32px 16px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:440px;background:#ffffff;border:1px solid #E1E5EB;border-radius:20px;border-collapse:separate;overflow:hidden">
+<tr><td style="background:#141a24;padding:22px 28px;border-radius:19px 19px 0 0"><img src="${escape(logo)}" width="140" height="28" alt="Norcoach" style="display:block;border:0;width:140px;height:28px"></td></tr>
+<tr><td style="padding:30px 28px 0">
+<div style="${font};font-size:22px;line-height:28px;font-weight:600;color:#141a24">${escape(title)}</div>
+<div style="${font};font-size:40px;line-height:48px;font-weight:600;color:#141a24;letter-spacing:.14em;padding-top:20px;font-variant-numeric:tabular-nums">${escape(code)}</div>
+<div style="${font};font-size:15px;line-height:22px;font-weight:500;color:#3a4250;padding-top:18px">${escape(line)}</div>
+</td></tr>
+<tr><td style="padding:28px 28px 28px">
+<div style="${font};font-size:13px;line-height:19px;font-weight:500;color:#8b93a1">${escape(ignore)}</div>
+</td></tr>
+</table>
+<div style="${font};font-size:12px;line-height:16px;font-weight:500;color:#98A2B3;padding-top:16px">Norcoach</div>
+</td></tr></table>
+</body></html>`;
+  return { subject, text, html };
+}
+
+/** A code Clerk handed us to send, as Norcoach. False rather than throwing. */
+export async function sendCodeEmail({ to, code, kind }: { to: string; code: string; kind: CodeKind }): Promise<boolean> {
+  if (!mailConfigured()) return false;
+  const { subject, text, html } = codeEmail({ code, kind });
+  return send(to, subject, text, html, kind, { fromName: "Norcoach" });
+}
+
+/** Any other email Clerk handed us (a template we haven't drawn): sent as Clerk wrote it, so nothing goes missing. */
+export async function sendClerkEmailAsWritten({ to, subject, html, text, what }: { to: string; subject: string; html: string; text: string; what: string }): Promise<boolean> {
+  if (!mailConfigured()) return false;
+  return send(to, subject, text, html, what, { fromName: "Norcoach" });
+}
