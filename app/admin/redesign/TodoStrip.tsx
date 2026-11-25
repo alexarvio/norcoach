@@ -201,7 +201,7 @@ export function TodoPanel({
   // outside it, or Esc (unless a pop-up, a menu or a floating list has it: Esc closes that alone, 24 Nov, Alex); never
   // while the check's confirm is up.
   const popRef = useRef<HTMLDivElement>(null);
-  const place = usePopoverPlace(anchor, open, 520, "end");
+  const place = usePopoverPlace(anchor, open, 560, "end");
   usePopoverClose(open, onClose, [popRef, anchor], asking != null);
   // Your own weight and a note to the client, by row (25 Nov): kept while the row is shut, a failed send keeping them.
   // `key` the one-time key of the send, kept until it goes through: the server keys the weight by its figure and the note

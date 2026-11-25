@@ -20,35 +20,36 @@
    radius 16, the soft shadow and no edge, fixed on the window where usePopoverPlace puts it under its pill (left, top,
    width, max-height), as tall as its rows up to the room under the pill, then it scrolls inside. Over the page, under
    every dialog and menu (z 46, as the chat panel). Comes in with a short fade and a 4px drop on the fold's curve. */
-.rd-todopanel { position: fixed; z-index: 46; width: 520px; border-radius: 16px; background: #fff; box-shadow: 0 18px 40px rgba(20, 30, 50, 0.18), 0 0 0 1px rgba(20, 30, 50, 0.04); font-family: var(--font-archivo), system-ui, sans-serif; color: #141a24; opacity: 0; transform: translateY(-4px); visibility: hidden; transition: opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1), transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.2s; }
+.rd-todopanel { position: fixed; z-index: 46; width: 560px; border-radius: 16px; background: #fff; box-shadow: 0 18px 40px rgba(20, 30, 50, 0.18), 0 0 0 1px rgba(20, 30, 50, 0.04); font-family: var(--font-archivo), system-ui, sans-serif; color: #141a24; opacity: 0; transform: translateY(-4px); visibility: hidden; transition: opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1), transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.2s; }
 .rd-todopanel.open { opacity: 1; transform: none; visibility: visible; transition: opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1), transform 0.2s cubic-bezier(0.22, 1, 0.36, 1); }
 @media (prefers-reduced-motion: reduce) { .rd-todopanel, .rd-todopanel.open { transition: none; transform: none; } }
 /* Its nub: a white square turned, its point on the pill's middle (--nub), half out of the box's top. The box clips
    nothing; its rows scroll in the box inside it (.tdp-scroll), as tall as the room left (--pop-max). */
 .rd-todopanel::before { content: ""; position: absolute; top: -6px; left: calc(var(--nub, 40px) - 6px); width: 12px; height: 12px; background: #fff; rotate: 45deg; box-shadow: -1px -1px 0 rgba(20, 30, 50, 0.04); pointer-events: none; }
-.tdp-scroll { position: relative; max-height: var(--pop-max, 70vh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 14px 8px 10px; border-radius: 16px; }
+.tdp-scroll { position: relative; max-height: var(--pop-max, 70vh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 20px 12px 14px; border-radius: 16px; }
 
 /* Its head: To do alone at 15px/600, no client name and no ✕ (25 Nov, Alex: "we know where we are"). */
-.tdp-head { padding: 0 12px 4px; }
-.tdp-head h2 { margin: 0; font-size: 15px; font-weight: 600; line-height: 22px; }
+.tdp-head { padding: 0 14px 6px; }
+.tdp-head h2 { margin: 0; font-size: 16px; font-weight: 600; line-height: 22px; }
 
 /* One grid down the whole list (25 Nov, Alex: "the icons for the chat… are not aligned"): the words, the chat's 30px
    column, the action's as wide as the widest (its words on its right edge), the round check's 28px. Each row takes the
    list's columns (subgrid), so every chat sits in one column and every action ends on one edge. */
-.tdp-list { display: grid; grid-template-columns: minmax(0, 1fr) 30px max-content 28px; column-gap: 2px; }
+.tdp-list { display: grid; grid-template-columns: minmax(0, 1fr) 30px max-content 28px; column-gap: 6px; row-gap: 4px; }
 .tdp-group { display: contents; }
 
 /* A group, a tab each: the small caps head in its colour with its icon and count (the needs-you lists' .nd-head). */
-.tdp-ghead { grid-column: 1 / -1; display: flex; align-items: center; gap: 7px; padding: 10px 12px 4px; font-size: 10.5px; font-weight: 600; line-height: 16px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--c); }
-.tdp-group + .tdp-group .tdp-ghead { margin-top: 6px; }
+.tdp-ghead { grid-column: 1 / -1; display: flex; align-items: center; gap: 7px; padding: 14px 14px 8px; font-size: 10.5px; font-weight: 600; line-height: 16px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--c); }
+.tdp-group + .tdp-group .tdp-ghead { margin-top: 14px; }
 .tdp-ghead svg { flex: none; width: 14px; height: 14px; stroke-width: 1.6; } /* every head icon at one weight, as .nd-head's (24 Nov) */
 .tdp-ghead small { font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; color: #98a2b3; font-variant-numeric: tabular-nums; }
 
+/* Air between the rows and round them (25 Nov, Alex: "make it a little bit more separate. Feels a bit cramped right now"): 560px, rows 66px tall with 4px between, the facts 5px under the name, the group heads with room over them. */
 /* A row: its name over its facts, the chat, the action in words, the round check (on hover). The one row hover, across
    the whole row. */
 .tdp-item { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; }
 .tdp-item > .rd-rowfold { grid-column: 1 / -1; }
-.tdp-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; min-height: 52px; padding: 6px 0 6px 12px; border-radius: 9px; }
+.tdp-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; min-height: 66px; padding: 11px 4px 11px 14px; border-radius: 10px; }
 .tdp-row:hover, .tdp-row:focus-within { background: #fafbfd; }
 .tdp-thing { min-width: 0; }
 .tdp-nameline { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
@@ -56,7 +57,7 @@
 .tdp-name { flex: 0 1 auto; display: block; max-width: 100%; padding: 0; border: 0; background: none; font: inherit; font-size: 14px; font-weight: 600; line-height: 19px; color: #141a24; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
 .tdp-name:hover { text-decoration: underline; text-decoration-color: #c9cfd8; text-underline-offset: 3px; }
 .tdp-name:focus-visible { outline: none; text-decoration: underline; text-underline-offset: 3px; }
-.tdp-thing small { display: block; margin-top: 2px; font-size: 12.5px; font-weight: 500; line-height: 1.4; color: #8b93a1; overflow-wrap: anywhere; }
+.tdp-thing small { display: block; margin-top: 5px; font-size: 12.5px; font-weight: 500; line-height: 1.4; color: #8b93a1; overflow-wrap: anywhere; }
 /* A target's line: what happened and the best on one line, an ellipsis only where it truly can't fit. */
 .tdp-thing small.tdp-oneline { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
 /* What happened, in rust (`60 kg not reached in 4 sessions`, `2 days`). */
@@ -92,7 +93,7 @@
 /* The run: the target, then a line a session, its day as a log's and its sets parted by the drawn bar, a set inside the
    range in ink, one outside it grey. Set in under the row's words; its right edge the actions' (the check's 28px and
    the gap), so the pill at its foot ends on theirs. */
-.tdp-run { display: grid; grid-template-columns: max-content 1fr; column-gap: 14px; padding: 2px 30px 14px 12px; }
+.tdp-run { display: grid; grid-template-columns: max-content 1fr; column-gap: 14px; padding: 4px 38px 16px 14px; }
 .tdp-run-target { grid-column: 1 / -1; margin: 0 0 6px; font-size: 12.5px; font-weight: 600; color: #3a4250; }
 .tdp-run-row { display: contents; font-size: 13px; font-weight: 500; line-height: 19px; }
 .tdp-run-row > * { padding: 3px 0; font-size: 13px; font-weight: 500; line-height: 19px; }
