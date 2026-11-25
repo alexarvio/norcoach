@@ -1498,6 +1498,8 @@ export type JoinRequest = {
   /** Their own profile picture, when their account has one (Apple or Google, or one they set; 25 Nov, Alex: "show
    *  profile pic if they add it"): shown on the Feed's row and the Accept pop-up. */
   image_url?: string;
+  /** Their phone as they typed it, with its country code (25 Nov, Alex): shown to the coach, put on the client on Accept. */
+  phone?: string;
 };
 
 export type Data = {

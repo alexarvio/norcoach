@@ -8,6 +8,7 @@ import { createPasswordlessUser, findUserByEmail, getSessionUser, requireCoach }
 import { getData, persistNow, type JoinRequest } from "./db";
 import { createClient, getClientProfile, patchClientProfile, removeClient, renameClient } from "./queries";
 import { once } from "./once";
+import { splitTypedPhone } from "./phone";
 import { pushCoachJoin } from "./coachPush";
 import { sendClientWelcome } from "./welcomeEmails";
 import { coachCard, coachCardByCode, createJoinRequest, linkableClients, declinedBy, forgetRequestsOf, joinRequestById, latestRequestFor, pushedToday, requestsToday, settleJoinRequest, tooManyTries, withdrawJoinRequest, type CoachCard } from "./joinRequests";
@@ -41,7 +42,7 @@ function birthdateOf(raw: string): string | null {
   return y >= year - 110 && y <= year - 5 ? raw.trim() : null;
 }
 
-export type JoinInput = { firstName: string; lastName: string; birthdate: string; code: string };
+export type JoinInput = { firstName: string; lastName: string; birthdate: string; code: string; /** With its country code; an older app sends none. */ phone?: string };
 
 /** Sends the request to the coach whose code it is; the coach hears of it on their phone. */
 export async function sendJoinRequestAction(input: JoinInput, onceKey?: string | null): Promise<{ ok: true; coach: CoachCard } | { ok: false; error: string }> {
@@ -68,7 +69,8 @@ export async function sendJoinRequestAction(input: JoinInput, onceKey?: string |
       .then((c) => c.users.getUser(me.userId))
       .then((u) => (u.hasImage && u.imageUrl ? u.imageUrl : undefined))
       .catch(() => undefined);
-    const request = createJoinRequest({ coach_id: coachId, clerk_user_id: me.userId, email: me.email, first_name: first, last_name: last, birthdate, ...(image ? { image_url: image } : {}) });
+    const phone = String(input.phone ?? "").trim().slice(0, 30);
+    const request = createJoinRequest({ coach_id: coachId, clerk_user_id: me.userId, email: me.email, first_name: first, last_name: last, birthdate, ...(image ? { image_url: image } : {}), ...(phone ? { phone } : {}) });
     await persistNow().catch(() => {});
     if (buzz) pushCoachJoin(coachId, request.id, `${first} ${last}`);
     // Where they were going is done with: a coach sign-up's leftover intent never takes them off their wait.
@@ -176,7 +178,7 @@ export async function acceptJoinRequestAction(id: number, onceKey?: string | nul
       await removeClient(client.id);
       return { ok: false as const, error: "That email already has an account." };
     }
-    patchClientProfile(client.id, { birthdate: r.birthdate, email: r.email });
+    patchClientProfile(client.id, { birthdate: r.birthdate, email: r.email, ...phoneOf(r) });
     settleJoinRequest(r.id, "accepted", client.id);
     await persistNow().catch(() => {});
     revalidatePath("/admin");
@@ -210,6 +212,7 @@ function linkInvitedClient(user: NonNullable<ReturnType<typeof findUserByEmail>>
   patchClientProfile(client.id, {
     ...(!profile.birthdate ? { birthdate: r.birthdate } : {}),
     ...(!profile.email ? { email: r.email } : {}),
+    ...(!profile.phone ? phoneOf(r) : {}),
   });
   return client.id;
 }
@@ -253,7 +256,7 @@ function linkToClient(r: JoinRequest, coachId: number, clientId: number): number
   const had = client.name.trim().toLowerCase();
   if (name && (!had || name.toLowerCase().startsWith(had))) renameClient(clientId, name);
   const profile = getClientProfile(clientId);
-  patchClientProfile(clientId, { email, ...(!profile.birthdate ? { birthdate: r.birthdate } : {}) });
+  patchClientProfile(clientId, { email, ...(!profile.birthdate ? { birthdate: r.birthdate } : {}), ...(!profile.phone ? phoneOf(r) : {}) });
   if (oldEmail) void revokeInvitesTo(oldEmail);
   return clientId;
 }
@@ -267,6 +270,13 @@ async function revokeInvitesTo(email: string) {
   } catch (error) {
     console.error("[join] invite not revoked:", error instanceof Error ? error.message : error);
   }
+}
+
+/** The phone they typed when asking (25 Nov), as the client card keeps it: the country code apart from the number. */
+function phoneOf(r: JoinRequest): { phone_code?: string | null; phone?: string } {
+  if (!r.phone) return {};
+  const { code, number } = splitTypedPhone(r.phone);
+  return { phone_code: code, phone: number };
 }
 
 /** Decline: the person is told on their screen and can send their code to another coach. Nothing else is kept. */

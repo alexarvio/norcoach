@@ -204,3 +204,5 @@
 .rfd-onto .nd-face, .rfd-onto-new { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; overflow: hidden; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #e1e5eb; font-size: 11px; font-weight: 600; line-height: 1; color: #141a24; }
 .rfd-onto .nd-face img { width: 100%; height: 100%; object-fit: cover; }
 .rfd-onto-new svg { width: 12px; height: 12px; }
+/* Accept's head: how to reach them under the name, a soft white fact line on the dark (25 Nov, Alex). */
+.rfd-reach { display: block; padding-top: 4px; font-size: 12.5px; font-weight: 500; line-height: 17px; color: color-mix(in srgb, var(--brand-ink, #fff) 62%, transparent); }
