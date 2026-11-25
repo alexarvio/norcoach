@@ -58,23 +58,30 @@ const LOOK_EVERY_MS = 120;
 const CLICK_GAP_MS = 700;
 const CARD_W = 320;
 const EDGE = 16;
-const GAP = 16;
+const GAP = 12;
+/** The point never nearer a corner than this (the card's 20px radius). */
+const NUB_IN = 22;
+/** The point: a 14px square turned, half of it showing past the card's edge. */
+const NUB = 14;
 /** The white ring's room round the part (4px of the part's own cut-out, then the 4px ring). */
 const PAD = 4;
 
 type Box = { top: number; left: number; width: number; height: number; radius: number };
 const sameBox = (a: Box | null, b: Box) => !!a && a.top === b.top && a.left === b.left && a.width === b.width && a.height === b.height && a.radius === b.radius;
 
-/** Where the card goes: on its step's side of the part when it fits, else the next side that does, kept inside the window. */
-function cardAt(box: Box | null, side: Side, w: number, h: number): { top: number; left: number } {
+/** Where the card goes: on its step's side of the part when it fits, else the next side that does, kept inside the window.
+ *  Lined up on the part's edge as the To do's pop-over is on its pill (25 Nov, Alex: "align these pop-ups just the same
+ *  way you did with the to-do pop-up"): beside a rail row or an edge tab its top level with the ring's top, under a tab
+ *  its left edge on the ring's left; its point (`nub`, px along that edge) on the part's middle. */
+type Placed = { top: number; left: number; on: Side | "above"; nub: number };
+function cardAt(box: Box | null, side: Side, w: number, h: number): Placed | null {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const clampX = (x: number) => Math.min(Math.max(EDGE, x), Math.max(EDGE, vw - w - EDGE));
   const clampY = (y: number) => Math.min(Math.max(EDGE, y), Math.max(EDGE, vh - h - EDGE));
-  if (!box) return { top: clampY((vh - h) / 2), left: clampX((vw - w) / 2) };
-  const out = PAD + 4 + GAP;
-  const midY = box.top + box.height / 2 - h / 2;
-  const midX = box.left + box.width / 2 - w / 2;
+  if (!box) return { top: clampY((vh - h) / 2), left: clampX((vw - w) / 2), on: "below", nub: -1 };
+  const ring = PAD + 4;
+  const out = ring + GAP;
   const fits: Record<Side, boolean> = {
     right: box.left + box.width + out + w <= vw - EDGE,
     below: box.top + box.height + out + h <= vh - EDGE,
@@ -82,10 +89,18 @@ function cardAt(box: Box | null, side: Side, w: number, h: number): { top: numbe
   };
   const order: Side[] = [side, ...(["right", "below", "left"] as Side[]).filter((s) => s !== side)];
   const pick = order.find((s) => fits[s]);
-  if (pick === "right") return { top: clampY(midY), left: box.left + box.width + out };
-  if (pick === "below") return { top: box.top + box.height + out, left: clampX(midX) };
-  if (pick === "left") return { top: clampY(midY), left: box.left - out - w };
-  return { top: clampY(box.top - out - h), left: clampX(midX) };
+  const midY = box.top + box.height / 2;
+  const midX = box.left + box.width / 2;
+  const along = (mid: number, from: number, len: number) => Math.min(len - NUB_IN, Math.max(NUB_IN, mid - from));
+  if (pick === "right" || pick === "left") {
+    // A part low on the window (New client at the rail's foot): the card may come 8px from the window's foot, so its
+    // point still reaches the part's middle.
+    const top = Math.max(EDGE, Math.min(box.top - ring, vh - h - 8));
+    return { top, left: pick === "right" ? box.left + box.width + out : box.left - out - w, on: pick, nub: along(midY, top, h) };
+  }
+  const left = clampX(box.left - ring);
+  const top = pick === "below" ? box.top + box.height + out : clampY(box.top - out - h);
+  return { top, left, on: pick ?? "above", nub: along(midX, left, w) };
 }
 
 const firstOf = (name: string | null | undefined) => (name ?? "").trim().split(/\s+/)[0] ?? "";
@@ -312,6 +327,23 @@ export default function OnboardingTour({ seen, example: given }: { /** coach_set
         createPortal(
           <div className={`ntour${lit ? "" : " plain"}`} role="dialog" aria-modal="true" aria-labelledby="ntour-title">
             {lit && <div className="ntour-lit" style={{ top: lit.top - PAD, left: lit.left - PAD, width: lit.width + PAD * 2, height: lit.height + PAD * 2, borderRadius: lit.radius >= 999 ? 999 : lit.radius + PAD }} />}
+            {/* The card's point on its part, as the To do's nub on its pill: a turned square in the head's colour (white
+                when it falls past the head, the card above its part), half under the card's edge. */}
+            {place && place.nub >= 0 && (
+              <span
+                className={`ntour-nub${place.on === "above" ? " paper" : ""}`}
+                aria-hidden="true"
+                style={
+                  place.on === "right"
+                    ? { top: place.top + place.nub - NUB / 2, left: place.left - NUB / 2 }
+                    : place.on === "left"
+                      ? { top: place.top + place.nub - NUB / 2, left: place.left + w - NUB / 2 }
+                      : place.on === "below"
+                        ? { top: place.top - NUB / 2, left: place.left + place.nub - NUB / 2 }
+                        : { top: place.top + cardH - NUB / 2, left: place.left + place.nub - NUB / 2 }
+                }
+              />
+            )}
             {place && (
               <div ref={card} className="ntour-card" style={{ top: place.top, left: place.left, width: w } as CSSProperties}>
                 <div className="ntour-head">

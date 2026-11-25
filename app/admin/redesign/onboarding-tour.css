@@ -32,7 +32,11 @@
 .ntour-word:hover { color: #141a24; background: #f5f6f8; }
 .ntour-next { height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--brand, #141a24); font: inherit; font-size: 13.5px; font-weight: 600; color: var(--brand-ink, #fff); cursor: pointer; }
 .ntour-word:focus-visible, .ntour-next:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; }
-@media (prefers-reduced-motion: reduce) { .ntour-lit, .ntour-card { transition: none; } }
+/* Its point on the part (25 Nov, Alex: "align these pop-ups just the same way you did with the to-do pop-up"): the card
+   lined up on the part's edge, a turned square in the head's colour on the part's middle, half under the card. */
+.ntour-nub { position: fixed; width: 14px; height: 14px; border-radius: 2px; background: var(--brand, #1c1c1e); rotate: 45deg; pointer-events: none; transition: top 0.25s cubic-bezier(0.22, 1, 0.36, 1), left 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
+.ntour-nub.paper { background: #fff; }
+@media (prefers-reduced-motion: reduce) { .ntour-lit, .ntour-card, .ntour-nub { transition: none; } }
 
 /* Help's Take the tour (HelpButton.tsx): a guide row whose picture is Norcoach's C, the dark with the faint star. */
 .hlp-thumb.hlp-tourthumb { background: var(--brand, #1c1c1e); }
