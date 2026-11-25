@@ -1495,6 +1495,9 @@ export type JoinRequest = {
   settled_at?: string;
   /** The client Accept made. */
   client_id?: number;
+  /** Their own profile picture, when their account has one (Apple or Google, or one they set; 25 Nov, Alex: "show
+   *  profile pic if they add it"): shown on the Feed's row and the Accept pop-up. */
+  image_url?: string;
 };
 
 export type Data = {

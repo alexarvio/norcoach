@@ -63,7 +63,12 @@ export async function sendJoinRequestAction(input: JoinInput, onceKey?: string |
     // A coach who said no isn't asked again by the same account for a while (nor buzzed again).
     if (declinedBy(me.userId, coachId)) return { ok: false as const, error: "Not accepted" };
     const buzz = !pushedToday(me.userId, coachId);
-    const request = createJoinRequest({ coach_id: coachId, clerk_user_id: me.userId, email: me.email, first_name: first, last_name: last, birthdate });
+    // Their profile picture, only when their account really has one (not Clerk's made-up initials).
+    const image = await clerkClient()
+      .then((c) => c.users.getUser(me.userId))
+      .then((u) => (u.hasImage && u.imageUrl ? u.imageUrl : undefined))
+      .catch(() => undefined);
+    const request = createJoinRequest({ coach_id: coachId, clerk_user_id: me.userId, email: me.email, first_name: first, last_name: last, birthdate, ...(image ? { image_url: image } : {}) });
     await persistNow().catch(() => {});
     if (buzz) pushCoachJoin(coachId, request.id, `${first} ${last}`);
     // Where they were going is done with: a coach sign-up's leftover intent never takes them off their wait.
