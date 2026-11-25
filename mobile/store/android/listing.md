@@ -36,7 +36,7 @@ You join Norcoach with your coach’s code. Only you and your coach can see your
 
 - App icon: icon-512.png
 - Feature graphic: feature-graphic-1024x500.png
-- Phone screenshots: screenshot-1-home.png, screenshot-2-training.png, screenshot-3-nutrition.png, screenshot-4-lifestyle.png
+- Phone screenshots: store-1-home.png, store-2-training.png, store-3-nutrition.png, store-4-lifestyle.png
 
 ## Contact details (Store settings)
 

@@ -1,6 +1,7 @@
 // The Play Store's graphics (25 Nov, Alex: open testing on Google Play): the 512 icon, the 1024 × 500 feature graphic
 // and four phone screenshots at 1080 × 1920 (Play takes no side more than twice the other; the website's phone
-// pictures are 780 × 1688), all from what the repo already has. Run from the repo root: node mobile/store/android/build-play-assets.cjs
+// pictures are 780 × 1688), from src/: the website's phone pictures, Home and Nutrition taken again with NORCOACH on top (25 Nov, Alex:
+// "should be norcoach", the store is never one coach's business). Run from the repo root: node mobile/store/android/build-play-assets.cjs
 const fs = require("fs");
 const path = require("path");
 const sharp = require(path.resolve("node_modules/sharp"));
@@ -15,7 +16,7 @@ async function phone(name, w) {
   const h = Math.round((w * 1688) / 780);
   const r = Math.round(w * 0.12);
   const mask = Buffer.from(`<svg width="${w}" height="${h}"><rect width="${w}" height="${h}" rx="${r}" ry="${r}"/></svg>`);
-  return sharp(`website/img/snaps/${name}.jpg`).resize(w, h).composite([{ input: mask, blend: "dest-in" }]).png().toBuffer();
+  return sharp(`mobile/store/android/src/${name}.jpg`).resize(w, h).composite([{ input: mask, blend: "dest-in" }]).png().toBuffer();
 }
 
 (async () => {
@@ -45,7 +46,7 @@ async function phone(name, w) {
       .composite([{ input: p, left: 140, top: Math.round((1920 - (800 * 1688) / 780) / 2) }])
       .flatten({ background: DARK })
       .png()
-      .toFile(path.join(OUT, `screenshot-${i + 1}-${name.replace("phone-", "")}.png`));
+      .toFile(path.join(OUT, `store-${i + 1}-${name.replace("phone-", "")}.png`));
   }
   console.log(fs.readdirSync(OUT).join("\n"));
 })();
