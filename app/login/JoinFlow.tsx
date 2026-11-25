@@ -113,6 +113,7 @@ export default function JoinFlow({
   const [first, setFirst] = useState(firstGiven);
   const [last, setLast] = useState(lastGiven);
   const [dob, setDob] = useState(fromValue(birthdate));
+  const [phone, setPhone] = useState("");
   const [aboutError, setAboutError] = useState<string | null>(null);
 
   // Declined: a new code to type, the old one gone.
@@ -166,6 +167,7 @@ export default function JoinFlow({
   const about = () => {
     if (!first.trim() || !last.trim()) return setAboutError("Add your first and last name.");
     if (!dobValue(dob)) return setAboutError("Check your date of birth.");
+    if (phone.replace(/\D/g, "").length < 6) return setAboutError("Add your phone number, with its country code.");
     setAboutError(null);
     afterKeyboard(() => go("coach"));
   };
@@ -198,7 +200,7 @@ export default function JoinFlow({
     if (!birth) return go("about");
     setSending(true);
     setCoachError(null);
-    const r = await sendJoinRequestAction({ firstName: first, lastName: last, birthdate: birth, code: found.code }, onceKey.current).catch(() => ({ ok: false as const, error: "Not sent. Try again." }));
+    const r = await sendJoinRequestAction({ firstName: first, lastName: last, birthdate: birth, phone, code: found.code }, onceKey.current).catch(() => ({ ok: false as const, error: "Not sent. Try again." }));
     onceKey.current = newKey();
     setSending(false);
     if (!r.ok) return setCoachError(r.error);
@@ -306,6 +308,12 @@ export default function JoinFlow({
         <label className="auth-field">
           <span>Date of birth</span>
           <input name="birthdate" inputMode="numeric" autoComplete="bday" placeholder="DD / MM / YYYY" value={dob} onChange={(e) => (setDob(dobShown(e.target.value)), setAboutError(null))} />
+        </label>
+        {/* Their phone, for the coach (25 Nov, Alex: "if we do not ask phone number of the client… we should"), typed with
+            its country code, split into the code and the number on the coach's side (lib/phone.ts splitTypedPhone). */}
+        <label className="auth-field">
+          <span>Phone</span>
+          <input name="phone" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(e) => (setPhone(e.target.value), setAboutError(null))} maxLength={30} />
         </label>
         <button className="btn auth-submit" type="submit">
           Continue

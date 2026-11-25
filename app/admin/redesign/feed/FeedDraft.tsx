@@ -264,7 +264,7 @@ export function NeedsYou({
                     <span className="nd-thing">
                       <span className="nd-what">Wants to join</span>
                       <span className="nd-words">
-                        <SepJoin parts={[j.age != null ? String(j.age) : null, j.email]} />
+                        <SepJoin parts={[j.age != null ? String(j.age) : null, j.email, j.phone]} />
                       </span>
                     </span>
                     <span className={`nd-wait${w.late ? " late" : ""}`}>{w.text}</span>
@@ -338,6 +338,10 @@ export function NeedsYou({
                 <div>
                   <span className="dlh-whoeye">Wants to join</span>
                   <DialogTitle className="dlh-title">Accept {accepting.name}?</DialogTitle>
+                  {/* How to reach them, under the name (25 Nov, Alex: "show phone number… and also email… below the name"). */}
+                  <span className="rfd-reach">
+                    <SepJoin parts={[accepting.email, accepting.phone]} />
+                  </span>
                 </div>
               </div>
               <DialogClose className="dlh-x" aria-label="Close">

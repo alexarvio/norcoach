@@ -211,7 +211,7 @@ export function getFeedBoard(coachId: number, chat: ChatCoachView, food: FoodRow
     today,
     since: safe("since", () => sinceOf(ctx), null),
     needs: safe("needs", () => needsOf(ctx), []),
-    joins: safe("joins", () => openJoinRequestsFor(coachId).map((r) => ({ id: r.id, name: `${r.first_name} ${r.last_name}`.trim(), age: ageOf(r.birthdate), email: r.email, since: r.created_at, photo: r.image_url ?? null })), []),
+    joins: safe("joins", () => openJoinRequestsFor(coachId).map((r) => ({ id: r.id, name: `${r.first_name} ${r.last_name}`.trim(), age: ageOf(r.birthdate), email: r.email, since: r.created_at, photo: r.image_url ?? null, phone: r.phone ?? null })), []),
     linkable: safe("linkable", () => (openJoinRequestsFor(coachId).length ? linkableClients(coachId) : []), []),
     activity: safe("activity", () => activityOf(ctx), []),
     clients: ctx.clients
