@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Needs you</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#141a24; --body:#3a4250; --muted:#8b93a1; --faint:#98A2B3; --line:#E1E5EB; --page:#f4f7fc; --rust:#b8471f; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #e9edf2; font-family: Archivo, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); }
+  .wrap { max-width: 1360px; margin: 0 auto; padding: 36px 32px 60px; }
+  h1 { margin: 0; font-size: 26px; font-weight: 600; }
+  .lede { margin: 6px 0 0; color: var(--muted); font-size: 14px; font-weight: 500; max-width: 860px; line-height: 21px; }
+  h2 { margin: 40px 0 6px; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: #5b6474; }
+  .what { margin: 0 0 16px; font-size: 14px; font-weight: 500; color: var(--body); line-height: 21px; max-width: 860px; }
+  .sep { display: inline-block; width: 1px; height: .9em; background: currentColor; opacity: .45; margin: 0 7px; vertical-align: -1px; }
+
+  .admin { position: relative; display: grid; grid-template-columns: 236px 1fr; height: 620px; border-radius: 16px; overflow: hidden; background: var(--page); box-shadow: 0 24px 50px -24px rgba(16,24,40,.4); }
+  .rail { background: #1c1c1e; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+  .rail::before { content: ""; position: absolute; right: -70px; top: 120px; width: 210px; height: 210px; background: #fff; opacity: .07; -webkit-mask: url(../../public/brand/mark.svg) center / contain no-repeat; mask: url(../../public/brand/mark.svg) center / contain no-repeat; }
+  .top { padding: 18px 20px 6px; color: #fff; position: relative; }
+  .word { font-size: 22px; font-weight: 600; letter-spacing: .18em; }
+  .coach { display: flex; gap: 10px; align-items: center; padding-top: 14px; }
+  .coach i { width: 30px; height: 30px; border-radius: 999px; background: #fff; color: var(--ink); display: grid; place-items: center; font-style: normal; font-weight: 600; font-size: 13px; }
+  .coach b { display: block; font-size: 13px; font-weight: 600; }
+  .coach small { display: block; font-size: 11px; color: rgba(255,255,255,.55); font-weight: 500; }
+  .views { padding: 8px 10px 14px; display: grid; gap: 1px; position: relative; }
+  .views span { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 10px; font-size: 13.5px; font-weight: 500; color: rgba(255,255,255,.86); }
+  .views span::before { content: ""; width: 14px; height: 14px; border-radius: 4px; box-shadow: inset 0 0 0 1.3px currentColor; opacity: .7; }
+  .views span.on { background: #fff; color: var(--ink); font-weight: 600; }
+  .paper { flex: 1; background: #fff; border-radius: 20px 20px 0 0; padding: 14px 12px; position: relative; }
+  .chead { display: flex; align-items: center; justify-content: space-between; padding: 0 6px 10px; }
+  .chead .lab { font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: #5b6474; }
+  .chead .lab em { font-style: normal; color: var(--muted); font-weight: 500; margin-left: 6px; letter-spacing: 0; }
+  /* The pill: the To do pill's look, small enough for the rail's head. */
+  .npill { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 5px 0 10px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1.5px var(--rust); font-size: 12px; font-weight: 600; color: var(--rust); }
+  .npill b { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--rust); color: #fff; font-size: 10.5px; display: inline-grid; place-items: center; }
+  .npill.open { background: rgba(184,71,31,.08); }
+  .search { height: 32px; border-radius: 999px; box-shadow: inset 0 0 0 1.5px var(--ink); font-size: 12.5px; color: var(--faint); display: flex; align-items: center; padding: 0 12px; margin-bottom: 8px; }
+  .cl { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 9px; font-size: 13.5px; font-weight: 500; }
+  .cl i { width: 24px; height: 24px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); display: grid; place-items: center; font-style: normal; font-size: 11px; font-weight: 600; }
+  .cl .n { margin-left: auto; color: var(--rust); font-size: 12px; font-weight: 600; }
+  .gone { position: relative; }
+  .gone::after { content: "the All | Needs you capsule goes"; position: absolute; left: 0; right: 0; top: -2px; font-size: 10.5px; color: var(--rust); font-weight: 600; text-decoration: line-through; opacity: .0; }
+  .newc { position: absolute; left: 12px; right: 12px; bottom: 14px; height: 34px; border-radius: 999px; box-shadow: inset 0 0 0 1px #DCE1E8; display: grid; place-items: center; font-size: 13px; font-weight: 600; }
+  .main { padding: 24px 96px 22px 28px; overflow: hidden; }
+  .ptitle { font-size: 26px; font-weight: 600; }
+  .sect { font-size: 20px; font-weight: 600; padding-top: 22px; display: flex; align-items: center; justify-content: space-between; }
+  .chips { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; font-size: 12px; font-weight: 600; }
+  .chips span { padding: 6px 10px; border-radius: 999px; color: var(--body); }
+  .chips span.on { background: var(--ink); color: #fff; }
+  .log { margin-top: 12px; background: #fff; border-radius: 18px; box-shadow: inset 0 0 0 1px var(--line); }
+  .log div { display: grid; grid-template-columns: 100px 50px 150px 1fr; gap: 10px; align-items: center; height: 44px; padding: 0 18px; border-top: 1px solid #eef0f3; font-size: 13px; color: var(--body); }
+  .log div:first-child { border-top: 0; }
+  .log b { color: var(--ink); font-weight: 600; }
+  .edge { position: absolute; right: 0; top: 80px; display: grid; gap: 6px; }
+  .edge span { width: 34px; height: 40px; border-radius: 10px 0 0 10px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); display: grid; place-items: center; font-size: 13px; font-weight: 600; }
+
+  /* The panel: the To do panel's, for every client. */
+  .panel { position: absolute; top: 0; right: 0; bottom: 0; width: 470px; background: #fff; box-shadow: -18px 0 40px -24px rgba(16,24,40,.35); padding: 22px 22px; overflow: hidden; }
+  .phead { display: flex; align-items: baseline; justify-content: space-between; }
+  .phead h3 { margin: 0; font-size: 18px; font-weight: 600; }
+  .phead h3 small { font-size: 14px; font-weight: 500; color: var(--muted); margin-left: 8px; }
+  .x { width: 28px; height: 28px; border-radius: 999px; display: grid; place-items: center; color: var(--muted); font-size: 13px; }
+  .grp { margin-top: 18px; }
+  .ghead { display: flex; align-items: center; gap: 7px; font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; }
+  .ghead small { font-weight: 500; letter-spacing: 0; color: var(--muted); }
+  .row { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 4px; }
+  .row i { flex: none; width: 24px; height: 24px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); display: grid; place-items: center; font-style: normal; font-size: 11px; font-weight: 600; }
+  .row .t { flex: 1; min-width: 0; }
+  .row .t b { display: block; font-size: 14px; font-weight: 600; }
+  .row .t small { display: block; font-size: 12.5px; font-weight: 500; color: var(--muted); padding-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .t small em { font-style: normal; color: var(--rust); }
+  .act { font-size: 13px; font-weight: 600; padding: 7px 10px; border-radius: 8px; }
+  .ico { width: 30px; height: 30px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; display: grid; place-items: center; font-size: 13px; }
+  .more { font-size: 13px; font-weight: 600; color: #5b6474; padding: 4px 4px 0 38px; }
+
+  .notes ul { margin: 0; padding-left: 18px; font-size: 14px; line-height: 22px; color: var(--body); max-width: 900px; }
+  .notes li + li { margin-top: 4px; }
+  .ask { background: #fff; border-radius: 16px; padding: 16px 18px; box-shadow: inset 0 0 0 1.5px var(--rust); margin-top: 16px; font-size: 14px; line-height: 21px; color: var(--body); max-width: 900px; }
+  .ask b { color: var(--rust); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Needs you, behind a pill</h1>
+  <p class="lede">As each client's To do: what needs you across every client sits behind one pill next to Clients in the rail, and opens the To do's panel from the right. The Feed becomes Activity alone.</p>
+
+  <h2>1 · Closed</h2>
+  <p class="what">A rust <b>Needs you</b> pill with its count on the Clients line, in the To do pill's look. The All | Needs you capsule under the search goes: the rust numbers by each client still say who owes what, and the pill lists it all. With nothing owed, no pill.</p>
+  <div class="admin">
+    <aside class="rail">
+      <div class="top"><div class="word">NORCOACH</div><div class="coach"><i>F</i><div><b>Finlay Chedd</b><small>Full Potential Coaching</small></div></div></div>
+      <div class="views"><span class="on">Feed</span><span>Phases</span><span>Calendar</span><span>Library</span><span>Business</span><span>Settings</span></div>
+      <div class="paper">
+        <div class="chead"><span class="lab">Clients<em>24</em></span><span class="npill">Needs you <b>5</b></span></div>
+        <div class="search">Search clients</div>
+        <div class="cl"><i>A</i>Adonis Stergiopoulos<span class="n">2</span></div>
+        <div class="cl"><i>A</i>Adriaan van Doorne<span class="n">1</span></div>
+        <div class="cl"><i>A</i>Alex Arvio<span class="n">1</span></div>
+        <div class="cl"><i>A</i>Antoni</div>
+        <div class="cl"><i>E</i>Elena<span class="n">1</span></div>
+        <div class="newc">+ New client</div>
+      </div>
+    </aside>
+    <main class="main">
+      <div class="ptitle">Feed</div>
+      <div class="sect">Activity <span class="chips"><span class="on">All</span><span>Lifestyle</span><span>Training</span><span>Nutrition</span><span>Meetings</span><span>Messages</span></span></div>
+      <div class="log">
+        <div><span>Wed, 25 Nov</span><span>12:19</span><b>Alex Arvio</b><span>Completed Push</span></div>
+        <div><span>Wed, 25 Nov</span><span>08:38</span><b>Elena</b><span>Logged food</span></div>
+        <div><span>Tue, 24 Nov</span><span>19:29</span><b>Antoni</b><span>Did the daily check-in</span></div>
+        <div><span>Tue, 24 Nov</span><span>17:02</span><b>Adonis Stergiopoulos</b><span>Sent a video of Back Squat</span></div>
+        <div><span>Mon, 23 Nov</span><span>10:21</span><b>Adriaan van Doorne</b><span>Completed Lower</span></div>
+        <div><span>Mon, 23 Nov</span><span>07:12</span><b>Elena</b><span>Did the daily check-in</span></div>
+        <div><span>Sun, 22 Nov</span><span>19:41</span><b>Alex Arvio</b><span>Logged food</span></div>
+      </div>
+    </main>
+    <div class="edge"><span>✉</span><span>?</span></div>
+  </div>
+
+  <h2>2 · Open</h2>
+  <p class="what">The To do's panel from the right, for every client: <b>Needs you</b> with how many, Esc or ✕ to close. Join requests first, Accept and Decline as now; then the groups as the Feed has them today (Messages, Training, Lifestyle, Nutrition, Meetings, Sign-in), each row with the client's face and name, what it is, how long it has waited, its action in words and the round check. Three a group, then <i>N more</i>.</p>
+  <div class="admin">
+    <aside class="rail">
+      <div class="top"><div class="word">NORCOACH</div><div class="coach"><i>F</i><div><b>Finlay Chedd</b><small>Full Potential Coaching</small></div></div></div>
+      <div class="views"><span class="on">Feed</span><span>Phases</span><span>Calendar</span><span>Library</span><span>Business</span><span>Settings</span></div>
+      <div class="paper">
+        <div class="chead"><span class="lab">Clients<em>24</em></span><span class="npill open">Needs you <b>5</b></span></div>
+        <div class="search">Search clients</div>
+        <div class="cl"><i>A</i>Adonis Stergiopoulos<span class="n">2</span></div>
+        <div class="cl"><i>A</i>Adriaan van Doorne<span class="n">1</span></div>
+        <div class="cl"><i>A</i>Alex Arvio<span class="n">1</span></div>
+        <div class="cl"><i>A</i>Antoni</div>
+        <div class="cl"><i>E</i>Elena<span class="n">1</span></div>
+        <div class="newc">+ New client</div>
+      </div>
+    </aside>
+    <main class="main">
+      <div class="ptitle">Feed</div>
+      <div class="sect">Activity</div>
+    </main>
+    <div class="panel">
+      <div class="phead"><h3>Needs you<small>5</small></h3><span class="x">✕</span></div>
+      <div class="grp">
+        <div class="ghead" style="color:#141a24">Join requests <small>1</small></div>
+        <div class="row"><i>M</i><div class="t"><b>Maya Brooks</b><small>Wants to join<span class="sep"></span>maya@example.com<span class="sep"></span>+31 6 12345678</small></div><span class="ico">✓</span><span class="ico">✕</span></div>
+      </div>
+      <div class="grp">
+        <div class="ghead" style="color:#5b6474">Messages <small>2</small></div>
+        <div class="row"><i>A</i><div class="t"><b>Adonis Stergiopoulos</b><small>"Can I swap legs to Friday this week?"<span class="sep"></span><em>2 days</em></small></div><span class="act">Reply</span></div>
+        <div class="row"><i>E</i><div class="t"><b>Elena</b><small>"Felt dizzy after the last session"<span class="sep"></span>today</small></div><span class="act">Reply</span></div>
+      </div>
+      <div class="grp">
+        <div class="ghead" style="color:#3a3390">Training <small>2</small></div>
+        <div class="row"><i>A</i><div class="t"><b>Adonis Stergiopoulos</b><small>Video of Back Squat<span class="sep"></span>yesterday</small></div><span class="act">Review</span></div>
+        <div class="row"><i>A</i><div class="t"><b>Adriaan van Doorne</b><small>Week 5 has no sessions<span class="sep"></span>this week</small></div><span class="act">Add sessions</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h2>What changes</h2>
+  <div class="notes"><ul>
+    <li><b>The Feed</b> is Activity alone: what your clients did. What needs you is the pill's.</li>
+    <li><b>The pill</b> counts what the Feed's Needs you counts today (messages to answer, videos to review, notes to read, calls asked for, empty live weeks, sign-in locks, join requests); the rail's Feed row keeps the same number.</li>
+    <li><b>A row</b> opens its thing on that client's tab, as the To do's rows do, and the panel makes way; its action is done in place where it can be (Accept, Decline); the round check lets it go, as now.</li>
+    <li><b>One panel on the right at a time:</b> the chat, help, a client's To do and Needs you.</li>
+  </ul></div>
+  <div class="ask"><b>Your call:</b> group the rows by kind (Messages, Training…, as the Feed does today), or by client (each client a head with their rows under it)?</div>
+</div>
+</body>
+</html>
