@@ -1048,7 +1048,7 @@ h1, h2, h3 { font-weight: 600; }
 
 /* Finlay's face wherever he appears (7 Nov): the illustrated stand-in until his photo comes; last, so it wins over
    the ink discs above. */
-.a-me i, .cli .c-face, .fitem .face.coach { background: url(img/avatars/finlay.svg) center / cover; color: transparent; }
+.a-me i, .cli .c-face, .fitem .face.coach { background: url(img/avatars/finlay.jpg) center / cover; color: transparent; }
 
 /* The scattered week's places (7 Nov): the sheet and the inbox across the column, the two chats side by side between them,
    so each has the room its own app gives it; tilted a little, as things lying about. */
@@ -1355,7 +1355,7 @@ h1, h2, h3 { font-weight: 600; }
 .nts { margin-top: 8px; }
 .nt { position: relative; display: flex; align-items: flex-start; gap: 14px; padding: 12px 0; }
 .nt + .nt::before { content: ""; position: absolute; top: 0; left: 54px; right: 0; height: 1px; background: #E1E5EB; }
-.nt-av { position: relative; flex: none; width: 40px; height: 40px; border-radius: 50%; background: url(img/avatars/finlay.svg) center / cover; }
+.nt-av { position: relative; flex: none; width: 40px; height: 40px; border-radius: 50%; background: url(img/avatars/finlay.jpg) center / cover; }
 .nt.read .nt-av { opacity: .75; }
 .nt-badge { position: absolute; right: -3px; bottom: -3px; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--c); color: #fff; box-shadow: 0 0 0 2px var(--paper); }
 .nt-badge svg { width: 10px; height: 10px; }

@@ -366,7 +366,7 @@ html:not(.js) .tt { position: static; opacity: 1; visibility: visible; grid-area
 .nt { position: relative; display: flex; align-items: flex-start; gap: 14px; padding: 12px 0; }
 .nt:last-child { padding-bottom: 2px; }
 .nt + .nt::before { content: ""; position: absolute; top: 0; left: 54px; right: 0; height: 1px; background: #E1E5EB; }
-.nt-av, .cz-face { position: relative; flex: none; width: 40px; height: 40px; border-radius: 50%; background: #e8eaee url(img/avatars/finlay.svg) center / cover; }
+.nt-av, .cz-face { position: relative; flex: none; width: 40px; height: 40px; border-radius: 50%; background: #e8eaee url(img/avatars/finlay.jpg) center / cover; }
 .nt.read .nt-av { opacity: .75; }
 .nt-badge { position: absolute; right: -3px; bottom: -3px; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--c); color: #fff; box-shadow: 0 0 0 2px var(--paper); }
 .nt-badge svg { width: 10px; height: 10px; }
@@ -393,7 +393,7 @@ html:not(.js) .tt { position: static; opacity: 1; visibility: visible; grid-area
 .cz-play { position: absolute; left: 50%; top: 50%; display: grid; place-items: center; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; background: rgba(255, 255, 255, .22); color: #fff; }
 .cz-play svg { width: 16px; height: 16px; margin-left: 2px; }
 .cz-video em { position: absolute; left: 12px; bottom: 9px; font-style: normal; font-size: 11px; font-weight: 600; color: #fff; }
-.cz-bubble { position: absolute; top: 10px; right: 10px; width: 46px; height: 46px; border-radius: 50%; background: #e8eaee url(img/avatars/finlay.svg) center / cover; box-shadow: 0 0 0 2px #fff; }
+.cz-bubble { position: absolute; top: 10px; right: 10px; width: 46px; height: 46px; border-radius: 50%; background: #e8eaee url(img/avatars/finlay.jpg) center / cover; box-shadow: 0 0 0 2px #fff; }
 /* New targets: the day's figures as the app's small labels, then the coach's words. */
 .cz-targets { display: grid; grid-template-columns: repeat(4, auto); justify-content: space-between; gap: 10px; margin: 12px 0 16px; }
 .cz-targets b { display: block; font-size: 22px; font-weight: 300; letter-spacing: -.02em; line-height: 1.1; color: var(--ink); font-variant-numeric: tabular-nums; }
