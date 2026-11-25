@@ -180,3 +180,27 @@
   }
 
 })();
+
+// Clean addresses (25 Nov, Alex: the logo put norcoachapp.com/#top in the address bar): a link to a part of this page,
+// or to this page itself (the logo), scrolls there and leaves the address as it is; arriving from another page on
+// /#how, the page lands on How it works and the #how goes from the address.
+(function () {
+  var smooth = function () { return window.matchMedia && !matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'auto'; };
+  document.addEventListener('click', function (e) {
+    if (e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    var a = e.target.closest && e.target.closest('a[href]');
+    if (!a || a.target) return;
+    var url = new URL(a.href, location.href);
+    if (url.origin !== location.origin || url.pathname !== location.pathname) return;
+    var id = url.hash.slice(1);
+    var el = id && id !== 'top' ? document.getElementById(id) : null;
+    if (id && id !== 'top' && !el) return;
+    e.preventDefault();
+    if (el) el.scrollIntoView({ behavior: smooth() });
+    else window.scrollTo({ top: 0, behavior: smooth() });
+  });
+  if (location.hash && history.replaceState) {
+    var clean = function () { history.replaceState(history.state, '', location.pathname + location.search); };
+    if (document.readyState === 'complete') clean(); else window.addEventListener('load', clean);
+  }
+})();

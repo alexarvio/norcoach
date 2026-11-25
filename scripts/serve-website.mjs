@@ -13,6 +13,8 @@ createServer(async (req, res) => {
   let file = join(root, path);
   if (!file.startsWith(root)) { res.writeHead(403).end(); return; }
   try {
+    // A page asked for without .html (/training), as norcoachapp.com serves it.
+    if (!extname(file)) await stat(`${file}.html`).then(() => { file = `${file}.html`; }, () => {});
     if ((await stat(file)).isDirectory()) file = join(file, "index.html");
     res.writeHead(200, { "content-type": types[extname(file)] ?? "application/octet-stream", "cache-control": "no-store" });
     res.end(await readFile(file));
