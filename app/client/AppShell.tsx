@@ -466,7 +466,7 @@ export default function AppShell({
   const [scrolled, setScrolled] = useState(false);
   const clearBar = !!active?.bare && !scrolled;
 
-  const goToTab = (tab: string, ref?: number, focus?: TrainingFocus) => {
+  const goToTab = (tab: string, ref?: number, focus?: TrainingFocus, keep = false) => {
     // Not a tab: the invoice notification opens the Invoices screen.
     if (tab === "invoices") {
       if (invoices) {
@@ -491,6 +491,13 @@ export default function AppShell({
       return;
     }
     if (!tabs.some((t) => t.id === tab)) return;
+    // Already there (26 Nov, Alex: the lock-screen pill made the workout on screen "jump, like a little glitch"): only
+    // the focus moves, the tab and what is open in it stay as they are.
+    if (keep) {
+      setFocusRef(ref ?? null);
+      setTrainingFocus(focus ?? null);
+      return;
+    }
     setScrolled(false);
     setPushView(null);
     setActiveId(tab);
@@ -581,12 +588,22 @@ export default function AppShell({
   goToTabNow.current = goToTab;
   const lockedNow = useRef(lockNow);
   lockedNow.current = lockNow;
+  const tabNowRef = useRef(activeId);
+  tabNowRef.current = activeId;
   useEffect(() => {
     if (readOnly) return;
     return listenWorkoutArrive((d) => {
       if (lockedNow.current) return;
+      // That workout already on screen (the client locked the phone mid-session): it stays exactly as it was, never
+      // drawn again (26 Nov, Alex: "the app screen jumps"); Finish still opens its wrap-up over it.
+      let onScreen = false;
+      try {
+        const v = JSON.parse(window.sessionStorage.getItem("ironline.client.session-view") ?? "null") as { dayId?: number; screen?: string } | null;
+        onScreen = tabNowRef.current === "training" && pushNow.current == null && v?.dayId === d.workout && v?.screen === "workout";
+      } catch {}
+      if (onScreen && !d.finish) return;
       const open = (week: number | null, live: boolean) =>
-        goToTabNow.current("training", d.workout, { week, exercise: null, resume: live, ...(live && d.finish ? { finish: true } : {}) });
+        goToTabNow.current("training", d.workout, { week, exercise: null, resume: live, ...(live && d.finish ? { finish: true } : {}) }, onScreen);
       workoutArrivalAction(clientId, d.workout)
         .then((r) => {
           if (r) open(r.week, r.live);
