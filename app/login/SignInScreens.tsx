@@ -189,17 +189,26 @@ export function SignInScreen({
       title="Sign in"
       // A client makes their account and joins their coach by code (18 Nov, Alex); a coach signs up on the website, never
       // inside the phone app (13 Nov: it is the clients' way in, and coaches pay outside the App Store).
+      // One line (26 Nov, Alex: "a better way and cleaner to display these two options"): New here? Client | Coach;
+      // the phone app, which has no coach sign-up, keeps Create an account alone.
       aside={
-        <>
-          <span className="su-aside-line">
-            New here? <Link href="/join">Create an account</Link>
-          </span>
-          {!inApp && (
-            <span className="su-aside-line">
-              Coaching others? <a href={signupHref}>Create a coach account</a>
-            </span>
+        <span className="su-aside-line">
+          New here?{" "}
+          {inApp ? (
+            <Link href="/join">Create an account</Link>
+          ) : (
+            <Bars
+              parts={[
+                <Link key="c" href="/join">
+                  Client
+                </Link>,
+                <a key="k" href={signupHref}>
+                  Coach
+                </a>,
+              ]}
+            />
           )}
-        </>
+        </span>
       }
     >
       {notice && <p className="auth-ok">{notice}</p>}
