@@ -762,7 +762,7 @@ function ClientBlock({
       {/* Events: their own head, then a row a kind with something on the grid; none on the grid, one lane that says
           None yet + Add from this week, as the phases' tracks (22 Oct, Alex), its weeks a way in too. */}
       <div className="pov-sub ev">
-        <span className="pov-sub-label">Events</span>
+        <span className="pov-sub-label">Timeline</span>
         <button type="button" className="pov-add" onClick={() => onNewEvent(today)} aria-label={`New event for ${c.name}`}>
           <PlusIcon /> Add
         </button>

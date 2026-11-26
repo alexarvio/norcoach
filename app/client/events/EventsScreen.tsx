@@ -364,7 +364,7 @@ export default function EventsScreen({ clientId, events, coachName, today, me = 
           <ChevronLeftIcon />
         </button>
         <div className="cn-header-titles">
-          <h1 className="cn-title">Events</h1>
+          <h1 className="cn-title">Timeline</h1>
         </div>
         <span className="cn-icon-spacer" aria-hidden="true" />
       </header>

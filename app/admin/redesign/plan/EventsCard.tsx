@@ -268,7 +268,7 @@ export default function EventsCard({ clientId, events: serverEvents, categories:
     // As the Phases above (20 Oct, Alex): the heading on the page, the grid and its log in one white card.
     <section className="pln-section">
       <div className="rn-card-head">
-        <h2>Events</h2>
+        <h2>Timeline</h2>
         <div className="rq-ev-tools">
           <div className="rq-pan" role="group" aria-label="Move the events in time">
             <button type="button" className="rd-btn ghost" onClick={() => setBack((b) => b + 4)} aria-label="Earlier" title="Earlier">

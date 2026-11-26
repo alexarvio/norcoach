@@ -41,7 +41,7 @@ import { PopupTitle } from "../PopupWho";
 // the goals and the note to the client as two pills on the right. Under it:
 //
 // - Tracked metrics: one card, a row a metric (its group and the last
-//   figure). Daily / Weekly / Monthly on the section's line, each its own
+//   figure). Daily / Weekly on the section's line (Monthly out since 26 Nov), each its own
 //   list. Adding one is the exercise search's bar (a list that floats, six
 //   rows, Create pinned at its foot). Every change saves itself, one after
 //   another, and the line says so: Saving…, All changes saved, or Not saved
@@ -134,7 +134,8 @@ const CAD = {
   weekly: { label: "Weekly", unit: "weeks", recent: "in the last 5 weeks" },
   monthly: { label: "Monthly", unit: "months", recent: "in the last 6 months" },
 } as const;
-const CADENCES = ["daily", "weekly", "monthly"] as const;
+// Daily | Weekly alone (26 Nov, Alex: "take monthly out"): no monthly check-ins any more; what was logged monthly stays stored.
+const CADENCES = ["daily", "weekly"] as const;
 /** A check-in in words, for a message's link and a toast: a day as day/month (19/10); a month keeps its label. */
 const whenOf = (key: string, label: string) => (/^\d{4}-\d{2}-\d{2}$/.test(key) ? dayMonth(key) : label);
 /** A check-in's date, the first thing in its row (21 Oct, Alex: logDate, as every log): the day, or the week's Monday; a month keeps its name. */
@@ -394,7 +395,8 @@ export default function MeasurementsDraft({ clientId, firstName, plan }: { clien
       if (!m) return;
       const c = m[1] as Cadence;
       const period = m[2] ?? null;
-      if (!plan[c].metrics.length) return;
+      // An old link to a monthly check-in: no Monthly to show it under any more.
+      if (c === "monthly" || !plan[c].metrics.length) return;
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         setLogCadence(c);

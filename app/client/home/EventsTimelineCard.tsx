@@ -113,9 +113,9 @@ export default function EventsTimelineCard({ events, today }: { events: HomeEven
   const onToday = items[focused]?.slot === "today";
 
   return (
-    <section ref={wrapRef} className="evt" aria-label="Events">
+    <section ref={wrapRef} className="evt" aria-label="Timeline">
       <div className="evt-head">
-        <span className="evt-eyebrow">Events</span>
+        <span className="evt-eyebrow">Timeline</span>
         {!onToday && (
           <button type="button" className="evt-today" onClick={() => scrollTo(todayIndex)} aria-label="Back to now">
             To now
@@ -125,7 +125,7 @@ export default function EventsTimelineCard({ events, today }: { events: HomeEven
 
       <div className="evt-wrap">
         <span className="evt-spine" aria-hidden="true" />
-        <div ref={rowRef} className="evt-row" role="listbox" aria-label="Events" tabIndex={0} onScroll={onScroll} onKeyDown={onKey} style={{ paddingLeft: side, paddingRight: side }}>
+        <div ref={rowRef} className="evt-row" role="listbox" aria-label="Timeline" tabIndex={0} onScroll={onScroll} onKeyDown={onKey} style={{ paddingLeft: side, paddingRight: side }}>
           {items.map((it, i) => (
             <Item key={it.key} item={it} focused={i === focused} onPick={() => (i === focused ? (it.slot === "more" ? openEvents?.() : it.event ? openEvents?.(it.event.id) : openEvents?.()) : scrollTo(i))} />
           ))}
