@@ -32,10 +32,11 @@ function rows(): StaffRecord[] {
   return data.staff_members;
 }
 
-/** The staff admin's settings (`staff_settings`): new coaches wait for a yes unless switched off. */
+/** The staff admin's settings (`staff_settings`): new coaches wait for a yes only once an owner switches it on in
+ *  Sign-ups (26 Nov: off until admin.norcoachapp.com is reachable, so nobody waits on an Accept no one can give). */
 export function staffSettings(): Required<StaffSettings> {
   const s = getData().staff_settings ?? {};
-  return { approveCoaches: s.approveCoaches !== false };
+  return { approveCoaches: s.approveCoaches === true };
 }
 
 /** Changes the staff admin's settings. Owners only: the caller checks (setStaffSettingAction). */
