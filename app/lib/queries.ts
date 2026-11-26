@@ -8115,8 +8115,12 @@ export function isRunningLifestylePhase(clientId: number, phaseId: number | null
 // coach's Measurements tab (1 Oct), the running phase's. null: no monthly
 // check-in now, so monthly metrics from before (the old measurements sheet)
 // stay off their app until the coach sets one up.
+// No monthly check-ins any more (26 Nov, Alex: "take monthly out"): always null, so no client is asked a monthly
+// metric, sees a monthly group, is reminded of one or has one filled from their phone; what was logged stays stored.
+// The day the coach once picked stays on the phase, unused.
 export function monthlyCheckInDay(clientId: number): number | null {
-  return phaseCheckInDays(clientId, runningLifestylePhaseId(clientId)).monthly;
+  void clientId;
+  return null;
 }
 
 /** Open from its day to the end of the month, like the weekly one within its week. */

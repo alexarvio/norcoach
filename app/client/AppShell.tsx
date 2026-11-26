@@ -1014,7 +1014,8 @@ export default function AppShell({
                           <path d="M14.5 4.5v15" strokeDasharray="2 2.4" />
                         </svg>
                       </span>
-                      Events
+                      {/* Timeline (26 Nov, Alex: "change the Events name to Timeline"). */}
+                      Timeline
                     </button>
                   )}
                   {/* Lifestyle (22 Nov, Alex: "change that to lifestyle"; was Check-in, 12 Nov, A of docs/boards/hidden-ways-mockup.html): the whole screen, Entries,
