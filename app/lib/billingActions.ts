@@ -2,9 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { requireCoachAccount, requireOwner } from "./auth";
-import { applySubscription, billingOn, canSubscribe, getBilling, keepCheckout, markTrialUsed, priceFor, requireBilling, TRIAL_DAYS, type BillingInterval } from "./billing";
-import { billingPortal, cancelSubscription, customerSubscriptions, expireCheckout, subscriptionCheckout } from "./stripe";
+import { applySubscription, billingOn, canSubscribe, getBilling, keepCheckout, markTrialUsed, priceFor, TRIAL_DAYS, type BillingInterval } from "./billing";
+import { billingPortal, customerSubscriptions, expireCheckout, subscriptionCheckout } from "./stripe";
 import { appUrl } from "./passwordReset";
+import { setCoachPays } from "./coachAdminCore";
 
 // What coaches pay Norcoach (28 Oct, Alex; lib/billing.ts). These open when nothing else does (requireCoachAccount):
 // a coach who has to subscribe, or whose plan lapsed, can always reach Stripe.
@@ -65,16 +66,9 @@ export async function openBillingPortalAction(): Promise<{ url?: string; error?:
  *  Stripe too, so nothing is charged for a plan that says Free. */
 export async function setCoachPaysAction(coachId: number, pays: boolean): Promise<{ ok: boolean; error?: string }> {
   await requireOwner();
-  const id = Number(coachId);
-  const b = getBilling(id);
-  if (!pays && b.subscription && (b.status === "trialing" || b.status === "active" || b.status === "past_due")) {
-    try {
-      await cancelSubscription(b.subscription);
-    } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : "Stripe did not answer. Try again." };
-    }
-  }
-  requireBilling(id, !!pays);
+  // Shared with the staff admin's coach page (lib/coachAdminCore.ts).
+  const done = await setCoachPays(Number(coachId), pays);
+  if (!done.ok) return done;
   revalidatePath("/admin/redesign/coaches");
   return { ok: true };
 }

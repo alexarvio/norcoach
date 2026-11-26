@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextFetchEvent, NextRequest } from "next/server";
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import { oldAdminAddress } from "./app/admin/redesign/paths";
+import { hostOf, isStaffHost } from "./app/lib/staffHost";
 
 // Next 16 renamed `middleware.ts` to `proxy.ts` — same mechanism, new name.
 //
@@ -95,7 +96,48 @@ function toSite(request: NextRequest, event: NextFetchEvent): NextResponse | Pro
   return NextResponse.rewrite(url);
 }
 
+// The staff admin (26 Nov, Alex: admin.norcoachapp.com; app/lib/staffHost.ts): on its host every page is one of
+// app/staff's, rewritten under /staff (`/` the Coaches list, `/coaches/NC-…` a coach), while the sign-in, Clerk's way in,
+// the API, the uploads and Next's own files pass through as they are. Clerk's middleware still runs on all of it, so
+// auth() works in the staff pages, and a signed-out visitor goes to /login; with Clerk off, the session cookie as
+// below. Anywhere else /staff answers 404. The real check is requireStaff (app/lib/staff.ts) in every page and action.
+const STAFF_PASS = ["/login", "/auth", "/api", "/uploads", "/sso-callback", "/_next"];
+const staffPasses = (pathname: string) => STAFF_PASS.some((p) => pathname === p || pathname.startsWith(`${p}/`)) || /\.[a-z0-9]{2,5}$/i.test(pathname);
+function staffRewrite(request: NextRequest): NextResponse {
+  const url = request.nextUrl.clone();
+  url.pathname = `/staff${url.pathname === "/" ? "" : url.pathname}`;
+  return NextResponse.rewrite(url);
+}
+function staffToLogin(request: NextRequest): NextResponse {
+  const url = request.nextUrl.clone();
+  const { pathname, search } = request.nextUrl;
+  url.pathname = "/login";
+  url.search = pathname !== "/" ? `?next=${encodeURIComponent(pathname + search)}` : "";
+  return NextResponse.redirect(url);
+}
+// Clerk's middleware for the staff host: it hands back our rewrite, which Clerk decorates with its own headers so auth()
+// works on the rewritten page (a rewrite returned from outside it would lose them).
+const withClerkStaff = !clerkOn ? null : clerkMiddleware(async (auth, request) => {
+  if (staffPasses(request.nextUrl.pathname)) return;
+  const { userId } = await auth();
+  if (!userId) return staffToLogin(request);
+  return staffRewrite(request);
+}, { signInUrl: "/login", signUpUrl: "/signup" });
+function toStaff(request: NextRequest, event: NextFetchEvent): NextResponse | Promise<Response | void> | null {
+  const { pathname } = request.nextUrl;
+  if (!isStaffHost(hostOf(request.headers))) {
+    if (pathname === "/staff" || pathname.startsWith("/staff/")) return new NextResponse(null, { status: 404 });
+    return null;
+  }
+  if (withClerkStaff) return withClerkStaff(request, event) as Promise<Response | void>;
+  if (staffPasses(pathname)) return NextResponse.next();
+  if (!request.cookies.has("ironline_session")) return staffToLogin(request);
+  return staffRewrite(request);
+}
+
 export function proxy(request: NextRequest, event: NextFetchEvent) {
+  const staff = toStaff(request, event);
+  if (staff) return staff;
   const site = toSite(request, event);
   if (site) return site;
   const legal = legalToSite(request);

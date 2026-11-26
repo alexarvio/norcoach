@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Staff admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#141a24; --body:#3a4250; --sec:#5b6474; --muted:#8b93a1; --faint:#98A2B3; --line:#E1E5EB; --div:#EEF0F3; --page:#f4f7fc; --rust:#b8471f; --green:#2f7a3f; --red:#b42318; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #e9edf2; font-family: Archivo, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); }
+  .wrap { max-width: 1360px; margin: 0 auto; padding: 36px 32px 60px; }
+  h1 { margin: 0; font-size: 26px; font-weight: 600; }
+  .lede { margin: 6px 0 0; color: var(--muted); font-size: 14px; font-weight: 500; max-width: 900px; line-height: 21px; }
+  h2 { margin: 44px 0 6px; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: var(--sec); }
+  .what { margin: 0 0 16px; font-size: 14px; font-weight: 500; color: var(--body); line-height: 21px; max-width: 900px; }
+  .sep { display: inline-block; width: 1px; height: .85em; background: currentColor; opacity: .4; margin: 0 7px; vertical-align: -1px; }
+
+  .admin { display: grid; grid-template-columns: 232px 1fr; min-height: 640px; border-radius: 16px; overflow: hidden; background: var(--page); box-shadow: 0 24px 50px -24px rgba(16,24,40,.4); }
+  .url { grid-column: 1 / -1; height: 34px; background: #2a2a2e; display: flex; align-items: center; padding: 0 14px; gap: 7px; }
+  .url i { width: 10px; height: 10px; border-radius: 99px; background: #4a4a50; }
+  .url span { margin-left: 14px; flex: 0 1 420px; height: 22px; border-radius: 7px; background: #3a3a40; color: #d0d3d9; font-size: 12px; display: flex; align-items: center; padding: 0 10px; }
+  .rail { background: #1c1c1e; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+  .rail::before { content: ""; position: absolute; right: -70px; top: 70px; width: 220px; height: 220px; background: #fff; opacity: .07; -webkit-mask: url(../../public/brand/mark.svg) center / contain no-repeat; mask: url(../../public/brand/mark.svg) center / contain no-repeat; }
+  .top { padding: 20px 20px 8px; color: #fff; position: relative; }
+  .word { font-size: 21px; font-weight: 600; letter-spacing: .2em; }
+  .kind { margin-top: 3px; font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: rgba(255,255,255,.5); }
+  .me { display: flex; gap: 10px; align-items: center; padding-top: 16px; }
+  .me i { width: 30px; height: 30px; border-radius: 999px; background: #fff; color: var(--ink); display: grid; place-items: center; font-style: normal; font-weight: 600; font-size: 13px; }
+  .me b { display: block; font-size: 13px; font-weight: 600; }
+  .me small { display: block; font-size: 11px; color: rgba(255,255,255,.55); font-weight: 500; }
+  .views { padding: 10px 10px 16px; display: grid; gap: 2px; position: relative; }
+  .views span { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 999px; font-size: 13.5px; font-weight: 500; color: rgba(255,255,255,.86); }
+  .views span svg { width: 16px; height: 16px; flex: none; }
+  .views span.on { background: #fff; color: var(--ink); font-weight: 600; }
+  .views span em { margin-left: auto; font-style: normal; font-size: 12px; font-weight: 600; color: #f2a888; }
+  .views span.on em { color: var(--rust); }
+  .paper { flex: 1; background: #fff; border-radius: 20px 20px 0 0; padding: 16px 20px; }
+  .paper p { margin: 0; font-size: 12px; color: var(--muted); font-weight: 500; line-height: 18px; }
+
+  .main { padding: 26px 30px 30px; }
+  .head { display: flex; align-items: center; gap: 12px; }
+  .head h3 { margin: 0; font-size: 26px; font-weight: 600; }
+  .head .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .pill { height: 36px; padding: 0 16px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px; }
+  .pill.ink { background: var(--ink); color: #fff; box-shadow: none; }
+  .search { height: 36px; width: 300px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1.5px var(--ink); font-size: 13.5px; color: var(--faint); display: flex; align-items: center; gap: 8px; padding: 0 14px; font-weight: 500; }
+  .search.typed { color: var(--ink); }
+  .search svg { width: 15px; height: 15px; color: var(--muted); }
+  .card { background: #fff; border-radius: 18px; box-shadow: inset 0 0 0 1px var(--line); }
+  .figs { margin-top: 20px; display: grid; grid-template-columns: repeat(4, 1fr); }
+  .fig { padding: 16px 20px; }
+  .fig + .fig { box-shadow: inset 1px 0 0 var(--div); }
+  .fig small { display: block; font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: var(--sec); }
+  .fig b { display: block; margin-top: 6px; font-size: 26px; font-weight: 300; font-variant-numeric: tabular-nums; }
+  .fig span { display: block; margin-top: 2px; font-size: 12.5px; color: var(--muted); font-weight: 500; }
+  .sec { margin: 26px 0 10px; display: flex; align-items: center; gap: 10px; }
+  .sec h4 { margin: 0; font-size: 20px; font-weight: 600; }
+  .sec .n { color: var(--muted); font-size: 14px; font-weight: 500; }
+  .sec .right { margin-left: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th { text-align: left; font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: var(--sec); padding: 14px 12px 8px; }
+  th:first-child, td:first-child { padding-left: 18px; }
+  th:last-child, td:last-child { padding-right: 18px; }
+  td { padding: 0 12px; height: 56px; border-top: 1px solid var(--div); font-weight: 500; color: var(--body); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  td.num, th.num { text-align: right; }
+  .who { display: flex; align-items: center; gap: 10px; }
+  .face { width: 28px; height: 28px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); display: grid; place-items: center; font-size: 12px; font-weight: 600; color: var(--ink); flex: none; background-size: cover; }
+  .who b { display: block; color: var(--ink); font-size: 15px; font-weight: 600; }
+  .who small { display: block; font-size: 12px; color: var(--muted); font-weight: 500; margin-top: 1px; }
+  .state { display: inline-flex; align-items: center; justify-content: center; min-width: 78px; height: 24px; padding: 0 10px; border-radius: 999px; background: #fff; font-size: 11.5px; font-weight: 600; box-shadow: inset 0 0 0 1px rgba(47,122,63,.35); color: var(--green); }
+  .state.trial { box-shadow: inset 0 0 0 1px var(--ink); color: var(--ink); }
+  .state.free { box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); }
+  .state.fail { box-shadow: inset 0 0 0 1px var(--rust); color: var(--rust); }
+  .dash { color: var(--faint); }
+  .rust { color: var(--rust); }
+  .hl td { background: rgba(20,26,36,.035); }
+
+  .chead { display: flex; align-items: center; gap: 16px; }
+  .chead .face { width: 64px; height: 64px; font-size: 24px; }
+  .chead h3 { margin: 0; font-size: 26px; font-weight: 600; }
+  .chead .facts { margin-top: 4px; font-size: 13.5px; color: var(--muted); font-weight: 500; }
+  .back { font-size: 13px; font-weight: 600; color: var(--sec); margin-bottom: 14px; display: inline-block; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .rows .row { display: flex; align-items: center; height: 52px; padding: 0 18px; font-size: 14px; font-weight: 500; color: var(--body); }
+  .rows .row + .row { border-top: 1px solid var(--div); }
+  .rows .row span:first-child { color: var(--sec); width: 150px; font-size: 13px; }
+  .rows .row b { font-weight: 600; color: var(--ink); }
+  .rows .row .act { margin-left: auto; font-size: 13px; font-weight: 600; color: var(--ink); }
+  .rows .row .act.red { color: var(--red); }
+  .lab { font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: var(--ink); margin: 22px 0 8px; display: flex; gap: 6px; align-items: center; }
+  .lab small { color: var(--muted); font-size: inherit; letter-spacing: inherit; }
+  .thread { padding: 16px 18px; display: grid; gap: 8px; }
+  .bub { max-width: 78%; padding: 9px 13px; border-radius: 16px; font-size: 13.5px; font-weight: 500; line-height: 19px; }
+  .bub.them { background: #fff; box-shadow: inset 0 0 0 1px var(--line); justify-self: start; }
+  .bub.us { background: #eef1f5; justify-self: end; }
+  .bub small { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .tag { display: inline-block; font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--rust); box-shadow: inset 0 0 0 1px rgba(184,71,31,.4); border-radius: 999px; padding: 2px 7px; margin-right: 6px; }
+  .compose { display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-top: 1px solid var(--div); }
+  .compose span { flex: 1; font-size: 13.5px; color: var(--faint); border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+  .perms { border-top: 1px solid var(--div); padding: 6px 18px 14px; }
+  .plab { font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: var(--ink); margin: 14px 0 4px; }
+  .perm { display: flex; align-items: center; height: 54px; }
+  .perm + .perm { border-top: 1px solid var(--div); }
+  .perm b { display: block; font-size: 14px; font-weight: 600; }
+  .perm small { display: block; font-size: 12px; color: var(--muted); font-weight: 500; margin-top: 2px; }
+  .sw { margin-left: auto; width: 36px; height: 22px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; position: relative; flex: none; }
+  .sw i { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 999px; background: #c9cfd8; }
+  .sw.on { background: var(--ink); box-shadow: none; }
+  .sw.on i { left: 17px; background: #fff; }
+  .pfoot { display: flex; justify-content: space-between; padding-top: 12px; border-top: 1px solid var(--div); font-size: 13px; font-weight: 600; }
+  .pfoot .red { color: var(--red); }
+  .never { margin-top: 18px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .never span { font-size: 12px; font-weight: 600; color: var(--muted); padding: 5px 10px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); text-decoration: line-through; }
+  .note { margin-top: 10px; font-size: 13px; color: var(--muted); font-weight: 500; }
+  .dot { display: inline-block; width: 6px; height: 6px; border-radius: 99px; background: var(--rust); vertical-align: 2px; margin-left: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Staff admin</h1>
+  <p class="lede">admin.norcoachapp.com, for you, Finlay and whoever joins. It's about the coaches as Norcoach's customers: their plan, what they pay, how long they've been with us and how many clients they have, plus Support. It never shows a coach's clients: no names, chats, photos, videos or shape updates. app.norcoachapp.com stays as it is.</p>
+
+  <h2>1 · Coaches</h2>
+  <p class="what">Opens here. The figures across Norcoach, then every coach as a row. One search finds a coach by name, business, email or Norcode, typed with or without <b>NC-</b>. Region is where they last signed in from, city and country as Clerk records it. A row opens the coach.</p>
+  <div class="admin">
+    <div class="url"><i></i><i></i><i></i><span>admin.norcoachapp.com/coaches</span></div>
+    <aside class="rail">
+      <div class="top">
+        <div class="word">NORCOACH</div>
+        <div class="kind">Staff</div>
+        <div class="me"><i>A</i><div><b>Alex Arvio</b><small>Owner</small></div></div>
+      </div>
+      <div class="views">
+        <span class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.8-3 3-4.6 5.5-4.6s4.7 1.6 5.5 4.6M16 5.2a3 3 0 0 1 0 5.6M17.6 14.6c1.6.6 2.6 2 3 4.4"/></svg>Coaches</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5h16v10H9l-5 3.5z"/></svg>Support<em>3</em></span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="12" rx="2"/><path d="M10.5 9v4.5l3.8-2.25z"/></svg>Guides</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l7 3v5c0 4.5-3 7.8-7 9-4-1.2-7-4.5-7-9v-5z"/></svg>Staff</span>
+      </div>
+      <div class="paper"></div>
+    </aside>
+    <main class="main">
+      <div class="head"><h3>Coaches</h3><div class="right"><label class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/></svg>Name, business, email or Norcode</label></div></div>
+      <div class="card figs">
+        <div class="fig"><small>Coaches</small><b>14</b><span>+3 in November</span></div>
+        <div class="fig"><small>Paying</small><b>9</b><span>3 on trial <i class="sep"></i>2 free</span></div>
+        <div class="fig"><small>A month</small><b>€531</b><span>€59 a coach</span></div>
+        <div class="fig"><small>Clients</small><b>212</b><span>15 a coach</span></div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <table>
+          <tr><th>Coach</th><th>Plan</th><th class="num">Pays</th><th>With us</th><th class="num">Clients</th><th>Last in</th><th>Region</th></tr>
+          <tr><td><div class="who"><span class="face">F</span><div><b>Finlay Mitchell</b><small>Full Potential Coaching <i class="sep"></i>NC-K7M2XQ9T</small></div></div></td><td><span class="state free">Free</span></td><td class="num dash">—</td><td>Since 1/9 <i class="sep"></i>3 months</td><td class="num">38</td><td>Today</td><td>Glasgow, UK</td></tr>
+          <tr><td><div class="who"><span class="face">J</span><div><b>Jordan Hale</b><small>Hale Coaching <i class="sep"></i>NC-8R4WPZ2D</small></div></div></td><td><span class="state">Yearly</span></td><td class="num">€49 a month</td><td>Since 4/10 <i class="sep"></i>7 weeks</td><td class="num">21</td><td>Yesterday</td><td>Bangkok, TH</td></tr>
+          <tr><td><div class="who"><span class="face">M</span><div><b>Mia Laurent</b><small>Strong Form <i class="sep"></i>NC-3TQ9HB6V</small></div></div></td><td><span class="state">Monthly</span></td><td class="num">€59 a month</td><td>Since 12/10 <i class="sep"></i>6 weeks</td><td class="num">17</td><td>3 days ago</td><td>Amsterdam, NL</td></tr>
+          <tr><td><div class="who"><span class="face">D</span><div><b>Daniel Ross</b><small>Ross Performance <i class="sep"></i>NC-Q2X7MD4K</small></div></div></td><td><span class="state trial">Trial</span></td><td class="num dash">Ends 2/12</td><td>Since 18/11 <i class="sep"></i>8 days</td><td class="num">4</td><td>Today</td><td>Dublin, IE</td></tr>
+          <tr><td><div class="who"><span class="face">S</span><div><b>Sara Novak</b><small>Novak Nutrition <i class="sep"></i>NC-W9PK3T7R</small></div></div></td><td><span class="state fail">Payment failed</span></td><td class="num">€59 a month</td><td>Since 2/10 <i class="sep"></i>8 weeks</td><td class="num">12</td><td class="rust">12 days ago</td><td>Prague, CZ</td></tr>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <h2>2 · A coach</h2>
+  <p class="what">What we know about them as a customer, nothing about their clients. Billing on the left, the account on the right, then their Support thread. Owner actions are words on the rows; staff see the same rows without them.</p>
+  <div class="admin">
+    <div class="url"><i></i><i></i><i></i><span>admin.norcoachapp.com/coaches/NC-3TQ9HB6V</span></div>
+    <aside class="rail">
+      <div class="top"><div class="word">NORCOACH</div><div class="kind">Staff</div><div class="me"><i>A</i><div><b>Alex Arvio</b><small>Owner</small></div></div></div>
+      <div class="views">
+        <span class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.8-3 3-4.6 5.5-4.6s4.7 1.6 5.5 4.6M16 5.2a3 3 0 0 1 0 5.6M17.6 14.6c1.6.6 2.6 2 3 4.4"/></svg>Coaches</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5h16v10H9l-5 3.5z"/></svg>Support<em>3</em></span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="12" rx="2"/><path d="M10.5 9v4.5l3.8-2.25z"/></svg>Guides</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l7 3v5c0 4.5-3 7.8-7 9-4-1.2-7-4.5-7-9v-5z"/></svg>Staff</span>
+      </div>
+      <div class="paper"></div>
+    </aside>
+    <main class="main">
+      <span class="back">‹ Coaches</span>
+      <div class="chead"><span class="face">M</span><div><h3>Mia Laurent</h3><div class="facts">Strong Form <i class="sep"></i>Netherlands <i class="sep"></i>NC-3TQ9HB6V</div></div></div>
+      <div class="card figs">
+        <div class="fig"><small>Plan</small><b>Monthly</b><span>Renews 12/12</span></div>
+        <div class="fig"><small>Pays</small><b>€59</b><span>a month <i class="sep"></i>€118 so far</span></div>
+        <div class="fig"><small>With us</small><b>6 weeks</b><span>Since 12/10</span></div>
+        <div class="fig"><small>Clients</small><b>17</b><span>14 in the app</span></div>
+      </div>
+      <div class="two">
+        <div>
+          <div class="lab">Billing</div>
+          <div class="card rows">
+            <div class="row"><span>Plan</span><b>Monthly, €59</b><span class="act">Make it free</span></div>
+            <div class="row"><span>Trial</span>Used <i class="sep"></i>12/10 – 26/10</div>
+            <div class="row"><span>Stripe</span>Active<span class="act">Open in Stripe</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="lab">Account</div>
+          <div class="card rows">
+            <div class="row"><span>Email</span>mia@strongform.nl</div>
+            <div class="row"><span>Signs in with</span>Google</div>
+            <div class="row"><span>Last in</span>3 days ago</div>
+            <div class="row"><span>Last region</span>Amsterdam, Netherlands<span class="act red">Remove</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="lab">Support <small><i class="sep"></i>1 problem open</small></div>
+      <div class="card">
+        <div class="thread">
+          <div class="bub them"><span class="tag">Problem</span>The invoice email didn't arrive for one client.<small>Mon 24/11, 14:02 <i class="sep"></i>Invoices</small></div>
+          <div class="bub us">Looking into it now, Mia.<small>Finlay <i class="sep"></i>14:20</small></div>
+        </div>
+        <div class="compose"><span>Reply</span><span class="pill" style="flex:none">Done</span><span class="pill ink" style="flex:none">Send</span></div>
+      </div>
+      <div class="never"><span>Client names</span><span>Chats</span><span>Photos and videos</span><span>Shape updates</span><span>Check-ins and food</span></div>
+      <p class="note">Never shown here, to anyone on staff.</p>
+    </main>
+  </div>
+
+  <h2>3 · Staff</h2>
+  <p class="what">Who can get into admin.norcoachapp.com. You and Finlay are owners: every screen and every action. Someone added later is Staff, and an owner switches on what they can do, one switch per thing. They sign in with Google, Apple or an email code like any Norcoach login, no coach account needed. A reply in Support says who on staff wrote it.</p>
+  <div class="admin">
+    <div class="url"><i></i><i></i><i></i><span>admin.norcoachapp.com/staff</span></div>
+    <aside class="rail">
+      <div class="top"><div class="word">NORCOACH</div><div class="kind">Staff</div><div class="me"><i>A</i><div><b>Alex Arvio</b><small>Owner</small></div></div></div>
+      <div class="views">
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.8-3 3-4.6 5.5-4.6s4.7 1.6 5.5 4.6M16 5.2a3 3 0 0 1 0 5.6M17.6 14.6c1.6.6 2.6 2 3 4.4"/></svg>Coaches</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5h16v10H9l-5 3.5z"/></svg>Support<em>3</em></span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="12" rx="2"/><path d="M10.5 9v4.5l3.8-2.25z"/></svg>Guides</span>
+        <span class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l7 3v5c0 4.5-3 7.8-7 9-4-1.2-7-4.5-7-9v-5z"/></svg>Staff</span>
+      </div>
+      <div class="paper"></div>
+    </aside>
+    <main class="main">
+      <div class="head"><h3>Staff</h3><div class="right"><span class="pill">+ Add someone</span></div></div>
+      <div class="card" style="margin-top:20px">
+        <table>
+          <tr><th>Person</th><th>Role</th><th>Added</th><th>Last in</th></tr>
+          <tr><td><div class="who"><span class="face">A</span><div><b>Alex Arvio</b><small>alex@…</small></div></div></td><td><span class="state trial">Owner</span></td><td class="dash">—</td><td>Now</td></tr>
+          <tr><td><div class="who"><span class="face">F</span><div><b>Finlay Mitchell</b><small>finlay@…</small></div></div></td><td><span class="state trial">Owner</span></td><td>26/11</td><td>Today</td></tr>
+          <tr class="hl"><td><div class="who"><span class="face">E</span><div><b>Emma Clarke</b><small>Later, an employee</small></div></div></td><td><span class="state free">Staff</span></td><td>3/2</td><td class="dash">Not yet</td></tr>
+        </table>
+        <div class="perms">
+          <div class="plab">What Emma can do</div>
+          <div class="perm"><div><b>See coaches</b><small>The list, a coach’s plan, clients and region</small></div><span class="sw on"><i></i></span></div>
+          <div class="perm"><div><b>See what coaches pay</b><small>Pays, A month and Stripe</small></div><span class="sw"><i></i></span></div>
+          <div class="perm"><div><b>Answer support</b><small>Reply and mark a problem done</small></div><span class="sw on"><i></i></span></div>
+          <div class="perm"><div><b>Make and edit guides</b><small>The help videos coaches watch</small></div><span class="sw"><i></i></span></div>
+          <div class="perm"><div><b>Change a coach’s billing</b><small>Make them pay or make it free</small></div><span class="sw"><i></i></span></div>
+          <div class="perm"><div><b>Remove a coach</b><small>Only a coach with no clients</small></div><span class="sw"><i></i></span></div>
+          <div class="pfoot"><span class="act red">Remove Emma</span><span class="act">Make owner</span></div>
+        </div>
+      </div>
+      <p class="note">An owner can do everything, including adding people and setting what they can do; a screen someone can’t use isn’t in their rail.</p>
+    </main>
+  </div>
+</div>
+</body>
+</html>

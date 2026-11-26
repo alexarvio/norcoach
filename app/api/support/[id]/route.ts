@@ -4,6 +4,7 @@ import { DATA_DIR } from "../../../lib/db";
 import { getRequestUser, isOwner } from "../../../lib/auth";
 import { bucketLink, keyOf, LINK_CACHE_SECONDS, mimeFor, smallCopy } from "../../../lib/storage";
 import { getSupportMessage } from "../../../lib/support";
+import { getStaff, staffCan } from "../../../lib/staff";
 
 // A support screenshot (23 Oct; lib/support.ts): to the coach whose thread it is in and to the owner, no one else.
 // Stored as the app's other uploads are ("/uploads/support/<coachId>/<file>", in the bucket when it is on), served
@@ -16,8 +17,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const user = await getRequestUser(request);
   const { id } = await params;
   const m = getSupportMessage(Number(id));
-  if (!user || user.role !== "coach" || user.pending || !m?.image_path) return notFound();
-  if (user.id !== m.coach_id && !isOwner(user)) return notFound();
+  if (!m?.image_path) return notFound();
+  const theirs = !!user && user.role === "coach" && !user.pending && (user.id === m.coach_id || isOwner(user));
+  // Norcoach staff who answer support (26 Nov, Alex; app/lib/staff.ts), with no coach account needed.
+  if (!theirs && !staffCan(await getStaff(), "support")) return notFound();
   const key = keyOf(m.image_path);
   if (!key) return notFound();
 

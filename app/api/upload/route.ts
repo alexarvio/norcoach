@@ -1,6 +1,7 @@
 import { getRequestUser } from "../../lib/auth";
 import { coachOwnsClient } from "../../lib/tenancy";
 import { receiveUpload, UPLOAD_KINDS, type UploadKind } from "../../lib/streamUpload";
+import { staffUploaderFromRequest } from "../../lib/staffUpload";
 
 // Every big file comes here first, as the raw body (4 Nov, Alex: memory; lib/streamUpload.ts), outside proxy.ts (its
 // matcher), so Next never copies the body into memory, and is written to the disk as it arrives. The answer is a handle
@@ -13,9 +14,15 @@ export async function POST(request: Request) {
   const notFound = () => Response.json({ error: "Not found" }, { status: 404 });
   // From the request: the proxy does not run here, so Clerk's auth() cannot.
   const user = await getRequestUser(request);
-  if (!user || user.must_change_password || user.pending) return notFound();
   const url = new URL(request.url);
   const kind = url.searchParams.get("kind") as UploadKind | null;
+  // A guide's clip from Norcoach staff who make the guides with no coach account (26 Nov, Alex; lib/staffUpload.ts):
+  // filed under their own negative number, which uploadGuideVideoAction claims it with.
+  if (kind === "video" && (!user || user.role !== "coach")) {
+    const staffId = await staffUploaderFromRequest(request, "guides");
+    if (staffId != null) return receiveUpload(request, { userId: staffId, clientId: null, kind, type: url.searchParams.get("type") ?? "", name: url.searchParams.get("name") ?? "" });
+  }
+  if (!user || user.must_change_password || user.pending) return notFound();
   if (!kind || !UPLOAD_KINDS.includes(kind)) return Response.json({ error: "Not a kind of upload." }, { status: 400 });
   const asked = Number(url.searchParams.get("clientId"));
 

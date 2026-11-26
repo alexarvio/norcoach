@@ -1,0 +1,4 @@
+/* The staff admin's Guides (26 Nov, Alex; app/staff/guides): the coach admin's own guides editor (GuidesSection) on a
+   staff screen, its section title drawn as every staff screen's title (26px/600) and in line with the rest. */
+.stf .stf-guides.rd.trn .rls-section > .trn-weekhead { align-items: center; min-height: 40px; margin-bottom: 8px; }
+.stf .stf-guides.rd.trn .rls-section > .trn-weekhead h2 { font-size: 26px; font-weight: 600; line-height: 1.2; }

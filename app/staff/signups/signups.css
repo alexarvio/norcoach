@@ -1,0 +1,15 @@
+/* The staff admin's Sign-ups (26 Nov, Alex; app/staff/signups): its rows' own touches. Everything else is staff.css's. */
+.stf-su-waiting td.stf-su-who, .stf-su-apps td.stf-su-who { width: 100%; max-width: 0; }
+.stf-su-waiting td.stf-su-who small, .stf-su-apps td.stf-su-who small { white-space: nowrap; }
+/* Decline in words, then the ink Accept, on the row's right. */
+.stf-su-acts { text-align: right; }
+.stf-su-acts > * { vertical-align: middle; }
+.stf-su-acts .stf-act { margin-right: 12px; }
+.stf-su-err { margin: 0; padding: 0 18px 12px; }
+/* An application leads with its day (13.5px, body grey), the chevron after it. */
+.stf-su-date { font-size: 13.5px; color: var(--stf-body); }
+.stf-su-date .rd-fold { margin-left: 6px; vertical-align: -3px; }
+/* Its answers under it: the rows of facts, a long answer running on over lines. */
+.stf-su-answers { box-shadow: inset 0 1px 0 var(--stf-div); }
+.stf-su-answers .stf-kv.stf-su-long { align-items: flex-start; padding-top: 16px; padding-bottom: 16px; }
+.stf-su-answers .stf-su-long .stf-kv-v { white-space: pre-wrap; overflow: visible; line-height: 21px; }

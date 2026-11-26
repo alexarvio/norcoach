@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sendApplicationEmail, type Application } from "../../lib/mail";
+import { addCoachApplication } from "../../lib/staffSignups";
 
 // The website's Apply form (norcoachapp.com/apply.html, website/; 28 Oct, Alex: "email me"): each application is
 // emailed to APPLY_TO_EMAIL (else OWNER_EMAIL) through Resend, Reply going to the coach who applied. Public, so the
@@ -61,7 +62,18 @@ export async function POST(request: Request) {
   const ip = (request.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
   if (tooMany(ip)) return reply(429, { error: "Too many" });
 
+  // Kept for the staff admin's Sign-ups (26 Nov, Alex; lib/staffSignups.ts) before it is emailed, so it is there however
+  // the email goes. A store that can't take it doesn't stop the email.
+  let kept = false;
+  try {
+    addCoachApplication(a);
+    kept = true;
+  } catch (error) {
+    console.error("[apply] not kept:", error instanceof Error ? error.message : error);
+  }
   if (await sendApplicationEmail(a)) return reply(200, { ok: true });
   console.error(`[apply] not emailed, kept here: ${JSON.stringify(a)}`);
+  // Not emailed but on Sign-ups: it reached us.
+  if (kept) return reply(200, { ok: true });
   return reply(503, { error: "Not sent" });
 }

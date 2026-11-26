@@ -2,6 +2,8 @@ import type { MessageLink } from "./messageLinks";
 import fs from "fs";
 import type { GoalTracking } from "./goalView";
 import type { HelpGuide } from "./guides";
+import type { StaffRecord, StaffSettings } from "./staffTypes";
+import type { CoachApplication } from "./staffSignups";
 import path from "path";
 import { CHAT_PG } from "./chat/mode";
 import { NOTES_PG } from "./notes/mode";
@@ -1236,6 +1238,9 @@ export type SupportMessage = {
   /** A problem the owner closed. */
   done?: boolean;
   done_at?: string | null;
+  /** Who on Norcoach's staff wrote an owner-side line (26 Nov, Alex; the staff admin): their name, shown on the staff
+   *  side alone; the coach reads every such line as Norcoach, as before. None from the coach admin's Coaches screen. */
+  by?: string | null;
 };
 
 // A log of coach-side changes worth surfacing to the client — "your coach
@@ -1613,6 +1618,11 @@ export type Data = {
   join_requests?: JoinRequest[];
   // The guides for coaches (24 Nov, Alex; lib/guides.ts), made by the owner. Not a Postgres table of its own: kept in `kv`.
   help_guides?: HelpGuide[];
+  // Norcoach's staff and the staff admin's settings (26 Nov, Alex; lib/staff.ts), and what the website's Apply form sent
+  // (lib/staffSignups.ts). Not Postgres tables of their own: kept in `kv`.
+  staff_members?: StaffRecord[];
+  staff_settings?: StaffSettings;
+  coach_applications?: CoachApplication[];
   // Saves already taken, by their one-time key (6 Nov, lib/once.ts): a save sent again after the signal dropped answers
   // as the first did instead of adding twice. Kept a day. A Postgres table of its own since 18 Nov (pg/onceKeys.ts),
   // with a copy in `kv` for a rollback.

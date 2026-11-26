@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { createPasswordlessUser, findUserByEmail, getSessionUser, isOwner, requireCoach, requireCoachAccount } from "./auth";
 import { clerkIdentity, clerkOn } from "./clerk";
-import { letCoachIn } from "./coachSignUp";
+import { letCoachInOrWait } from "./coachSignUp";
 import { withNames } from "./coachNames";
 import { getData, persist, persistNow } from "./db";
 import { billingAccess } from "./billing";
@@ -97,7 +97,9 @@ export async function saveCoachAboutAction(form: FormData): Promise<{ ok: boolea
     // Asking a coach to join them before: that request goes, as they are a coach themselves now.
     if (latestRequestFor(who.userId)?.status === "open") withdrawJoinRequest(who.userId);
     coachId = createPasswordlessUser(email, "coach", null, { name, business: null }).id;
-    letCoachIn(coachId);
+    // In at once, or (26 Nov: the staff admin's Sign-ups, while it asks) waiting for a yes on /auth/waiting, with this
+    // step's name, photo and date of birth kept; Your business comes once they are let in.
+    letCoachInOrWait(coachId);
     (await cookies()).delete("ironline_intent");
   }
   const p = getCoachProfile(coachId);
@@ -145,6 +147,8 @@ export async function saveCoachAboutAction(form: FormData): Promise<{ ok: boolea
   }
   await persistNow().catch(() => {});
   // While coaches pay: the subscribe screen before Your business (the rest of setup waits on it, /auth/coach-setup).
+  // Waiting for a yes: the waiting screen, nothing more of setup until they are let in.
+  if (user?.pending) return { ok: true, next: "/auth/waiting", photo };
   const owner = isOwner({ role: "coach", email: user?.email ?? "" });
   const next = billingAccess(coachId, owner).state === "subscribe" ? "/auth/subscribe" : undefined;
   return { ok: true, next, photo };

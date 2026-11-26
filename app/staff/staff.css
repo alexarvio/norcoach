@@ -1,0 +1,214 @@
+/* The staff admin (26 Nov, Alex: docs/boards/staff-admin-mockup.html; app/staff). Its own classes, `stf-`, for every
+   staff screen: the frame and rail, a screen's head, cards, figures, tables, state pills, rows of facts, word actions,
+   switches, a Support thread, the Staff screen's permissions. The coach admin's `.dlh` pop-up, `.rd-sep` (Sep),
+   `.rd-rowfold` (RowFold) and `.rd-search` come from its own files, imported by the layout. Archivo 500/600, ink, the
+   hairline, the page #f4f7fc, as docs/DESIGN-RULES-ADMIN.md. */
+
+.stf {
+  --stf-ink: #141a24; --stf-body: #3a4250; --stf-sec: #5b6474; --stf-muted: #8b93a1; --stf-faint: #98a2b3;
+  --stf-line: #e1e5eb; --stf-btn: #dce1e8; --stf-div: #eef0f3; --stf-page: #f4f7fc; --stf-hover: #fafbfd;
+  --stf-rust: #b8471f; --stf-green: #2f7a3f; --stf-red: #b42318;
+  display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh; min-height: 100dvh;
+  background: var(--stf-page); color: var(--stf-ink); font-family: var(--font-archivo), system-ui, sans-serif; font-weight: 500;
+}
+.stf.stf-bare { display: block; }
+.stf :where(a) { color: inherit; text-decoration: none; }
+.stf button { font: inherit; }
+
+/* ---- The rail ------------------------------------------------------------------------------------------------- */
+.stf-rail { position: sticky; top: 0; height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; background: #1c1c1e; }
+.stf-rail::before { content: ""; position: absolute; right: -73px; top: 70px; width: 220px; height: 220px; background: #fff; opacity: 0.07; pointer-events: none; -webkit-mask: url("/brand/mark.svg") center / contain no-repeat; mask: url("/brand/mark.svg") center / contain no-repeat; }
+.stf-rail-top { position: relative; padding: 22px 20px 8px; color: #fff; }
+.stf-word { display: flex; font-size: 22px; line-height: 1; color: #fff; }
+.stf-kind { margin-top: 8px; font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; color: rgba(255, 255, 255, 0.5); }
+.stf-me { display: flex; align-items: center; gap: 10px; padding-top: 18px; min-width: 0; }
+.stf-me-face { flex: none; width: 30px; height: 30px; border-radius: 999px; background: #fff; color: var(--stf-ink); display: grid; place-items: center; font-size: 13px; font-weight: 600; }
+.stf-me-words { min-width: 0; }
+.stf-me-words b { display: block; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stf-me-words small { display: block; font-size: 11px; font-weight: 500; color: rgba(255, 255, 255, 0.55); }
+.stf-views { position: relative; display: grid; gap: 2px; padding: 12px 10px 18px; }
+.stf-view { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 999px; font-size: 13.5px; font-weight: 500; color: rgba(255, 255, 255, 0.86); transition: background 0.2s ease, color 0.2s ease; }
+.stf-view svg { flex: none; width: 16px; height: 16px; translate: 0 -0.5px; }
+.stf-view:hover { background: rgba(255, 255, 255, 0.08); }
+.stf-view.on, .stf-view.on:hover { background: #fff; color: var(--stf-ink); font-weight: 600; }
+.stf-view em { margin-left: auto; font-style: normal; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; color: #f2a888; }
+.stf-view.on em { color: var(--stf-rust); }
+.stf-view:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.stf-paper { position: relative; flex: 1; display: flex; flex-direction: column; justify-content: flex-end; padding: 14px 12px; background: #fff; border-radius: 20px 20px 0 0; }
+.stf-signout { margin: 0; }
+
+/* ---- A screen ------------------------------------------------------------------------------------------------- */
+.stf-main { min-width: 0; padding: 28px 32px 48px; }
+.stf-screen { max-width: 1180px; }
+.stf-head { display: flex; align-items: center; gap: 12px; min-height: 40px; }
+.stf-title { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; }
+.stf-head-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.stf-head .rd-search { width: 300px; max-width: 100%; }
+/* `‹ Coaches`: going back, in words. */
+.stf-back { display: inline-block; margin-bottom: 14px; font-size: 13px; font-weight: 600; color: var(--stf-sec); }
+.stf-back:hover { color: var(--stf-ink); }
+/* A coach's head: their face big, the name, the facts grey parted by the drawn bar. */
+.stf-chead { display: flex; align-items: center; gap: 16px; }
+.stf-chead h1 { margin: 0; font-size: 26px; font-weight: 600; }
+.stf-facts { margin-top: 4px; font-size: 13.5px; font-weight: 500; color: var(--stf-muted); }
+
+/* ---- Pills and words ------------------------------------------------------------------------------------------ */
+/* The white hairline pill (+ Add someone, Message all coaches); `.ink` the screen's one ink pill (Send, Accept). */
+.stf-pill { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px var(--stf-btn); font-size: 13px; font-weight: 600; color: var(--stf-ink); cursor: pointer; white-space: nowrap; }
+.stf-pill:hover { background: var(--stf-hover); }
+.stf-pill.ink { background: var(--stf-ink); color: #fff; box-shadow: none; }
+.stf-pill.ink:hover { background: #262e3b; }
+.stf-pill:disabled { cursor: default; opacity: 0.4; }
+.stf-pill.small { height: 32px; padding: 0 14px; }
+.stf-pill:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--stf-btn), 0 0 0 3px rgba(20, 26, 36, 0.14); }
+/* A word action: 32px, 13px/600, ink; `.red` for one that takes something away, `.grey` the quieter one. */
+.stf-act { display: inline-flex; align-items: center; height: 32px; padding: 0 10px; margin: 0 -10px; border: 0; border-radius: 999px; background: none; font-size: 13px; font-weight: 600; color: var(--stf-ink); cursor: pointer; white-space: nowrap; }
+.stf-act:hover { background: #f5f6f8; }
+.stf-act.red { color: var(--stf-red); }
+.stf-act.grey { color: var(--stf-sec); }
+.stf-act:disabled { opacity: 0.4; cursor: default; }
+.stf-act:focus-visible { outline: none; background: #f5f6f8; }
+.stf-dash { color: var(--stf-faint); }
+.stf-rust { color: var(--stf-rust); }
+.stf-green { color: var(--stf-green); }
+.stf-red { color: var(--stf-red); }
+.stf-grey { color: var(--stf-muted); }
+/* An error under what failed: rust, 13px. */
+.stf-error { margin: 8px 0 0; font-size: 13px; font-weight: 500; color: var(--stf-rust); }
+/* An empty list's one word (`None yet`, `No match`), on the left, midway down its card. */
+.stf-empty { display: flex; align-items: center; min-height: 53.5px; padding: 0 19px; font-size: 13px; font-weight: 500; color: var(--stf-muted); }
+
+/* ---- Cards ---------------------------------------------------------------------------------------------------- */
+.stf-card { background: #fff; border-radius: 18px; box-shadow: inset 0 0 0 1px var(--stf-line); }
+.stf-card + .stf-card { margin-top: 16px; }
+/* The figures across the top: a cell a figure, a small caps label, the figure light, a grey fact under it. */
+.stf-figs { display: grid; grid-template-columns: repeat(var(--stf-figs, 4), minmax(0, 1fr)); margin-top: 20px; margin-bottom: 16px; }
+.stf-fig { min-width: 0; padding: 16px 20px; }
+.stf-fig + .stf-fig { box-shadow: inset 1px 0 0 var(--stf-div); }
+.stf-fig small { display: block; font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; color: var(--stf-sec); }
+.stf-fig b { display: block; margin-top: 6px; font-size: 26px; font-weight: 300; font-variant-numeric: tabular-nums; color: var(--stf-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stf-fig > span { display: block; margin-top: 2px; font-size: 12.5px; font-weight: 500; color: var(--stf-muted); }
+/* A section on the page: its title 20px, a grey count after it, its action on the right. */
+.stf-sec { display: flex; align-items: center; gap: 10px; margin: 28px 0 10px; }
+.stf-sec h2 { margin: 0; font-size: 20px; font-weight: 600; }
+.stf-sec .stf-n { font-size: 14px; font-weight: 500; color: var(--stf-muted); }
+.stf-sec-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+/* A part's small caps label in ink (Billing, Account, Support), a grey fact after the bar. */
+.stf-lab { display: flex; align-items: center; gap: 6px; margin: 22px 0 8px; font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; color: var(--stf-ink); }
+.stf-lab small { font-size: inherit; letter-spacing: inherit; color: var(--stf-muted); }
+/* Two parts side by side (Billing | Account), one under the other on a narrow page. */
+.stf-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+
+/* ---- Tables --------------------------------------------------------------------------------------------------- */
+.stf-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.stf-table th { padding: 14px 12px 8px; text-align: left; font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; color: var(--stf-sec); white-space: nowrap; }
+.stf-table td { height: 56px; padding: 0 12px; border-top: 1px solid var(--stf-div); font-weight: 500; color: var(--stf-body); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.stf-table th:first-child, .stf-table td:first-child { padding-left: 18px; }
+.stf-table th:last-child, .stf-table td:last-child { padding-right: 18px; }
+.stf-table .num { text-align: right; }
+/* A row that opens something: the one row hover, the hand. A fold under a row sits in a cell spanning the table. */
+.stf-table tr.stf-link { cursor: pointer; }
+.stf-table tr.stf-link:hover td { background: var(--stf-hover); }
+.stf-table tr.stf-link:focus-visible { outline: none; }
+.stf-table tr.stf-link:focus-visible td { background: var(--stf-hover); }
+.stf-table tr.open td { background: var(--stf-hover); }
+.stf-table td.stf-foldcell { height: auto; padding: 0; border-top: 0; white-space: normal; }
+.stf-table tr:first-child td { border-top: 0; }
+.stf-table thead + tbody tr:first-child td { border-top: 1px solid var(--stf-div); }
+
+/* A face and a name: the round picture (else the initial on white with the hairline), the name 15/600, a grey line. */
+.stf-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.stf-who > div { min-width: 0; }
+.stf-who b { display: block; font-size: 15px; font-weight: 600; color: var(--stf-ink); overflow: hidden; text-overflow: ellipsis; }
+.stf-who small { display: block; margin-top: 1px; font-size: 12px; font-weight: 500; color: var(--stf-muted); overflow: hidden; text-overflow: ellipsis; }
+.stf-face { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 999px; overflow: hidden; background: #fff; box-shadow: inset 0 0 0 1px var(--stf-line); font-size: 12px; font-weight: 600; color: var(--stf-ink); }
+.stf-face img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.stf-face.big { width: 64px; height: 64px; font-size: 26px; }
+
+/* The state pill: 24px, white, a 1px edge, the word centred; one width down a column. Green by default (Monthly,
+   Yearly), `.ink` (Trial, Owner), `.grey` (Free, Not started, Staff), `.rust` (Payment failed, a problem), `.red`
+   (Read-only). */
+.stf-state { display: inline-flex; align-items: center; justify-content: center; min-width: 78px; height: 24px; padding: 0 10px; border-radius: 999px; background: #fff; font-size: 11.5px; font-weight: 600; white-space: nowrap; box-shadow: inset 0 0 0 1px rgba(47, 122, 63, 0.35); color: var(--stf-green); }
+.stf-state.ink { box-shadow: inset 0 0 0 1px var(--stf-ink); color: var(--stf-ink); }
+.stf-state.grey { box-shadow: inset 0 0 0 1px var(--stf-line); color: var(--stf-muted); }
+.stf-state.rust { box-shadow: inset 0 0 0 1px var(--stf-rust); color: var(--stf-rust); }
+.stf-state.red { box-shadow: inset 0 0 0 1px var(--stf-red); color: var(--stf-red); }
+.stf-state.small { min-width: 0; height: 20px; padding: 0 8px; font-size: 10.5px; }
+/* A count: a rust disc with white figures (Support's unread). */
+.stf-count { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--stf-rust); color: #fff; font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ---- Rows of facts (a coach's Billing and Account) ------------------------------------------------------------ */
+.stf-rows > .stf-kv { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 18px; font-size: 14px; font-weight: 500; color: var(--stf-body); }
+.stf-rows > .stf-kv + .stf-kv { box-shadow: inset 0 1px 0 var(--stf-div); }
+.stf-kv > .stf-kv-k { flex: none; width: 150px; font-size: 13px; color: var(--stf-sec); }
+.stf-kv > .stf-kv-v { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stf-kv b { font-weight: 600; color: var(--stf-ink); }
+.stf-kv > .stf-act, .stf-kv > .stf-kv-acts { margin-left: auto; }
+.stf-kv > .stf-act { margin-right: -10px; }
+.stf-kv-acts { display: flex; align-items: center; gap: 14px; }
+
+/* ---- A Support thread ----------------------------------------------------------------------------------------- */
+.stf-thread { display: grid; gap: 8px; padding: 16px 18px; }
+.stf-day { justify-self: center; margin: 6px 0 2px; font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; color: var(--stf-muted); }
+.stf-bub { max-width: 78%; padding: 9px 13px; border-radius: 16px; font-size: 13.5px; font-weight: 500; line-height: 19px; color: var(--stf-ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.stf-bub.them { justify-self: start; background: #fff; box-shadow: inset 0 0 0 1px var(--stf-line); }
+.stf-bub.us { justify-self: end; background: #eef1f5; }
+.stf-bub small { display: block; margin-top: 3px; font-size: 11px; color: var(--stf-muted); white-space: normal; }
+.stf-bub img { display: block; max-width: 220px; max-height: 160px; margin-top: 6px; border-radius: 10px; cursor: zoom-in; }
+.stf-tag { display: inline-block; margin-right: 6px; padding: 2px 7px; border-radius: 999px; box-shadow: inset 0 0 0 1px rgba(184, 71, 31, 0.4); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 600; color: var(--stf-rust); vertical-align: 1px; }
+.stf-tag.done { box-shadow: inset 0 0 0 1px rgba(47, 122, 63, 0.35); color: var(--stf-green); }
+/* The reply line: words on a clean underline, ink while typing, then Done and the ink Send. */
+.stf-compose { display: flex; align-items: center; gap: 10px; padding: 12px 18px; box-shadow: inset 0 1px 0 var(--stf-div); }
+.stf-line { flex: 1; min-width: 0; height: 34px; padding: 0 0 2px; border: 0; border-bottom: 1px solid var(--stf-line); border-radius: 0; background: none; outline: none; font: inherit; font-size: 14px; font-weight: 500; color: var(--stf-ink); }
+.stf-line:focus { border-bottom-color: var(--stf-ink); }
+.stf-line::placeholder { color: var(--stf-faint); }
+textarea.stf-line { height: auto; min-height: 34px; padding: 7px 0; resize: none; line-height: 20px; }
+
+/* ---- Switches (every switch one drawing: 36×22, white while off, ink while on, the knob easing 250ms) ---------- */
+.stf-switch { position: relative; flex: none; width: 36px; height: 22px; padding: 0; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px var(--stf-btn); cursor: pointer; transition: background 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
+.stf-switch i { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #c9cfd8; transition: left 0.25s cubic-bezier(0.22, 1, 0.36, 1), background 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
+.stf-switch.on { background: var(--stf-ink); box-shadow: none; }
+.stf-switch.on i { left: 17px; background: #fff; }
+.stf-switch:disabled { cursor: default; opacity: 0.45; }
+.stf-switch:focus-visible { outline: 2px solid var(--stf-ink); outline-offset: 2px; }
+/* A row holding a switch: its name 14/600 over a grey fact, the switch on the right (Sign-ups' Accept by hand). */
+.stf-toggle { display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 0 18px; }
+.stf-toggle b { display: block; font-size: 14px; font-weight: 600; color: var(--stf-ink); }
+.stf-toggle small { display: block; margin-top: 2px; font-size: 12px; font-weight: 500; color: var(--stf-muted); }
+.stf-toggle > .stf-switch { margin-left: auto; }
+
+/* ---- The Staff screen's permissions, under a row on the fold ------------------------------------------------- */
+.stf-perms { padding: 6px 18px 14px; box-shadow: inset 0 1px 0 var(--stf-div); }
+.stf-plab { margin: 14px 0 4px; font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; color: var(--stf-ink); }
+.stf-perm { display: flex; align-items: center; gap: 12px; min-height: 54px; }
+.stf-perm + .stf-perm { box-shadow: inset 0 1px 0 var(--stf-div); }
+.stf-perm b { display: block; font-size: 14px; font-weight: 600; color: var(--stf-ink); }
+.stf-perm small { display: block; margin-top: 2px; font-size: 12px; font-weight: 500; color: var(--stf-muted); }
+.stf-perm > .stf-switch { margin-left: auto; }
+.stf-pall { padding: 14px 0 4px; font-size: 13.5px; font-weight: 500; color: var(--stf-body); }
+.stf-pfoot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; padding-top: 10px; box-shadow: inset 0 1px 0 var(--stf-div); }
+
+/* ---- The not-staff page --------------------------------------------------------------------------------------- */
+.stf-out { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 32px 16px; }
+.stf-out-card { display: grid; justify-items: center; gap: 6px; text-align: center; }
+.stf-out-card h1 { margin: 0; font-size: 20px; font-weight: 600; }
+.stf-out-card p { margin: 0 0 8px; font-size: 14px; font-weight: 500; color: var(--stf-muted); }
+
+/* ---- Narrow pages --------------------------------------------------------------------------------------------- */
+@media (max-width: 860px) {
+  .stf { grid-template-columns: minmax(0, 1fr); }
+  .stf-rail { position: relative; height: auto; }
+  .stf-views { grid-auto-flow: column; grid-auto-columns: max-content; overflow-x: auto; padding-bottom: 14px; }
+  .stf-paper { flex: none; padding: 8px 16px; }
+  .stf-main { padding: 22px 16px 40px; }
+  .stf-two { grid-template-columns: minmax(0, 1fr); }
+  .stf-figs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stf-fig:nth-child(odd) { box-shadow: none; }
+  .stf-head { flex-wrap: wrap; }
+  .stf-head-right { margin-left: 0; width: 100%; }
+  .stf-head .rd-search { width: 100%; }
+  .stf-card:has(> .stf-table) { overflow-x: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stf-switch, .stf-switch i, .stf-view { transition: none; }
+}

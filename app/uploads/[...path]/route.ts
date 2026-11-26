@@ -3,6 +3,7 @@ import path from "path";
 import { Readable } from "stream";
 import { DATA_DIR } from "../../lib/db";
 import { canAccessClient, getSessionUser, isOwner } from "../../lib/auth";
+import { getStaff, staffCan } from "../../lib/staff";
 import { coachIdOfClient, coachOwnsExercise } from "../../lib/tenancy";
 import { bucketLink, linkFreshSeconds, posterCopy, posterKey, smallCopy, smallKey, sourceOf, streamUpload } from "../../lib/storage";
 import { recordTiming } from "../../lib/timing";
@@ -89,12 +90,21 @@ export async function GET(
     const coachId = Number.parseInt(clientIdRaw, 10);
     const allowed =
       !!user && (user.role === "coach" ? user.id === coachId || isOwner(user) : coachIdOfClient(user.client_id) === coachId);
-    if (!allowed) return new Response("Not found", { status: 404 });
+    // Norcoach staff on a screen that shows a coach's face (26 Nov, Alex; app/lib/staff.ts: Coaches, Support, Sign-ups):
+    // the coach's own pictures straight in their folder (the profile photo, the logo), never a folder under it (their
+    // video library).
+    const staffSees = async () => {
+      const s = await getStaff();
+      return staffCan(s, "coaches") || staffCan(s, "support") || staffCan(s, "signups");
+    };
+    if (!allowed && !(segments.length === 3 && (await staffSees()))) return new Response("Not found", { status: 404 });
   } else if (kind === "guides") {
     // uploads/guides/team/<file>: the help guides' videos (24 Nov, Alex; lib/guides.ts), the owner's, for every coach
     // to watch from the ? on their admin.
     const user = await getSessionUser();
-    if (!user || user.role !== "coach" || clientIdRaw !== "team" || segments.length !== 3) return new Response("Not found", { status: 404 });
+    if (clientIdRaw !== "team" || segments.length !== 3) return new Response("Not found", { status: 404 });
+    // Staff who make the guides watch them too (26 Nov, Alex; app/lib/staff.ts), with no coach account needed.
+    if ((!user || user.role !== "coach") && !staffCan(await getStaff(), "guides")) return new Response("Not found", { status: 404 });
   } else {
     // uploads/avatars/<clientId>/avatar.<ext>: the client's profile photo,
     // per-client and checked like the rest.

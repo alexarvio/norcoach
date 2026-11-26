@@ -14,6 +14,8 @@ import { buildId } from "./lib/buildId";
 import { getSessionUser } from "./lib/auth";
 import { bannerInline, bannerPathFor, brandFor, brandMarkInline, markFor, markInline } from "./lib/brandMark";
 import { brandColour, brandVars } from "./lib/brandColour";
+import { headers } from "next/headers";
+import { hostOf, isStaffHost } from "./lib/staffHost";
 
 export const metadata: Metadata = {
   title: "NORCOACH", // the tab's name in capitals, as the wordmark (24 Oct, Alex)
@@ -85,6 +87,8 @@ export const viewport: Viewport = {
  *  (BrandLogo); it is only read into memory here, so it is never its address on a screen. */
 async function bodyBrand(): Promise<React.CSSProperties | undefined> {
   try {
+    // The staff admin (admin.norcoachapp.com, 26 Nov) is Norcoach's own: never a coach's colour or logo, whoever signs in.
+    if (isStaffHost(hostOf(await headers()))) return undefined;
     const user = await getSessionUser();
     const style: Record<string, string> = {};
     const mark = markFor(user);
