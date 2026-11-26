@@ -7,6 +7,7 @@ import PageSkeleton, { VIEW_SKELETON } from "./PageSkeleton";
 import HelpButton from "./help/HelpButton";
 import type { RailData, StampedRail } from "./loaders";
 import { clientScreenOf, pageKeyOf, viewOfPath } from "./paths";
+import { isVisitView, visitView } from "./visit";
 
 // The rail stays, only the page swaps (22 Nov, Alex: "if we have to touch the rail… to make it a proper product, then
 // yes"; docs/rail-layout-plan.md). The layout (layout.tsx) hands its read of the rail over as a promise and this frame
@@ -207,6 +208,10 @@ export default function RailFrame({ rail: promise, children }: { rail: Promise<S
   useLayoutEffect(() => {
     if (goingTo == null) hide();
   }, [goingTo, hide]);
+  // The Feed or Business on screen: its look is noted now (26 Nov), not by its render, which the rail draws ahead.
+  useEffect(() => {
+    if (isVisitView(view)) visitView(view);
+  }, [address, view]);
 
   return (
     <RailContext.Provider value={value}>
