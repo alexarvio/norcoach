@@ -1,6 +1,5 @@
 import { requireCoach } from "../../../lib/auth";
-import { getFeedBoard, noteFeedLooked } from "../../../lib/feedBoard";
-import { headers } from "next/headers";
+import { getFeedBoard } from "../../../lib/feedBoard";
 import { startTiming } from "../../../lib/timing";
 import { loadChatDock } from "../loaders";
 import { fetchCoachPageChat } from "../../../lib/chat/rows";
@@ -29,11 +28,9 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
   // Each loader timed (app/lib/timing.ts, /api/timing): measuring only, the props are what they were.
   const t = startTiming("feed");
   const coach = await t.time("auth", () => requireCoach());
-  // The visit is noted first, so Since and New read from the visit before this one; before the chat, too, whose view
-  // holds what came after that visit (Step 5's cut-over: the Feed's Since reads only that).
-  // A hover-prefetch from the rail is not a visit (22 Nov): only a real navigation notes the look.
-  const prefetching = (await headers()).has("next-router-prefetch");
-  if (!prefetching) await t.time("noteFeedLooked", () => noteFeedLooked(coach.id));
+  // The visit is noted once the page is on screen (26 Nov; visitView from RailFrame, /api/admin/visit), never here: the
+  // rail draws this page ahead in the background (RedesignRail's warm views), and that is no visit. The Feed shows
+  // nothing that counts from the visit before (no Since line since 24 Oct).
   // The chat first (Step 5, app/lib/chat/rows.ts): the one view the Feed, the rail and the chat list share.
   const chat = await t.time("chat", () => fetchCoachPageChat(coach.id, "page.feed"));
   // The food diary the Feed and the rail read (quest 8 part 1), fetched first as the chat is.

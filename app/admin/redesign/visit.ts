@@ -35,3 +35,22 @@ export function visitClient(clientId: number, route: VisitRoute): void {
     }).catch(() => {});
   } catch {}
 }
+
+/** The coach-wide views whose page counts the coach's look (26 Nov): Since on Business, the Feed's visit. Drawn ahead by
+ *  the rail (RedesignRail's warm views), so the look is written once the page is on screen, as a client's is. */
+export const VISIT_VIEWS = ["feed", "business"] as const;
+export type VisitView = (typeof VISIT_VIEWS)[number];
+export const isVisitView = (view: unknown): view is VisitView => typeof view === "string" && (VISIT_VIEWS as readonly string[]).includes(view);
+
+/** The coach has this view on screen (RailFrame, as it lands). Fire and forget, as visitClient. */
+export function visitView(view: VisitView): void {
+  try {
+    void fetch("/api/admin/visit", {
+      method: "POST",
+      keepalive: true,
+      cache: "no-store",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ view }),
+    }).catch(() => {});
+  } catch {}
+}

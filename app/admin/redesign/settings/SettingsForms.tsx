@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState, useTransition, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { Fragment, Suspense, use, useEffect, useRef, useState, useTransition, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -82,9 +82,22 @@ export function useDraft<T extends Record<string, unknown>>(initial: T, save: (v
 // how the coach signs in, as rows (Rows.tsx). The email and the password each a row with its word, opening its fields
 // under itself; with Clerk, the linked logins beside them and the devices under (ClerkAccount.tsx). What the coach pays
 // Norcoach comes after, from the page (BillingSettings).
-export function AccountSettings({ email, passwordless = false, security = null, passwordsHint = null }: { email: string; /** Sign-in through Clerk (26 Oct): no password here, and the email can be changed. */ passwordless?: boolean; /** The linked logins and devices, from Clerk (27 Oct). */ security?: AccountSecurity | null; /** Whether Clerk takes passwords, read with the page (lib/clerkPasswords.ts). */ passwordsHint?: boolean | null }) {
-  if (passwordless) return <ClerkAccount email={email} security={security} passwordsHint={passwordsHint} />;
+export function AccountSettings({ email, passwordless = false, security = null, passwordsHint = null }: { email: string; /** Sign-in through Clerk (26 Oct): no password here, and the email can be changed. */ passwordless?: boolean; /** The linked logins and devices, from Clerk (27 Oct): as the page's promise (26 Nov), so the page never waits on Clerk. */ security?: Promise<AccountSecurity | null> | AccountSecurity | null; /** Whether Clerk takes passwords, read with the page (lib/clerkPasswords.ts). */ passwordsHint?: boolean | null }) {
+  // Until Clerk answers, the section as it is without it (the email, this device); a moment after, the logins and devices.
+  if (passwordless)
+    return (
+      <Suspense fallback={<ClerkAccount email={email} security={null} passwordsHint={passwordsHint} />}>
+        <ClerkAccountRead email={email} security={security} passwordsHint={passwordsHint} />
+      </Suspense>
+    );
   return <AccountPassword email={email} />;
+}
+
+/** ClerkAccount once the page's read of Clerk is in. */
+function ClerkAccountRead({ email, security, passwordsHint }: { email: string; security: Promise<AccountSecurity | null> | AccountSecurity | null; passwordsHint: boolean | null }) {
+  // A thenable as the page hands it over (React's own stand-in for the server's promise), else the read itself.
+  const read = security && typeof (security as Promise<unknown>).then === "function" ? use(security as Promise<AccountSecurity | null>) : (security as AccountSecurity | null);
+  return <ClerkAccount email={email} security={read} passwordsHint={passwordsHint} />;
 }
 
 /** Presses the Save of the opened row a form sits in (Enter in its fields), as a click on it would. */

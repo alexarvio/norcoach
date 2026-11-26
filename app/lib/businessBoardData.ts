@@ -286,7 +286,10 @@ const paidDay = (i: InvoiceRow) => stampDay(i.paid_at) ?? issueDay(i);
 // ---- Since the coach last looked ------------------------------------------------------------
 
 function sinceOf(ctx: Ctx): BusinessBoard["since"] {
-  const prev = ctx.coach?.business_looked?.prev;
+  // The visit before this one as noteBusinessLooked will leave it once the page is on screen (26 Nov: the note comes
+  // after the page is drawn, which may be ahead of the click): a look over VISIT_GAP_MS ago becomes the visit before.
+  const had = ctx.coach?.business_looked;
+  const prev = had && Number.isFinite(had.at) && Date.now() - had.at > VISIT_GAP_MS ? had.at : had?.prev;
   if (prev == null || !Number.isFinite(prev)) return null;
   const from = localDateStr(new Date(prev));
 

@@ -1,6 +1,5 @@
 import { requireCoach } from "../../../lib/auth";
-import { getBusinessBoard, noteBusinessLooked } from "../../../lib/businessBoard";
-import { headers } from "next/headers";
+import { getBusinessBoard } from "../../../lib/businessBoard";
 import { startTiming } from "../../../lib/timing";
 import { loadChatDock } from "../loaders";
 import { fetchChatDock } from "../../../lib/chat/rows";
@@ -27,10 +26,9 @@ export default async function BusinessPage() {
   const coach = await t.time("auth", () => requireCoach());
   // The chat first (Step 5, app/lib/chat/rows.ts): the chat list's alone (the rail reads its own, in the layout).
   const chat = { dock: await t.time("chat", () => fetchChatDock(coach.id, "page.business")) };
-  // The visit is noted first, so Since reads from the visit before this one.
-  // A hover-prefetch from the rail is not a visit (22 Nov): only a real navigation notes the look.
-  const prefetching = (await headers()).has("next-router-prefetch");
-  if (!prefetching) t.time("noteBusinessLooked", () => noteBusinessLooked(coach.id));
+  // The visit is noted once the page is on screen (26 Nov; visitView from RailFrame, /api/admin/visit), never here: the
+  // rail draws this page ahead in the background (RedesignRail's warm views). Since reads the visit before this one
+  // as the note will leave it (businessBoardData's sinceOf), so a page drawn before the note says the same.
   const board = t.time("businessBoard", () => getBusinessBoard(coach.id));
   return t.end(
     <>

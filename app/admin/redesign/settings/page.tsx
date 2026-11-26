@@ -117,8 +117,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const brandNow = await coachBrandInline(coach.id);
   const invoicing = settings.invoicing ?? {};
   const support = t.time("support", () => loadSupportSection(coach));
-  // Account & security's logins and devices, from Clerk (27 Oct); null with Clerk off or not answering.
-  const [security, passwordsHint] = await Promise.all([t.time("security", () => loadAccountSecurity()), clerkOn() ? passwordsOnHint() : null]);
+  // Account & security's logins and devices, from Clerk (27 Oct); null with Clerk off or not answering. Handed on as a
+  // promise, not awaited (26 Nov, Alex: "I just clicked on my profile picture, and it took 0.7 seconds… it needs to be
+  // instant"): Clerk took about 230 ms of every render, so the page now answers without it and Account fills in as it
+  // comes (AccountSettings' Suspense). Its time lands after the render's timing line, so that line no longer counts it.
+  const security = loadAccountSecurity();
+  const passwordsHint = clerkOn() ? await passwordsOnHint() : null;
   const notify = settings.notify ?? {};
   const units = settings.units === "lbs" ? "lbs" : "kg";
   const timezone = settings.timezone || process.env.TZ || "Europe/Amsterdam";
