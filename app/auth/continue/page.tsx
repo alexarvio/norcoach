@@ -1,9 +1,10 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { hostOf, isStaffHost, safeStaffNext } from "../../lib/staffHost";
 import { redirect } from "next/navigation";
 import { clerkIdentity, clerkOn } from "../../lib/clerk";
 import { findUserByEmail, getSessionUser } from "../../lib/auth";
 import { NATIVE_COOKIE } from "../../lib/quietLoad";
-import { letCoachIn } from "../../lib/coachSignUp";
+import { letCoachInOrWait } from "../../lib/coachSignUp";
 import { latestRequestFor } from "../../lib/joinRequests";
 import { isAdminPath } from "../../admin/redesign/paths";
 
@@ -27,11 +28,20 @@ function backTo(next: string | undefined, role: string): string | null {
 export default async function ContinuePage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   if (!clerkOn()) redirect("/login");
   const { next } = await searchParams;
+  // On the staff admin's host (admin.norcoachapp.com, 26 Nov): never a coach's or client's setup or sign-up, and no
+  // users row needed. Signed in, the staff home (or the staff page they were sent to sign in from); requireStaff there
+  // decides whether they are on staff.
+  if (isStaffHost(hostOf(await headers()))) {
+    if (!(await clerkIdentity())) redirect("/login");
+    // A plain path on this site only (safeStaffNext: printable ASCII, this origin, never the sign-in or the API).
+    redirect(safeStaffNext(next) ?? "/");
+  }
   const user = await getSessionUser();
   // A coach signing in inside the phone app goes straight to its coach screens (17 Nov, Alex: the admin showed first).
   const inApp = (await cookies()).get(NATIVE_COOKIE)?.value === "1";
-  // A coach still waiting from when sign-ups were approved by hand is let in now (17 Nov, Alex: no approval).
-  if (user?.pending) letCoachIn(user.id);
+  // A coach still waiting is let in now (17 Nov, Alex: no approval), unless the staff admin asks for a yes (26 Nov,
+  // its Sign-ups): then the waiting screen until someone on staff says it.
+  if (user?.pending && letCoachInOrWait(user.id) === "waiting") redirect("/auth/waiting");
   if (user) redirect(backTo(next, user.role) ?? (user.role === "client" ? "/client" : inApp ? "/coach" : "/clients"));
 
   const who = await clerkIdentity();

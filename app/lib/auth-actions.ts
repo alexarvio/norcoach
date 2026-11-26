@@ -9,7 +9,6 @@ import {
   clearLoginLockouts,
   coachForClient,
   createUser,
-  deleteCoachAccount,
   endSession,
   findUserByEmail,
   getSessionUser,
@@ -24,13 +23,13 @@ import { getData } from "./db";
 import { once, onceKeyOf } from "./once";
 import { deleteUserForClient } from "./auth";
 import { eraseClient } from "./erase";
+import { removeCoachAccount } from "./coachAdminCore";
 import { completePasswordReset, requestPasswordReset } from "./passwordReset";
-import { approveCoach, createPasswordlessUser, setUserEmail } from "./auth";
-import { sendCoachApprovedEmail } from "./mail";
+import { createPasswordlessUser, setUserEmail } from "./auth";
 import { cookies } from "next/headers";
 import { clerkIdentity, clerkOn } from "./clerk";
-import { applySignUpDetails } from "./queries";
-import { letCoachIn } from "./coachSignUp";
+import { acceptWaitingCoach, declineWaitingCoach, letCoachInOrWait } from "./coachSignUp";
+import { hostOf, isStaffHost } from "./staffHost";
 
 // Server actions for logging in and out, and for the coach handing a client
 // their credentials. Kept separate from actions.ts so the auth surface is
@@ -62,6 +61,8 @@ export async function loginAction(formData: FormData) {
   await startSession(user.id);
 
   if (user.must_change_password) redirect("/login/change-password");
+  // On the staff admin's host (26 Nov) its own home; requireStaff decides who may stay.
+  if (isStaffHost(hostOf(await headers()))) redirect("/");
   redirect(user.role === "coach" ? "/clients" : "/client");
 }
 
@@ -211,11 +212,9 @@ export async function removeCoachAction(formData: FormData) {
   const owner = await requireOwner();
   const coachId = Number(formData.get("coachId"));
   if (coachId === owner.id) redirect(`${COACHES}&coachError=self`);
-  // Their example client goes with them, never a reason to keep the account (25 Nov; lib/exampleClient.ts).
-  if (!getData().clients.some((c) => c.coach_id === coachId && !c.example)) {
-    for (const c of getData().clients.filter((c) => c.coach_id === coachId && c.example)) await eraseClient(c.id, { selfDeleted: false });
-  }
-  if (!deleteCoachAccount(coachId)) redirect(`${COACHES}&coachError=hasclients`);
+  // Their example client goes with them, never a reason to keep the account (25 Nov; lib/exampleClient.ts). Shared with
+  // the staff admin's coach page (lib/coachAdminCore.ts).
+  if (!(await removeCoachAccount(coachId))) redirect(`${COACHES}&coachError=hasclients`);
   redirect(`${COACHES}&coachOk=removed`);
 }
 
@@ -264,25 +263,19 @@ export async function changeOwnEmailAction(email: string): Promise<{ ok: boolean
 export async function approveCoachAction(formData: FormData) {
   await requireOwner();
   const coachId = Number(formData.get("coachId"));
-  const pending = getData().users.find((u) => u.id === coachId && u.role === "coach")?.pending;
-  if (!pending || !approveCoach(coachId)) redirect(`${COACHES}&coachError=invalid`);
-  applySignUpDetails(coachId, pending.name, pending.business);
-  // They were told they would hear: "You’re in", when email is set up.
-  const email = getData().users.find((u) => u.id === coachId)?.email;
-  if (email) {
-    const h = await headers();
-    const host = h.get("x-forwarded-host") ?? h.get("host") ?? "";
-    const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-    await sendCoachApprovedEmail({ to: email, name: pending.name, signInUrl: `${proto}://${host}/login` });
-  }
+  // The same yes as the staff admin's Accept (lib/coachSignUp.ts): their presets, name and business, and the "You’re in"
+  // email, when email is set up, with this host's sign-in.
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  if (!(await acceptWaitingCoach(coachId, `${proto}://${host}/login`))) redirect(`${COACHES}&coachError=invalid`);
   redirect(`${COACHES}&coachOk=approved`);
 }
 
 export async function declineCoachAction(formData: FormData) {
   await requireOwner();
   const coachId = Number(formData.get("coachId"));
-  const row = getData().users.find((u) => u.id === coachId && u.role === "coach" && u.pending);
-  if (!row || !deleteCoachAccount(coachId)) redirect(`${COACHES}&coachError=invalid`);
+  if (!declineWaitingCoach(coachId)) redirect(`${COACHES}&coachError=invalid`);
   redirect(`${COACHES}&coachOk=declined`);
 }
 
@@ -302,7 +295,8 @@ export async function finishCoachSignUpAction(formData: FormData) {
   const name = [formData.get("first"), formData.get("last")].map((v) => String(v ?? "").trim()).filter(Boolean).join(" ").slice(0, 80) || String(formData.get("name") ?? "").trim().slice(0, 80);
   const business = String(formData.get("business") ?? "").trim().slice(0, 120) || null;
   if (!name) redirect("/auth/coach-setup");
-  if (!findUserByEmail(email)) letCoachIn(createPasswordlessUser(email, "coach", null, { name, business }).id);
+  // In at once, or waiting for a yes while the staff admin asks for one (26 Nov; /auth/continue sends them on).
+  if (!findUserByEmail(email)) letCoachInOrWait(createPasswordlessUser(email, "coach", null, { name, business }).id);
   (await cookies()).delete("ironline_intent");
   redirect("/auth/continue");
 }

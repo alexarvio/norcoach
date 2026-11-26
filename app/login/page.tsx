@@ -9,6 +9,7 @@ import { clerkIdentity, clerkOn } from "../lib/clerk";
 import { passwordsOnHint } from "../lib/clerkPasswords";
 import { SignInFlow } from "./ClerkFlows";
 import ForgetKept from "./ForgetKept";
+import { hostOf, isStaffHost, safeStaffNext } from "../lib/staffHost";
 
 /** The phone app this page is in, from the app's own cookie (set before anything draws, lib/quietLoad.ts) and the phone's
  *  name, so the sign-in is drawn as the app shows it from the first frame (18 Nov). */
@@ -20,7 +21,7 @@ async function inApp(): Promise<InApp> {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; deleted?: string; reset?: string }>;
+  searchParams: Promise<{ error?: string; deleted?: string; reset?: string; next?: string }>;
 }) {
   // A fresh deployment has no accounts and no signup, so the very first
   // request to the login page is where the bootstrap coach gets created
@@ -36,24 +37,28 @@ export default async function LoginPage({
 
   // Already signed in? Send them where they belong rather than showing a
   // login form they'd have no reason to fill in.
+  // On the staff admin's host (admin.norcoachapp.com, 26 Nov): its own home, whoever they are (requireStaff decides).
+  const staff = isStaffHost(hostOf(await headers()));
+  const { error, deleted, reset, next } = await searchParams;
+  // The staff page they were sent to sign in from, when it is a plain path here (safeStaffNext).
+  const staffNext = staff ? safeStaffNext(next) : null;
   const user = await getSessionUser();
   if (user && !user.must_change_password) {
-    redirect(user.role === "coach" ? "/clients" : "/client");
+    redirect(staff ? (staffNext ?? "/") : user.role === "coach" ? "/clients" : "/client");
   }
 
-  const { error, deleted, reset } = await searchParams;
   // Sign-in through Clerk (lib/clerk.ts).
   // Signed in to Clerk with no account of ours behind it: /auth/continue says
   // so (and offers another email), where this form would only answer
   // "You're already signed in".
-  if (clerkOn() && (await clerkIdentity())) redirect("/auth/continue");
+  if (clerkOn() && (await clerkIdentity())) redirect(staffNext ? `/auth/continue?next=${encodeURIComponent(staffNext)}` : "/auth/continue");
   // Signed out (every Sign out lands here): what this device kept for the last account goes, the coach's phone's chats
   // and where the client app was, so signing in lands on Home (ForgetKept).
   if (clerkOn())
     return (
       <>
         <ForgetKept />
-        <SignInFlow notice={deleted ? "Your account and everything in it has been deleted." : null} passwordsHint={await passwordsOnHint()} app={await inApp()} />
+        <SignInFlow notice={deleted ? "Your account and everything in it has been deleted." : null} passwordsHint={await passwordsOnHint()} app={await inApp()} staff={staff} />
       </>
     );
   return (

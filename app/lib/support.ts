@@ -5,6 +5,7 @@ import { allocId, DATA_DIR, getData, persist, type SupportMessage } from "./db";
 import { isOwner, ownerEmail, type SessionUser } from "./auth";
 import { getCoachProfileView } from "./queries";
 import { dayMonth, logDate } from "./dayMonth";
+import { isReviewEmail } from "./reviewAccount";
 
 // Support (23 Oct, Alex: "where the coaches can go in and talk to someone from the company or report an issue"): one
 // thread a coach with the company, which lands with the owner. A coach writes from Settings' Support (a message, or a
@@ -30,6 +31,8 @@ export type SupportLine = {
   done: boolean;
   /** From the other side, not yet seen by the viewer. */
   unread: boolean;
+  /** Who on staff wrote a Norcoach line (the staff admin, 26 Nov): on the owner's side only, null for the coach. */
+  by?: string | null;
 };
 
 /** A coach's thread, a row of the owner's inbox. */
@@ -77,6 +80,14 @@ function ownerId(): number | null {
 export function isSupportCoach(coachId: number): boolean {
   const u = getData().users.find((x) => x.id === coachId && x.role === "coach");
   return !!u && !u.pending && u.id !== ownerId();
+}
+
+/** Every coach a thread can be with (isSupportCoach), oldest account first: who the staff admin's Message all coaches
+ *  writes to (26 Nov). Never the owner's account, one still waiting for a yes, or the App Store review account. */
+export function listSupportCoachIds(): number[] {
+  return getData()
+    .users.filter((u) => u.role === "coach" && !isReviewEmail(u.email) && isSupportCoach(u.id))
+    .map((u) => u.id);
 }
 
 // ---- Reading -------------------------------------------------------------------------------------------------------
@@ -144,6 +155,7 @@ export function supportThreadView(coachId: number, viewer: "coach" | "owner"): S
       time: clock(at),
       done: m.kind === "problem" && !!m.done,
       unread: m.from !== viewer && !(viewer === "owner" ? m.seen_by_owner : m.seen_by_coach),
+      by: viewer === "owner" && m.from === "owner" ? (m.by ?? null) : null,
     };
   });
 }
@@ -173,7 +185,7 @@ export function loadSupportSection(coach: SessionUser): SupportSectionData | nul
 // ---- Writing -------------------------------------------------------------------------------------------------------
 
 /** Adds a line to a coach's thread; the side that wrote it has seen it. */
-export function addSupportMessage(input: { coachId: number; from: "coach" | "owner"; kind: "message" | "problem"; text: string; where?: string | null; imagePath?: string | null }): SupportMessage {
+export function addSupportMessage(input: { coachId: number; from: "coach" | "owner"; kind: "message" | "problem"; text: string; where?: string | null; imagePath?: string | null; by?: string | null }): SupportMessage {
   const problem = input.kind === "problem" && input.from === "coach";
   const m: SupportMessage = {
     id: allocId("support_messages"),
@@ -187,6 +199,7 @@ export function addSupportMessage(input: { coachId: number; from: "coach" | "own
     seen_by_owner: input.from === "owner",
     seen_by_coach: input.from === "coach",
     done: problem ? false : undefined,
+    ...(input.from === "owner" && input.by?.trim() ? { by: input.by.trim().slice(0, 80) } : {}),
   };
   rows().push(m);
   persist();

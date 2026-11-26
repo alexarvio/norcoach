@@ -156,6 +156,7 @@ export function SignInScreen({
   signupHref = "/signup",
   passwords = false,
   app = null,
+  staff = false,
 }: Oauth &
   Busy & {
     /** A code to the email. */
@@ -167,6 +168,8 @@ export function SignInScreen({
     passwords?: boolean;
     /** The phone app the page is in, as the server can tell it (InApp). */
     app?: InApp;
+    /** On the staff admin's host (admin.norcoachapp.com, 26 Nov): no New here? Client | Coach, nobody signs up there. */
+    staff?: boolean;
   }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -192,7 +195,7 @@ export function SignInScreen({
       // One line (26 Nov, Alex: "a better way and cleaner to display these two options"): New here? Client | Coach;
       // the phone app, which has no coach sign-up, keeps Create an account alone.
       aside={
-        <span className="su-aside-line">
+        staff ? undefined : <span className="su-aside-line">
           New here?{" "}
           {inApp ? (
             <Link href="/join">Create an account</Link>

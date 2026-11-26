@@ -4,7 +4,9 @@ import fs from "fs";
 import path from "path";
 import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
-import { isOwner, requireCoach, requireCoachAccount } from "./auth";
+import { getSessionUser, isOwner, requireCoach, requireCoachAccount } from "./auth";
+import { getStaff, staffCan } from "./staff";
+import { staffUploadId } from "./staffUpload";
 import { DATA_DIR } from "./db";
 import { deleteUpload, putUploadFromDisk } from "./storage";
 import { claimUpload, discardUpload, placeUpload, UPLOAD_CAPS } from "./streamUpload";
@@ -52,9 +54,18 @@ export async function markGuideWatchedAction(guideId: number): Promise<number[]>
 
 // ---- The owner ------------------------------------------------------------------------------------------------------
 
-async function owner() {
-  const coach = await requireCoach();
-  return isOwner(coach) ? coach : null;
+/** Who may make the guides, with the id their uploads are filed under (/api/upload): the owner on the coach admin, or
+ *  anyone on Norcoach's staff who may make guides (26 Nov, Alex; the staff admin), with a coach account or none. */
+async function owner(): Promise<{ id: number } | null> {
+  const user = await getSessionUser();
+  if (user?.role === "coach" && !user.pending && isOwner(user)) {
+    // The coach admin's own way in, as before (its billing and read-only checks with it).
+    const coach = await requireCoach();
+    return isOwner(coach) ? coach : null;
+  }
+  const staff = await getStaff();
+  if (!staffCan(staff, "guides")) return null;
+  return { id: user?.role === "coach" && !user.pending ? user.id : staffUploadId(staff!.email) };
 }
 
 /** Drops an upload no guide names any more: off the disk and to the bucket's trash. */
@@ -79,6 +90,7 @@ export async function saveGuideAction(id: number | null, fields: GuideFields): P
   if (!saved) return { ok: false, error: "That guide is gone." };
   await dropUnused(saved.dropped);
   revalidatePath("/coaches");
+  revalidatePath("/staff/guides");
   return { ok: true, guides: listGuidesForOwner(), id: saved.guide.id };
 }
 
@@ -89,6 +101,7 @@ export async function deleteGuideAction(id: number): Promise<GuideView[] | null>
   if (!gone) return null;
   await dropUnused(gone.dropped);
   revalidatePath("/coaches");
+  revalidatePath("/staff/guides");
   return listGuidesForOwner();
 }
 

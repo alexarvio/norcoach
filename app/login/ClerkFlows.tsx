@@ -522,7 +522,7 @@ function useEmailCode({
 /** /login: Apple, Google, or the email and its password together, or a code to the email (17 Nov, Alex), in the coach
  *  sign-up's dark frame, its code and reset screens too. `passwordsHint`: whether Clerk takes passwords, read by the
  *  server with the page, so the password box is there from the first frame (lib/clerkPasswords.ts). */
-export function SignInFlow({ notice, passwordsHint = null, app = null }: { notice?: string | null; passwordsHint?: boolean | null; /** The phone app the page is in, as the server tells it (InApp). */ app?: InApp }) {
+export function SignInFlow({ notice, passwordsHint = null, app = null, staff = false }: { notice?: string | null; passwordsHint?: boolean | null; /** The phone app the page is in, as the server tells it (InApp). */ app?: InApp; /** On the staff admin's host (26 Nov): no sign-up links. */ staff?: boolean }) {
   const f = useEmailCode();
   const passwords = usePasswordsOn(passwordsHint);
   if (f.step?.via === "reset") return <ResetPasswordScreen email={f.step.email} look="site" onSubmit={f.reset} onResend={f.resend} onBack={f.back} busy={f.busy} error={f.error} />;
@@ -531,6 +531,7 @@ export function SignInFlow({ notice, passwordsHint = null, app = null }: { notic
     <SignInScreen
       passwords={passwords === true}
       app={app}
+      staff={staff}
       onEmail={(email) => f.sendCode(email)}
       onPassword={f.signInWithPassword}
       onForgot={f.forgotFor}
