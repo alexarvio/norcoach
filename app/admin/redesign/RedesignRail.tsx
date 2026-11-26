@@ -489,7 +489,7 @@ export default function RedesignRail({ rail, clientId, settings = false, onArriv
       <div className="rr-brand">
         {/* Their banner in its place when they uploaded one (19 Nov, Alex); without one, NORCOACH as before. */}
         {/* NORCOACH as the word alone across the row, no star (22 Nov, Alex: "take out the north star from here… expand it to occupy the whole row"). */}
-        <BrandLogo className="rr-logo" banner={rail.coach.banner} bannerRatio={rail.coach.bannerRatio} name={rail.coach.business} nameInPlace={false} word />
+        <BrandLogo className="rr-logo" banner={rail.coach.banner} bannerRatio={rail.coach.bannerRatio} name={rail.coach.business} word />
       </div>
       {/* The coach: their face, name and business; a click opens their Profile in Settings. */}
       <ViewLink href={`${SETTINGS_HREF}#profile`} className="rr-coach" aria-label={`${rail.coach.name}, your profile`} onClick={goView(SETTINGS_HREF, onSettings)}>

@@ -23,6 +23,7 @@ import { useHoldPress } from "../components/useHoldPress";
 import { Avatar, Facts, Icon } from "./parts";
 import { ChatReview } from "./PhoneReview";
 import LastActive from "../components/LastActive";
+import ChatNewLine, { newLineOf } from "../components/ChatNewLine";
 
 // One client's chat on the coach's phone (21 Oct): the laptop's thread (its
 // loader, through /api/chat/thread, which also keeps this chat's pushes
@@ -58,11 +59,16 @@ export default function ChatThread({ clientId, name, avatarPath, onBack, onRead 
   });
   // The first unread before it is marked read (25 Oct): the kept copy's to begin with, the first fresh read's once in.
   const firstUnread = useRef<number | null | undefined>(plan ? plan.firstUnread ?? null : undefined);
+  // The same, for the New message(s) line drawn over it (26 Nov, Alex; ChatNewLine).
+  const [newFrom, setNewFrom] = useState<number | null>(plan ? plan.firstUnread ?? null : null);
   useLayoutEffect(() => {
     if (plan) return;
     const kept = keptThread(clientId);
     if (!kept) return;
-    if (firstUnread.current === undefined) firstUnread.current = kept.firstUnread ?? null;
+    if (firstUnread.current === undefined) {
+      firstUnread.current = kept.firstUnread ?? null;
+      setNewFrom(firstUnread.current);
+    }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the phone's copy after hydration, once, before the first paint
     setPlan(kept);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on opening
@@ -105,7 +111,10 @@ export default function ChatThread({ clientId, name, avatarPath, onBack, onRead 
     // The kept copy's revision (none when it was cut to its newest): unchanged, nothing comes back.
     read()
       .then((t) => {
-        if (t) firstUnread.current = t.firstUnread ?? null;
+        if (t) {
+          firstUnread.current = t.firstUnread ?? null;
+          setNewFrom(firstUnread.current);
+        }
         else if (firstUnread.current === undefined) firstUnread.current = null;
         take(t);
       })
@@ -125,6 +134,8 @@ export default function ChatThread({ clientId, name, avatarPath, onBack, onRead 
   }, [clientId, read, refresh, take]);
 
   const messages = plan?.messages ?? [];
+  // The New message(s) line over the first message that was unread as the chat opened (26 Nov, Alex; ChatNewLine).
+  const newLine = newLineOf(messages, newFrom);
   // Typing… and Seen (27 Oct, Alex): the client typing shows over the box; Seen under the coach's last message once
   // the client has had the chat open since.
   const theyType = useChatTyping(clientId, "client");
@@ -148,7 +159,8 @@ export default function ChatThread({ clientId, name, avatarPath, onBack, onRead 
     const place = () => {
       const first = firstUnread.current;
       if (placing.current && first != null) {
-        const row = el.querySelector<HTMLElement>(`[data-mid="${first}"]`);
+        // The New message(s) line over it when it shows, so the line is in sight too.
+        const row = el.querySelector<HTMLElement>(".chat-new-line") ?? el.querySelector<HTMLElement>(`[data-mid="${first}"]`);
         if (row) {
           el.scrollTop = el.scrollTop + row.getBoundingClientRect().top - el.getBoundingClientRect().top - 12;
           return;
@@ -608,7 +620,7 @@ export default function ChatThread({ clientId, name, avatarPath, onBack, onRead 
             days.map((d) => (
               <div key={d.day} className="cph-day">
                 <span className="cph-day-label">{dayLabel(d.day)}</span>
-                {d.items.map((m) => [bubble(m), seenId === m.id && outbox.length === 0 ? <span key={`seen-${m.id}`} className="cph-seen">Seen</span> : null])}
+                {d.items.map((m) => [newLine?.id === m.id ? <ChatNewLine key={`new-${m.id}`} count={newLine.count} /> : null, bubble(m), seenId === m.id && outbox.length === 0 ? <span key={`seen-${m.id}`} className="cph-seen">Seen</span> : null])}
               </div>
             ))
           )}
