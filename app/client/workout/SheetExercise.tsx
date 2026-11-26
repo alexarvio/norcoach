@@ -360,12 +360,19 @@ function SetRow({
   // A refused set sends again as it went out by a tap; once something is typed over it, it is any row: ink only once
   // both figures are typed, and the tick logs what the slots show.
   const tickState = row.done ? "done" : refused && !typedSince ? "refused" : row.ready ? "ready" : "empty";
+  // A tap on the row's own tick logs it (and on the last set carries the rest), never the field letting go of the
+  // keyboard as that tap lands: the leaving would log it first and the tap find it done and open it again (26 Nov).
+  // A press on this tick: a field letting go of the keyboard to nothing (a button takes no focus) while the finger is on
+  // the tick, or just after it lifts (a phone lets go of the field after the lift, however long the hold), is that tap,
+  // which logs the row itself. A press that turns into a scroll forgets it at once.
+  const press = useRef({ down: false, up: 0 });
   const onTick = () => {
+    press.current = { down: false, up: 0 };
     if (tickState === "refused") {
       if (!cantResend) s.resend(row);
       return;
     }
-    s.tick(row);
+    s.tick(row, true);
   };
   // It ticks itself (15 Nov, Alex: "I add the weights and it goes green by itself and onto the next"): once both figures
   // are typed, leaving the row logs it, by Next on the reps or a tap anywhere outside the row. Never while typing in it,
@@ -373,6 +380,7 @@ function SetRow({
   const leave = (e: React.FocusEvent<HTMLInputElement>) => {
     const to = e.relatedTarget as Node | null;
     if (to && wrapRef.current?.contains(to)) return;
+    if (!to && (press.current.down || Date.now() - press.current.up < 800)) return;
     if (tickState === "ready") s.tick(row);
   };
   // Next on the reps: on to the next set still to do (its first figure), the keyboard staying up; the last one puts it
@@ -451,6 +459,18 @@ function SetRow({
             type="button"
             className={`ws-tick ${tickState}${warm ? " warm" : ""}${row.extra && !warm && !free ? " extra" : ""}`}
             onClick={onTick}
+            onPointerDown={() => {
+              press.current = { down: true, up: 0 };
+            }}
+            onPointerUp={() => {
+              press.current = { down: false, up: Date.now() };
+            }}
+            onPointerCancel={() => {
+              press.current = { down: false, up: 0 };
+            }}
+            onPointerLeave={() => {
+              if (press.current.down) press.current = { down: false, up: Date.now() };
+            }}
             disabled={tickState === "empty" || (tickState === "refused" && cantResend)}
             aria-label={tickLabel}
             title={tickLabel}

@@ -407,9 +407,74 @@ export function useExerciseSets(exercise: SessionExercise, { gymId, session, fre
     }
     sendSet(n, v);
   };
-  const tick = (row: SheetRow) => {
+  /**
+   * The last set's tick logs the rest with it (26 Nov, Alex: "if I press the third one, the check mark, it just
+   * automatically checks everything else if I haven't checked it, because that's the last one"): every other row with
+   * both figures in that isn't logged (a warm-up, a set left unticked, one opened to fix) goes in the same tap, in
+   * order, each as its own tick would send it. Only from a tap on that tick, never from leaving the row (moving up to
+   * fix an earlier set must not send it first). A row with a figure missing stays as it is, and so does one the server
+   * refused (its own tap sends it again) or one already under the far-off question. The tapped set is still asked when
+   * far off, as its own tick always was; another set far off is left for its own tick, never sent unasked. The tapped
+   * row may be logged already, by leaving it as the tap landed: then only the rest go.
+   */
+  const tickWithRest = (row: SheetRow) => {
+    const warmIds = new Set(rows.filter((r) => r.kind === "warm" && !r.done && r.ready && !r.gone).map((r) => r.id));
+    if (warmIds.size) {
+      const next = warm.map((w) => {
+        const r = rows.find((x) => x.id === w.key);
+        return r && warmIds.has(w.key) ? { ...w, entered: { weightKg: r.figures.weightKg, reps: r.figures.reps, rpe: null }, saved: true } : w;
+      });
+      setWarm(next);
+      persistWarm(next);
+      for (const id of warmIds) {
+        dropDraft(id);
+        relock(id);
+      }
+    }
+    const goes = workRows.filter((r) => (r.n === row.n ? !r.done && r.ready : !r.done && r.ready && r.refused == null && doubt?.n !== r.n));
+    const seed = workRows.filter((r) => r.done && r.logged);
+    let kg = Math.max(0, ...seed.map((r) => r.logged!.weightKg ?? 0));
+    let reps = Math.max(0, ...seed.map((r) => r.logged!.reps ?? 0));
+    const settled = new Set<number>();
+    let askTapped = false;
+    let skipped: Doubt | null = null;
+    for (const r of goes) {
+      // Opened to fix and put back as it was: shut again, nothing sent.
+      if (r.unlocked && r.logged && same(r.figures, r.logged)) {
+        dropDraft(r.id);
+        relock(r.id);
+        settled.add(r.n);
+        continue;
+      }
+      const d = doubtCheck(r.figures, kg, reps, { swapped, refKg, repTop }, vouched.current);
+      if (d.weight || d.reps) {
+        if (r.n === row.n) {
+          askTapped = true;
+          setDoubt({ n: r.n, weight: d.weight, reps: d.reps, v: r.figures });
+        } else if (!skipped) skipped = { n: r.n, weight: d.weight, reps: d.reps, v: r.figures };
+        continue;
+      }
+      enqueueWorkout({ kind: "set", assignmentId: exercise.id, setNumber: r.n, gymId, weight: r.figures.weightKg, reps: r.figures.reps, rpe: r.figures.rpe, unit: unitNow.current, ...session });
+      setSent((s) => ({ ...s, [r.n]: r.figures }));
+      setDoubt((x) => (x?.n === r.n ? null : x));
+      dropDraft(r.id);
+      relock(r.id);
+      settled.add(r.n);
+      kg = Math.max(kg, r.figures.weightKg ?? 0);
+      reps = Math.max(reps, r.figures.reps ?? 0);
+    }
+    // A set left out for being far off is never left out unsaid: with no question showing, it is asked under that set.
+    if (skipped && !askTapped && (doubt == null || doubt.n === row.n)) setDoubt(skipped);
+    // The fold is armed only when this tap leaves every set in, never when it raised the question (15 Nov, Alex).
+    if (settled.size && workRows.every((r) => r.done || settled.has(r.n))) setLastTicks((c) => c + 1);
+  };
+  /** The exercise's last working set, whose tapped tick carries the rest (never on a rogue session's, built one by one). */
+  const isLast = (row: SheetRow) => !free && row.kind === "work" && workRows.length > 0 && row.n === workRows[workRows.length - 1].n;
+  /** withRest: a tap on the tick itself (never leaving the row), which on the last set logs the rest with it. */
+  const tick = (row: SheetRow, withRest = false) => {
     if (row.done) return unlock(row);
     if (!row.ready) return;
+    if (withRest && isLast(row)) return tickWithRest(row);
     if (row.kind === "warm") {
       const v = row.figures;
       const rows = warm.map((w) => (w.key === row.id ? { ...w, entered: { weightKg: v.weightKg, reps: v.reps, rpe: null }, saved: true } : w));
