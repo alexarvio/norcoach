@@ -1,6 +1,7 @@
 "use client";
 
 import { dismissKeyboardOnTap } from "../components/dismissKeyboard";
+import ChatNewLine, { newLineOf } from "../components/ChatNewLine";
 import type { HomeEventCategory } from "./EventsCard";
 import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { useChatStream, useChatTyping, useTypingSignal } from "../components/useChatStream";
@@ -106,6 +107,16 @@ function useAwayUntil(quiet: CoachMessagesProps["quiet"]): string | null {
     };
   }, [quiet]);
   return until;
+}
+
+/** The first of the other side's messages still unread as the chat opens: the last `unread` of them, and never one
+ *  before the client's own latest message (26 Nov: they wrote after it, so they had it; a notification left unread
+ *  must not reach back over the whole thread). */
+function firstUnreadOf(messages: CoachMessageView[], unread: number): number | null {
+  if (!unread) return null;
+  const lastMine = Math.max(0, ...messages.filter((m) => m.mine).map((m) => m.id));
+  const theirs = messages.filter((m) => !m.mine && m.id > lastMine);
+  return theirs.length ? theirs[Math.max(0, theirs.length - unread)].id : null;
 }
 
 export default function CoachMessagesScreen({ coachName, coachPhoto = null, myPhoto = null, myName = "You", quiet = null, messages: fromPage, viewerIsClient, unreadCount = 0, clientId, onBack, about = null, onClearAbout }: CoachMessagesProps & { clientId: number; onBack: () => void; about?: MessageAbout | null; onClearAbout?: () => void }) {
@@ -246,13 +257,10 @@ export default function CoachMessagesScreen({ coachName, coachPhoto = null, myPh
   const body = useRef<HTMLElement>(null);
   const atEnd = useRef(true);
   const held = useRef(true);
-  const firstUnread = useRef<number | null>(
-    (() => {
-      if (!unreadCount) return null;
-      const theirs = fromPage.filter((m) => !m.mine);
-      return theirs.length ? theirs[Math.max(0, theirs.length - unreadCount)].id : null;
-    })()
-  );
+  const firstUnread = useRef<number | null>(firstUnreadOf(fromPage, unreadCount));
+  // The New message(s) line over the first message that was unread as the chat opened (26 Nov, Alex; ChatNewLine).
+  const [newFrom] = useState<number | null>(() => firstUnreadOf(fromPage, unreadCount));
+  const newLine = newLineOf(thread.map((m) => ({ id: m.id, mine: own(m) })), newFrom);
   // A layout effect: in place before the first paint, not a jump after it.
   useLayoutEffect(() => {
     const el = body.current;
@@ -271,7 +279,8 @@ export default function CoachMessagesScreen({ coachName, coachPhoto = null, myPh
         return;
       }
       if (held.current && firstUnread.current != null) {
-        const row = el.querySelector<HTMLElement>(`[data-mid="${firstUnread.current}"]`);
+        // The New message(s) line over it when it shows, so the line is in sight too.
+        const row = el.querySelector<HTMLElement>(".chat-new-line") ?? el.querySelector<HTMLElement>(`[data-mid="${firstUnread.current}"]`);
         if (row) {
           el.scrollTop = el.scrollTop + row.getBoundingClientRect().top - el.getBoundingClientRect().top - 12;
           return;
@@ -534,7 +543,7 @@ export default function CoachMessagesScreen({ coachName, coachPhoto = null, myPh
           days.map((d) => (
             <section key={d.label} className="cm-day">
               <span className="cm-day-label">{d.label}</span>
-              {d.items.map((m) => bubble(m))}
+              {d.items.map((m) => [newLine?.id === m.id ? <ChatNewLine key={`new-${m.id}`} count={newLine.count} /> : null, bubble(m)])}
             </section>
           ))
         )}

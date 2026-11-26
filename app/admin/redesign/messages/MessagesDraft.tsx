@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
+import ChatNewLine, { newLineOf } from "../../../components/ChatNewLine";
 import { useRouter } from "next/navigation";
 import { followLink, leaveToBrowser } from "../followLink";
 import { useChatStream, useChatTyping, useTypingSignal } from "../../../components/useChatStream";
@@ -60,6 +61,9 @@ export default function MessagesDraft({ clientId, firstName, plan: fromPage, act
   // (/api/chat/thread) rather than re-reading the page, which redrew
   // every tab of the client. A page read that brings something new still wins.
   const [plan, setPlan] = useState(fromPage);
+  // Where the New message(s) line goes, and the showing it was taken for (below).
+  const [shownAs, setShownAs] = useState<string | null>(null);
+  const [newFrom, setNewFrom] = useState<number | null>(null);
   const pageKey = JSON.stringify(fromPage);
   const [seenPage, setSeenPage] = useState(pageKey);
   if (seenPage !== pageKey) {
@@ -71,11 +75,13 @@ export default function MessagesDraft({ clientId, firstName, plan: fromPage, act
   useEffect(() => {
     revRef.current = plan.rev;
   }, [plan.rev]);
-  const refreshThread = async () => {
+  const refreshThread = async (opening = false) => {
     // Its own route (17 Nov): a read never waits behind a send, a read mark or the page's other actions.
     const next = await readChatThread<DraftMessages>(clientId, "coach", { rev: revRef.current, from: "laptop" });
     if (!next) return;
     setPlan(next);
+    // The read on opening, before anything is marked read: where the new messages start, when the page's copy was older.
+    if (opening && next.firstUnread != null) setNewFrom((had) => had ?? next.firstUnread ?? null);
     // Something the client wrote came in while the chat is open: it is read
     // (21 Oct: it stayed new on the rail and the Feed after the chat closed).
     if (next.unread && activeRef.current && document.visibilityState === "visible") void markSeenAction(clientId, { tab: "messages" }).catch(() => {});
@@ -93,6 +99,14 @@ export default function MessagesDraft({ clientId, firstName, plan: fromPage, act
   const typed = useTypingSignal(() => signalChatTyping(clientId));
   const lastOwn = messages.find((m) => m.mine);
   const seenId = lastOwn?.seen ? lastOwn.id : null;
+  // The New message(s) line (26 Nov, Alex; ChatNewLine): the first message unread as the chat is shown, kept while it
+  // shows (opening it reads them, and the next read says none), gone once it is shown again with nothing new.
+  const showing = `${active}|${panel?.opened ?? 0}`;
+  if (shownAs !== showing) {
+    setShownAs(showing);
+    setNewFrom(active ? (plan.firstUnread ?? null) : null);
+  }
+  const newLine = newLineOf(messages, newFrom);
   // The words in the box kept on this computer (27 Oct, step 2): leaving the chat never loses them.
   const [text, setText] = useKeptDraft(`coach.${clientId}`);
   const [link, setLink] = useState<DraftLink | null>(null);
@@ -139,7 +153,8 @@ export default function MessagesDraft({ clientId, firstName, plan: fromPage, act
   // other tabs under the coach's typing (and cleared the dot unread).
   useEffect(() => {
     if (!active) return;
-    markSeenAction(clientId, { tab: "messages" });
+    // Read first, then mark read (26 Nov): the read says where the New message(s) line goes.
+    void refreshThread(true).finally(() => void markSeenAction(clientId, { tab: "messages" }).catch(() => {}));
     const id = setInterval(() => void refreshThread(), POLL_MS);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refreshThread reads only clientId
@@ -630,7 +645,7 @@ export default function MessagesDraft({ clientId, firstName, plan: fromPage, act
             days.map((d) => (
               <div key={d.day} className="rm-day">
                 <span className="rm-day-label">{d.day}</span>
-                {d.items.map((m) => [bubble(m), seenId === m.id && sending.length === 0 ? <span key={`seen-${m.id}`} className="rm-seen">Seen</span> : null])}
+                {d.items.map((m) => [newLine?.id === m.id ? <ChatNewLine key={`new-${m.id}`} count={newLine.count} /> : null, bubble(m), seenId === m.id && sending.length === 0 ? <span key={`seen-${m.id}`} className="rm-seen">Seen</span> : null])}
               </div>
             ))
           )}
