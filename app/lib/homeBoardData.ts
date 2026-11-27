@@ -514,7 +514,8 @@ function coachCurrency(ctx: Ctx): string {
 }
 
 function outstandingOf(ctx: Ctx): HomeBoard["outstanding"] {
-  const owed = getData().invoices.filter((i) => i.client_id === ctx.clientId && (i.status === "sent" || i.status === "due"));
+  // A refunded invoice is neither paid nor owed (26 Nov, Alex).
+  const owed = getData().invoices.filter((i) => i.client_id === ctx.clientId && (i.status === "sent" || i.status === "due") && !i.refunded_at);
   if (!owed.length) return null;
   const amount = Math.round(owed.reduce((t, i) => t + (Number(i.amount) || 0), 0) * 100) / 100;
   const currency = owed.find((i) => i.currency)?.currency ?? coachCurrency(ctx);
@@ -525,7 +526,7 @@ function outstandingOf(ctx: Ctx): HomeBoard["outstanding"] {
 function lastPaidOf(ctx: Ctx): HomeBoard["lastPaid"] {
   let last: { date: string; ms: number; id: number; amount: number; currency: string | undefined } | null = null;
   for (const i of getData().invoices) {
-    if (i.client_id !== ctx.clientId || i.status !== "paid") continue;
+    if (i.client_id !== ctx.clientId || i.status !== "paid" || i.refunded_at) continue;
     const date = i.paid_at ? stampDay(i.paid_at) : (i.issue_date || stampDay(i.created_at ?? "")).slice(0, 10);
     if (!PLAIN_DAY.test(date)) continue;
     const ms = stampMs(i.paid_at);

@@ -11,6 +11,9 @@ import { invoicePayPage } from "../../../lib/invoicePayPage";
 // anyone else gets the same "not here" as an invoice that doesn't exist, so a guess learns nothing. Only an invoice the
 // coach has sent; a paid one says Paid.
 //   /invoice/12/pay?t=12.<signature>
+// `auto=1` (26 Nov, Alex): the invoice page's "Pay automatically from now on" ticked, the payment kept for the series'
+// next invoices where it is offered (lib/invoiceCharges.ts). A GET, as the page's form sends it, so it needs no script.
+//   /invoice/12/pay?t=12.<signature>&auto=1
 export const dynamic = "force-dynamic";
 
 const nothing = () => invoicePayPage(null, { state: "Not found", tone: "grey", status: 404 });
@@ -21,7 +24,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!Number.isInteger(invoiceId) || invoiceId <= 0) return nothing();
   const inv = getData().invoices.find((i) => i.id === invoiceId);
   if (!inv || inv.status === "unpaid") return nothing();
-  const token = new URL(request.url).searchParams.get("t");
+  const asked = new URL(request.url).searchParams;
+  const token = asked.get("t");
   let allowed = invoicePayTokenOk(invoiceId, token);
   if (!allowed) {
     const user = await getRequestUser(request).catch(() => null);
@@ -31,7 +35,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const v = getInvoiceView(invoiceId);
   const view = invoiceViewUrl(invoiceId);
-  const answer = await checkoutForInvoice(invoiceId);
+  const answer = await checkoutForInvoice(invoiceId, { save: asked.get("auto") === "1" });
   if ("url" in answer) return new Response(null, { status: 303, headers: { Location: answer.url, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
   if ("paid" in answer) return invoicePayPage(v, { state: "Paid", tone: "good", link: view ? { href: view, words: "View invoice" } : null });
   return invoicePayPage(v, { state: answer.error, tone: "rust", pill: view ? { href: view, words: "View invoice" } : null });

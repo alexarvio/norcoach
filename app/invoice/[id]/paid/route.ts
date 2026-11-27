@@ -2,7 +2,7 @@ import { getRequestUser } from "../../../lib/auth";
 import { getData } from "../../../lib/db";
 import { getInvoiceView } from "../../../lib/queries";
 import { confirmInvoiceCheckout } from "../../../lib/invoiceCheckouts";
-import { invoicePayTokenOk, invoicePayUrl, invoiceViewUrl } from "../../../lib/invoicePayLink";
+import { invoicePageUrl, invoicePayTokenOk, invoicePayUrl, invoiceViewUrl } from "../../../lib/invoicePayLink";
 import { invoicePayPage } from "../../../lib/invoicePayPage";
 
 // Back from Stripe's checkout for an invoice (lib/invoiceCheckouts.ts). With the checkout's id (paid): Stripe is asked
@@ -33,6 +33,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (own && view) return new Response(null, { status: 303, headers: { Location: through ? `${view}?paid=1` : view, "Cache-Control": "no-store" } });
   if (!own && !invoicePayTokenOk(invoiceId, url.searchParams.get("t"))) return state === "paid" ? invoicePayPage(null, { state: "Paid", tone: "good" }) : nothing();
 
+  // Someone with the email's link lands back on the invoice's own page (26 Nov, Alex), paid or not.
+  const page = invoicePageUrl(invoiceId, through ? { paid: "1" } : {});
+  if (page) return new Response(null, { status: 303, headers: { Location: page, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
   const v = getInvoiceView(invoiceId);
   const link = view ? { href: view, words: "View invoice" } : null;
   if (v?.status === "paid") return invoicePayPage(v, { state: "Paid", tone: "good", link });

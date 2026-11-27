@@ -106,13 +106,16 @@ export type InvoiceMail = {
   bankWords: string | null;
   /** The coach's brand colour and the words on it, for the one pill (docs/DESIGN-RULES.md §4); ink with none. */
   brand: { hex: string; ink: string } | null;
+  /** A reminder the coach sent (26 Nov, Alex: Remind on the Invoices tab): its subject and head say so, the rest the same. */
+  reminder?: boolean;
 };
 
 /** The invoice email's words, as text and as HTML: facts, the money big, one pill (Pay, else View invoice). */
 export function invoiceEmail(m: InvoiceMail) {
-  const subject = `Invoice ${m.number} from ${m.seller}`;
+  const subject = m.reminder ? `Reminder: invoice ${m.number}` : `Invoice ${m.number} from ${m.seller}`;
   const facts: [string, string][] = [["Invoice", m.number], ["For", m.what], ["Issued", m.issued], ...(m.due ? ([["Due", m.due]] as [string, string][]) : [])];
   const text = [
+    ...(m.reminder ? [`Reminder: invoice ${m.number}`, ""] : []),
     m.seller,
     "",
     `${m.amount}`,
@@ -139,7 +142,7 @@ export function invoiceEmail(m: InvoiceMail) {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F5F6F8"><tr><td align="center" style="padding:32px 16px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border:1px solid #E1E5EB;border-radius:20px">
 <tr><td style="padding:28px 28px 0">
-<div style="${label}">Invoice</div>
+<div style="${label}">${m.reminder ? "Reminder" : "Invoice"}</div>
 <div style="${font};font-size:16px;line-height:22px;font-weight:600;color:#141a24;padding-top:6px">${escape(m.seller)}</div>
 <div style="${font};font-size:34px;line-height:40px;font-weight:600;color:#141a24;padding-top:18px;font-variant-numeric:tabular-nums">${escape(m.amount)}</div>
 </td></tr>

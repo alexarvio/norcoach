@@ -8,6 +8,19 @@ import InvoiceSheet from "../../../../components/InvoiceSheet";
 import InvoicePrintButton from "../../../../components/InvoicePrintButton";
 import { countryCodeFromName, countryOf, hasBankDetails } from "../../../../lib/countries";
 import { startTiming } from "../../../../lib/timing";
+import { invoiceStateOf, type InvoiceState } from "../../../../lib/invoiceEvents";
+
+// The pill's word and look for the state the invoice is in (26 Nov, Alex: it said Sent on a paid invoice): one source,
+// lib/invoiceEvents.ts, as the Invoices tab.
+const STATE_PILL: Record<InvoiceState, { word: string; look: string }> = {
+  not_sent: { word: "Not sent", look: "" },
+  sent: { word: "Sent", look: " live" },
+  pending: { word: "Pending", look: " live" },
+  overdue: { word: "Overdue", look: " warn" },
+  charge_failed: { word: "Charge failed", look: " warn" },
+  paid: { word: "Paid", look: " good" },
+  refunded: { word: "Refunded", look: "" },
+};
 
 // One invoice as it prints, for the coach: the sheet (components/InvoiceSheet)
 // with a bar above it. While it is "Not sent" it reads Settings live and
@@ -30,6 +43,8 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   const v = t.time("invoiceView", () => getInvoiceView(invoiceId));
   if (!v) notFound();
   t.client(v.clientId);
+  const row = getData().invoices.find((i) => i.id === invoiceId);
+  const pill = STATE_PILL[row ? invoiceStateOf(row) : v.frozen ? "sent" : "not_sent"];
   const f = v.from;
   const missing = [!f.business_name && "business name", !(f.address && f.city) && "address", !hasBankDetails(f, countryOf(f.country_code || countryCodeFromName(f.country))) && "bank details"].filter(Boolean) as string[];
 
@@ -43,7 +58,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
           ‹ Invoices
         </Link>
         <span className="ivp-state">
-          <span className={`ivp-statepill${v.frozen ? " live" : ""}`}>{v.frozen ? "Sent" : "Not sent"}</span>
+          <span className={`ivp-statepill${pill.look}`}>{pill.word}</span>
         </span>
         <InvoicePrintButton label="Print" />
       </div>

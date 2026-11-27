@@ -141,6 +141,10 @@ export async function register() {
   // too, so a series can be seen working; the client's buzz for a sent one only from the live server (as reminders).
   if (process.env.RECURRING_INVOICES !== "off") {
     const { runRecurringInvoices } = await import("./app/lib/queries");
+    // Paying automatically (26 Nov, Alex; app/lib/invoiceCharges.ts): right after the series make their invoices, each
+    // one due a charge is charged on the client's kept card or mandate, and each failed charge's retry whose day has
+    // come is tried. Only with INVOICE_CHARGES=on and Stripe's keys (chargesOn); one round at a time.
+    const { runInvoiceCharges } = await import("./app/lib/invoiceCharges");
     const buzz = meetingRemindersOn();
     const make = () => {
       try {
@@ -149,6 +153,9 @@ export async function register() {
       } catch (e) {
         console.error("[invoices] recurring failed:", e instanceof Error ? e.message : e);
       }
+      void runInvoiceCharges()
+        .then((n) => n && console.log(`[invoices] charged ${n}`))
+        .catch((e) => console.error("[invoices] charging failed:", e instanceof Error ? e.message : e));
     };
     setInterval(make, 10 * 60_000).unref?.();
     setTimeout(make, 60_000).unref?.();

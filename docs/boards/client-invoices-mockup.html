@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A client's invoices</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;500;600&display=swap" rel="stylesheet">
+<!-- 26 Nov, Alex: "we haven't touched this in a while… make it a little bit more intuitive and interactive. just mock up something". -->
+<style>
+  :root { --ink:#141a24; --body:#3a4250; --sec:#5b6474; --muted:#8b93a1; --faint:#98A2B3; --line:#E1E5EB; --div:#EEF0F3; --page:#f4f7fc; --rust:#b8471f; --green:#2f7a3f; --red:#b42318; --brand:#c8e87a; --brand-ink:#141a24; --fold: cubic-bezier(.22,1,.36,1); }
+  * { box-sizing: border-box; }
+  b, strong { font-weight: 600; }
+  body { margin: 0; background: #e9edf2; font-family: Archivo, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-weight: 500; color: var(--ink); -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1360px; margin: 0 auto; padding: 36px 32px 70px; }
+  h1.bt { margin: 0; font-size: 26px; font-weight: 600; }
+  .lede { margin: 6px 0 0; color: var(--muted); font-size: 14px; line-height: 21px; max-width: 900px; }
+  .lede b { color: var(--body); font-weight: 600; }
+  h2.opt { margin: 44px 0 6px; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: var(--sec); }
+  .what { margin: 0 0 16px; font-size: 14px; color: var(--body); line-height: 21px; max-width: 900px; }
+  .tryit { display: inline-block; margin-left: 6px; font-size: 12px; font-weight: 600; color: var(--sec); padding: 2px 8px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; }
+  .sep { display: inline-block; width: 1px; height: .85em; background: currentColor; opacity: .4; margin: 0 7px; vertical-align: -1px; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ---- The admin frame: the rail in B1 (the coach's dark in their lime, words ink), the page, the edge tabs. */
+  .admin { position: relative; display: grid; grid-template-columns: 236px 1fr; border-radius: 16px; overflow: hidden; background: var(--page); box-shadow: 0 24px 50px -24px rgba(16,24,40,.4); }
+  .rail { background: var(--brand); display: flex; flex-direction: column; position: relative; overflow: hidden; color: var(--brand-ink); }
+  .rail::before { content: ""; position: absolute; right: -73px; top: 96px; width: 220px; height: 220px; background: var(--brand-ink); opacity: .1; -webkit-mask: url(fp-mark.png) center / contain no-repeat; mask: url(fp-mark.png) center / contain no-repeat; }
+  .rtop { padding: 18px 20px 6px; position: relative; }
+  .word { font-size: 22px; font-weight: 600; letter-spacing: .18em; }
+  .coach { display: flex; gap: 10px; align-items: center; padding-top: 14px; }
+  .coach i { width: 30px; height: 30px; border-radius: 999px; background: #fff; display: grid; place-items: center; font-style: normal; font-weight: 600; font-size: 13px; }
+  .coach b { display: block; font-size: 13px; font-weight: 600; }
+  .coach small { display: block; font-size: 11px; opacity: .62; }
+  .views { padding: 8px 10px 14px; display: grid; gap: 1px; position: relative; }
+  .views span { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 10px; font-size: 13.5px; }
+  .views span::before { content: ""; width: 14px; height: 14px; border-radius: 4px; box-shadow: inset 0 0 0 1.3px currentColor; opacity: .6; }
+  .views em { margin-left: auto; font-style: normal; font-size: 12px; font-weight: 600; color: var(--rust); }
+  .rpaper { flex: 1; background: #fff; border-radius: 20px 20px 0 0; padding: 14px 12px; position: relative; color: var(--ink); }
+  .chead { display: flex; align-items: center; gap: 8px; padding: 0 6px 10px; }
+  .chead .lab { font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: var(--sec); }
+  .chead .n { font-size: 12px; color: var(--muted); }
+  .rsearch { height: 32px; border-radius: 999px; box-shadow: inset 0 0 0 1.5px var(--ink); margin-bottom: 8px; }
+  .rcap { display: flex; margin: 0 0 8px; padding: 3px; border-radius: 999px; box-shadow: inset 0 0 0 1px #DCE1E8; font-size: 12px; font-weight: 600; }
+  .rcap span { flex: 1; text-align: center; padding: 5px 0; border-radius: 999px; color: var(--body); }
+  .rcap span.on { background: var(--brand); color: var(--brand-ink); }
+  .cl { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 9px; font-size: 13.5px; }
+  .cl.on { background: rgba(150,190,60,.14); font-weight: 600; }
+  .cl i { width: 24px; height: 24px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); display: grid; place-items: center; font-style: normal; font-size: 11px; font-weight: 600; }
+  .cl .k { margin-left: auto; color: var(--rust); font-size: 12px; font-weight: 600; }
+  .main { position: relative; padding: 22px 86px 34px 26px; overflow: hidden; min-width: 0; }
+  .main::before { content: ""; position: absolute; right: -60px; top: -40px; width: 560px; height: 540px; background: var(--brand); opacity: .3; -webkit-mask: url(fp-mark.png) center / contain no-repeat; mask: url(fp-mark.png) center / contain no-repeat; pointer-events: none; }
+  .main > * { position: relative; }
+  .edge { position: absolute; right: 0; top: 84px; display: grid; gap: 6px; }
+  .edge span { width: 34px; height: 40px; border-radius: 10px 0 0 10px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); display: grid; place-items: center; color: var(--sec); }
+  .edge svg { width: 16px; height: 16px; }
+
+  .navrow { display: flex; align-items: stretch; gap: 12px; }
+  .tabs { display: inline-flex; gap: 2px; padding: 4px; border-radius: 999px; background: #e9edf3; }
+  .tabs span { padding: 8px 13px; border-radius: 999px; font-size: 12.5px; color: var(--body); }
+  .tabs span.on { background: var(--brand); font-weight: 600; color: var(--brand-ink); }
+  .todo { display: inline-flex; align-items: center; gap: 8px; padding: 0 8px 0 16px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1.5px var(--rust); font-size: 13px; font-weight: 600; color: var(--rust); }
+  .todo b { min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--rust); color: #fff; font-size: 11.5px; display: inline-grid; place-items: center; }
+  .hd { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 22px; }
+  .eyebrow { font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: var(--sec); }
+  .title { margin: 4px 0 0; font-size: 26px; font-weight: 600; }
+  .wpill { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 15px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+  .wpill.sm { height: 32px; padding: 0 14px; }
+  .wpill svg { width: 14px; height: 14px; translate: 0 -.5px; }
+  .bpill { display: inline-flex; align-items: center; justify-content: center; height: 36px; padding: 0 18px; border-radius: 999px; background: var(--brand); color: var(--brand-ink); font-size: 13.5px; font-weight: 600; white-space: nowrap; cursor: pointer; border: 0; font-family: inherit; }
+  .bpill.sm { height: 32px; padding: 0 14px; font-size: 13px; }
+
+  /* ---- Sections: title 20/600 on the page, the content in one white hairline card. */
+  .sec { margin-top: 26px; }
+  .sechead { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; min-height: 30px; }
+  .sechead h2 { margin: 0; font-size: 20px; font-weight: 600; }
+  .sechead .r { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 18px; }
+  .more { position: relative; width: 30px; height: 30px; border-radius: 999px; display: grid; place-items: center; color: var(--sec); cursor: pointer; }
+  .more:hover, .more.open { background: #F5F6F8; }
+  .more svg { width: 16px; height: 16px; }
+  .menu { position: absolute; top: 34px; right: 0; z-index: 5; width: 200px; padding: 5px; border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(20,30,50,.16); display: none; text-align: left; }
+  .more.open .menu { display: block; }
+  .menu span { display: flex; align-items: center; height: 34px; padding: 0 10px; border-radius: 7px; font-size: 13.5px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .menu span:hover { background: #fafbfd; }
+  .menu span.red { color: var(--red); }
+  .menu hr { border: 0; height: 1px; background: var(--div); margin: 4px 6px; }
+  .menu small { margin-left: auto; font-size: 12px; color: var(--muted); font-weight: 500; }
+
+  /* State pills: white, a 1px edge, 24px, 11.5/600. */
+  .st { display: inline-flex; align-items: center; justify-content: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #fff; border: 1px solid var(--line); font-size: 11.5px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+  .st.good { color: var(--green); border-color: rgba(47,122,63,.35); }
+  .st.live { color: var(--ink); border-color: var(--ink); }
+  .st.warn { color: var(--rust); border-color: rgba(184,71,31,.45); }
+  .st.col { width: 112px; }
+
+  /* ---- A · The Billing card: the series as facts across, each fact a label over its value. */
+  .bgrid { display: grid; grid-template-columns: 1.25fr 1fr 1fr 1.35fr; }
+  .bf { padding: 15px 18px 16px; min-width: 0; }
+  .bf + .bf { border-left: 1px solid var(--div); }
+  .lab { display: block; font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: var(--sec); }
+  .bf b { display: flex; align-items: baseline; gap: 8px; margin-top: 7px; font-size: 18px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .bf b s { font-size: 13.5px; font-weight: 500; color: var(--faint); }
+  .bf small { display: block; margin-top: 4px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+  .bf small em { font-style: normal; font-weight: 600; color: var(--rust); }
+  .bf small .ok { color: var(--green); font-weight: 600; }
+  .bf .none { color: var(--faint); font-weight: 500; }
+  .bf.edit { cursor: text; border-radius: 0; }
+  .bf.edit:hover { background: #fafbfd; }
+  .bf .in { display: none; }
+  .bf.editing .shown { display: none; }
+  .bf.editing .in { display: block; }
+  .field { display: flex; align-items: baseline; gap: 4px; margin-top: 7px; border-bottom: 1px solid var(--ink); padding-bottom: 3px; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .field .cur { color: var(--muted); font-weight: 500; }
+  .field input { width: 100%; border: 0; outline: 0; padding: 0; font: inherit; color: var(--ink); background: transparent; }
+  .field s { font-size: 13px; color: var(--faint); font-weight: 500; }
+  .editfoot { display: flex; align-items: center; gap: 12px; margin-top: 8px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+  .editfoot .gap { margin-left: auto; }
+  .wd { font-size: 13px; font-weight: 600; color: var(--sec); cursor: pointer; }
+  .card-start { display: flex; align-items: center; padding-right: 16px; }
+  .card-start .bgrid { flex: 1; grid-template-columns: 1.25fr 1fr 1fr 1.1fr; }
+
+  /* The figures: the shared hairline card (rls-figs). */
+  .figs { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .fig { padding: 15px 18px 16px; }
+  .fig + .fig { border-left: 1px solid var(--div); }
+  .fig b { display: block; margin-top: 7px; font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .fig b.warn { color: var(--rust); }
+  .fig small { display: block; margin-top: 4px; font-size: 12.5px; color: var(--muted); }
+
+  /* ---- The log: every invoice a 52px row, the date first with its chevron, then the thing. */
+  .cols, .lrow { display: grid; grid-template-columns: 128px 92px minmax(0, 1fr) 72px 96px 112px; column-gap: 16px; align-items: center; padding: 0 16px 0 18px; }
+  .cols { padding-top: 8px; padding-bottom: 2px; font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: var(--sec); }
+  .cols .r, .lrow .r { text-align: right; }
+  .litem + .litem { border-top: 1px solid var(--div); }
+  .lrow { min-height: 52px; cursor: pointer; }
+  .lrow:hover { background: #fafbfd; }
+  .litem:last-child .lrow { border-radius: 0 0 17px 17px; }
+  .ldate { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--body); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .chev { width: 12px; height: 12px; color: var(--muted); transition: transform 280ms var(--fold); flex: none; }
+  .litem.open .chev, .sel .chev { transform: rotate(90deg); }
+  .lno { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .lwhat { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: var(--body); }
+  .ldue { font-size: 13.5px; color: var(--sec); font-variant-numeric: tabular-nums; }
+  .ldue.late { color: var(--rust); }
+  .ltot { font-size: 14px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+  .none-row { padding: 0 19px; height: 53.5px; display: flex; align-items: center; font-size: 13px; color: var(--muted); }
+
+  /* The shared fold: rows 0fr → 1fr over 340ms, what is in it fading in over 220ms. */
+  .fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 340ms var(--fold); }
+  .fold > div { overflow: hidden; min-height: 0; }
+  .fold .inner { opacity: 0; transform: translateY(-4px); transition: opacity 220ms ease, transform 340ms var(--fold); }
+  .litem.open .fold { grid-template-rows: 1fr; }
+  .litem.open .fold .inner { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { .fold, .fold .inner, .chev { transition: none; } }
+
+  /* What happened to the invoice: one step a line on a thin spine, its dot in what it means. */
+  .steps { position: relative; padding: 4px 16px 14px 18px; }
+  .step { position: relative; display: grid; grid-template-columns: 128px 48px minmax(0, 1fr) auto; column-gap: 16px; align-items: center; min-height: 32px; font-size: 13.5px; }
+  .step .d { display: flex; align-items: center; gap: 10px; color: var(--body); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .dot { position: relative; z-index: 1; width: 10px; height: 10px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1.5px #C9CFD8; flex: none; }
+  .dot.g { box-shadow: none; background: var(--green); }
+  .dot.r { box-shadow: none; background: var(--rust); }
+  .dot.i { box-shadow: none; background: var(--ink); }
+  .dot.c { box-shadow: inset 0 0 0 1.5px #C9CFD8; background: #fff; border: 0; outline: 1.5px dashed transparent; }
+  .step:has(+ .step) .dot::after { content: ""; position: absolute; left: 4.5px; top: 10px; width: 1px; height: 22px; background: var(--line); }
+  .step .t { color: var(--faint); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .step .w { min-width: 0; color: var(--ink); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .step .w span { font-weight: 500; color: var(--muted); }
+  .step .w.ok { color: var(--green); }
+  .step .w.bad { color: var(--rust); }
+  .step.later .w, .step.later .d { color: var(--faint); }
+  .step.later .w span { color: var(--faint); }
+  .acts { display: flex; justify-content: flex-end; gap: 2px; padding: 4px 6px 0 0; }
+  .act { display: inline-flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--ink); cursor: pointer; white-space: nowrap; }
+  .act:hover { background: #f5f6f8; }
+  .act.grey { color: var(--sec); }
+  .act.red { color: var(--red); }
+
+  /* ---- Pop-ups in C, on a soft board cell. */
+  .cells { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; margin-top: 22px; }
+  .cell { padding: 22px 20px; border-radius: 22px; background: #dfe4ea; }
+  .cell .lbl { margin: 0 0 12px; font-size: 13.5px; font-weight: 600; color: var(--ink); }
+  .cell .lbl small { display: block; margin-top: 3px; font-size: 12px; font-weight: 500; color: var(--sec); line-height: 1.45; }
+  .pop { width: 480px; max-width: 100%; margin: 0 auto; border-radius: 20px; overflow: hidden; background: #fff; box-shadow: 0 30px 60px -24px rgba(16,24,40,.35); }
+  .dk { position: relative; padding: 18px 20px 42px; background: var(--brand); color: var(--brand-ink); overflow: hidden; }
+  .dk::before { content: ""; position: absolute; right: -53px; top: 4px; width: 160px; height: 160px; background: var(--brand-ink); opacity: .13; -webkit-mask: url(fp-mark.png) center / contain no-repeat; mask: url(fp-mark.png) center / contain no-repeat; }
+  .dk .x { position: absolute; right: 14px; top: 14px; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 999px; color: rgba(20,26,36,.55); font-size: 15px; }
+  .who { position: relative; display: flex; align-items: center; gap: 12px; padding-right: 30px; }
+  .who i { width: 40px; height: 40px; border-radius: 999px; background: #fff; display: grid; place-items: center; font-style: normal; font-size: 16px; font-weight: 600; flex: none; }
+  .who .sc { display: block; font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: rgba(20,26,36,.62); }
+  .who b { display: block; margin-top: 4px; font-size: 18px; font-weight: 600; }
+  .who .hf { display: block; margin-top: 3px; font-size: 13px; color: rgba(20,26,36,.62); font-variant-numeric: tabular-nums; }
+  .pp { position: relative; margin-top: -24px; border-radius: 20px 20px 0 0; background: #fff; padding: 18px 20px 4px; }
+  .thing { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+  .thing .n { font-size: 16px; font-weight: 600; }
+  .thing .f { margin-top: 4px; font-size: 13px; color: var(--sec); }
+  .thing .amt { font-size: 30px; font-weight: 300; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1; }
+  .thing .amt s { font-size: 15px; color: var(--faint); margin-right: 6px; font-weight: 500; letter-spacing: 0; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  .fl small { display: block; font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: var(--sec); }
+  .fl .ln { display: flex; align-items: baseline; gap: 6px; margin-top: 6px; padding-bottom: 7px; border-bottom: 1px solid var(--line); font-size: 15px; font-variant-numeric: tabular-nums; }
+  .fl .ln.on { border-color: var(--ink); }
+  .fl .ln .u { color: var(--muted); }
+  .fl .ln s { margin-left: auto; color: var(--faint); font-size: 13px; }
+  .fl .ln svg { margin-left: auto; width: 15px; height: 15px; color: var(--sec); }
+  .fl .static { margin-top: 6px; padding-bottom: 7px; font-size: 15px; font-variant-numeric: tabular-nums; }
+  .fl .static span { color: var(--muted); font-size: 13px; }
+  .cap { display: flex; margin-top: 6px; padding: 4px; height: 36px; border-radius: 999px; box-shadow: inset 0 0 0 1px #DCE1E8; font-size: 13px; font-weight: 600; }
+  .cap span { flex: 1; display: grid; place-items: center; border-radius: 999px; color: var(--body); cursor: pointer; transition: background-color 250ms var(--fold); }
+  .cap span.on { background: var(--brand); color: var(--brand-ink); }
+  .sums { display: grid; grid-template-columns: 1fr auto; row-gap: 4px; margin: 14px 0 0 auto; width: 210px; font-size: 13px; color: var(--sec); font-variant-numeric: tabular-nums; }
+  .sums dd { margin: 0; text-align: right; }
+  .sums .g { font-size: 14px; font-weight: 600; color: var(--ink); }
+  .lines { margin-top: 6px; }
+  .lh, .li { display: grid; grid-template-columns: minmax(0, 1fr) 40px 76px 76px 18px; gap: 10px; align-items: baseline; }
+  .lh { font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: var(--sec); padding-bottom: 2px; }
+  .li { padding: 8px 0 7px; border-bottom: 1px solid var(--line); font-size: 14px; font-variant-numeric: tabular-nums; }
+  .li .r, .lh .r { text-align: right; }
+  .li .x { color: var(--faint); font-size: 11px; text-align: right; }
+  .addl { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 13px; font-weight: 600; color: var(--sec); }
+  .pfoot { display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 18px 0 16px; }
+  .pfoot .cancel { font-size: 13.5px; font-weight: 600; color: var(--sec); }
+
+  /* ---- States: the Billing card and its row on their own page strip. */
+  .states { display: grid; gap: 18px; margin-top: 18px; }
+  .state { border-radius: 16px; background: var(--page); padding: 18px 22px 20px; box-shadow: 0 24px 50px -30px rgba(16,24,40,.35); }
+  .state > .lbl { margin: 0 0 2px; font-size: 13.5px; font-weight: 600; }
+  .state > .lbl small { margin-left: 8px; font-size: 12.5px; font-weight: 500; color: var(--muted); }
+  .state .sec { margin-top: 12px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+
+  /* ---- B · The series as a track: a period a column, its ring in its state, NOW between what's over and what's to come. */
+  .tk-top { display: flex; align-items: center; gap: 14px; padding: 16px 18px 6px; }
+  .tk-top .n { font-size: 15px; font-weight: 600; }
+  .tk-top .f { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tk-top .f s { color: var(--faint); margin-right: 4px; }
+  .tk-top .f em { font-style: normal; color: var(--green); font-weight: 600; }
+  .tk-top .f .rust { color: var(--rust); font-weight: 600; }
+  .track { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; margin: 6px 12px 4px; }
+  .track::before { content: ""; position: absolute; left: 7%; right: 7%; top: 31px; height: 1px; background: var(--line); }
+  .per { position: relative; display: flex; flex-direction: column; align-items: center; gap: 0; padding: 20px 4px 14px; border-radius: 14px; cursor: pointer; text-align: center; }
+  .per:hover { background: #fafbfd; }
+  .per.sel { background: #F5F6F8; }
+  .ring { position: relative; z-index: 1; width: 22px; height: 22px; border-radius: 999px; background: #fff; display: grid; place-items: center; transition: transform 250ms var(--fold); }
+  .per.sel .ring { transform: scale(1.27); }
+  .ring svg { width: 12px; height: 12px; }
+  .ring.paid { box-shadow: inset 0 0 0 1.5px var(--green); color: var(--green); }
+  .ring.open { box-shadow: inset 0 0 0 1.5px var(--ink); }
+  .ring.late { box-shadow: inset 0 0 0 1.5px var(--rust); }
+  .ring.late::after { content: ""; width: 6px; height: 6px; border-radius: 999px; background: var(--rust); }
+  .ring.fail { box-shadow: inset 0 0 0 1.5px var(--rust); color: var(--rust); font-size: 9.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .ring.come { box-shadow: none; border: 1.5px dashed #C9CFD8; }
+  .per .m { margin-top: 10px; font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: var(--sec); }
+  .per .a { margin-top: 3px; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .per .s { margin-top: 2px; font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .per .s.ok { color: var(--green); font-weight: 600; }
+  .per .s.bad { color: var(--rust); font-weight: 600; }
+  .per.future .a, .per.future .m { color: var(--faint); }
+  .nowline { position: absolute; z-index: 2; top: 12px; bottom: 12px; width: 1px; background: var(--ink); }
+  .nowline::before { content: ""; position: absolute; top: -3px; left: -3.5px; width: 8px; height: 8px; border-radius: 999px; background: var(--ink); animation: pulse 1.8s ease-out infinite; }
+  .nowline b { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 10px; letter-spacing: .16em; font-weight: 600; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(20,26,36,.35); } 100% { box-shadow: 0 0 0 8px rgba(20,26,36,0); } }
+  @media (prefers-reduced-motion: reduce) { .nowline::before { animation: none; } }
+  .change { position: absolute; z-index: 2; top: 23px; transform: translateX(-50%); padding: 0 7px; height: 18px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #DCE1E8; font-size: 11px; font-weight: 600; color: var(--sec); display: inline-flex; align-items: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .change s { color: var(--faint); margin-right: 4px; font-weight: 500; }
+  .well { margin: 6px 12px 14px; padding: 14px 4px 8px; border-radius: 14px; background: #F5F6F8; }
+  .well-head { display: flex; align-items: center; gap: 12px; padding: 0 14px 6px; }
+  .well-head .no { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .well-head .w { font-size: 14px; color: var(--body); }
+  .well-head .tot { margin-left: auto; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .well .steps { padding: 0 10px 0 14px; }
+  .well .step { grid-template-columns: 118px 48px minmax(0, 1fr); }
+  .well .acts { padding-right: 10px; }
+
+  .notes ul { margin: 0; padding-left: 18px; font-size: 14px; line-height: 22px; color: var(--body); max-width: 960px; }
+  .notes li + li { margin-top: 5px; }
+  .notes b { font-weight: 600; color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 class="bt">A client's invoices</h1>
+  <p class="lede">Alex's Invoices tab, for what was settled today: <b>Norcoach takes no cut.</b> Every invoice email (and Invoices in Alex's app) links to our own page, <b>app.norcoachapp.com/invoice/…</b>, with Pay going to Stripe's checkout on <b>Finlay's own Stripe account</b> (card, iDEAL, Apple Pay). On a repeating plan Alex can choose there to pay automatically from then on; later invoices are charged by themselves. A charge that fails is retried the next day, three days in a row, and only after the third is Finlay told; Alex's app is never locked for it. A bank transfer stays <b>marked paid by hand</b>. The tab today has no place for any of that: the plan is a rust strip, the series a separate table, the invoices a status menu with no story. Both options put the billing on top and give every invoice what happened to it.</p>
+
+  <!-- ============================ A ============================ -->
+  <h2 class="opt">A · A Billing card on top, every invoice opening on what happened to it</h2>
+  <p class="what">The series as one card of facts: the plan, Alex's own price beside the plan's struck, the rhythm and next invoice, how he pays. Then the figures, then the log, where a row opens on the shared fold into its own small timeline with its actions in words. <span class="tryit">Click the price, the ⋯, and any invoice row</span></p>
+
+  <div class="admin">
+    <aside class="rail">
+      <div class="rtop"><div class="word">NORCOACH</div><div class="coach"><i>F</i><div><b>Finlay Chedd</b><small>Full Potential Coaching</small></div></div></div>
+      <div class="views"><span>Feed<em>4</em></span><span>Phases</span><span>Calendar</span><span>Library</span><span>Business</span><span>Settings</span></div>
+      <div class="rpaper">
+        <div class="chead"><span class="lab">Clients</span><span class="n">24</span></div>
+        <div class="rsearch"></div>
+        <div class="rcap"><span class="on">All</span><span>Needs you</span></div>
+        <div class="cl on"><i>A</i>Alex Arvio<span class="k">2</span></div>
+        <div class="cl"><i>E</i>Elena Visser</div>
+        <div class="cl"><i>J</i>Jonas Weber<span class="k">1</span></div>
+        <div class="cl"><i>M</i>Maya Brooks</div>
+        <div class="cl"><i>S</i>Sam Carter</div>
+      </div>
+    </aside>
+    <div class="main">
+      <div class="navrow">
+        <div class="tabs"><span>Home</span><span>Plan</span><span>Lifestyle</span><span>Training</span><span>Nutrition</span><span>Shape update</span><span>Meetings</span><span class="on">Invoices</span></div>
+        <span class="todo">To do <b>2</b></span>
+      </div>
+      <header class="hd">
+        <div><div class="eyebrow">Invoices</div><h1 class="title">Alex's invoices</h1></div>
+        <span class="wpill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New invoice</span>
+      </header>
+
+      <section class="sec">
+        <div class="sechead"><h2>Billing</h2><span class="st live">Active</span>
+          <div class="r"><span class="more" data-menu><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+            <div class="menu"><span>Edit lines</span><span>Pause</span><span>Switch to bank transfer</span><hr><span class="red">Stop</span></div></span></div>
+        </div>
+        <div class="card">
+          <div class="bgrid">
+            <div class="bf"><span class="lab">Plan</span><b>Online coaching</b><small>Monthly<span class="sep"></span>since 26/9</small></div>
+            <div class="bf edit" data-price>
+              <span class="lab">Price</span>
+              <div class="shown"><b>€75 <s>€89</s></b><small>Alex's own<span class="sep"></span>from 26/11</small></div>
+              <div class="in"><div class="field"><span class="cur">€</span><input value="75" aria-label="Alex's price"><s>€89</s></div>
+                <div class="editfoot">From 26/12<span class="gap"></span><span class="wd" data-cancel>Cancel</span><span class="bpill sm" data-cancel>Save</span></div></div>
+            </div>
+            <div class="bf"><span class="lab">Next invoice</span><b>26/12</b><small>in 30 days<span class="sep"></span>€75.00</small></div>
+            <div class="bf"><span class="lab">Pays by</span><b>Visa •••• 4242</b><small><span class="ok">Automatic</span><span class="sep"></span>since 27/10</small></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="sec" style="margin-top:12px">
+        <div class="card figs">
+          <div class="fig"><span class="lab">Outstanding</span><b>€0.00</b><small>Nothing owed</small></div>
+          <div class="fig"><span class="lab">Paid</span><b>€253.00</b><small>3 invoices<span class="sep"></span>since 26/9</small></div>
+          <div class="fig"><span class="lab">Last paid</span><b>26/11</b><small>€75.00<span class="sep"></span>Visa •••• 4242</small></div>
+        </div>
+      </section>
+
+      <section class="sec">
+        <div class="sechead"><h2>All invoices</h2></div>
+        <div class="card">
+          <div class="cols"><span>Issued</span><span>Number</span><span>What for</span><span>Due</span><span class="r">Total</span><span>Status</span></div>
+          <div class="litem">
+            <div class="lrow"><span class="ldate">Thu, 26 Nov<svg class="chev" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 2.5 8 6l-3.5 3.5"/></svg></span><span class="lno">20260004</span><span class="lwhat">Online coaching, November</span><span class="ldue">10/12</span><span class="ltot">€75.00</span><span class="st good col">Paid</span></div>
+            <div class="fold"><div><div class="inner steps">
+              <div class="step"><span class="d"><i class="dot i"></i>Thu, 26 Nov</span><span class="t">09:00</span><span class="w">Made <span>by the series</span></span></div>
+              <div class="step"><span class="d"><i class="dot i"></i>Thu, 26 Nov</span><span class="t">09:00</span><span class="w">Charged <span>Visa •••• 4242</span></span></div>
+              <div class="step"><span class="d"><i class="dot g"></i>Thu, 26 Nov</span><span class="t">09:01</span><span class="w ok">Paid <span>€75.00<i class="sep"></i>Stripe</span></span></div>
+              <div class="step"><span class="d"><i class="dot"></i>Thu, 26 Nov</span><span class="t">09:01</span><span class="w">Receipt emailed <span>alex@example.com</span></span></div>
+              <div class="acts"><span class="act">Open</span><span class="act grey">Refund</span></div>
+            </div></div></div>
+          </div>
+          <div class="litem open">
+            <div class="lrow"><span class="ldate">Mon, 26 Oct<svg class="chev" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 2.5 8 6l-3.5 3.5"/></svg></span><span class="lno">20260002</span><span class="lwhat">Online coaching, October</span><span class="ldue">9/11</span><span class="ltot">€89.00</span><span class="st good col">Paid</span></div>
+            <div class="fold"><div><div class="inner steps">
+              <div class="step"><span class="d"><i class="dot i"></i>Mon, 26 Oct</span><span class="t">09:00</span><span class="w">Sent by email <span>alex@example.com</span></span></div>
+              <div class="step"><span class="d"><i class="dot"></i>Mon, 26 Oct</span><span class="t">19:42</span><span class="w">Opened <span>in Alex's app</span></span></div>
+              <div class="step"><span class="d"><i class="dot g"></i>Tue, 27 Oct</span><span class="t">08:15</span><span class="w ok">Paid by card <span>Visa •••• 4242</span></span></div>
+              <div class="step"><span class="d"><i class="dot g"></i>Tue, 27 Oct</span><span class="t">08:15</span><span class="w ok">Automatic payment on <span>Visa •••• 4242</span></span></div>
+              <div class="acts"><span class="act">Open</span><span class="act grey">Refund</span></div>
+            </div></div></div>
+          </div>
+          <div class="litem">
+            <div class="lrow"><span class="ldate">Sat, 26 Sep<svg class="chev" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 2.5 8 6l-3.5 3.5"/></svg></span><span class="lno">20260001</span><span class="lwhat">Online coaching, September</span><span class="ldue">10/10</span><span class="ltot">€89.00</span><span class="st good col">Paid</span></div>
+            <div class="fold"><div><div class="inner steps">
+              <div class="step"><span class="d"><i class="dot i"></i>Sat, 26 Sep</span><span class="t">09:00</span><span class="w">Sent by email <span>alex@example.com</span></span></div>
+              <div class="step"><span class="d"><i class="dot"></i>Mon, 28 Sep</span><span class="t">12:10</span><span class="w">Opened <span>in the browser</span></span></div>
+              <div class="step"><span class="d"><i class="dot i"></i>Sat, 3 Oct</span><span class="t">10:00</span><span class="w">Reminder sent <span>by Finlay</span></span></div>
+              <div class="step"><span class="d"><i class="dot g"></i>Mon, 5 Oct</span><span class="t">16:30</span><span class="w ok">Marked paid <span>bank transfer<i class="sep"></i>by Finlay</span></span></div>
+              <div class="acts"><span class="act">Open</span><span class="act grey">Not paid</span></div>
+            </div></div></div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <div class="edge"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg></span><span style="font-weight:600;font-size:13px">?</span></div>
+  </div>
+
+  <div class="cells">
+    <div class="cell">
+      <p class="lbl">Start billing<small>The Billing card's one action while nothing bills Alex. Price here is Alex's own (the plan's struck beside it); How Alex pays is Link (our page, Stripe on Finlay's account, auto-pay offered there) or Bank transfer (marked by hand). Replaces opening the full New invoice from the rust strip.</small></p>
+      <div class="pop">
+        <div class="dk"><span class="x">✕</span><div class="who"><i>A</i><div><span class="sc">Alex Arvio<span class="sep"></span>Invoices</span><b>Start billing</b></div></div></div>
+        <div class="pp">
+          <div class="thing"><div><div class="n">Online coaching</div><div class="f">Monthly</div></div><div class="amt">€75</div></div>
+          <div class="two">
+            <div class="fl"><small>Price</small><div class="ln on"><span class="u">€</span>75.00<s>€89.00</s></div></div>
+            <div class="fl"><small>First invoice</small><div class="ln">26/11/2026<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg></div></div>
+          </div>
+          <div class="two">
+            <div class="fl"><small>How Alex pays</small><div class="cap" data-cap><span class="on">Link</span><span>Bank transfer</span></div></div>
+            <div class="fl"><small>Due</small><div class="static">10/12<span><span class="sep"></span>in 14 days</span></div></div>
+          </div>
+          <dl class="sums"><dt>Subtotal</dt><dd>€61.98</dd><dt>VAT 21%</dt><dd>€13.02</dd><dt class="g">Total</dt><dd class="g">€75.00</dd></dl>
+          <div class="pfoot"><span class="cancel">Cancel</span><span class="bpill">Start</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="cell">
+      <p class="lbl">Edit lines<small>From the Billing card's ⋯: the running series' lines and rhythm, changing every invoice from the next one on (20260004 and before stay as sent).</small></p>
+      <div class="pop">
+        <div class="dk"><span class="x">✕</span><div class="who"><i>A</i><div><span class="sc">Alex Arvio<span class="sep"></span>Invoices</span><b>Edit lines</b><span class="hf">From 26/12</span></div></div></div>
+        <div class="pp">
+          <div class="fl"><small>Lines</small></div>
+          <div class="lines">
+            <div class="lh"><span>Description</span><span class="r">Qty</span><span class="r">Price</span><span class="r">Amount</span><span></span></div>
+            <div class="li"><span>Online coaching, {month}</span><span class="r">1</span><span class="r">75.00</span><span class="r">€75.00</span><span class="x">✕</span></div>
+            <div class="li" style="border-color:var(--ink)"><span>Nutrition check-in</span><span class="r">1</span><span class="r">15.00</span><span class="r">€15.00</span><span class="x">✕</span></div>
+          </div>
+          <span class="addl"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Line</span>
+          <dl class="sums"><dt>Subtotal</dt><dd>€74.38</dd><dt>VAT 21%</dt><dd>€15.62</dd><dt class="g">Total</dt><dd class="g">€90.00</dd></dl>
+          <div class="fl" style="margin-top:10px"><small>Every</small><div class="cap" data-cap><span>Week</span><span>2 weeks</span><span class="on">Month</span></div></div>
+          <div class="pfoot"><span class="cancel">Cancel</span><span class="bpill">Save</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================ States ============================ -->
+  <h2 class="opt">A in every state</h2>
+  <p class="what">The same card and its row, opened, for the other moments. Each drawn on its own day, the label says which. The invoice pill follows what happened and is no longer a menu: Mark paid, Remind, Send link and Refund are words in the opened row.</p>
+  <div class="legend"><span class="st col">Not sent</span><span class="st live col">Sent</span><span class="st good col">Paid</span><span class="st warn col">Overdue</span><span class="st warn col">Charge failed</span><span class="st col">Refunded</span></div>
+
+  <div class="states">
+    <div class="state">
+      <p class="lbl">Not billed yet<small>Thu 26 Nov. On Online coaching, nothing billing him. Today's rust strip becomes the card itself.</small></p>
+      <section class="sec">
+        <div class="sechead"><h2>Billing</h2><span class="st">Not billed</span></div>
+        <div class="card card-start">
+          <div class="bgrid">
+            <div class="bf"><span class="lab">Plan</span><b>Online coaching</b><small>Monthly</small></div>
+            <div class="bf"><span class="lab">Price</span><b>€89</b><small>Plan price</small></div>
+            <div class="bf"><span class="lab">First invoice</span><b class="none">—</b></div>
+            <div class="bf"><span class="lab">Pays by</span><b class="none">—</b></div>
+          </div>
+          <span class="wpill sm">Start billing</span>
+        </div>
+      </section>
+      <section class="sec" style="margin-top:18px"><div class="sechead"><h2>All invoices</h2></div><div class="card"><div class="none-row">None yet</div></div></section>
+    </div>
+
+    <div class="state">
+      <p class="lbl">A failed automatic charge, retry 2 of 3<small>Sun 27 Dec, evening. Declined on the 26th and again on the 27th; Finlay isn't told yet and Alex's app stays open.</small></p>
+      <section class="sec">
+        <div class="sechead"><h2>Billing</h2><span class="st live">Active</span></div>
+        <div class="card"><div class="bgrid">
+          <div class="bf"><span class="lab">Plan</span><b>Online coaching</b><small>Monthly<span class="sep"></span>since 26/9</small></div>
+          <div class="bf"><span class="lab">Price</span><b>€75 <s>€89</s></b><small>Alex's own<span class="sep"></span>from 26/11</small></div>
+          <div class="bf"><span class="lab">Next invoice</span><b>26/1</b><small>in 30 days<span class="sep"></span>€75.00</small></div>
+          <div class="bf"><span class="lab">Pays by</span><b>Visa •••• 4242</b><small><em>Declined</em><span class="sep"></span>retry 2 of 3 on 28/12</small></div>
+        </div></div>
+      </section>
+      <section class="sec" style="margin-top:12px"><div class="card">
+        <div class="litem open">
+          <div class="lrow"><span class="ldate">Sat, 26 Dec<svg class="chev" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 2.5 8 6l-3.5 3.5"/></svg></span><span class="lno">20260005</span><span class="lwhat">Online coaching, December</span><span class="ldue">9/1</span><span class="ltot">€75.00</span><span class="st warn col">Charge failed</span></div>
+          <div class="fold"><div><div class="inner steps">
+            <div class="step"><span class="d"><i class="dot i"></i>Sat, 26 Dec</span><span class="t">09:00</span><span class="w">Made <span>by the series</span></span></div>
+            <div class="step"><span class="d"><i class="dot r"></i>Sat, 26 Dec</span><span class="t">09:00</span><span class="w bad">Card declined <span>Visa •••• 4242<i class="sep"></i>insufficient funds</span></span></div>
+            <div class="step"><span class="d"><i class="dot r"></i>Sun, 27 Dec</span><span class="t">09:00</span><span class="w bad">Retry 1 of 3 declined <span>Visa •••• 4242</span></span></div>
+            <div class="step later"><span class="d"><i class="dot"></i>Mon, 28 Dec</span><span class="t">09:00</span><span class="w">Retry 2 of 3</span></div>
+            <div class="step later"><span class="d"><i class="dot"></i>Tue, 29 Dec</span><span class="t">09:00</span><span class="w">Retry 3 of 3</span></div>
+            <div class="step later"><span class="d"><i class="dot"></i>Tue, 29 Dec</span><span class="t">09:00</span><span class="w">Finlay told</span></div>
+            <div class="acts"><span class="act">Send link</span><span class="act">Mark paid</span></div>
+          </div></div></div>
+        </div>
+      </div></section>
+    </div>
+
+    <div class="state">
+      <p class="lbl">Overdue, on a pay-by-link client<small>Thu 26 Nov. Alex pays each invoice from the email's link; October's is 17 days late.</small></p>
+      <section class="sec">
+        <div class="sechead"><h2>Billing</h2><span class="st live">Active</span></div>
+        <div class="card"><div class="bgrid">
+          <div class="bf"><span class="lab">Plan</span><b>Online coaching</b><small>Monthly<span class="sep"></span>since 26/9</small></div>
+          <div class="bf"><span class="lab">Price</span><b>€89</b><small>Plan price</small></div>
+          <div class="bf"><span class="lab">Next invoice</span><b>26/12</b><small>in 30 days<span class="sep"></span>€89.00</small></div>
+          <div class="bf"><span class="lab">Pays by</span><b>Link</b><small>alex@example.com</small></div>
+        </div></div>
+      </section>
+      <section class="sec" style="margin-top:12px"><div class="card figs">
+        <div class="fig"><span class="lab">Outstanding</span><b class="warn">€89.00</b><small>1 invoice<span class="sep"></span>17 days late</small></div>
+        <div class="fig"><span class="lab">Paid</span><b>€178.00</b><small>2 invoices<span class="sep"></span>since 26/9</small></div>
+        <div class="fig"><span class="lab">Last paid</span><b>26/11</b><small>€89.00<span class="sep"></span>iDEAL</small></div>
+      </div></section>
+      <section class="sec" style="margin-top:12px"><div class="card">
+        <div class="litem open">
+          <div class="lrow"><span class="ldate">Mon, 26 Oct<svg class="chev" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 2.5 8 6l-3.5 3.5"/></svg></span><span class="lno">20260002</span><span class="lwhat">Online coaching, October</span><span class="ldue late">9/11</span><span class="ltot">€89.00</span><span class="st warn col">Overdue</span></div>
+          <div class="fold"><div><div class="inner steps">
+            <div class="step"><span class="d"><i class="dot i"></i>Mon, 26 Oct</span><span class="t">09:00</span><span class="w">Sent by email <span>alex@example.com</span></span></div>
+            <div class="step"><span class="d"><i class="dot"></i>Tue, 27 Oct</span><span class="t">07:58</span><span class="w">Opened <span>in the browser</span></span></div>
+            <div class="step"><span class="d"><i class="dot r"></i>Mon, 9 Nov</span><span class="t"></span><span class="w bad">Due <span>17 days ago</span></span></div>
+            <div class="step"><span class="d"><i class="dot i"></i>Thu, 12 Nov</span><span class="t">10:20</span><span class="w">Reminder sent <span>by Finlay</span></span></div>
+            <div class="acts"><span class="act">Remind</span><span class="act">Mark paid</span><span class="act grey">Open</span></div>
+          </div></div></div>
+        </div>
+      </div></section>
+    </div>
+
+    <div class="state">
+      <p class="lbl">Paid by bank transfer, marked by hand<small>Thu 26 Nov. Alex transfers each month; Finlay marks it when it lands.</small></p>
+      <section class="sec">
+        <div class="sechead"><h2>Billing</h2><span class="st live">Active</span></div>
+        <div class="card"><div class="bgrid">
+          <div class="bf"><span class="lab">Plan</span><b>Online coaching</b><small>Monthly<span class="sep"></span>since 26/9</small></div>
+          <div class="bf"><span class="lab">Price</span><b>€89</b><small>Plan price</small></div>
+          <div class="bf"><span class="lab">Next invoice</span><b>26/12</b><small>in 30 days<span class="sep"></span>€89.00</small></div>
+          <div class="bf"><span class="lab">Pays by</span><b>Bank transfer</b><small>Marked by hand</small></div>
+        </div></div>
+      </section>
+      <section class="sec" style="margin-top:12px"><div class="card">
+        <div class="litem open">
+          <div class="lrow"><span class="ldate">Mon, 26 Oct<svg class="chev" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 2.5 8 6l-3.5 3.5"/></svg></span><span class="lno">20260002</span><span class="lwhat">Online coaching, October</span><span class="ldue">9/11</span><span class="ltot">€89.00</span><span class="st good col">Paid</span></div>
+          <div class="fold"><div><div class="inner steps">
+            <div class="step"><span class="d"><i class="dot i"></i>Mon, 26 Oct</span><span class="t">09:00</span><span class="w">Sent by email <span>alex@example.com</span></span></div>
+            <div class="step"><span class="d"><i class="dot"></i>Mon, 26 Oct</span><span class="t">21:04</span><span class="w">Opened <span>in Alex's app</span></span></div>
+            <div class="step"><span class="d"><i class="dot g"></i>Fri, 30 Oct</span><span class="t">11:45</span><span class="w ok">Marked paid <span>bank transfer<i class="sep"></i>by Finlay</span></span></div>
+            <div class="acts"><span class="act">Open</span><span class="act grey">Not paid</span></div>
+          </div></div></div>
+        </div>
+      </div></section>
+    </div>
+
+    <div class="state">
+      <p class="lbl">Paused<small>Alex is away for December; nothing is made until Resume.</small></p>
+      <section class="sec">
+        <div class="sechead"><h2>Billing</h2><span class="st">Paused</span><div class="r"><span class="act">Resume</span></div></div>
+        <div class="card"><div class="bgrid">
+          <div class="bf"><span class="lab">Plan</span><b>Online coaching</b><small>Monthly<span class="sep"></span>since 26/9</small></div>
+          <div class="bf"><span class="lab">Price</span><b>€75 <s>€89</s></b><small>Alex's own<span class="sep"></span>from 26/11</small></div>
+          <div class="bf"><span class="lab">Next invoice</span><b class="none">—</b><small>Paused 26/11</small></div>
+          <div class="bf"><span class="lab">Pays by</span><b>Visa •••• 4242</b><small>Automatic</small></div>
+        </div></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ============================ B ============================ -->
+  <h2 class="opt">B · The billing as a track, a period a ring</h2>
+  <p class="what">One card reads the series left to right: each month its ring in its state (paid green with the check, open ink, overdue rust, a failed charge rust with its retry, to come dashed), NOW between what's over and what's to come, a price change marked on the line. A click on a month opens what happened to it in the grey well under the track; the log stays under it as the full list. <span class="tryit">Click a month, on either track</span></p>
+
+  <div class="admin">
+    <aside class="rail">
+      <div class="rtop"><div class="word">NORCOACH</div><div class="coach"><i>F</i><div><b>Finlay Chedd</b><small>Full Potential Coaching</small></div></div></div>
+      <div class="views"><span>Feed<em>4</em></span><span>Phases</span><span>Calendar</span><span>Library</span><span>Business</span><span>Settings</span></div>
+      <div class="rpaper">
+        <div class="chead"><span class="lab">Clients</span><span class="n">24</span></div>
+        <div class="rsearch"></div>
+        <div class="rcap"><span class="on">All</span><span>Needs you</span></div>
+        <div class="cl on"><i>A</i>Alex Arvio<span class="k">2</span></div>
+        <div class="cl"><i>E</i>Elena Visser</div>
+        <div class="cl"><i>J</i>Jonas Weber<span class="k">1</span></div>
+        <div class="cl"><i>M</i>Maya Brooks</div>
+        <div class="cl"><i>S</i>Sam Carter</div>
+      </div>
+    </aside>
+    <div class="main">
+      <div class="navrow">
+        <div class="tabs"><span>Home</span><span>Plan</span><span>Lifestyle</span><span>Training</span><span>Nutrition</span><span>Shape update</span><span>Meetings</span><span class="on">Invoices</span></div>
+        <span class="todo">To do <b>2</b></span>
+      </div>
+      <header class="hd">
+        <div><div class="eyebrow">Invoices</div><h1 class="title">Alex's invoices</h1></div>
+        <span class="wpill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New invoice</span>
+      </header>
+
+      <section class="sec">
+        <div class="sechead"><h2>Billing</h2><span class="st live">Active</span>
+          <div class="r"><span class="more" data-menu><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+            <div class="menu"><span>Change price</span><span>Edit lines</span><span>Pause</span><hr><span class="red">Stop</span></div></span></div>
+        </div>
+        <div class="card" data-track="t1">
+          <div class="tk-top"><span class="n">Online coaching</span><span class="f"><s>€89</s>€75 a month<span class="sep"></span>Visa •••• 4242<span class="sep"></span><em>Automatic</em></span></div>
+          <div class="track">
+            <div class="per" data-k="sep"><span class="ring paid"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.2 5 8.5l4.5-5"/></svg></span><span class="m">Sep</span><span class="a">€89</span><span class="s">Paid 5/10</span></div>
+            <div class="per" data-k="oct"><span class="ring paid"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.2 5 8.5l4.5-5"/></svg></span><span class="m">Oct</span><span class="a">€89</span><span class="s">Paid 27/10</span></div>
+            <div class="per sel" data-k="nov"><span class="ring paid"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.2 5 8.5l4.5-5"/></svg></span><span class="m">Nov</span><span class="a">€75</span><span class="s">Paid 26/11</span></div>
+            <div class="per future" data-k="dec"><span class="ring come"></span><span class="m">Dec</span><span class="a">€75</span><span class="s">26/12</span></div>
+            <div class="per future" data-k="jan"><span class="ring come"></span><span class="m">Jan</span><span class="a">€75</span><span class="s">26/1</span></div>
+            <div class="per future" data-k="feb"><span class="ring come"></span><span class="m">Feb</span><span class="a">€75</span><span class="s">26/2</span></div>
+            <span class="change" style="left:33.4%"><s>€89</s>€75</span>
+            <span class="nowline" style="left:50%"><b>NOW</b></span>
+          </div>
+          <div class="well" data-well></div>
+        </div>
+      </section>
+
+      <section class="sec">
+        <div class="sechead"><h2>All invoices</h2></div>
+        <div class="card">
+          <div class="cols"><span>Issued</span><span>Number</span><span>What for</span><span>Due</span><span class="r">Total</span><span>Status</span></div>
+          <div class="litem"><div class="lrow" data-go="t1:nov"><span class="ldate">Thu, 26 Nov</span><span class="lno">20260004</span><span class="lwhat">Online coaching, November</span><span class="ldue">10/12</span><span class="ltot">€75.00</span><span class="st good col">Paid</span></div></div>
+          <div class="litem"><div class="lrow" data-go="t1:oct"><span class="ldate">Mon, 26 Oct</span><span class="lno">20260002</span><span class="lwhat">Online coaching, October</span><span class="ldue">9/11</span><span class="ltot">€89.00</span><span class="st good col">Paid</span></div></div>
+          <div class="litem"><div class="lrow" data-go="t1:sep"><span class="ldate">Sat, 26 Sep</span><span class="lno">20260001</span><span class="lwhat">Online coaching, September</span><span class="ldue">10/10</span><span class="ltot">€89.00</span><span class="st good col">Paid</span></div></div>
+        </div>
+      </section>
+    </div>
+    <div class="edge"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg></span><span style="font-weight:600;font-size:13px">?</span></div>
+  </div>
+
+  <div class="states">
+    <div class="state">
+      <p class="lbl">B with every state on one track<small>A specimen, not one real client, so each ring can be seen beside the others. Fri 27 Nov, evening.</small></p>
+      <section class="sec">
+        <div class="sechead"><h2>Billing</h2><span class="st live">Active</span></div>
+        <div class="card" data-track="t2">
+          <div class="tk-top"><span class="n">Online coaching</span><span class="f">€89 a month<span class="sep"></span>Visa •••• 4242<span class="sep"></span><span class="rust">Declined</span></span></div>
+          <div class="track">
+            <div class="per" data-k="aug"><span class="ring paid"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.2 5 8.5l4.5-5"/></svg></span><span class="m">Aug</span><span class="a">€89</span><span class="s">By hand 2/9</span></div>
+            <div class="per" data-k="sep"><span class="ring paid"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.2 5 8.5l4.5-5"/></svg></span><span class="m">Sep</span><span class="a">€89</span><span class="s">iDEAL 29/9</span></div>
+            <div class="per" data-k="oct"><span class="ring late"></span><span class="m">Oct</span><span class="a">€89</span><span class="s bad">18 days late</span></div>
+            <div class="per sel" data-k="nov"><span class="ring fail">2/3</span><span class="m">Nov</span><span class="a">€89</span><span class="s bad">Retry 2 of 3</span></div>
+            <div class="per future" data-k="dec"><span class="ring come"></span><span class="m">Dec</span><span class="a">€89</span><span class="s">26/12</span></div>
+            <span class="nowline" style="left:80%"><b>NOW</b></span>
+          </div>
+          <div class="well" data-well></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <h2 class="opt">What changes</h2>
+  <div class="notes"><ul>
+    <li><b>The billing is on the screen.</b> The rust strip (<i>On Alex, €89 a month, not billed.</i>) and the separate Recurring table become one Billing card: the plan, the price, the rhythm and next invoice, how Alex pays, its state pill. Not billed, it is the same card with <b>Start billing</b> as its one action.</li>
+    <li><b>Alex's own price.</b> €75 with the plan's €89 struck beside it. In A the price is edited in place on the card (Save from the next invoice on); in B it sits in the ⋯. Edit lines changes the running series from its next invoice; sent invoices stay as they were.</li>
+    <li><b>Next number goes.</b> It is a Settings fact, not one about Alex. Its place in the figures is <b>Last paid</b>, with how.</li>
+    <li><b>Every invoice tells what happened to it</b>: sent, opened (app or browser), reminders, paid and how (card, iDEAL, Apple Pay), automatic payment turned on, a charge and its retries, marked paid by hand, refunded. A opens it on the row; B in the well under the track.</li>
+    <li><b>The status pill stops being a menu.</b> It follows what happened (new: Charge failed, Refunded), and the actions are words in the opened row: Send link, Remind, Mark paid, Not paid, Refund. A slip in a menu can no longer mark something Paid.</li>
+    <li><b>A failed charge</b> is drawn as it runs: declined, retry 1, 2 and 3 a day apart, the ones to come faint. Finlay is told (To do row and a push) only after the third; until then it is this tab's alone. Alex's app is never locked.</li>
+    <li><b>Start billing</b> is a short pop-up in C (price, first invoice, how Alex pays: Link or Bank transfer) instead of the whole New invoice. + New invoice stays for one-offs.</li>
+    <li><b>A or B:</b> A reads like every other log in the admin and scales to years of invoices; B shows the rhythm and a run of trouble at a glance but holds about six periods before it has to scroll.</li>
+  </ul></div>
+</div>
+
+<script>
+  // Folds: a row opens on the shared fold; another click shuts it.
+  document.querySelectorAll('.litem .lrow').forEach(function (r) {
+    if (r.dataset.go) return;
+    r.addEventListener('click', function () { r.parentElement.classList.toggle('open'); });
+  });
+  // The ⋯ menus.
+  document.querySelectorAll('[data-menu]').forEach(function (m) {
+    m.addEventListener('click', function (e) { e.stopPropagation(); m.classList.toggle('open'); });
+  });
+  document.addEventListener('click', function () { document.querySelectorAll('[data-menu].open').forEach(function (m) { m.classList.remove('open'); }); });
+  // The price, typed in place.
+  document.querySelectorAll('[data-price]').forEach(function (p) {
+    p.addEventListener('click', function (e) {
+      if (e.target.closest('[data-cancel]')) { p.classList.remove('editing'); e.stopPropagation(); return; }
+      if (!p.classList.contains('editing')) { p.classList.add('editing'); var i = p.querySelector('input'); i.focus(); i.select(); }
+    });
+  });
+  // Capsules: the picked option moves.
+  document.querySelectorAll('[data-cap]').forEach(function (c) {
+    c.querySelectorAll('span').forEach(function (s) { s.addEventListener('click', function () { c.querySelectorAll('span').forEach(function (x) { x.classList.remove('on'); }); s.classList.add('on'); }); });
+  });
+
+  // B: what happened to each period.
+  var P = {
+    t1: {
+      sep: { no: '20260001', w: 'Online coaching, September', tot: '€89.00', pill: ['good', 'Paid'], steps: [['i','Sat, 26 Sep','09:00','Sent by email','alex@example.com'],['','Mon, 28 Sep','12:10','Opened','in the browser'],['i','Sat, 3 Oct','10:00','Reminder sent','by Finlay'],['g','Mon, 5 Oct','16:30','Marked paid','bank transfer | by Finlay','ok']], acts: ['Open','Not paid'] },
+      oct: { no: '20260002', w: 'Online coaching, October', tot: '€89.00', pill: ['good', 'Paid'], steps: [['i','Mon, 26 Oct','09:00','Sent by email','alex@example.com'],['','Mon, 26 Oct','19:42','Opened',"in Alex's app"],['g','Tue, 27 Oct','08:15','Paid by card','Visa •••• 4242','ok'],['g','Tue, 27 Oct','08:15','Automatic payment on','Visa •••• 4242','ok']], acts: ['Open','Refund'] },
+      nov: { no: '20260004', w: 'Online coaching, November', tot: '€75.00', pill: ['good', 'Paid'], steps: [['i','Thu, 26 Nov','09:00','Made','by the series'],['i','Thu, 26 Nov','09:00','Charged','Visa •••• 4242'],['g','Thu, 26 Nov','09:01','Paid','€75.00 | Stripe','ok'],['','Thu, 26 Nov','09:01','Receipt emailed','alex@example.com']], acts: ['Open','Refund'] },
+      dec: { no: 'Sat 26/12', w: 'Online coaching, December', tot: '€75.00', pill: ['', 'To come'], steps: [['','Sat, 26 Dec','09:00','Made and charged','Visa •••• 4242','later']], acts: ['Skip this one'] },
+      jan: { no: 'Tue 26/1', w: 'Online coaching, January', tot: '€75.00', pill: ['', 'To come'], steps: [['','Tue, 26 Jan','09:00','Made and charged','Visa •••• 4242','later']], acts: ['Skip this one'] },
+      feb: { no: 'Fri 26/2', w: 'Online coaching, February', tot: '€75.00', pill: ['', 'To come'], steps: [['','Fri, 26 Feb','09:00','Made and charged','Visa •••• 4242','later']], acts: ['Skip this one'] }
+    },
+    t2: {
+      aug: { no: '20260012', w: 'Online coaching, August', tot: '€89.00', pill: ['good', 'Paid'], steps: [['i','Wed, 26 Aug','09:00','Sent by email','alex@example.com'],['g','Wed, 2 Sep','14:05','Marked paid','bank transfer | by Finlay','ok']], acts: ['Open','Not paid'] },
+      sep: { no: '20260019', w: 'Online coaching, September', tot: '€89.00', pill: ['good', 'Paid'], steps: [['i','Sat, 26 Sep','09:00','Sent by email','alex@example.com'],['','Sun, 27 Sep','20:11','Opened',"in Alex's app"],['g','Tue, 29 Sep','07:40','Paid by iDEAL','ING','ok']], acts: ['Open','Refund'] },
+      oct: { no: '20260027', w: 'Online coaching, October', tot: '€89.00', pill: ['warn', 'Overdue'], steps: [['i','Mon, 26 Oct','09:00','Sent by email','alex@example.com'],['','Tue, 27 Oct','07:58','Opened','in the browser'],['r','Mon, 9 Nov','','Due','18 days ago','bad'],['i','Thu, 12 Nov','10:20','Reminder sent','by Finlay']], acts: ['Remind','Mark paid','Open'] },
+      nov: { no: '20260034', w: 'Online coaching, November', tot: '€89.00', pill: ['warn', 'Charge failed'], steps: [['i','Thu, 26 Nov','09:00','Made','by the series'],['r','Thu, 26 Nov','09:00','Card declined','Visa •••• 4242 | insufficient funds','bad'],['r','Fri, 27 Nov','09:00','Retry 1 of 3 declined','Visa •••• 4242','bad'],['','Sat, 28 Nov','09:00','Retry 2 of 3','','later'],['','Sun, 29 Nov','09:00','Retry 3 of 3','','later'],['','Sun, 29 Nov','09:00','Finlay told','','later']], acts: ['Send link','Mark paid'] },
+      dec: { no: 'Sat 26/12', w: 'Online coaching, December', tot: '€89.00', pill: ['', 'To come'], steps: [['','Sat, 26 Dec','09:00','Made and charged','Visa •••• 4242','later']], acts: ['Skip this one'] }
+    }
+  };
+  function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+  function bars(s) { return esc(s).split(' | ').join('<i class="sep"></i>'); }
+  function show(t, k) {
+    var card = document.querySelector('[data-track="' + t + '"]');
+    var d = P[t][k];
+    card.querySelectorAll('.per').forEach(function (p) { p.classList.toggle('sel', p.dataset.k === k); });
+    var h = '<div class="well-head"><span class="no">' + esc(d.no) + '</span><span class="w">' + esc(d.w) + '</span><span class="tot">' + esc(d.tot) + '</span><span class="st col ' + d.pill[0] + '">' + esc(d.pill[1]) + '</span></div><div class="steps">';
+    d.steps.forEach(function (s) {
+      var cls = s[5] === 'later' ? ' later' : '';
+      var wcls = s[5] === 'ok' ? ' ok' : s[5] === 'bad' ? ' bad' : '';
+      h += '<div class="step' + cls + '"><span class="d"><i class="dot ' + s[0] + '"></i>' + esc(s[1]) + '</span><span class="t">' + esc(s[2]) + '</span><span class="w' + wcls + '">' + esc(s[3]) + (s[4] ? ' <span>' + bars(s[4]) + '</span>' : '') + '</span></div>';
+    });
+    h += '</div><div class="acts">' + d.acts.map(function (a) { return '<span class="act">' + esc(a) + '</span>'; }).join('') + '</div>';
+    card.querySelector('[data-well]').innerHTML = h;
+  }
+  document.querySelectorAll('[data-track]').forEach(function (card) {
+    var t = card.dataset.track;
+    card.querySelectorAll('.per').forEach(function (p) { p.addEventListener('click', function () { show(t, p.dataset.k); }); });
+    var sel = card.querySelector('.per.sel');
+    show(t, sel.dataset.k);
+  });
+  document.querySelectorAll('[data-go]').forEach(function (r) {
+    r.addEventListener('click', function () { var g = r.dataset.go.split(':'); show(g[0], g[1]); document.querySelector('[data-track="' + g[0] + '"]').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+  });
+</script>
+</body>
+</html>

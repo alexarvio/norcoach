@@ -26,8 +26,7 @@ import { ASK_AT } from "./metricAskAt";
 import { syncHealthForClient, type HealthSyncInput, type HealthSyncResult } from "./healthSync";
 import { isGymColor, isGymKind } from "./gymColors";
 import { listClientGyms } from "./queries";
-import { createCoachAccount, invoiceCheckout, onboardingLink, stripeConfigured } from "./stripe";
-import { canPayOnline } from "./payments";
+import { createCoachAccount, onboardingLink, stripeConfigured } from "./stripe";
 import { sendPushInBackground } from "./push";
 import { openAppIfPhaseLive } from "./appLock";
 import { pushCoachMessage, pushCoachNews, pushCoachVideo } from "./coachPush";
@@ -243,6 +242,8 @@ import {
   setInvoiceRepeatPaused,
   stopInvoiceRepeat,
   setInvoiceStatusFrozen,
+  updateInvoiceRepeat,
+  planLineIndexOf,
   deleteUnsentInvoice,
   getCoachPayments,
   setCoachPayments,
@@ -449,7 +450,13 @@ import { isTimezone, SERVER_TZ, tzShort, zonedToUtc } from "./timezones";
 import { askedWeightUnit, removeWeightGoal, saveWeightGoal, type WeightGoalFields, type WeightGoalRefusal } from "./queries";
 import { goalWeightText } from "./weightGoal";
 import { inZone } from "./viewZone";
-import { clientPlanId, clientPlanSeries } from "./coachPlans";
+import { clientPlanId, clientPlanSeries, listCoachPlans, setClientPlanPrice } from "./coachPlans";
+import { addInvoiceEvent, invoiceStateOf, OWED_STATES, remindedToday } from "./invoiceEvents";
+import { sendInvoiceMailNow, type InvoiceMailAnswer } from "./invoiceEmails";
+import { checkoutForInvoice, expireOpenCheckouts } from "./invoiceCheckouts";
+import { forgetAutopay, refundInvoice, type RefundAnswer } from "./invoiceCharges";
+import { clientBillingEmail } from "./invoiceBilling";
+import type { InvoicePays } from "./db";
 import { dropUnreadBookings } from "./callNotes";
 
 // OWNERSHIP RULE for every coach action below: a coach may only touch their
@@ -5593,22 +5600,52 @@ export async function saveCoachPreferencesAction(p: { units?: string; timezone?:
 
 // ---- Invoices in the redesign (the client's Invoices tab) ----
 
-export async function createInvoiceAction(clientId: number, v: NewInvoice & { repeat?: InvoiceEvery | null; template?: string | null; planId?: string | null }, onceKey?: string) {
+/** `pays` (26 Nov, Alex: docs/boards/invoice-new-mockup.html, B): link (card, iDEAL, Apple Pay on the coach's Stripe)
+    or bank transfer; `auto`: Charge automatically, on a repeat paid by link. */
+export async function createInvoiceAction(clientId: number, v: NewInvoice & { repeat?: InvoiceEvery | null; template?: string | null; planId?: string | null; auto?: boolean | null }, onceKey?: string) {
   const coach = await coachForClient(Number(clientId));
   if (!coach) return null;
+  const pays: InvoicePays = v.pays === "bank" ? "bank" : "link";
   // Taken once (6 Nov, one-time key): sent again after a dropped signal, it answers the invoice the first made, never a
   // second invoice (or series) for the same work.
   return once(`createInvoiceAction:${Number(clientId)}`, onceKeyOf(onceKey), () => {
-    const id = createInvoice(coach.id, Number(clientId), v);
+    // Only what the coach types: the series and who made it are this action's to say, never the browser's.
+    const id = createInvoice(coach.id, Number(clientId), { issueDate: v.issueDate, lines: v.lines, note: v.note, sent: v.sent, pays });
     if (id != null && v.sent) tellClientAboutInvoice(id, "unpaid");
     // Repeat (21 Oct): this one is the first; the series makes the rest on their days.
     // Start billing (28 Oct): the series bills the client's plan, tied to it while it is still theirs and nothing bills it yet.
     const planId = v.planId && v.planId === clientPlanId(Number(clientId)) && !clientPlanSeries(Number(clientId)) ? v.planId : undefined;
-    if (id != null && v.repeat) addInvoiceRepeat(Number(clientId), { every: v.repeat, issueDate: v.issueDate, lines: v.lines, note: v.note, send: !!v.sent, template: v.template ?? undefined, firstInvoiceId: id, planId });
+    if (id != null && v.repeat) {
+      addInvoiceRepeat(Number(clientId), { every: v.repeat, issueDate: v.issueDate, lines: v.lines, note: v.note, send: !!v.sent, template: v.template ?? undefined, firstInvoiceId: id, planId, pays, auto: pays === "link" && !!v.auto });
+      // A price changed on the plan's line is the client's own price (26 Nov, Alex: "the series keeps his"), from this
+      // first invoice on; the plan's own price is none.
+      const plan = planId ? listCoachPlans(coach.id, true).find((p) => p.id === planId) : undefined;
+      const lines = Array.isArray(v.lines) ? v.lines : [];
+      const line = plan && lines.length ? lines[planLineIndexOf(lines, plan.name)] : undefined;
+      const typed = line ? Math.round((Number(line.unit_price) || 0) * 100) / 100 : null;
+      if (plan && typed != null && typed > 0) setClientPlanPrice(coach.id, Number(clientId), typed, { since: v.issueDate });
+    }
     revalidatePath("/admin");
     revalidatePath("/client");
     return id;
   });
+}
+
+/**
+ * A running series changed from its next invoice on (26 Nov, Alex: the Billing card's Edit lines, Switch to bank
+ * transfer, Charge automatically): its lines, how often, how it is paid. Invoices already made never change. Answers
+ * whether it changed.
+ */
+export async function updateInvoiceRepeatAction(clientId: number, repeatId: string, v: { lines?: InvoiceLine[]; every?: InvoiceEvery; pays?: InvoicePays; auto?: boolean }): Promise<boolean> {
+  if (!(await coachForClient(Number(clientId)))) return false;
+  const patch: { lines?: InvoiceLine[]; every?: InvoiceEvery; pays?: InvoicePays; auto?: boolean } = {};
+  if (Array.isArray(v?.lines)) patch.lines = v.lines;
+  if (v?.every === "week" || v?.every === "2weeks" || v?.every === "month") patch.every = v.every;
+  if (v?.pays === "bank" || v?.pays === "link") patch.pays = v.pays;
+  if (typeof v?.auto === "boolean") patch.auto = v.auto;
+  const ok = updateInvoiceRepeat(Number(clientId), String(repeatId), patch);
+  revalidatePath("/admin");
+  return ok;
 }
 
 // ---- Invoice templates and recurring invoices (21 Oct, Alex).
@@ -5646,8 +5683,83 @@ export async function setInvoiceStatusByIdAction(invoiceId: number, status: "unp
   const before = getData().invoices.find((i) => i.id === Number(invoiceId))?.status;
   setInvoiceStatusFrozen(Number(invoiceId), status);
   if (before) tellClientAboutInvoice(Number(invoiceId), before);
+  // Paid by hand: its checkout still open can't take the money as well (26 Nov, Alex).
+  if (status === "paid" && before !== "paid") void expireOpenCheckouts(Number(invoiceId));
   revalidatePath("/admin");
   revalidatePath("/client");
+}
+
+/**
+ * Mark paid by hand (26 Nov, Alex: docs/boards/client-invoices-mockup.html, A: "the status pill stops being a menu…
+ * the actions are words in the opened row"): a bank transfer, cash or other, on an invoice sent and not paid. Its
+ * history says "Marked paid, bank transfer, by Finlay"; its open checkout is closed on Stripe so it can't be paid twice.
+ * Answers whether it was marked.
+ */
+export async function markInvoicePaidAction(invoiceId: number, v: { via: "bank" | "cash" | "other" }): Promise<boolean> {
+  const id = Number(invoiceId);
+  if (!(await coachForClient(clientIdForInvoice(id)))) return false;
+  const inv = getData().invoices.find((i) => i.id === id);
+  if (!inv || inv.status === "paid" || inv.status === "unpaid" || inv.refunded_at) return false;
+  const method = v?.via === "cash" || v?.via === "other" ? v.via : "bank";
+  const before = inv.status;
+  setInvoiceStatusFrozen(id, "paid", { method });
+  tellClientAboutInvoice(id, before);
+  void expireOpenCheckouts(id);
+  revalidatePath("/admin");
+  revalidatePath("/client");
+  return true;
+}
+
+/** Not paid (26 Nov, Alex): a paid invoice set back to Sent, as by mistake; its history says so. One paid through
+ *  Stripe is set back too (the money is the coach's to refund on Stripe). Answers whether it changed. */
+export async function markInvoiceUnpaidAction(invoiceId: number): Promise<boolean> {
+  const id = Number(invoiceId);
+  if (!(await coachForClient(clientIdForInvoice(id)))) return false;
+  const inv = getData().invoices.find((i) => i.id === id);
+  if (!inv || inv.status !== "paid" || inv.refunded_at) return false;
+  setInvoiceStatusFrozen(id, "sent");
+  revalidatePath("/admin");
+  revalidatePath("/client");
+  return true;
+}
+
+/** What Remind or Send link again did: `email` where its email stands (sent, mail off here, no address, failed). */
+export type InvoiceNudge = { ok: true; email: InvoiceMailAnswer } | { ok: false; error: "not_owed" | "already_today" | "no_email" | "failed" };
+
+/**
+ * Remind (26 Nov, Alex: docs/boards/client-invoices-mockup.html, A, "Reminder sent, by Finlay"): on an invoice sent and
+ * not paid, once a day at most. The client is emailed a reminder ("Reminder: invoice 20260004", the invoice email's
+ * design, its Pay when paid by link, the bank details when by bank) where invoice emails can go, and gets a bell
+ * notification in the Invoices group (its push following their notification switches) whether or not the email went.
+ */
+export async function remindInvoiceAction(invoiceId: number): Promise<InvoiceNudge> {
+  const id = Number(invoiceId);
+  if (!(await coachForClient(clientIdForInvoice(id)))) return { ok: false, error: "failed" };
+  const inv = getData().invoices.find((i) => i.id === id);
+  if (!inv || !OWED_STATES.includes(invoiceStateOf(inv))) return { ok: false, error: "not_owed" };
+  if (remindedToday(inv)) return { ok: false, error: "already_today" };
+  if (!clientBillingEmail(inv.client_id)) return { ok: false, error: "no_email" };
+  // Written first, so a second tap while the email is on its way is already today's.
+  addInvoiceEvent(id, { kind: "reminded", by: "coach" });
+  const name = inv.number ?? "an invoice";
+  noteChange(inv.client_id, `Sent a reminder for invoice ${name}`, { tab: "invoices", label: "See your invoices", key: `invoice-reminder:${id}`, ref: id, push: true });
+  const email = await sendInvoiceMailNow(id, "reminder");
+  revalidatePath("/admin");
+  revalidatePath("/client");
+  return { ok: true, email };
+}
+
+/** Send link again (26 Nov, Alex): the invoice email once more, on an invoice sent and not paid; "emailed" in its
+ *  history when it went. */
+export async function sendInvoiceLinkAction(invoiceId: number): Promise<InvoiceNudge> {
+  const id = Number(invoiceId);
+  if (!(await coachForClient(clientIdForInvoice(id)))) return { ok: false, error: "failed" };
+  const inv = getData().invoices.find((i) => i.id === id);
+  if (!inv || !OWED_STATES.includes(invoiceStateOf(inv))) return { ok: false, error: "not_owed" };
+  if (!clientBillingEmail(inv.client_id)) return { ok: false, error: "no_email" };
+  const email = await sendInvoiceMailNow(id, "again");
+  revalidatePath("/admin");
+  return email === "no_email" ? { ok: false, error: "no_email" } : { ok: true, email };
 }
 
 // The client hears about an invoice when it first reaches them (a buzz) and
@@ -5699,31 +5811,48 @@ export async function disconnectStripeAction() {
   revalidatePath("/admin/redesign/settings");
 }
 
-/** The client pays one of their invoices: answers with the Stripe checkout to go to. */
-export async function payInvoiceAction(invoiceId: number): Promise<{ url?: string; error?: string }> {
+/**
+ * The client pays one of their invoices: answers with the Stripe checkout to go to. Through the one checkout an invoice
+ * (26 Nov, Alex: it made a fresh checkout on every tap, with no idempotency, and its way back never confirmed): a
+ * second tap gets the same open checkout, and Stripe sends the client back through /invoice/<id>/paid, which confirms
+ * the payment with Stripe before the client's own invoice page says Paid. `auto`: "Pay automatically from now on"
+ * ticked, the payment kept for the series' next invoices (only where it is offered).
+ */
+export async function payInvoiceAction(invoiceId: number, opts: { auto?: boolean } = {}): Promise<{ url?: string; error?: string }> {
   const client = await getSessionUser();
   if (!client || client.role !== "client" || client.client_id == null) return { error: "Signed out. Sign in again." };
   const v = listClientInvoices(client.client_id).find((i) => i.id === Number(invoiceId));
   if (!v || v.status === "paid") return { error: "This invoice is already paid." };
-  const pay = v.coachId != null ? getCoachPayments(v.coachId) : {};
-  if (!canPayOnline(v.coachId) || !pay.stripe_account_id) return { error: "Paying online is not available for this invoice. Use the bank details on it." };
-  const base = appUrl();
-  if (!base) return { error: "Paying online is not available right now." };
-  try {
-    const s = await invoiceCheckout(pay.stripe_account_id, {
-      invoiceId: v.id,
-      number: v.number,
-      amount: v.total,
-      currency: v.currency,
-      seller: v.from.business_name || v.from.legal_name || "",
-      email: v.to.email,
-      successUrl: `${base}/client/invoices/${v.id}?paid=1`,
-      cancelUrl: `${base}/client/invoices/${v.id}`,
-    });
-    return { url: s.url };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Stripe did not answer. Try again." };
-  }
+  const answer = await checkoutForInvoice(v.id, { save: opts?.auto === true });
+  if ("url" in answer) return { url: answer.url };
+  if ("paid" in answer) return { error: "This invoice is already paid." };
+  return { error: answer.error };
+}
+
+/**
+ * Refund (26 Nov, Alex: a word in the opened row): the whole payment back to the client, on the coach's own Stripe, for
+ * an invoice paid through Stripe; one paid by hand can't be refunded here (Not paid instead). The invoice is Refunded
+ * only on Stripe's word (at once, or by charge.refunded when the refund is still on its way).
+ */
+export async function refundInvoiceAction(invoiceId: number): Promise<RefundAnswer> {
+  const id = Number(invoiceId);
+  if (!(await coachForClient(clientIdForInvoice(id)))) return { ok: false, error: "failed" };
+  const answer = await refundInvoice(id);
+  revalidatePath("/admin");
+  revalidatePath("/client");
+  return answer;
+}
+
+/**
+ * Forget the client's kept card or mandate (26 Nov, Alex): nothing is charged on it again, and it is taken off the
+ * customer on the coach's Stripe. Stopping the charges alone, keeping the card, is the series' Charge automatically
+ * switched off (updateInvoiceRepeatAction with auto false). The client can't manage either in their app yet.
+ */
+export async function forgetAutopayAction(clientId: number): Promise<boolean> {
+  if (!(await coachForClient(Number(clientId)))) return false;
+  const ok = await forgetAutopay(Number(clientId));
+  revalidatePath("/admin");
+  return ok;
 }
 
 /**

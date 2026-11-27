@@ -1,5 +1,6 @@
 import { getData, persist, type CoachPlan, type InvoiceEvery, type InvoiceLine, type InvoiceRepeat } from "./db";
-import { localDateStr, nextInvoiceDate } from "./queries";
+import { localDateStr, nextInvoiceDate, planLineIndexOf } from "./queries";
+import { monthWorth } from "./planText";
 
 // The plans a coach offers, and which one a client is on (23 Oct, Alex: picked on the client's Details; 28 Oct, Alex:
 // made in Settings, Plans, and billed from). A plan is a name, a price in the coach's currency and how often it bills.
@@ -55,18 +56,126 @@ export function addCoachPlan(coachId: number, v: PlanFields): CoachPlan | null {
   return plan;
 }
 
-/** A plan's name, price and rhythm changed. Clients already billed keep what they pay (their series has its own lines).
-    A name another plan has is refused. */
-export function updateCoachPlan(coachId: number, id: string, v: PlanFields): CoachPlan | null {
+/**
+ * A plan's name, price and rhythm changed. A name another plan has is refused. A new price is for new clients first, as
+ * before; for the clients already billed on it (a plan series, no own price) it is one of two (26 Nov, Alex:
+ * docs/boards/plans-redesign-mockup.html, A): `alsoMove`, their series' plan line takes the new price from its next
+ * invoice; else they keep what they pay, written as their own price (coaching_plan_price), so the plan's list says so.
+ * A client on their own price never moves; one whose own price is the new price is on the plan's price again. Clients
+ * on it not billed yet start on the new price. Invoices already made never change.
+ */
+export function updateCoachPlan(coachId: number, id: string, v: PlanFields, opts: { alsoMove?: boolean } = {}): CoachPlan | null {
   const plans = coachRow(coachId)?.coach_settings?.plans ?? [];
   const plan = plans.find((p) => p.id === id);
   const name = cleanName(v.name);
   if (!plan || !name || plans.some((p) => p.id !== id && p.name.toLowerCase() === name.toLowerCase())) return null;
+  const oldName = plan.name;
+  const was = plan.price ?? null;
+  const price = cleanPrice(v.price);
+  if (price != null && price > 0 && price !== was) {
+    const data = getData();
+    const today = localDateStr();
+    for (const c of data.clients) {
+      if (c.coach_id !== coachId) continue;
+      const profile = data.client_profiles.find((p) => p.client_id === c.id && p.coaching_plan_id === id);
+      if (!profile) continue;
+      if (profile.coaching_plan_price != null) {
+        if (profile.coaching_plan_price === price) {
+          delete profile.coaching_plan_price;
+          delete profile.coaching_plan_price_since;
+        }
+        continue;
+      }
+      const series = c.invoice_repeats?.find((r) => r.plan_id === id);
+      if (!series?.lines.length) continue;
+      const line = series.lines[planLineIndexOf(series.lines, oldName)];
+      if (opts.alsoMove) line.unit_price = price;
+      else if (line.unit_price !== price) {
+        profile.coaching_plan_price = line.unit_price;
+        profile.coaching_plan_price_since = series.started ?? (series.created_at.slice(0, 10) || today);
+      }
+    }
+  }
   plan.name = name;
-  plan.price = cleanPrice(v.price);
+  plan.price = price;
   plan.every = cleanEvery(v.every);
   persist();
   return plan;
+}
+
+/**
+ * A client's own price on their plan (26 Nov, Alex: docs/boards/client-invoices-mockup.html, A, the price typed on the
+ * Billing card; docs/boards/plans-redesign-mockup.html, A, on their row inside the plan), VAT as the plan's. Their plan
+ * series bills it from its next invoice; null, or the plan's own price, puts the plan's price back ("Back to €89").
+ * Only on one of the coach's plans the client is on. Answers the day it applies from, or null when refused.
+ */
+export function setClientPlanPrice(coachId: number, clientId: number, price: number | null, opts: { since?: string } = {}): { since: string; price: number | null } | null {
+  const data = getData();
+  const client = data.clients.find((c) => c.id === clientId && c.coach_id === coachId);
+  const profile = data.client_profiles.find((p) => p.client_id === clientId);
+  const plan = profile?.coaching_plan_id ? listCoachPlans(coachId, true).find((p) => p.id === profile.coaching_plan_id) : undefined;
+  if (!client || !profile || !plan) return null;
+  const own = price == null ? null : cleanPrice(price);
+  if (price != null && (own == null || own <= 0)) return null;
+  const series = clientPlanSeries(clientId);
+  // From its next invoice, or the day given (Start billing: the first invoice's own day).
+  const since = (opts.since && /^\d{4}-\d{2}-\d{2}$/.test(opts.since) ? opts.since : null) ?? clientPlanNext(clientId) ?? localDateStr();
+  const target = own != null && own !== plan.price ? own : null;
+  if (target != null) {
+    profile.coaching_plan_price = target;
+    profile.coaching_plan_price_since = since;
+  } else {
+    delete profile.coaching_plan_price;
+    delete profile.coaching_plan_price_since;
+  }
+  // From the next invoice on: the series' plan line at the price they now pay. Invoices made stay as they are.
+  const pays = target ?? plan.price;
+  if (series?.lines.length && pays != null) series.lines[planLineIndexOf(series.lines, plan.name)].unit_price = pays;
+  persist();
+  return { since, price: target };
+}
+
+/** What a client on a plan pays a period: their own price, else the plan's (null with neither). */
+export function clientPlanPrice(clientId: number, plan: Pick<CoachPlan, "price">): { price: number | null; own: boolean } {
+  const own = getData().client_profiles.find((p) => p.client_id === clientId)?.coaching_plan_price;
+  return own != null ? { price: own, own: true } : { price: plan.price ?? null, own: false };
+}
+
+/** One client on a plan, for Settings › Plans (26 Nov, Alex): their face, what they pay, whether it is their own price,
+ *  and the day their next invoice comes (null while nothing bills them). `example`: the example client, in no sum. */
+export type PlanClientRow = { clientId: number; name: string; photo: string | null; price: number | null; own: boolean; since: string | null; next: string | null; example: boolean };
+/** A plan's clients and what they bring in: `monthWorth` the month's worth of what they pay, in whole money (a week's
+ *  price × 52 ÷ 12, two weeks' × 26 ÷ 12), the example client left out as Business leaves it; `ownCount` how many pay
+ *  their own price. */
+export type PlanBoardRow = { planId: string; clients: PlanClientRow[]; ownCount: number; monthWorth: number };
+
+/** Settings › Plans' figures (26 Nov, Alex: docs/boards/plans-redesign-mockup.html, A), by plan id, every plan of the
+ *  coach's (archived too), its clients A to Z. */
+export function planBoard(coachId: number): Map<string, PlanBoardRow> {
+  const data = getData();
+  const out = new Map<string, PlanBoardRow>();
+  const plans = listCoachPlans(coachId, true);
+  for (const p of plans) out.set(p.id, { planId: p.id, clients: [], ownCount: 0, monthWorth: 0 });
+  const byId = new Map(plans.map((p) => [p.id, p] as const));
+  const profiles = new Map(data.client_profiles.map((p) => [p.client_id, p] as const));
+  for (const c of data.clients) {
+    if (c.coach_id !== coachId) continue;
+    const profile = profiles.get(c.id);
+    const plan = profile?.coaching_plan_id ? byId.get(profile.coaching_plan_id) : undefined;
+    const row = plan ? out.get(plan.id) : undefined;
+    if (!plan || !row || !profile) continue;
+    const own = profile.coaching_plan_price != null;
+    const price = own ? (profile.coaching_plan_price as number) : (plan.price ?? null);
+    row.clients.push({ clientId: c.id, name: c.name, photo: c.avatar_path ?? null, price, own, since: own ? (profile.coaching_plan_price_since ?? null) : null, next: clientPlanNext(c.id), example: !!c.example });
+    if (own) row.ownCount++;
+  }
+  for (const row of out.values()) {
+    row.clients.sort((a, b) => a.name.localeCompare(b.name));
+    const plan = byId.get(row.planId);
+    const sum = row.clients.filter((c) => !c.example && c.price != null).reduce((t, c) => t + (c.price as number), 0);
+    row.monthWorth = monthWorth(sum, plan?.every);
+  }
+  return out;
 }
 
 /** Archived, a plan leaves the picker; the clients on it stay on it and are still billed. */
@@ -120,13 +229,17 @@ export function setClientPlan(coachId: number, clientId: number, planId: string 
   if (!profile) return false;
   if ((profile.coaching_plan_id ?? null) === planId) return true;
   profile.coaching_plan_id = planId;
+  // Their own price was on the plan they leave (26 Nov, Alex): the new one bills its own price.
+  delete profile.coaching_plan_price;
+  delete profile.coaching_plan_price_since;
   const client = data.clients.find((c) => c.id === clientId);
   const series = clientPlanSeries(clientId);
   if (client && series) {
     const rest = (client.invoice_repeats ?? []).filter((r) => r !== series);
     if (plansBill(plan)) {
       const anchor = plan.every === "month" && series.every === "month" ? series.anchor_day : Number(series.next.slice(8, 10));
-      const moved: InvoiceRepeat = { id: series.id, every: plan.every, next: series.next, anchor_day: anchor, lines: planLines(plan), send: series.send, created_at: new Date().toISOString(), plan_id: plan.id, ...(series.paused ? { paused: true } : {}), ...(series.note ? { note: series.note } : {}) };
+      // How it is paid and since when go with it (26 Nov, Alex); an own price was on the plan left, so it goes.
+      const moved: InvoiceRepeat = { id: series.id, every: plan.every, next: series.next, anchor_day: anchor, lines: planLines(plan), send: series.send, created_at: new Date().toISOString(), plan_id: plan.id, ...(series.paused ? { paused: true } : {}), ...(series.note ? { note: series.note } : {}), ...(series.pays ? { pays: series.pays } : {}), ...(series.auto ? { auto: true } : {}), ...(series.started ? { started: series.started } : {}) };
       client.invoice_repeats = [...rest, moved];
     } else client.invoice_repeats = rest;
   }
@@ -141,7 +254,10 @@ export function clientPlanBilling(coachId: number, clientId: number) {
   const plan = planId ? listCoachPlans(coachId, true).find((p) => p.id === planId) ?? null : null;
   const repeats = getData().clients.find((c) => c.id === clientId)?.invoice_repeats ?? [];
   const canStart = plansBill(plan) && repeats.length === 0;
-  return { plan: plan ? { id: plan.id, name: plan.name, price: plan.price ?? null, every: plan.every ?? null, lines: planLines(plan) } : null, canStart };
+  // Their own price, set before billing started (Settings › Plans, 26 Nov, Alex), is what Start billing fills.
+  const own = getData().client_profiles.find((p) => p.client_id === clientId)?.coaching_plan_price;
+  const lines = plan ? planLines(plan).map((l) => (own != null ? { ...l, unit_price: own } : l)) : [];
+  return { plan: plan ? { id: plan.id, name: plan.name, price: plan.price ?? null, every: plan.every ?? null, lines } : null, canStart };
 }
 
 /** The day a moved series next bills, for the picker to say: the series' own next day, or none. */

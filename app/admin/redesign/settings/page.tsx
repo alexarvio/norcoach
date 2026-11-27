@@ -22,7 +22,7 @@ import { PHASE_COVERS } from "../../../lib/phaseCovers";
 import SupportSection from "./SupportSection";
 import BillingSettings from "./BillingSettings";
 import PlansSettings from "./PlansSettings";
-import { listCoachPlans, planClientCounts } from "../../../lib/coachPlans";
+import { listCoachPlans, planBoard, planClientCounts } from "../../../lib/coachPlans";
 import { DataSettings, NotificationsSettings, PreferencesSettings } from "./MoreSettings";
 import { loadAccountSecurity } from "../../../lib/accountSecurity";
 import { passwordsOnHint } from "../../../lib/clerkPasswords";
@@ -129,7 +129,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const clientCount = getData().clients.filter((cl) => cl.coach_id === coach.id).length;
   // Plans (28 Oct, Alex): each with how many clients are on it, priced in the coach's currency, VAT as Invoicing says.
   const planCounts = planClientCounts(coach.id);
-  const plans = listCoachPlans(coach.id, true).map((p) => ({ id: p.id, name: p.name, price: p.price ?? null, every: p.every ?? null, archived: !!p.archived, clients: planCounts.get(p.id) ?? 0 }));
+  // And (26 Nov, Alex: docs/boards/plans-redesign-mockup.html, A) who is on it, what each pays (their own price or the
+  // plan's) and when their next invoice comes, how many pay their own, and its month's worth (coachPlans.ts planBoard).
+  const board = planBoard(coach.id);
+  const plans = listCoachPlans(coach.id, true).map((p) => ({ id: p.id, name: p.name, price: p.price ?? null, every: p.every ?? null, archived: !!p.archived, clients: planCounts.get(p.id) ?? 0, members: board.get(p.id)?.clients ?? [], ownCount: board.get(p.id)?.ownCount ?? 0, monthWorth: board.get(p.id)?.monthWorth ?? 0 }));
   const eff = invoicingFor(business, invoicing);
   // Plans' tax line follows the business country (23 Nov, Alex, decision d; taxFact): none for the US or before a
   // country is set, Canada's GST/HST without a rate (the province's).
@@ -188,7 +191,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         />
       ),
     },
-    { key: "plans", body: <PlansSettings plans={plans} currency={eff.currency} vatFact={planTax ? `Prices ${eff.pricesIncludeVat ? "include" : "exclude"} ${planTax}` : null} /> },
+    // The VAT in each price, grey under it (26 Nov, Alex: docs/boards/plans-redesign-mockup.html, A): the business's rate
+    // and whether its prices hold it; none where there is no tax line (the US, no country yet).
+    { key: "plans", body: <PlansSettings plans={plans} currency={eff.currency} vatFact={planTax ? `Prices ${eff.pricesIncludeVat ? "include" : "exclude"} ${planTax}` : null} vat={planTax ? { rate: eff.rate, included: eff.pricesIncludeVat, label: eff.taxLabel } : null} /> },
     // Keyed on the business's country too: a new one there brings its own defaults here.
     // auto: Invoices by email and When a plan is assigned (lib/invoiceAuto.ts); stripeReady: card payments are offered.
     { key: "invoicing", body: <InvoicingSettings key={JSON.stringify([invoicing, business.country_code ?? null, business.country ?? null])} initial={invoicing} business={business} payments={payments} auto={auto} stripeReady={stripeReady} coachEmail={coach.email ?? undefined} /> },

@@ -71,6 +71,13 @@ type Client = {
   coach_note_at?: string;
   // Invoices that make themselves again (21 Oct, Alex): each a series, every week, two weeks or month.
   invoice_repeats?: InvoiceRepeat[];
+  /** The client's saved way to pay automatically (26 Nov, Alex: docs/boards/client-invoices-mockup.html, A): a card or
+      a SEPA mandate kept on the coach's own Stripe account once they ticked "Pay automatically from now on". Written
+      by the payments code, read by the Invoices tab's Billing card. Absent: none. */
+  autopay?: ClientAutopay;
+  /** The client as a customer on each coach Stripe account they have paid through with a way kept (26 Nov, Alex): the
+      account (acct_…) to its customer (cus_…), made once (lib/invoiceCharges.ts, ensureCustomer). */
+  stripe_customers?: Record<string, string>;
   // When the coach last had this client on screen (epoch ms) and the visit before it, 30 minutes apart being one visit: the Home board's "Since" line (21 Oct).
   home_looked?: { at: number; prev: number | null };
   /** When the client's app first opened (19 Nov, Alex: B of docs/boards/locked-app-mockup.html, "first phase"), ISO: until
@@ -719,6 +726,58 @@ type Invoice = {
   paid_via?: "manual" | "stripe";
   /** The Stripe checkout it was paid through. */
   stripe_session_id?: string;
+  /** How it was paid (26 Nov, Alex): card, iDEAL, Apple Pay, a SEPA debit (Stripe), or bank, cash, other (by hand). */
+  paid_method?: InvoicePayMethod;
+  /** Refunded (26 Nov, Alex): when. A refunded invoice counts as neither paid nor owed. Written by the payments code. */
+  refunded_at?: string;
+  /** How the client pays it (26 Nov, Alex): by our page's link (Stripe on the coach's account) or by bank transfer,
+      marked paid by hand. Absent: link, as every invoice before. */
+  pays?: InvoicePays;
+  /** The series that made it (InvoiceRepeat.id), its first one included. */
+  repeat_id?: string;
+  /** When the next automatic retry of a failed charge is due, ISO (written by the payments code; else a day after the
+      last failure). */
+  charge_next_at?: string;
+  /** The automatic charge being made (26 Nov, Alex; lib/invoiceCharges.ts): which try (0 the first, 1 to 3 the
+      retries), when it was sent, whether Stripe answered, and its PaymentIntent. Written before the charge goes, so a
+      restart mid-call never sends a second one for the same try. */
+  charge_try?: { n: number; at: string; done?: boolean; intent?: string };
+  /** The PaymentIntent that paid it (pi_…), through a checkout or an automatic charge: what a refund is made on. */
+  stripe_payment_intent?: string;
+  /** How much of it Stripe has refunded, in the currency minor units (charge.refunded), so a refund is counted once. */
+  refunded_minor?: number;
+  /** What happened to it, oldest first (26 Nov, Alex: every invoice tells what happened to it; lib/invoiceEvents.ts).
+      Older invoices have none: the view derives made, sent and paid from their own fields. */
+  events?: InvoiceEvent[];
+};
+/** How the client pays an invoice or a series (26 Nov, Alex): our page's link (card, iDEAL, Apple Pay) or bank transfer. */
+export type InvoicePays = "link" | "bank";
+/** How an invoice was paid: through Stripe (card, ideal, apple_pay, sepa_debit) or marked by hand (bank, cash, other). */
+export type InvoicePayMethod = "card" | "ideal" | "apple_pay" | "sepa_debit" | "bank" | "cash" | "other";
+/**
+ * One thing that happened to an invoice (26 Nov, Alex: docs/boards/client-invoices-mockup.html, A: the row opens on its
+ * history). `via`: card, ideal, apple_pay, sepa_debit, bank, cash, other, app, browser, email. `detail`: "Visa •••• 4242",
+ * "insufficient funds", the address emailed. `by`: who did it, the series or the payments code being "auto".
+ * A failed automatic charge is `charge_failed` (its first try), then `retry` for each retry that failed (three at most,
+ * a day apart), then `coach_told` once the third failed; one that goes through is `paid`. `pending`: a bank debit on
+ * its way (paid later by the webhook).
+ */
+export type InvoiceEvent = { at: string; kind: InvoiceEventKind; via?: string; detail?: string; by?: "coach" | "client" | "auto" };
+export type InvoiceEventKind = "made" | "sent" | "emailed" | "opened" | "reminded" | "paid" | "auto_on" | "charge_failed" | "retry" | "coach_told" | "marked_paid" | "marked_unpaid" | "refunded" | "paid_twice" | "paid_wrong_amount" | "pending";
+/** A client's saved way to pay automatically (26 Nov, Alex), on their coach's own Stripe account. */
+export type ClientAutopay = {
+  kind: "card" | "sepa_debit";
+  /** "Visa", "Mastercard"; the bank's name for a SEPA mandate. */
+  brand?: string;
+  last4?: string;
+  /** When it was turned on, ISO. */
+  since: string;
+  /** The coach's Stripe account it lives on, and the customer and payment method there. */
+  account?: string;
+  customer?: string;
+  payment_method?: string;
+  /** A SEPA debit mandate (mandate_…), made by an iDEAL payment saved for later; sent with every charge on it. */
+  mandate?: string;
 };
 export type InvoiceLine = { description: string; quantity: number; unit_price: number };
 /** Who an invoice is billed to: the client's name, email and address in parts (23 Oct; older ones have `address` alone). */
@@ -734,7 +793,10 @@ export type InvoiceEvery = "week" | "2weeks" | "month";
  */
 /** `plan_id`: the coaching plan it bills (28 Oct, Alex; coachPlans.ts). Its lines are the plan's as it was when billing
     started, so a later price is for new clients only; a switch of plan moves it, picking none stops it. */
-export type InvoiceRepeat = { id: string; every: InvoiceEvery; next: string; anchor_day: number; lines: InvoiceLine[]; note?: string; send: boolean; template?: string; paused?: boolean; created_at: string; last_invoice_id?: number; plan_id?: string };
+/** `pays` (26 Nov, Alex: docs/boards/invoice-new-mockup.html, B): how the client pays each one, link unless bank.
+    `auto`: Charge automatically, on a series paid by link: once the client saves a way to pay (Client.autopay), each
+    invoice it makes is charged by itself. `started`: the day its first invoice was issued (the Billing card's "since"). */
+export type InvoiceRepeat = { id: string; every: InvoiceEvery; next: string; anchor_day: number; lines: InvoiceLine[]; note?: string; send: boolean; template?: string; paused?: boolean; created_at: string; last_invoice_id?: number; plan_id?: string; pays?: InvoicePays; auto?: boolean; started?: string };
 export type InvoiceParty = CoachBusiness & Pick<CoachInvoicing, "iban" | "bic" | "sort_code" | "routing_number" | "bsb" | "account_number" | "bank_details" | "account_holder" | "tax_note" | "footer">;
 
 type MealMacros = { protein: number | null; fats: number | null; carbs: number | null };
@@ -960,6 +1022,12 @@ type ClientProfile = {
   client_id: number;
   /** The plan they are on, one of the coach's (CoachSettings.plans, coachPlans.ts; 23 Oct). Absent: none picked. */
   coaching_plan_id?: string | null;
+  /** Their own price on that plan, VAT as the plan's (26 Nov, Alex: docs/boards/plans-redesign-mockup.html, A): their
+      plan series bills it from its next invoice on, and a new price on the plan never moves them. Absent or null: the
+      plan's price. Cleared when they move to another plan. */
+  coaching_plan_price?: number | null;
+  /** The day their own price applies from, YYYY-MM-DD ("Alex's own from 26/11"). */
+  coaching_plan_price_since?: string | null;
   birthdate: string | null;
   // Contact details for the right-hand Member info block. Nullable because a
   // coach may never fill them in, and the panel shows an em dash rather than

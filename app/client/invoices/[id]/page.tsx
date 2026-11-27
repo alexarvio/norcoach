@@ -9,6 +9,8 @@ import InvoicePrintButton from "../../../components/InvoicePrintButton";
 import PayButton from "./PayButton";
 import { Bars } from "../../Bars";
 import { dayWords } from "../../../lib/clientDates";
+import { noteInvoiceOpened } from "../../../lib/invoiceEvents";
+import { autopayOfferFor } from "../../../lib/invoiceCharges";
 
 // One of the client's invoices, the sheet the coach sees, to read, print or
 // save as PDF, and to pay online when the coach has Stripe connected
@@ -26,7 +28,13 @@ export default async function ClientInvoicePage({ params, searchParams }: { para
   if (!Number.isInteger(invoiceId) || !listClientInvoices(clientId).some((i) => i.id === invoiceId)) notFound();
   const v = getInvoiceView(invoiceId);
   if (!v) notFound();
-  const payable = v.status !== "paid" && canPayOnline(v.coachId);
+  // Opened in their app (26 Nov, Alex: the coach's Invoices tab says so), once a day; requireClient lets only the
+  // client themselves in here, never a coach looking.
+  noteInvoiceOpened(invoiceId, "app");
+  // Paid by bank transfer, no Pay (26 Nov, Alex): the bank details on the sheet are how.
+  const payable = v.status !== "paid" && !v.refundedAt && v.pays !== "bank" && canPayOnline(v.coachId);
+  // On a series charged automatically (26 Nov, Alex): "Pay automatically from now on", as the invoice's own page has it.
+  const offer = payable ? autopayOfferFor(invoiceId) : null;
   return (
     <main className="ivp">
       <div className="ivp-bar">
@@ -48,7 +56,7 @@ export default async function ClientInvoicePage({ params, searchParams }: { para
               ]}
             />
           </span>
-          <PayButton invoiceId={v.id} label={`Pay ${formatMoney(v.total, v.currency, v.from.country_code)}`} />
+          <PayButton invoiceId={v.id} label={`Pay ${formatMoney(v.total, v.currency, v.from.country_code)}`} auto={offer?.fact ?? null} />
         </div>
       )}
       <InvoiceSheet v={v} />

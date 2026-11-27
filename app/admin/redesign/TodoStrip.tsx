@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, useTransition, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CameraIcon, ChatIcon, CheckIcon } from "../../components/icons";
+import { CameraIcon, ChatIcon, CheckIcon, ReceiptIcon } from "../../components/icons";
 import { backToTargetsAction, dismissHomeActionAction, markSeenAction, setTargetsToAction } from "../../lib/actions";
 import { newOnceKey } from "../../lib/onceKey";
 import { displayToKg, kgToDisplay } from "../../lib/units";
@@ -108,6 +108,8 @@ const groupsOf = (): { tab: DotTab; label: string; color: string; icon: ReactNod
   { tab: "meetings", ...NEED_LOOK.meetings },
   { tab: "home", ...NEED_LOOK.account },
   { tab: "plan", ...NEED_LOOK.plan },
+  // A failed automatic charge the coach was told of (26 Nov, Alex: "Finlay is told on his To do"), the receipt in grey.
+  { tab: "invoices", label: "Invoices", color: "#5b6474", icon: <ReceiptIcon /> },
 ];
 
 const LB = 2.20462;

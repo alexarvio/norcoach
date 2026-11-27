@@ -1,6 +1,7 @@
-/* The client's Invoices tab (21 Oct, Alex): built as the track tabs are (root "rd trn rls riv"): Training's header,
-   the figures in one hairline card (rls-figs, shared with Home), every invoice a row in one hairline card. Ink, never
-   navy; weights 500 and 600. */
+/* The client's Invoices tab (26 Nov, Alex: A of docs/boards/client-invoices-mockup.html; built as the track tabs are, root
+   "rd trn rls riv"): Training's header, the Billing card of facts across, the figures in one hairline card (rls-figs,
+   shared with Home), then All invoices as a log whose rows open on what happened to them. Ink, never navy; weights 500
+   and 600; the coach's brand colour only on the one main pill and a picked capsule option. */
 
 .rd.riv { display: flex; flex-direction: column; gap: 22px; }
 
@@ -10,47 +11,144 @@
 .rd.riv .riv-fix > span { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 500; color: #b8471f; }
 .rd.riv .riv-fix .trn-pill { text-decoration: none; }
 
-/* The list: rows that fill the card, no line above the first (design rules 8). */
-.rd.riv .rls-card.riv-card { padding: 0 0 6px; }
-.rd.riv .riv-card .rls-none { padding: 16px 18px; }
-.rd.riv .rls-cols.riv-cols { padding: 6px 12px 0 18px; }
+/* ---- Words as actions (design rules 8, one word action): 32px, 0 10px, 13px/600, ink or grey or red, the page grey under
+   the pointer. Shared by the Billing head, the price in place and an opened invoice's row. */
+.riv-act { display: inline-flex; align-items: center; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; white-space: nowrap; cursor: pointer; }
+.riv-act:hover:not(:disabled), .riv-act:focus-visible { outline: none; background: #f5f6f8; }
+.riv-act.grey { color: #5b6474; }
+.riv-act.grey:hover:not(:disabled) { color: #141a24; }
+.riv-act.red { color: #b42318; }
+.riv-act:disabled { color: #98a2b3; cursor: default; }
+/* The small main pill in a row or a cell: the brand's (var(--brand)), its words on it (var(--brand-ink)). */
+.riv-go { display: inline-flex; align-items: center; justify-content: center; height: 32px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--brand, #141a24); font: inherit; font-size: 13px; font-weight: 600; color: var(--brand-ink, #fff); white-space: nowrap; cursor: pointer; }
+.riv-go:disabled { background: #c9cfd8; color: #fff; cursor: default; }
+.riv-go:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(20, 26, 36, 0.18); }
+.riv-gap { flex: 1; }
+
+/* ---- Billing: its title with the state pill beside it, the ⋯ (a paused one's Resume in words) on the right. */
+.rd.trn.riv .trn-weekhead.riv-billhead { align-items: center; }
+.rd.trn.riv .trn-weekhead.riv-billhead > .riv-billtitle { flex-direction: row; align-items: center; gap: 10px; }
+.rd.riv .riv-billhead .trn-weekhead-actions { gap: 2px; }
+/* The facts across, each a label over its value and one grey fact under it, parted by dividers (as the figures). */
+.rd.rls .rls-card.riv-bill { padding: 0; }
+.rd.riv .riv-bill.start { display: flex; align-items: center; padding-right: 16px; }
+.rd.riv .riv-bgrid { flex: 1; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.35fr); min-width: 0; }
+.rd.riv .riv-bf { display: flex; flex-direction: column; gap: 4px; min-width: 0; margin: 0; padding: 14px 18px 15px; border: 0; border-left: 1px solid #eef0f3; border-radius: 0; background: none; font: inherit; color: inherit; text-align: left; }
+.rd.riv .riv-bf:first-child { border-left: 0; }
+.rd.riv .riv-bf b { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; overflow: hidden; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: #141a24; font-variant-numeric: tabular-nums; white-space: nowrap; text-overflow: ellipsis; }
+.rd.riv .riv-bf b s { font-size: 13.5px; font-weight: 500; letter-spacing: 0; color: #98a2b3; }
+.rd.riv .riv-bf b.none { font-weight: 500; color: #98a2b3; }
+.rd.riv .riv-bf small { overflow: hidden; font-size: 12.5px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; white-space: nowrap; text-overflow: ellipsis; }
+.rd.riv .riv-bf small em { font-style: normal; font-weight: 600; color: #b8471f; }
+.rd.riv .riv-bf small .ok { font-weight: 600; color: #2f7a3f; }
+/* The price is typed in place: the cell the row hover under the pointer, the field an ink underline once open. */
+.rd.riv .riv-bf.edit { cursor: text; transition: background-color 0.15s; }
+.rd.riv .riv-bf.edit:hover, .rd.riv .riv-bf.edit:focus-visible { outline: none; background: #fafbfd; }
+.rd.riv .riv-bf.editing { padding-bottom: 8px; }
+.rd.riv .riv-money { display: flex; align-items: baseline; gap: 4px; min-width: 0; border-bottom: 1px solid #e1e5eb; transition: border-color 0.15s; }
+.rd.riv .riv-money:focus-within { border-bottom-color: #141a24; }
+.rd.riv .riv-money .riv-in { flex: 1; min-width: 0; height: 30px; border: 0; text-align: left; font-size: 18px; font-weight: 600; }
+.rd.riv .riv-money s { font-size: 13px; font-weight: 500; color: #98a2b3; white-space: nowrap; }
+.rd.riv .riv-cur { font-size: 18px; font-weight: 500; color: #8b93a1; }
+.rd.riv .riv-in { width: 100%; margin: 0; padding: 0; border: 0; background: none; box-shadow: none; outline: none; font: inherit; color: #141a24; font-variant-numeric: tabular-nums; }
+.rd.riv .riv-editfoot { display: flex; align-items: center; gap: 2px; margin-top: 4px; font-size: 12.5px; font-weight: 500; color: #8b93a1; white-space: nowrap; }
+.rd.riv .riv-editfoot .riv-act { height: 28px; padding: 0 8px; font-size: 12.5px; }
+.rd.riv .riv-editfoot .riv-go { height: 28px; margin-left: 4px; padding: 0 12px; font-size: 12.5px; }
+.rd.riv .riv-startbtn { flex: none; height: 32px; padding: 0 14px; }
+/* Another series of theirs, compactly under the card: a row each. */
+.rd.rls .rls-card.riv-others { padding: 0; }
+.rd.riv .riv-other { display: grid; grid-template-columns: 112px minmax(0, 1fr) 96px 96px 96px 32px; column-gap: 16px; align-items: center; min-height: 52px; padding: 0 10px 0 18px; }
+.rd.riv .riv-other + .riv-other { border-top: 1px solid #eef0f3; }
+.rd.riv .riv-other .trn-row-more { opacity: 0; transition: opacity 0.12s; }
+.rd.riv .riv-other:hover .trn-row-more, .rd.riv .riv-other .trn-row-more[data-state="open"], .rd.riv .riv-other .trn-row-more:focus-visible { opacity: 1; }
+@media (any-hover: none) { html:not([data-mouse]) { .rd.riv .riv-other .trn-row-more { opacity: 1; } } }
+.rd.riv .riv-every { font-size: 14.5px; font-weight: 600; color: #141a24; white-space: nowrap; }
+@media (max-width: 900px) {
+  .rd.riv .riv-bgrid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .rd.riv .riv-bf:nth-child(3) { border-left: 0; }
+  .rd.riv .riv-bf:nth-child(n + 3) { border-top: 1px solid #eef0f3; }
+}
+
+/* ---- The log (design rules 8, one list row): rows that fill the card, 52px, the first column 18px in. */
+.rd.rls .rls-card.riv-log { padding: 2px 0 8px; }
+.rd.riv .riv-log .rd-rows { padding: 0; }
+.rd.riv .riv-log .rd-rows > .rd-cols { min-height: 36px; padding: 4px 18px 0; font-weight: 600; letter-spacing: 0.16em; color: #5b6474; }
+.rd.riv .riv-log .rd-rows > .rd-row { border-top-color: #eef0f3; }
+.rd.riv .riv-log .rd-rows > .rd-cols + .rd-row { border-top: 0; }
+.rd.riv .riv-log .riv-item > .rd-row-main { min-height: 52px; padding: 0 18px; border-radius: 0; }
+.rd.riv .riv-item.busy > .rd-row-main, .rd.riv .riv-item.busy .riv-acts { opacity: 0.55; transition: opacity 0.15s; }
 .rd.riv .riv-right { text-align: right; }
-.rd.riv .riv-card .rls-cols + .rls-row { border-top: 0; }
-.rd.riv .riv-row .rls-row-main { min-height: 52px; padding: 0 12px 0 18px; cursor: pointer; }
-.rd.riv .riv-number { overflow: hidden; font-size: 15px; font-weight: 600; color: #141a24; font-variant-numeric: tabular-nums; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
-/* Keyboard focus as every row that opens shows it: a quiet underline (design rules 9b). */
-.rd.riv .riv-number:focus-visible { text-decoration: underline; text-decoration-color: #c5ccd8; text-underline-offset: 4px; }
+.rd.riv .riv-center { text-align: center; }
+.rd.riv .riv-number { overflow: hidden; font-size: 15px; font-weight: 600; color: #141a24; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
 .rd.riv .riv-what { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .rd.riv .riv-what-main { min-width: 0; overflow: hidden; font-size: 14px; font-weight: 500; color: #3a4250; text-overflow: ellipsis; white-space: nowrap; }
 .rd.riv .riv-what small { flex: none; font-size: 12.5px; font-weight: 500; color: #8b93a1; }
-/* The dates the row's light part, as every log's; a due day gone by in rust. */
+/* The due day the row's light part, as every log's; one gone by in rust. */
 .rd.riv .riv-date { font-size: 13.5px; font-weight: 500; color: #5b6474; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rd.riv .riv-date.late { color: #b8471f; }
+.rd.riv .riv-none { color: #98a2b3; }
 .rd.riv .riv-total { font-size: 14px; font-weight: 600; color: #141a24; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-/* The state pill (design rules 8), the column's width, the word centred; it is the menu that changes it. */
-.rd.riv .riv-state { justify-content: center; gap: 4px; width: 100%; box-sizing: border-box; border: 0; font-family: inherit; cursor: pointer; }
-.rd.riv .riv-state svg { width: 12px; height: 12px; flex: none; opacity: 0.7; }
-.rd.riv .riv-state.riv-state:hover, .rd.riv .riv-state.riv-state[data-state="open"] { box-shadow: inset 0 0 0 1px currentColor; }
+/* The state pill (design rules 8): the column's width, the word centred; it follows what happened, no menu. */
 .rd.riv .riv-pill { justify-content: center; width: 100%; box-sizing: border-box; }
+/* An empty figure (Last paid with none yet): the faint dash at 500, as every empty value (16 Nov, Alex: the audit). */
+.rd.riv .rls-fig b.none { font-weight: 500; color: #98a2b3; }
 
-/* Recurring: how often (semi-bold), what for and where each one goes (grey); no row click. */
-.rd.riv .riv-rep .rls-row-main { cursor: default; }
-.rd.riv .riv-every { font-size: 14.5px; font-weight: 600; color: #141a24; white-space: nowrap; }
-.rd.riv .riv-state:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; }
+/* ---- What happened to it: a step a line on a thin spine (the date column's, so the spine sits under the row's date). */
+.rd.riv .riv-body { padding: 0 18px 12px; }
+.riv-steps { display: flex; flex-direction: column; padding-top: 2px; }
+.riv-step { position: relative; display: grid; grid-template-columns: 136px 48px minmax(0, 1fr); column-gap: 16px; align-items: center; min-height: 32px; font-size: 13.5px; font-weight: 500; }
+.riv-step-d { display: flex; align-items: center; gap: 10px; color: #3a4250; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.riv-dot { position: relative; z-index: 1; flex: none; width: 10px; height: 10px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1.5px #c9cfd8; }
+.riv-dot.i { background: #141a24; box-shadow: none; }
+.riv-dot.g { background: #2f7a3f; box-shadow: none; }
+.riv-dot.r { background: #b8471f; box-shadow: none; }
+/* The spine: from each dot down to the next. */
+.riv-step:has(+ .riv-step) .riv-dot::after { content: ""; position: absolute; left: 4.5px; top: 10px; width: 1px; height: 22px; background: #e1e5eb; }
+.riv-step-t { font-size: 12.5px; color: #98a2b3; font-variant-numeric: tabular-nums; }
+.riv-step-w { min-width: 0; overflow: hidden; font-weight: 600; color: #141a24; text-overflow: ellipsis; white-space: nowrap; }
+.riv-step-w > span { margin-left: 6px; font-weight: 500; color: #8b93a1; }
+.riv-step-w.ok { color: #2f7a3f; }
+.riv-step-w.bad { color: #b8471f; }
+/* Still to come (a retry, the coach told): faint. */
+.riv-step.later .riv-step-d, .riv-step.later .riv-step-w, .riv-step.later .riv-step-w > span { color: #98a2b3; }
+.riv-acts { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 2px; padding-top: 4px; }
+.riv-acts.ask { gap: 6px; }
+.riv-acts .rls-fig-label { margin-right: 4px; }
+.riv-actfact { padding: 0 10px; font-size: 13px; font-weight: 500; color: #8b93a1; white-space: nowrap; }
+.rd.riv .riv-cap { align-self: flex-start; }
 
-/* ---- New invoice: the .dlh card (portaled, so never under .rd). */
-/* As tall as the window allows, then it scrolls inside, so Cancel and Create are always in reach. */
-.dlh.dlh.riv-new { width: min(640px, 100vw - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #dce1e8 transparent; gap: 14px; }
-.riv-new .riv-sub { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: -4px; }
-.riv-new .riv-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.riv-new .dlh-label small, .riv-new .riv-static small { font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; color: #8b93a1; }
-.riv-new .riv-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+/* ---- Start billing and Edit lines: the .dlh card (portaled, so never under .rd). */
+.dlh.dlh.riv-start { width: min(480px, 100vw - 32px); gap: 14px; }
+.riv-start .riv-thing, .riv-new .riv-thing { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.riv-thing-name { display: block; font-size: 16px; font-weight: 600; color: #141a24; }
+.riv-thing-facts.riv-thing-facts { margin: 4px 0 0; font-size: 13px; font-weight: 500; color: #5b6474; }
+/* The amount as a confirm's thing draws it (.dlh-thing-aside): 24px at 500, never 300 (admin weights are 500 and 600). */
+.riv-thing-amt { flex: none; font-size: 24px; font-weight: 500; line-height: 28px; color: #141a24; font-variant-numeric: tabular-nums; }
+.riv-thing-amt s { margin-right: 6px; font-size: 15px; font-weight: 500; letter-spacing: 0; color: #98a2b3; }
+.riv-start .riv-two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px; }
+.riv-start .riv-field, .riv-new .riv-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+/* A clean line: the hairline, ink only while typing (design rules 4). */
+.riv-start .riv-money { display: flex; align-items: baseline; gap: 4px; height: 40px; border-bottom: 1px solid #e1e5eb; transition: border-color 0.15s; }
+.riv-start .riv-money:focus-within { border-bottom-color: #141a24; }
+.riv-start .riv-money .riv-in { flex: 1; min-width: 0; height: 38px; margin: 0; padding: 0; border: 0; background: none; outline: none; font: inherit; font-size: 15px; font-weight: 500; color: #141a24; font-variant-numeric: tabular-nums; }
+.riv-start .riv-cur { font-size: 15px; font-weight: 500; color: #8b93a1; }
+.riv-start .riv-money s { font-size: 13px; font-weight: 500; color: #98a2b3; white-space: nowrap; }
+.riv-start .riv-static, .riv-new .riv-static { display: flex; align-items: center; height: 40px; font-size: 15px; font-weight: 500; color: #141a24; font-variant-numeric: tabular-nums; }
+.riv-start .riv-static small { font-size: 13px; font-weight: 500; color: #8b93a1; }
+.riv-start .riv-cap, .riv-new .riv-cap { align-self: flex-start; }
 /* The day typed or picked (DatePick), on a clean line as every field here. */
-.riv-new .rd-picker.riv-daypick { height: 40px; padding: 0; border: 0; border-bottom: 1px solid #e1e5eb; border-radius: 0; background: none; box-shadow: none; gap: 8px; transition: border-color 0.15s; }
-.riv-new .rd-picker.riv-daypick:focus-within { border-bottom-color: #141a24; }
-.riv-new.riv-new .rd-picker.riv-daypick .rdt { font-size: 15px; font-weight: 500; color: #141a24; font-variant-numeric: tabular-nums; }
-.riv-new.riv-new .rd-picker.riv-daypick .rdt.bad { color: #b42318; }
-.riv-new .riv-static { display: flex; align-items: center; height: 40px; border-bottom: 1px solid transparent; font-size: 15px; font-weight: 500; color: #141a24; font-variant-numeric: tabular-nums; }
+.riv-start .rd-picker.riv-daypick, .riv-new .rd-picker.riv-daypick { height: 40px; padding: 0; border: 0; border-bottom: 1px solid #e1e5eb; border-radius: 0; background: none; box-shadow: none; gap: 8px; transition: border-color 0.15s; }
+.riv-start .rd-picker.riv-daypick:focus-within, .riv-new .rd-picker.riv-daypick:focus-within { border-bottom-color: #141a24; }
+.riv-start.riv-start .rd-picker.riv-daypick .rdt, .riv-new.riv-new .rd-picker.riv-daypick .rdt { font-size: 15px; font-weight: 500; color: #141a24; font-variant-numeric: tabular-nums; }
+.riv-start .riv-totals, .riv-new .riv-totals { display: grid; grid-template-columns: auto 92px; gap: 4px 12px; justify-content: end; margin: 4px 0 0; }
+.riv-new .riv-totals { margin-right: 36px; }
+.riv-start .riv-totals dt, .riv-new .riv-totals dt { font-size: 13px; font-weight: 500; color: #8b93a1; text-align: right; }
+.riv-start .riv-totals dd, .riv-new .riv-totals dd { margin: 0; font-size: 13.5px; font-weight: 500; color: #3a4250; text-align: right; font-variant-numeric: tabular-nums; }
+.riv-start .riv-totals .grand, .riv-new .riv-totals .grand { padding-top: 4px; font-size: 15px; font-weight: 600; color: #141a24; }
+
+/* Edit lines: as tall as the window allows, then it scrolls inside, so Cancel and Save are always in reach. */
+.dlh.dlh.riv-new { width: min(560px, 100vw - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; gap: 14px; }
+.riv-new .dlh-label small { font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; color: #8b93a1; }
 /* The lines: description, qty, price, amount, ✕ on hover. Clean lines, ink while typing. */
 .riv-new .riv-lines { display: flex; flex-direction: column; }
 .riv-new .riv-line { display: grid; grid-template-columns: minmax(0, 1fr) 52px 84px 92px 24px; align-items: center; gap: 12px; }
@@ -60,7 +158,6 @@
 .riv-new .riv-in.num { text-align: right; font-variant-numeric: tabular-nums; }
 .riv-new .riv-in:focus { border-bottom-color: #141a24; }
 .riv-new .riv-in.bad, .riv-new .riv-in.bad:focus { border-bottom-color: #b42318; color: #b42318; }
-.riv-new .riv-in::placeholder { color: #98a2b3; }
 .riv-new .riv-amount { font-size: 14px; font-weight: 600; color: #141a24; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .riv-new .riv-x { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 999px; background: none; font-size: 11px; color: #8b93a1; cursor: pointer; opacity: 0; transition: opacity 0.12s; }
 .riv-new .riv-line:hover .riv-x, .riv-new .riv-line:focus-within .riv-x, .riv-new .riv-x:focus-visible { opacity: 1; }
@@ -69,48 +166,3 @@
 .riv-new .riv-addline { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; height: 32px; margin: 6px 0 0 -10px; padding: 0 10px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; cursor: pointer; }
 .riv-new .riv-addline:hover { background: #f5f6f8; }
 .riv-new .riv-addline svg { width: 14px; height: 14px; translate: 0 -0.5px; }
-.riv-new .riv-totals { display: grid; grid-template-columns: auto 92px; gap: 4px 12px; justify-content: end; margin: 4px 36px 0 0; }
-.riv-new .riv-totals dt { font-size: 13px; font-weight: 500; color: #8b93a1; text-align: right; }
-.riv-new .riv-totals dd { margin: 0; font-size: 13.5px; font-weight: 500; color: #3a4250; text-align: right; font-variant-numeric: tabular-nums; }
-.riv-new .riv-totals .grand { padding-top: 4px; font-size: 15px; font-weight: 600; color: #141a24; }
-.riv-new .riv-note { resize: none; }
-/* Repeat and Status side by side, each a capsule (design rules 5). */
-.riv-new .riv-twin { display: grid; grid-template-columns: auto auto; justify-content: space-between; gap: 16px 24px; }
-.riv-new .riv-cap { align-self: flex-start; }
-
-/* The template pill beside the number: white with a hairline, ink while its list is open. */
-/* 36px, the shared pill's height (6 Nov, Alex: admin audit; was 32px). */
-.riv-new .riv-tpl-btn { flex: none; display: inline-flex; align-items: center; gap: 6px; max-width: 220px; height: 36px; padding: 0 10px 0 14px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; cursor: pointer; }
-.riv-new .riv-tpl-btn span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.riv-new .riv-tpl-btn svg { flex: none; width: 14px; height: 14px; color: #8b93a1; }
-.riv-new .riv-tpl-btn:hover, .riv-new .riv-tpl-btn[data-state="open"] { box-shadow: inset 0 0 0 1px #141a24; }
-.riv-new .riv-tpl-btn:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; }
-
-/* The template list (portaled): six rows then it scrolls; Save as template pinned at its foot (design rules 6). */
-.riv-tpl-pop.riv-tpl-pop { width: 300px; padding: 6px; }
-.riv-tpl-list { max-height: 312px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #dce1e8 transparent; }
-.riv-tpl-row { display: flex; align-items: center; gap: 4px; border-radius: 10px; }
-/* One hover for every row and menu item (25 Oct, Alex): the exercise row's soft neutral; the chosen one keeps its grey. */
-.riv-tpl-row:hover { background: #fafbfd; }
-.riv-tpl-row.on { background: #f5f6f8; }
-.riv-tpl-pick { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }
-.riv-tpl-pick b { overflow: hidden; font-size: 13.5px; font-weight: 600; color: #141a24; text-overflow: ellipsis; white-space: nowrap; }
-.riv-tpl-pick small { overflow: hidden; font-size: 12px; font-weight: 500; color: #8b93a1; text-overflow: ellipsis; white-space: nowrap; }
-.riv-tpl-pick:focus-visible { outline: 2px solid #141a24; outline-offset: -2px; border-radius: 10px; }
-.riv-tpl-x { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; margin-right: 4px; padding: 0; border: 0; border-radius: 999px; background: none; font-size: 11px; color: #8b93a1; cursor: pointer; opacity: 0; transition: opacity 0.12s; }
-.riv-tpl-row:hover .riv-tpl-x, .riv-tpl-row:focus-within .riv-tpl-x { opacity: 1; }
-@media (any-hover: none) { html:not([data-mouse]) { .riv-tpl-x { opacity: 1; } } }
-.riv-tpl-x:hover { background: #eef0f3; color: #141a24; }
-.riv-tpl-row.ask { gap: 2px; padding: 4px 4px 4px 10px; background: #f5f6f8; }
-.riv-tpl-row.ask span { flex: 1; min-width: 0; overflow: hidden; font-size: 13px; font-weight: 600; color: #141a24; text-overflow: ellipsis; white-space: nowrap; }
-.riv-tpl-act { height: 30px; padding: 0 10px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; cursor: pointer; }
-.riv-tpl-act:hover { color: #141a24; }
-.riv-tpl-act.danger { color: #b42318; }
-.riv-tpl-act.danger:hover { background: #f5f6f8; } /* the neutral hover, the words red (29 Oct, Alex) */
-.riv-tpl-none { margin: 0; padding: 10px; font-size: 13px; font-weight: 500; color: #8b93a1; }
-.riv-tpl-save { display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 4px; padding: 10px; border: 0; border-top: 1px solid #eef0f3; border-radius: 0 0 10px 10px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; text-align: left; cursor: pointer; }
-.riv-tpl-save svg { width: 14px; height: 14px; translate: 0 -0.5px; }
-.riv-tpl-save:hover:not(:disabled) { background: #fafbfd; }
-.riv-tpl-save:disabled { color: #98a2b3; cursor: default; }
-.riv-tpl-new { display: flex; flex-direction: column; gap: 4px; padding: 8px 8px 4px; }
-.riv-tpl-foot { display: flex; justify-content: flex-end; gap: 2px; margin-top: 8px; }

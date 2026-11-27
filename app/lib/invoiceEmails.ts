@@ -4,11 +4,12 @@ import { getInvoiceView, type InvoiceView } from "./queries";
 import { getInvoiceAuto } from "./invoiceAuto";
 import { canPayOnline } from "./payments";
 import { mailConfigured, sendInvoiceEmail, type InvoiceMail } from "./mail";
-import { invoicePayUrl, invoiceViewUrl } from "./invoicePayLink";
+import { invoicePageUrl, invoiceViewUrl } from "./invoicePayLink";
 import { sellerOf } from "./invoicePayPage";
 import { countryCodeFromName, countryOf, formatMoney } from "./countries";
 import { dayWords } from "./clientDates";
 import { brandColour } from "./brandColour";
+import { addInvoiceEvent } from "./invoiceEvents";
 
 // Invoices by email (23 Nov, Alex: docs/boards/settings-harmony-mockup.html, Settings, Invoicing & payments): each
 // invoice is emailed to the client the moment it reaches them, while the coach's switch is on (lib/invoiceAuto.ts, on
@@ -104,7 +105,10 @@ function mailOf(v: InvoiceView): InvoiceMail {
     issued: dayWords(v.issueDate),
     due: v.dueDate ? dayWords(v.dueDate) : null,
     viewUrl: invoiceViewUrl(v.id),
-    payUrl: canPayOnline(v.coachId) ? invoicePayUrl(v.id) : null,
+    // Pay only on an invoice paid by link (26 Nov, Alex): one paid by bank transfer carries the bank details alone. It
+    // opens our own invoice page (26 Nov, Alex: "every invoice email links to our own page"), whose Pay goes on to
+    // Stripe, and where a series can be paid automatically from then on; the old /pay links in emails sent keep working.
+    payUrl: v.pays !== "bank" && canPayOnline(v.coachId) ? invoicePageUrl(v.id) : null,
     bank: bank.filter((x) => x.value),
     bankWords,
     brand: b ? { hex: b.hex, ink: b.ink } : null,
@@ -145,7 +149,40 @@ export async function emailInvoice(invoiceId: number): Promise<boolean> {
   mark(invoiceId, { state: "sending", tries, to });
   const ok = await sendInvoiceEmail({ ...mailOf(v), to, replyTo: replyTo(v) }).catch(() => false);
   mark(invoiceId, { state: ok ? "sent" : "failed", tries, to });
+  // Its history (26 Nov, Alex): "Sent by email, alex@example.com".
+  if (ok) addInvoiceEvent(invoiceId, { kind: "emailed", via: "email", detail: to, by: "auto" });
   return ok;
+}
+
+/** Where an email the coach asked for stands: sent; mail not on here; no address for the client; it didn't go. */
+export type InvoiceMailAnswer = "sent" | "off" | "no_email" | "failed";
+
+/** Whether the client has an address an invoice email can go to (their sign-in, else the one on the invoice). */
+export function invoiceRecipientOf(invoiceId: number): string | null {
+  const v = getInvoiceView(invoiceId);
+  return v ? recipient(v.clientId, v) : null;
+}
+
+/**
+ * The coach's Send link again and Remind (26 Nov, Alex: docs/boards/client-invoices-mockup.html, A): the invoice email
+ * sent now, whatever was sent before, on a sent invoice not paid; a reminder says so in its subject ("Reminder: invoice
+ * 20260004") and its head, the same design. Only where invoice emails can go at all (invoiceEmailsOn); the coach's
+ * "Invoices by email" switch is for the ones that go by themselves, not for these. Its history gets "emailed" (the
+ * reminder's own "reminded" is the caller's, written whether or not the email went).
+ */
+/** `by`: who sent it, for its history: the coach (Send link again, Remind), or "auto" for the payments code telling the
+ *  client a charge needs them (26 Nov, Alex; lib/invoiceCharges.ts). */
+export async function sendInvoiceMailNow(invoiceId: number, kind: "again" | "reminder", by: "coach" | "auto" = "coach"): Promise<InvoiceMailAnswer> {
+  if (!invoiceEmailsOn()) return "off";
+  const inv = getData().invoices.find((i) => i.id === invoiceId);
+  const v = getInvoiceView(invoiceId);
+  if (!inv || !v || !reached(inv) || inv.status === "paid" || inv.refunded_at) return "failed";
+  const to = recipient(inv.client_id, v);
+  if (!to) return "no_email";
+  const ok = await sendInvoiceEmail({ ...mailOf(v), to, replyTo: replyTo(v), ...(kind === "reminder" ? { reminder: true } : {}) }).catch(() => false);
+  if (!ok) return "failed";
+  addInvoiceEvent(invoiceId, { kind: "emailed", via: "email", detail: to, by });
+  return "sent";
 }
 
 /** In the background, after an invoice this code sent itself; nothing waits on it and nothing throws. */
