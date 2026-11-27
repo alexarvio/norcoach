@@ -7,6 +7,8 @@ import { leaveWithDarkClock } from "../client/NativeStatusBar";
 import { deleteJoinAccountAction, joinStatusAction, lookupCoachCodeAction, sendJoinRequestAction, withdrawJoinRequestAction } from "../lib/joinActions";
 import { norcode, NORCODE_LENGTH, typedNorcode } from "../lib/norcode";
 import type { CoachCard } from "../lib/joinRequests";
+import { DEFAULT_DIAL, DIAL_CODES } from "../lib/phone";
+import "./join-phone.css";
 
 // Joining a coach (18 Nov, Alex: docs/boards/client-signup-mockup.html, its Motion section): About you (first and last
 // name, date of birth), then the coach's code, which shows the coach's picture, name and business once it is theirs
@@ -114,6 +116,13 @@ export default function JoinFlow({
   const [last, setLast] = useState(lastGiven);
   const [dob, setDob] = useState(fromValue(birthdate));
   const [phone, setPhone] = useState("");
+  // The country code picked beside the number (27 Nov, Alex: "there's no country code thing"), the phone's own country
+  // first (its language's region), else the Netherlands.
+  const [dial, setDial] = useState(DEFAULT_DIAL);
+  useEffect(() => {
+    const own = guessDial();
+    if (own) setDial(own);
+  }, []);
   const [aboutError, setAboutError] = useState<string | null>(null);
 
   // Declined: a new code to type, the old one gone.
@@ -167,7 +176,7 @@ export default function JoinFlow({
   const about = () => {
     if (!first.trim() || !last.trim()) return setAboutError("Add your first and last name.");
     if (!dobValue(dob)) return setAboutError("Check your date of birth.");
-    if (phone.replace(/\D/g, "").length < 6) return setAboutError("Add your phone number, with its country code.");
+    if (phone.replace(/\D/g, "").length < 6) return setAboutError("Add your phone number.");
     setAboutError(null);
     afterKeyboard(() => go("coach"));
   };
@@ -200,7 +209,7 @@ export default function JoinFlow({
     if (!birth) return go("about");
     setSending(true);
     setCoachError(null);
-    const r = await sendJoinRequestAction({ firstName: first, lastName: last, birthdate: birth, phone, code: found.code }, onceKey.current).catch(() => ({ ok: false as const, error: "Not sent. Try again." }));
+    const r = await sendJoinRequestAction({ firstName: first, lastName: last, birthdate: birth, phone: withDial(dial, phone), code: found.code }, onceKey.current).catch(() => ({ ok: false as const, error: "Not sent. Try again." }));
     onceKey.current = newKey();
     setSending(false);
     if (!r.ok) return setCoachError(r.error);
@@ -309,12 +318,22 @@ export default function JoinFlow({
           <span>Date of birth</span>
           <input name="birthdate" inputMode="numeric" autoComplete="bday" placeholder="DD / MM / YYYY" value={dob} onChange={(e) => (setDob(dobShown(e.target.value)), setAboutError(null))} />
         </label>
-        {/* Their phone, for the coach (25 Nov, Alex: "if we do not ask phone number of the client… we should"), typed with
-            its country code, split into the code and the number on the coach's side (lib/phone.ts splitTypedPhone). */}
-        <label className="auth-field">
-          <span>Phone</span>
-          <input name="phone" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(e) => (setPhone(e.target.value), setAboutError(null))} maxLength={30} />
-        </label>
+        {/* Their phone, for the coach (25 Nov, Alex: "if we do not ask phone number of the client… we should"): the country
+            code picked beside the number (27 Nov, Alex), sent joined and split again on the coach's side (lib/phone.ts
+            splitTypedPhone). A number typed with its own + or 00 keeps it. */}
+        <div className="auth-field">
+          <span id="jn-phone-label">Phone</span>
+          <span className="jn-phone" role="group" aria-labelledby="jn-phone-label">
+            <select className="jn-dial" value={dial} onChange={(e) => setDial(e.target.value)} aria-label="Country code">
+              {DIAL_CODES.map(([iso, c]) => (
+                <option key={iso} value={c}>
+                  {iso} {c}
+                </option>
+              ))}
+            </select>
+            <input name="phone" type="tel" inputMode="tel" autoComplete="tel-national" value={phone} onChange={(e) => (setPhone(e.target.value), setAboutError(null))} maxLength={30} aria-label="Phone number" />
+          </span>
+        </div>
         <button className="btn auth-submit" type="submit">
           Continue
         </button>
@@ -464,4 +483,25 @@ export default function JoinFlow({
       <div className={`jn-home${rising ? " in" : ""}`} aria-hidden="true" />
     </>
   );
+}
+
+/** The phone's own dial code, from its language's region (`nl-NL` → +31), when it is one we list. */
+function guessDial(): string | null {
+  if (typeof navigator === "undefined") return null;
+  for (const lang of navigator.languages ?? [navigator.language]) {
+    const region = /-([A-Za-z]{2})\b/.exec(lang)?.[1]?.toUpperCase();
+    const iso = region === "GB" ? "UK" : region;
+    const hit = DIAL_CODES.find(([i]) => i === iso);
+    if (hit) return hit[1];
+  }
+  return null;
+}
+
+/** The number with its country code: one typed with its own + or 00 as it is, else the code and the number without the
+ *  trunk 0 a number is dialled with at home (`06…` → `+31 6…`; Italy keeps its 0). */
+function withDial(dial: string, typed: string): string {
+  const t = typed.trim();
+  if (!t) return "";
+  if (t.startsWith("+") || t.startsWith("00")) return t;
+  return `${dial} ${dial === "+39" ? t : t.replace(/^0+/, "")}`;
 }
