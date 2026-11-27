@@ -23,8 +23,9 @@ import "./join-requests.css";
 // them in the to-do… it's the same thing… my idea was to add it there where the client's thing is"): the rust pill with
 // how many are asking, its list dropping from it as a client's To do does from theirs (25 Nov, Alex:
 // docs/boards/todo-popover-mockup.html; its look, todo-panel.css; was a panel from the right), over the page, the nub on
-// the pill. Each request a row on one grid: their face and name, `Wants to join | 30 | today` and `email | phone` grey,
-// Accept and Decline in words. Accept asks where they go while the coach has clients never in the app (Assign Maya to Sam Taylor.),
+// the pill. Each request a row (27 Nov, Alex: no "Wants to join" under the name, "it's obvious"): their face, the name with
+// their age after a comma (`Alex Arvio, 27`) and how long ago on the right as a notification's (`2 h ago`), then
+// `email | phone` grey with Accept and Decline in words on its right. Accept asks where they go while the coach has clients never in the app (Assign Maya to Sam Taylor.),
 // Decline asks first. Was a group at the top of the Feed's Needs you (18 Nov).
 
 type Linkable = FeedBoard["linkable"];
@@ -38,10 +39,18 @@ function Face({ name, src }: { name: string; src: string | null }) {
   );
 }
 
-/** "2 days", "today": how long a request has waited. */
+/** How long ago a request came in, as a notification says it (27 Nov, Alex: "like any notification on the right side"):
+ *  `Just now`, `12 min ago`, `2 h ago`, `1 day ago`, `3 days ago`; late (rust) past a day, as every wait. */
 function waited(since: string, now: number): { text: string; late: boolean } {
-  const days = Math.floor((now - new Date(since).getTime()) / 86_400_000);
-  return days <= 0 ? { text: "today", late: false } : { text: days === 1 ? "1 day" : `${days} days`, late: days > 1 };
+  const ago = Math.max(0, now - new Date(since).getTime());
+  const min = Math.floor(ago / 60_000);
+  if (!Number.isFinite(min)) return { text: "", late: false };
+  if (min < 1) return { text: "Just now", late: false };
+  if (min < 60) return { text: `${min} min ago`, late: false };
+  const h = Math.floor(min / 60);
+  if (h < 24) return { text: `${h} h ago`, late: false };
+  const days = Math.floor(h / 24);
+  return { text: days === 1 ? "1 day ago" : `${days} days ago`, late: days > 1 };
 }
 
 export default function JoinRequests({ joins, linkable }: { joins: JoinRow[]; linkable: Linkable }) {
@@ -149,28 +158,31 @@ export default function JoinRequests({ joins, linkable }: { joins: JoinRow[]; li
               <div className="tdp-head">
                 <h2>Join requests</h2>
               </div>
-              {/* One grid down the list: the face, the words, Accept, Decline. */}
+              {/* A row each: the face, then the name and how long ago over how to reach them and Accept and Decline. */}
               <div className="jr-list">
                 {asking.map((j) => {
                   const w = waited(j.since, now);
                   return (
                     <div key={j.id} className="tdp-row jr-row">
                       <Face name={j.name} src={j.photo} />
-                      <div className="tdp-thing">
-                        <span className="jr-name">{j.name}</span>
-                        <small>
-                          <SepJoin parts={["Wants to join", j.age != null ? String(j.age) : null, w.late ? <em key="w">{w.text}</em> : w.text]} />
-                        </small>
-                        <small>
+                      <div className="jr-body">
+                        <span className="jr-name">
+                          {j.name}
+                          {j.age != null && <span className="jr-age">, {j.age}</span>}
+                        </span>
+                        <span className={`jr-when${w.late ? " late" : ""}`}>{w.text}</span>
+                        <small className="jr-reach">
                           <SepJoin parts={[<span key="e" className="jr-whole">{j.email}</span>, j.phone ? <span key="p" className="jr-whole">{j.phone}</span> : null]} />
                         </small>
+                        <span className="jr-acts">
+                          <button type="button" className="tdp-act" onClick={() => askAccept(j)}>
+                            Accept
+                          </button>
+                          <button type="button" className="tdp-act jr-decline" onClick={() => setDeclining(j)}>
+                            Decline
+                          </button>
+                        </span>
                       </div>
-                      <button type="button" className="tdp-act" onClick={() => askAccept(j)}>
-                        Accept
-                      </button>
-                      <button type="button" className="tdp-act jr-decline" onClick={() => setDeclining(j)}>
-                        Decline
-                      </button>
                     </div>
                   );
                 })}
