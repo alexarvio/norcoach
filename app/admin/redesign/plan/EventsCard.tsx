@@ -305,7 +305,9 @@ export default function EventsCard({ clientId, events: serverEvents, categories:
 
       <div className="pln-card">
       {/* The same grid as the phases (timelineParts.tsx): months, the Mondays, and a row of lanes an event kind. */}
-      <Timeline grid={grid} onAway={setAway} home={home} minWidth={Math.round(win * 63)} weekNumbers={false} onStep={(n) => setBack((b) => Math.max(0, b - n))}>
+      {/* The Phases card's own width (27 Nov, Alex: "the bars that tell you the now… are not in sync"): Timeline's default,
+          a width for every week on the grid with the three behind, so a week is as wide in both cards and NOW lines up. */}
+      <Timeline grid={grid} onAway={setAway} home={home} weekNumbers={false} onStep={(n) => setBack((b) => Math.max(0, b - n))}>
         {/* Weight goals first, a lane of their own (2 Nov, Alex): the target in lifestyle beige, the planned path dashed
             along its middle, a pin on each goal's date. Never the events' lanesRef: the events keep their own. */}
         {goalsOnGrid.length > 0 && (
