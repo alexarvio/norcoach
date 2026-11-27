@@ -188,6 +188,23 @@ function compare(sr: SetRows, clientId: number, gone: Set<number>) {
     return out;
   };
 
+  // What an added row brings, said with it (27 Nov, Alex: B of docs/boards/apply-changes-mockup.html): its sets, reps,
+  // weight and rest, a cardio's time and pace; only what the coach filled in, each as a figure with nothing before it.
+  const briefOf = (r: Row): ApplyFig[] => {
+    const out: ApplyFig[] = [];
+    push(out, "Sets", null, num(r.sets));
+    push(out, "Reps", null, txt(r.reps));
+    push(out, "kg", null, kgv(r.target_weight_kg), { kg: true });
+    push(out, "Rest", null, restOf(num(r.rest_seconds)));
+    return out;
+  };
+  const cardioBriefOf = (c: Cardio): ApplyFig[] => {
+    const out: ApplyFig[] = [];
+    push(out, "Time", null, txt(c.time));
+    push(out, "Pace", null, txt(c.pace));
+    return out;
+  };
+
   /** Pairs what is there with what lands, in the order it lands: the same exercise (and variation), else added / removed. */
   function pair<T>(src: T[], dest: T[], key: (x: T) => string) {
     const used = new Set<number>();
@@ -214,7 +231,7 @@ function compare(sr: SetRows, clientId: number, gone: Set<number>) {
     const rows = pair(srcRows, destRows, (r) => `${r.exercise_id}:${r.variation_id ?? ""}:${txt(r.custom_name) ?? ""}`);
     for (const p of rows.pairs) {
       const name = p.src.exercise_name ?? "Exercise";
-      if (!p.dest) items.push({ name, change: "added", figs: [] });
+      if (!p.dest) items.push({ name, change: "added", figs: briefOf(p.src) });
       else {
         // A weight differs only where the coach's own numbers do (27 Oct, Alex: the client lifting heavier this week made
         // the copy land higher than the later weeks, which the coach typed after, and the confirm read that as a change of
@@ -233,7 +250,7 @@ function compare(sr: SetRows, clientId: number, gone: Set<number>) {
     const cardio = pair(srcCardio, destCardio, (c) => (txt(c.name) ?? "").toLowerCase());
     for (const p of cardio.pairs) {
       const name = txt(p.src.name) ?? "Cardio";
-      if (!p.dest) items.push({ name, cardio: true, change: "added", figs: [] });
+      if (!p.dest) items.push({ name, cardio: true, change: "added", figs: cardioBriefOf(p.src) });
       else {
         const figs = cardioFigs(p.dest, p.src);
         if (figs.length) items.push({ name, cardio: true, change: "changed", figs });
@@ -358,13 +375,16 @@ export function applyReads(sr: SetRows, clientId: number, program: Span, weekNum
   if (!later.length) return null;
   const read = applyReader(sr, clientId);
   const rest = read.week(program, weekNumber, later);
-  const sessions: Record<number, { kg: boolean; lbs: boolean }> = {};
+  const sessions: Record<number, { kg: boolean; lbs: boolean; preview?: ApplyPreview }> = {};
   for (const d of getWeek(clientId, weekNumber)) {
     const p = read.session(d, program);
-    sessions[d.id] = { kg: changedWeeks(p, false).length > 0, lbs: changedWeeks(p, true).length > 0 };
+    const kg = changedWeeks(p, false).length > 0;
+    const lbs = changedWeeks(p, true).length > 0;
+    // Its confirm's list itself, so it opens on it at once (27 Nov, Alex: "the pop up of apply is quite slow to load").
+    sessions[d.id] = kg || lbs ? { kg, lbs, preview: p } : { kg, lbs };
   }
   // `count`: the changes Apply would carry, each once (16 Nov, Alex), the small count on the week line's Apply. Only the
   // weeks it can reach (`open`: the later weeks that aren't over, as its confirm's targets), so a done week that differs
-  // never adds to it.
-  return { rest: { kg: changedWeeks(rest, false), lbs: changedWeeks(rest, true), count: { kg: changeCount(rest, false, open), lbs: changeCount(rest, true, open) } }, sessions };
+  // never adds to it. `preview`: the confirm's list, read here as its own read does, so the pop-up draws it at once.
+  return { rest: { kg: changedWeeks(rest, false), lbs: changedWeeks(rest, true), count: { kg: changeCount(rest, false, open), lbs: changeCount(rest, true, open) }, preview: rest }, sessions };
 }

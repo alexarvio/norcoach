@@ -1,7 +1,7 @@
 "use client";
 
 import { ConfirmChoice, ConfirmText, ConfirmThing, type ConfirmThingProps } from "../ConfirmParts";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import type React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -19,7 +19,7 @@ import HelpTip from "../HelpTip";
 import ClientNote from "./ClientNote";
 import ApplyChangesDialog from "./ApplyChanges";
 import { previewApplySessionAction, previewApplyWeekAction } from "./applyPreview";
-import { changedWeeks } from "./applyShape";
+import { changedWeeks, type ApplyPreview } from "./applyShape";
 import MediaReviewModal, { reviewable, type MediaReview, type ThreadItem } from "../media-review/MediaReviewModal";
 import PhaseDatesDialog from "../PhaseDatesDialog";
 import PhaseSwitcher from "../PhaseSwitcher";
@@ -28,6 +28,7 @@ import { landOn, landOnSoon } from "../../../lib/landOn";
 import { pinOnScreen, putOnScreen } from "./pinOnScreen";
 import { AfterWorkoutCheck, GoalsNotePills, GripIcon, WeekRail } from "./TrainingParts";
 import "./trn.css";
+import "./week-switch.css";
 import { SortableItem, SortableList } from "../Sortable";
 import { useOpenChat } from "../ChatPanel";
 import Picker from "../Picker";
@@ -174,7 +175,7 @@ export type DraftProgram = {
    * (applyPreviewData.ts), in kg and in lbs: `rest`, the later weeks Apply to the rest would change; `sessions`, by
    * session id, whether its Apply to remaining weeks would change one. Null for a done week or the last.
    */
-  apply?: { week: number; rest: { kg: number[]; lbs: number[]; /** The changes Apply would carry, each once (16 Nov). */ count?: { kg: number; lbs: number } }; sessions: Record<number, { kg: boolean; lbs: boolean }> } | null;
+  apply?: { week: number; rest: { kg: number[]; lbs: number[]; /** The changes Apply would carry, each once (16 Nov). */ count?: { kg: number; lbs: number }; /** Its confirm's list (27 Nov), drawn at once. */ preview?: ApplyPreview }; sessions: Record<number, { kg: boolean; lbs: boolean; preview?: ApplyPreview }> } | null;
   /** The weeks whose copy would change the week on screen (25 Oct), as Apply to the rest reads a change. */
   copyIn?: { week: number; kg: number[]; lbs: number[] } | null;
   /** The client's rogue sessions (19 Oct), by week index: their own workouts off the plan, read only. */
@@ -191,6 +192,8 @@ export type DraftProgram = {
   /** The client's note on it; seen: the coach has opened this version. */
   note: { text: string; when: string; seen: boolean } | null;
 };
+/** One week's own part of the draft (27 Nov; loadTrainingWeek, /api/admin/training-week): what a week switched to on screen swaps in. */
+export type TrainingWeek = Pick<DraftProgram, "weekIdx" | "sessions" | "copySessions" | "rogueSessions" | "apply" | "copyIn"> & { programId: number };
 
 // ---- Draft-only bits ---------------------------------------------------------
 const savedToast = (what: string) => toast.success("Saved", { description: what });
@@ -278,10 +281,18 @@ type Dlg =
   | { kind: "deletePhase" }
   | null;
 
-export default function TrainingDraft({ clientId, firstName, lbsFirst = false, program, library, cardioMoves = [], coachVideos = [], dots }: { clientId: number; firstName: string; /** Opens in lbs (Settings, Preferences, 27 Oct); KG/LBS still switches it. */ lbsFirst?: boolean; program: DraftProgram; library: Library; cardioMoves?: CardioMove[]; coachVideos?: CoachClip[]; /** The dot trail (dots.ts): the weeks and sessions with something the coach owes; an exercise's own is its video mark in rust. */ dots?: DotTrail }) {
+type TrainingProps = { clientId: number; firstName: string; /** Opens in lbs (Settings, Preferences, 27 Oct); KG/LBS still switches it. */ lbsFirst?: boolean; program: DraftProgram; library: Library; cardioMoves?: CardioMove[]; coachVideos?: CoachClip[]; /** The dot trail (dots.ts): the weeks and sessions with something the coach owes; an exercise's own is its video mark in rust. */ dots?: DotTrail };
+function TrainingScreen({ clientId, firstName, lbsFirst = false, program, library, cardioMoves = [], coachVideos = [], dots, nav }: TrainingProps & { /** Another week swapped in place (27 Nov; TrainingDraft below). */ nav: WeekNav }) {
   // An exercise added from the library starts with its default cue as the note (5 Oct).
   const cueOf = (exerciseId: number | null) => (exerciseId == null ? "" : library.flatMap((g) => g.exercises).find((e) => e.id === exerciseId)?.cue ?? "");
   const router = useRouter();
+  // Every read of the page again goes through here (27 Nov): the weeks read ahead are let go, since whatever was just
+  // saved may have changed them, and the wrapper notes when it went, so a week switched to just after it reads the page
+  // again too (a read still on its way when the address moves is dropped by Next).
+  const refresh = useCallback(() => {
+    nav.forget();
+    router.refresh();
+  }, [nav, router]);
   const [lbs, setLbs] = useState(lbsFirst);
   const unit = lbs ? "lbs" : "kg";
   // The product's six columns, six at a time; what the client did and the
@@ -303,13 +314,14 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
     startTransition(async () => {
       void said;
       const r = await fn();
-      router.refresh();
+      refresh();
       if (r && typeof r === "object" && "ok" in r && (r as { ok: boolean }).ok === false) toast.error((r as { error?: string }).error ?? "Something went wrong");
       else if (typeof r === "string" && r) toast.error(r);
     });
   // Compared by content: every refresh hands in new objects with the same
   // values, and resetting on those collapsed panels and threw work away.
-  const sessionsKey = JSON.stringify([program.sessions, program.copySessions ?? [], program.rogueSessions ?? []]);
+  // Worked out again only when the server hands in other lists (27 Nov: every render stringified every row's history).
+  const sessionsKey = useMemo(() => JSON.stringify([program.sessions, program.copySessions ?? [], program.rogueSessions ?? []]), [program.sessions, program.copySessions, program.rogueSessions]);
   const [seenProgram, setSeenProgram] = useState(sessionsKey);
   // Sessions being added: shown at once (20 Oct, Alex: Add session waited for the save and the page's read), until the read brings the real ones.
   const [incoming, setIncoming] = useState(0);
@@ -333,7 +345,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
   };
   const onCount = Object.values(cols).filter(Boolean).length;
   const [gyms, setGyms] = useState<Gym[]>(program.gyms);
-  const gymsKey = JSON.stringify(program.gyms);
+  const gymsKey = useMemo(() => JSON.stringify(program.gyms), [program.gyms]);
   const [seenGyms, setSeenGyms] = useState(gymsKey);
   if (seenGyms !== gymsKey) {
     setSeenGyms(gymsKey);
@@ -344,7 +356,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
   // The week's sessions, and the weeks, live in state so delete, reorder and
   // add can show what they would do.
   const [weeks, setWeeks] = useState(program.weeks);
-  const weeksKey = JSON.stringify(program.weeks);
+  const weeksKey = useMemo(() => JSON.stringify(program.weeks), [program.weeks]);
   const [seenWeeks, setSeenWeeks] = useState(weeksKey);
   if (seenWeeks !== weeksKey) {
     setSeenWeeks(weeksKey);
@@ -402,8 +414,10 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
   const extras = extrasSeen.current[`${program.id}:${viewIdx}`];
   const copySessions = extras?.copies ?? [];
   const rogueSessions = extras?.rogues ?? [];
-  const [stash, setStash] = useState<Record<number, DraftSession[]>>({});
-  const isLocal = (index: number) => index === viewIdx || index in stash;
+  // Every week of the programme switches in place (27 Nov; showWeek below), the address following.
+  const isLocal = () => true;
+  // The rail, kept where it is on screen while the week under it changes height (pinOnScreen).
+  const railRef = useRef<HTMLDivElement | null>(null);
   const [pending, setPending] = useState<Record<number, Pending>>({});
   const pend = (id: number) => pending[id] ?? emptyPending();
   // When each session last changed: autosave waits for a pause (20 Oct).
@@ -619,7 +633,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
         inFlight.current[sessionId] = false;
         setSaving((x) => ({ ...x, [sessionId]: false }));
         noteSaving(sessionId);
-        router.refresh();
+        refresh();
         if (again.current[sessionId]) {
           again.current[sessionId] = false;
           flushRef.current(sessionId);
@@ -698,11 +712,11 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
     const t = setInterval(() => {
       if (Object.values(inFlight.current).some(Boolean)) return;
       landingTries.current += 1;
-      if (landingTries.current <= 3) router.refresh();
+      if (landingTries.current <= 3) refresh();
       else setSeenProgram("");
     }, 2000);
     return () => clearInterval(t);
-  }, [landing, router]);
+  }, [landing, refresh]);
   // A Back to that didn't go, by row (24 Nov): Retry sends it again with its own one-time key, so one that did land after
   // all changes nothing more. Its own state, apart from the queue's (24 Nov, review): only backTo and Retry set or clear
   // it, so a session's later save never clears a Back to still unsent, nor a Back to the queue's failure.
@@ -743,7 +757,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
       .finally(() => {
         setBackBusy((x) => ({ ...x, [rowId]: false }));
         noteSaving(sessionId);
-        router.refresh();
+        refresh();
       });
   };
   // A demo set or taken off in this sitting, by row; a row not touched reads its own.
@@ -758,7 +772,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
       if (!dots?.training.days.includes(id)) return;
       startTransition(async () => {
         await markSeenAction(clientId, { dayId: id });
-        router.refresh();
+        refresh();
       });
     };
   });
@@ -780,22 +794,18 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
     setOpen(id);
     if (id != null) markRead.current(id);
   };
-  // Another week loaded (a week chip, a link): the screen stays (units,
-  // columns, scroll), the week on it changes and its sessions start folded.
+  // Another week loaded (a week card swapped in place, a link): the screen stays (units, columns, scroll), the week on it
+  // changes and its sessions start folded, whichever way it came (27 Nov: one rule; the in-place way once opened the
+  // first unfinished one).
   const [seenWeekIdx, setSeenWeekIdx] = useState(program.weekIdx);
   if (seenWeekIdx !== program.weekIdx) {
     setSeenWeekIdx(program.weekIdx);
-    // The week on screen already (showWeek put it in the URL, and a page read
-    // brought its fresh rows): nothing folds. Another week: start folded.
+    // The week on screen already (a page read brought its fresh rows): nothing folds. Another week: start folded.
     if (program.weekIdx !== viewIdx) {
       setViewIdx(program.weekIdx);
       setOpen(null);
+      setShut(null);
     }
-    setStash((prev) => {
-      const next = { ...prev };
-      delete next[program.weekIdx];
-      return next;
-    });
   }
   // The To do's Review or Read for a session on another week (2 Nov, the strip's then): once that week is here, its # is
   // arrived at.
@@ -833,8 +843,13 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
       const to = new URL(item.href, window.location.origin);
       // A session (Review, Read), or the week's Add session (a live phase with no sessions).
       if (!/^#session(-\d+|s$)/.test(to.hash)) return false;
-      if (Number(to.searchParams.get("program")) === program.id && Number(to.searchParams.get("week")) === viewIdx) goToHash(to.hash);
-      else {
+      const toWeek = Number(to.searchParams.get("week"));
+      if (Number(to.searchParams.get("program")) === program.id && toWeek === viewIdx) goToHash(to.hash);
+      else if (Number(to.searchParams.get("program")) === program.id && Number.isInteger(toWeek) && toWeek >= 1 && toWeek <= weeks.length) {
+        // Another week of this programme: swapped in place as a week card does, its # landed on once it is here.
+        landAfterWeek.current = to.hash;
+        showWeek(toWeek, to.hash);
+      } else {
         landAfterWeek.current = to.hash;
         router.push(item.href);
       }
@@ -969,23 +984,41 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
     return d ? new Date(`${d}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : null;
   };
   const startHasCome = !!program.startDate && program.startDate <= today;
-  const showWeek = (index: number) => {
-    const back = stash[index];
-    if (index === viewIdx || !back) return;
-    setStash((prev) => {
-      const next = { ...prev, [viewIdx]: sessions };
-      delete next[index];
-      return next;
+  // Another week, in place (27 Nov, Alex: "switching from week to week in the training section was a bit slow, glitched a
+  // bit"): what the week being left still has waiting goes first, then the week comes from the weeks read ahead at once,
+  // else the ring moves at once and the week follows when its read lands (TrainingDraft below). The address follows
+  // (6 Oct), so a page read after any save hands back this same week.
+  const showWeek = (index: number, hash?: string) => {
+    if (index === (nav.going ?? viewIdx)) return;
+    const dirty = weekSaving || weekFailed || incoming > 0;
+    tick.current(true);
+    nav.show(index, {
+      dirty,
+      // The week being left, as the server last read it, for coming back to: only with nothing of it waiting or saving.
+      leaving: dirty || nav.going != null ? null : { programId: program.id, weekIdx: program.weekIdx, sessions: program.sessions, copySessions: program.copySessions, rogueSessions: program.rogueSessions, apply: program.apply, copyIn: program.copyIn },
+      hash,
+      // A link lands on its session itself, so nothing holds the page then.
+      pin: () => {
+        if (!hash) pinOnScreen(railRef.current);
+      },
     });
-    setSessions(back);
-    setViewIdx(index);
-    setOpen(back.find((s) => s.setsLogged < s.setsPlanned)?.id ?? back[0]?.id ?? null);
-    // The URL follows (6 Oct): a page read after any save used to hand back
-    // the URL's week and snap the screen to it, folded.
-    const u = new URL(window.location.href);
-    u.searchParams.set("week", String(index));
-    router.replace(u.pathname + u.search, { scroll: false });
   };
+  // The weeks either side, and this calendar week, read ahead once the page is calm, so a click on one swaps at once:
+  // once for each week come on screen, never again after a save (each would cost three more reads of the server for every
+  // figure typed). After a save, a rest on a card reads its week ahead (onWarm on the rail).
+  const warmedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (weekSaving || weekFailed || nav.going != null) return;
+    const key = `${program.id}:${viewIdx}`;
+    if (warmedFor.current === key) return;
+    const t = setTimeout(() => {
+      warmedFor.current = key;
+      nav.warm(viewIdx - 1);
+      nav.warm(viewIdx + 1);
+      if (program.liveIdx) nav.warm(program.liveIdx);
+    }, 700);
+    return () => clearTimeout(t);
+  }, [nav, viewIdx, program.id, program.liveIdx, weekSaving, weekFailed]);
   // Weeks are added and removed on the server (the dialogs below); the page then lands on the right one.
   // Weeks still to run: a week over is never written to, whichever week it is applied from.
   const later = weeks.filter((w) => w.index > viewIdx && w.state !== "past");
@@ -1898,7 +1931,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
   return (
     // An ended programme is every week done (weekLocked), not a page where every control sleeps (23 Oct, Alex): its
     // sessions open and its videos play. The header's Ended tag says it; no note under it.
-    <div className="rd trn">
+    <div className={`rd trn${nav.going != null ? " trn-going" : ""}`} aria-busy={nav.going != null || undefined}>
       {/* ---- Header (19 Oct restructure): the programme's name, its switcher (▾) and state, its weeks and dates; on the right the goals and note pills, the unit and the menu. */}
       <header className="trn-head">
         <div className="trn-head-main">
@@ -2035,7 +2068,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
 
       {/* ---- The weeks: a card each, one bar a session, NOW on this calendar week. Its ? (27 Oct, Alex) at the top right,
           on the fact line's level, says what the bars mean. */}
-      <div className="trn-rail-wrap">
+      <div className="trn-rail-wrap" ref={railRef}>
         <span className="trn-rail-help">
           <HelpTip title="What the bars on a week mean" wide untitled>
             <WeeksLegend />
@@ -2043,11 +2076,13 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
         </span>
       <WeekRail
         weeks={weeks}
-        viewIdx={viewIdx}
+        // The ring moves at once to a week still on its way (27 Nov); the week under it follows when it lands.
+        viewIdx={nav.going ?? viewIdx}
         dateOf={weekDate}
         hrefFor={(index) => `/clients/${clientId}/training?program=${program.id}&week=${index}`}
         isLocal={isLocal}
-        onShow={showWeek}
+        onShow={(index) => showWeek(index)}
+        onWarm={nav.warm}
         onAdd={addWeek}
         // No new week once every week is done: an ended programme, or a live one whose weeks have run out (a week added
         // there would come back done, and locked empty).
@@ -2363,7 +2398,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
               // A session's own picks replace the library's (15 Oct); an empty list means the library's are offered.
               await setExerciseAlternativesAction(row.id, list.map((x) => ({ exerciseId: x.exerciseId, note: x.note })), list.length > 0, hidden);
               close();
-              router.refresh();
+              refresh();
               toast.success(`Substitutes saved for ${session}`);
             }}
             onClose={close}
@@ -2385,7 +2420,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
               setDemos((d) => ({ ...d, [row.id]: { url, source: "library" } }));
               close();
               toast.success(`Demo updated${(row.demoClients ?? 1) > 1 ? ` for ${row.demoClients} clients` : ""}`);
-              router.refresh();
+              refresh();
             }}
             onUpload={async (file) => {
               const row = rowById(dlg.rowId)!;
@@ -2400,13 +2435,13 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
               await uploadExerciseVideoAction(f);
               close();
               toast.success(`Demo updated${(row.demoClients ?? 1) > 1 ? ` for ${row.demoClients} clients` : ""}`);
-              router.refresh();
+              refresh();
             }}
             onRemove={async () => {
               const row = rowById(dlg.rowId)!;
               await clearExerciseDemoAction(fd({ exerciseId: row.exerciseId, variationId: row.variationId ?? null }));
               setDemos((d) => ({ ...d, [row.id]: null }));
-              router.refresh();
+              refresh();
             }}
           />
         )}
@@ -2430,7 +2465,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
               const session = allSessions.find((s) => s.rows.some((r) => r.id === rowId))?.name ?? "Session";
               await requestExerciseVideoAction(rowId, note, recurring, newOnceKey());
               close();
-              router.refresh();
+              refresh();
               toast.success(recurring ? `Asked ${firstName} for a video, every ${session} session` : `Asked ${firstName} for a video`);
             }}
             onWithdraw={
@@ -2506,7 +2541,10 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
         {dlg?.kind === "applyLater" && sessionById(dlg.sessionId) && (
           <ApplyChangesDialog
             key={`applyLater-${dlg.sessionId}`}
-            title={`Apply ${sessionById(dlg.sessionId)!.name} to ${laterLabel}`}
+            // One plain title (27 Nov, Alex: "take away the title and just say something generic").
+            title={`Apply ${sessionById(dlg.sessionId)!.name} to the rest of the programme`}
+            // The page's own read, when nothing on the session waits to be saved: on screen at once.
+            initial={pendingCount(pend(dlg.sessionId)) === 0 && !saving[dlg.sessionId] ? (applyRead?.sessions[dlg.sessionId]?.preview ?? null) : null}
             description={`${sessionById(dlg.sessionId)!.name} in each of those weeks becomes what it is in ${week.label}: its ${sessionById(dlg.sessionId)!.rows.length} ${sessionById(dlg.sessionId)!.rows.length === 1 ? "exercise" : "exercises"}${sessionById(dlg.sessionId)!.cardio.length ? " and cardio" : ""}. Anything the client logged on those sessions goes with them.`}
             confirm="Apply"
             startDate={program.startDate}
@@ -2532,7 +2570,12 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
         {dlg?.kind === "copyForward" && later.length > 0 && (
           <ApplyChangesDialog
             key={`copyForward-${viewIdx}`}
-            title={`Apply ${week.label} to ${forwardTo.length ? forwardLabel : "the later weeks"}?`}
+            // One plain title (27 Nov, Alex: "take away the title and just say something generic. Like Apply changes to the
+            // rest of the program").
+            title="Apply changes to the rest of the programme"
+            // The page's own read of the later weeks, when nothing waits to be saved: on screen at once, the server's
+            // read after the save taking its place.
+            initial={!weekSaving && applyRead?.rest.preview ? { weeks: applyRead.rest.preview.weeks.filter((w) => later.some((l) => l.index === w.index)) } : null}
             // Said plainly (20 Oct, Alex: "what does this mean?"), the weeks it reaches named.
             description={`${forwardTo.length ? `${forwardLabel.charAt(0).toUpperCase()}${forwardLabel.slice(1)} ${forwardTo.length === 1 ? "becomes" : "become"}` : "The later weeks become"} ${week.label}, cardio included. Sessions with logged sets stay as they are.`}
             confirm="Apply"
@@ -2610,7 +2653,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
                 onDelete={async (alsoLater) => {
                   const more = await removeSessionAction(fd({ programDayId: gone.id, alsoLater: alsoLater ? 1 : null }));
                   close();
-                  router.refresh();
+                  refresh();
                   toast.success(`${gone.name} deleted${more ? ` here and from ${more} later ${more === 1 ? "week" : "weeks"}` : ""}`);
                 }}
                 onClose={close}
@@ -2760,16 +2803,16 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
             today={today}
             onAdd={async (nm) => {
               const made = await addGymAction(clientId, nm, newOnceKey());
-              router.refresh();
+              refresh();
               return made ? { id: made.id, name: made.name, home: gyms.length === 0, color: "#1d3466", rgb: "29,52,102", sessions8w: 0, lastSessionAt: null } : null;
             }}
             onHome={async (id) => {
               await setHomeGymAction(id);
-              router.refresh();
+              refresh();
             }}
             onRemove={async (id) => {
               await removeGymAction(id);
-              router.refresh();
+              refresh();
             }}
             onClose={close}
           />
@@ -2795,7 +2838,7 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
                 const made = await addClientPhaseAction(f);
                 savedToast(`${v.name} drafted: ${v.programId ? "on its programme" : "a new programme"}`);
                 if (made?.programId) router.push(`/clients/${clientId}/training?program=${made.programId}&week=1`, { scroll: false });
-                else router.refresh();
+                else refresh();
               });
             }}
             onSend={() => {}}
@@ -2815,6 +2858,182 @@ export default function TrainingDraft({ clientId, firstName, lbsFirst = false, p
 
     </div>
   );
+}
+
+// ---- Another week, in place (27 Nov) ------------------------------------------
+// Alex, from a demo for a coach: "switching from week to week in the training section was a bit slow, glitched a bit".
+// A week card used to read the whole page again, every tab, and nothing moved until it was all in. Now a week is its own
+// small read (/api/admin/training-week), read ahead on a rest on its card and for the weeks either side once the page is
+// calm, and swapped in at once; the address follows by the browser's own replaceState, which Next takes as its own URL,
+// so the next page read (any save's) asks the server for this same week. Every page read that brings something new, and
+// every save's, lets go of what was read ahead: whatever was saved may have changed another week too.
+
+/** How another week of the programme comes on screen in place: the ring at once, the week from what is read ahead. */
+type WeekNav = {
+  /** A week asked for whose read is still on its way: the ring is on it already, the week on screen until it lands. */
+  going: number | null;
+  show: (index: number, o: { dirty: boolean; leaving: TrainingWeek | null; hash?: string; pin: () => void }) => void;
+  warm: (index: number) => void;
+  /** A read of the page again is on its way: what was read ahead goes. */
+  forget: () => void;
+};
+
+/** How long a week read ahead swaps in as it is; older, it is read again first. */
+const WEEK_FRESH_MS = 30_000;
+/** The week the address asks for, as the browser has it now. */
+const addressWeek = () => Number(new URL(window.location.href).searchParams.get("week")) || null;
+
+export default function TrainingDraft(props: TrainingProps) {
+  const served = props.program;
+  const { clientId } = props;
+  const router = useRouter();
+  // The week on screen when it isn't the server's page: one swapped in, kept on screen (faded) while the next one's read
+  // is on its way, so the screen never falls back to an older week in between. `base` is the page it was swapped in over:
+  // over that page it always wins (it is newer, or the server's own week read again), and once a newer page comes with
+  // that same week, the page wins.
+  const [shown, setShown] = useState<{ week: TrainingWeek; at: number; base: DraftProgram } | null>(null);
+  const [going, setGoing] = useState<number | null>(null);
+  const over = shown && shown.week.programId === served.id && (shown.base === served || shown.week.weekIdx !== served.weekIdx) ? shown : null;
+  const program = useMemo<DraftProgram>(
+    () => (over ? { ...served, weekIdx: over.week.weekIdx, sessions: over.week.sessions, copySessions: over.week.copySessions, rogueSessions: over.week.rogueSessions, apply: over.week.apply, copyIn: over.week.copyIn } : served),
+    [served, over]
+  );
+  const goingNow = going != null && program.weekIdx !== going ? going : null;
+
+  const cache = useRef(new Map<number, { week: TrainingWeek; at: number }>());
+  const reading = useRef(new Map<number, Promise<TrainingWeek | null>>());
+  const gen = useRef(0);
+  const wantedRef = useRef<number | null>(null);
+  const servedRef = useRef(served);
+  const onScreen = useRef<{ program: DraftProgram; at: number }>({ program, at: 0 });
+  // When the server's page came: the week it holds is as fresh as that, for coming back to it.
+  const servedAt = useRef(0);
+  // The page read again because a week's own read failed: whatever week it brings is where the screen goes.
+  const fellBack = useRef(false);
+  // A new page read: what was read ahead goes, and the server's week is shown again once it is the one asked for.
+  const seenServed = useRef(served);
+  useLayoutEffect(() => {
+    if (!servedAt.current) servedAt.current = nowMs();
+    servedRef.current = served;
+    onScreen.current = { program, at: over ? over.at : servedAt.current };
+    if (seenServed.current === served) return;
+    seenServed.current = served;
+    servedAt.current = nowMs();
+    onScreen.current = { program, at: over ? over.at : servedAt.current };
+    gen.current += 1;
+    cache.current.clear();
+    reading.current.clear();
+    const here = addressWeek();
+    // The week asked for: done once the page holds it, the address has moved on (a link, + Week), or the page was read
+    // again in its place and brought another (the week gone meanwhile; the address then says the week on screen).
+    const w = wantedRef.current;
+    if (w != null && (served.weekIdx === w || here !== w || fellBack.current)) {
+      if (fellBack.current && served.weekIdx !== w && here === w) {
+        const url = new URL(window.location.href);
+        url.searchParams.set("week", String(served.weekIdx));
+        window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+      }
+      fellBack.current = false;
+      wantedRef.current = null;
+      setGoing(null);
+      setShown(null);
+      return;
+    }
+    // A week swapped in goes once the page has that week itself (newer), another programme, or the address moved on.
+    if (shown && (shown.week.programId !== served.id || served.weekIdx === shown.week.weekIdx || (here != null && here !== shown.week.weekIdx && w == null))) setShown(null);
+  }, [served, program, over, shown]);
+
+  // Made once: they read what changes through the refs above.
+  const [fns] = useState<Omit<WeekNav, "going">>(() => {
+    // When the page was last asked to read itself again (the screen's refresh).
+    let refreshedAt = 0;
+    const forget = () => {
+      refreshedAt = nowMs();
+      gen.current += 1;
+      cache.current.clear();
+      reading.current.clear();
+    };
+    /** A week's read, one at a time a week; kept only while nothing was saved meanwhile. */
+    const fetchWeek = (n: number) => {
+      const had = reading.current.get(n);
+      if (had) return had;
+      const p = servedRef.current;
+      const g = gen.current;
+      const read: Promise<TrainingWeek | null> = fetch(`/api/admin/training-week?client=${clientId}&program=${p.id}&week=${n}`, { cache: "no-store", credentials: "same-origin" })
+        .then((r) => (r.ok ? (r.json() as Promise<TrainingWeek>) : null))
+        .then((w) => {
+          const ok = !!w && w.programId === p.id && w.weekIdx === n;
+          if (ok && g === gen.current) cache.current.set(n, { week: w!, at: nowMs() });
+          return ok ? w : null;
+        })
+        .catch(() => null)
+        .finally(() => {
+          if (reading.current.get(n) === read) reading.current.delete(n);
+        });
+      reading.current.set(n, read);
+      return read;
+    };
+    const warm = (n: number) => {
+      const p = servedRef.current;
+      if (!Number.isInteger(n) || n < 1 || n > p.weeks.length || n === onScreen.current.program.weekIdx) return;
+      const c = cache.current.get(n);
+      if (c && nowMs() - c.at < WEEK_FRESH_MS) return;
+      void fetchWeek(n);
+    };
+    const show: WeekNav["show"] = (n, o) => {
+      const p = servedRef.current;
+      if (!Number.isInteger(n) || n < 1 || n > p.weeks.length) return;
+      // The week being left, as last read, for coming back to it at once.
+      if (o.leaving && !o.dirty) cache.current.set(o.leaving.weekIdx, { week: o.leaving, at: onScreen.current.at });
+      wantedRef.current = n;
+      fellBack.current = false;
+      const url = new URL(window.location.href);
+      url.searchParams.set("program", String(p.id));
+      url.searchParams.set("week", String(n));
+      url.hash = o.hash ?? "";
+      window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+      // A page read still on its way when the address moves is dropped by Next: one just sent is sent again, for this week.
+      // With something being saved, its own read comes after the save.
+      if (!o.dirty && nowMs() - refreshedAt < 4000) router.refresh();
+      // Back to the week the server's page holds, while that page is fresh: the page itself, at once.
+      if (n === p.weekIdx && nowMs() - servedAt.current < WEEK_FRESH_MS) {
+        o.pin();
+        setShown(null);
+        setGoing(null);
+        return;
+      }
+      // Read ahead and fresh, and newer than the page when it is the page's own week: at once.
+      const c = cache.current.get(n);
+      if (c && nowMs() - c.at < WEEK_FRESH_MS && (n !== p.weekIdx || c.at > servedAt.current)) {
+        o.pin();
+        setShown({ ...c, base: p });
+        setGoing(null);
+        return;
+      }
+      // Else the ring moves at once and the week on screen stays, faded, until the read lands.
+      setGoing(n);
+      const attempt = async (tries: number) => {
+        const g = gen.current;
+        const w = await fetchWeek(n);
+        if (wantedRef.current !== n) return;
+        // Something was saved while it was read: read it again, once.
+        if (w && g !== gen.current && tries > 0) return attempt(tries - 1);
+        if (!w || g !== gen.current) {
+          // The old way: the page read again, for the week the address now asks; whatever week it brings, the screen goes.
+          fellBack.current = true;
+          router.refresh();
+          return;
+        }
+        o.pin();
+        setShown({ week: w, at: nowMs(), base: servedRef.current });
+        setGoing(null);
+      };
+      void attempt(1);
+    };
+    return { show, warm, forget };
+  });
+  const weekNav = useMemo<WeekNav>(() => ({ ...fns, going: goingNow }), [fns, goingNow]);
+  return <TrainingScreen {...props} program={program} nav={weekNav} />;
 }
 
 // ---- Small parts -------------------------------------------------------------

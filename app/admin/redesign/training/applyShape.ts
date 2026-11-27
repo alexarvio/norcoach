@@ -30,7 +30,14 @@ const half = (x: number) => Math.round(x * 2) / 2;
 export function inUnit(s: ApplySession, lbs: boolean): ApplySession | null {
   const shown = (v: string | null) => (v == null ? null : String(half(lbs ? Number(v) * LB : Number(v))));
   const items = s.items
-    .map((it) => (it.change !== "changed" ? it : { ...it, figs: it.figs.flatMap((f) => (!f.kg ? [f] : shown(f.from) === shown(f.to) ? [] : [{ ...f, from: shown(f.from), to: shown(f.to) }])) }))
+    .map((it) =>
+      it.change === "added"
+        ? // An added row's own figures (its weight in the unit too), never dropped as unchanged.
+          { ...it, figs: it.figs.map((f) => (f.kg ? { ...f, to: shown(f.to) } : f)) }
+        : it.change !== "changed"
+          ? it
+          : { ...it, figs: it.figs.flatMap((f) => (!f.kg ? [f] : shown(f.from) === shown(f.to) ? [] : [{ ...f, from: shown(f.from), to: shown(f.to) }])) }
+    )
     .filter((it) => it.change !== "changed" || it.figs.length > 0);
   return items.length || s.was || s.reorder || s.goes || s.added ? { ...s, items } : null;
 }

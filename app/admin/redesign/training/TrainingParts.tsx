@@ -222,7 +222,21 @@ export function GoalsNotePills({ firstName, phaseId, goals, note, area = "traini
 
 type Week = DraftProgram["weeks"][number];
 
-export function WeekRail({ weeks, viewIdx, dateOf, hrefFor, isLocal, onShow, onAdd, canAdd = true, addFrom, due, indefinite = false }: { /** An Indefinite programme (27 Oct, Alex: mockup D): its weeks add themselves, so the + Week card says ∞ Indefinite and does nothing. */ indefinite?: boolean; weeks: Week[]; viewIdx: number; dateOf: (index: number) => string | null; hrefFor: (index: number) => string; isLocal: (index: number) => boolean; onShow: (index: number) => void; /** null: a blank week; else the week it copies. */ onAdd: (from: number | null) => void; /** False on an ended programme (23 Oct): every week is done, so no + Week. */ canAdd?: boolean; /** The weeks offered to copy, first the one before the new week. */ addFrom: { index: number; sessions: number }[]; /** The dot trail (dots.ts): a week with something the coach owes in it. */ due?: (index: number) => boolean }) {
+export function WeekRail({ weeks, viewIdx, dateOf, hrefFor, isLocal, onShow, onWarm, onAdd, canAdd = true, addFrom, due, indefinite = false }: { /** An Indefinite programme (27 Oct, Alex: mockup D): its weeks add themselves, so the + Week card says ∞ Indefinite and does nothing. */ indefinite?: boolean; weeks: Week[]; viewIdx: number; dateOf: (index: number) => string | null; hrefFor: (index: number) => string; isLocal: (index: number) => boolean; onShow: (index: number) => void; /** A week the pointer rests on or the keyboard reaches: read ahead (27 Nov), so its click swaps at once. */ onWarm?: (index: number) => void; /** null: a blank week; else the week it copies. */ onAdd: (from: number | null) => void; /** False on an ended programme (23 Oct): every week is done, so no + Week. */ canAdd?: boolean; /** The weeks offered to copy, first the one before the new week. */ addFrom: { index: number; sessions: number }[]; /** The dot trail (dots.ts): a week with something the coach owes in it. */ due?: (index: number) => boolean }) {
+  // A rest on a card, not a pass across the rail (ViewLink's 70ms), before its week is read ahead.
+  const warmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const warmOff = () => {
+    if (warmTimer.current) clearTimeout(warmTimer.current);
+    warmTimer.current = null;
+  };
+  const warmSoon = (index: number) => {
+    if (!onWarm) return;
+    warmOff();
+    warmTimer.current = setTimeout(() => onWarm(index), 70);
+  };
+  useEffect(() => () => {
+    if (warmTimer.current) clearTimeout(warmTimer.current);
+  }, []);
   return (
     // One row: up to 8 weeks share it evenly with + Week; more, and the rail scrolls sideways.
     <div className={`trn-rail${weeks.length > 8 ? " scroll" : ""}`} role="tablist" aria-label="Weeks" style={{ "--trn-cards": weeks.length + (canAdd ? 1 : 0) } as React.CSSProperties}>
@@ -240,11 +254,20 @@ export function WeekRail({ weeks, viewIdx, dateOf, hrefFor, isLocal, onShow, onA
             aria-label={`Week ${w.index}${now ? ", current week" : ""}, ${done} of ${total} sessions done${w.missed?.some(Boolean) ? `, ${w.missed.filter(Boolean).length} started, not finished` : ""}${w.skipped?.some(Boolean) ? `, ${w.skipped.filter(Boolean).length} skipped` : ""}${w.state === "past" && w.trained.some((t, i) => !t && !w.skipped?.[i] && !w.missed?.[i]) ? `, ${w.trained.filter((t, i) => !t && !w.skipped?.[i] && !w.missed?.[i]).length} not completed` : ""}${owed ? ", needs you" : ""}`}
             href={hrefFor(w.index)}
             scroll={false}
+            // Its address stays for a new tab, but Next reads nothing ahead for it (27 Nov: the whole page, every tab, for
+            // each card in view); the week alone is read ahead, on a rest (onWarm).
+            prefetch={false}
             className={`trn-week${on ? " on" : ""}`}
+            onPointerEnter={() => warmSoon(w.index)}
+            onPointerLeave={warmOff}
+            onFocus={() => onWarm?.(w.index)}
             onClick={(e) => {
-              // A week held on this screen switches in place; the rest load from the server.
+              // A new tab or window (a middle click, ⌘ or Ctrl) is the link's own.
+              if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+              // A week switches in place (27 Nov); the rest load from the server.
               if (isLocal(w.index)) {
                 e.preventDefault();
+                warmOff();
                 onShow(w.index);
               }
             }}

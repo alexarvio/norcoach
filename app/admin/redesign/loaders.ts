@@ -114,7 +114,7 @@ import {
 } from "../../lib/queries";
 import { isAssisted } from "../../lib/progressRules";
 import { phaseCovers, phaseLastDay, phaseWeekIndex, phaseWeeks } from "../../lib/phases";
-import type { CardioMove, DraftProgram, Library } from "./training/TrainingDraft";
+import type { CardioMove, DraftProgram, Library, TrainingWeek } from "./training/TrainingDraft";
 import type { DraftNutrition } from "./nutrition/NutritionDraft";
 import type { DraftMeasurements } from "./measurements/MeasurementsDraft";
 import type { DraftPictures } from "./pictures/PicturesDraft";
@@ -168,7 +168,33 @@ export function pickClient(coachId: number, asked: string | undefined) {
 
 // ---- Training -----------------------------------------------------------------
 
-export function loadTraining(coachId: number, clientId: number, params: { week?: string; program?: string }, thread: ChatThread, ck: CheckInRows, sr: SetRows): { draft: DraftProgram | null; library: Library; cardioMoves: CardioMove[]; videos: { id: number; path: string; name: string; at: string; bytes: number | null }[] } {
+type TrainingExtras = { library: Library; cardioMoves: CardioMove[]; videos: { id: number; path: string; name: string; at: string; bytes: number | null }[] };
+
+export function loadTraining(coachId: number, clientId: number, params: { week?: string; program?: string }, thread: ChatThread, ck: CheckInRows, sr: SetRows): { draft: DraftProgram | null } & TrainingExtras {
+  const parts = trainingParts(coachId, clientId, params, thread, ck, sr);
+  const extras = parts.extras();
+  if (!parts.program) return { draft: null, ...extras };
+  return { draft: parts.draft(parts.weekFor(params.week)), ...extras };
+}
+
+/**
+ * One week of the Training tab alone (27 Nov, Alex: "switching from week to week in the training section was a bit
+ * slow"): its sessions, duplicates, rogue sessions and what Apply and Copy would change, exactly as loadTraining puts
+ * them in the draft, for /api/admin/training-week. Null when there is no such programme or week: the screen then goes
+ * the old way, the whole page read again.
+ */
+export function loadTrainingWeek(coachId: number, clientId: number, params: { week?: string; program?: string }, thread: ChatThread, ck: CheckInRows, sr: SetRows): TrainingWeek | null {
+  const parts = trainingParts(coachId, clientId, params, thread, ck, sr);
+  if (!parts.program || parts.program.id !== Number(params.program)) return null;
+  const asked = Number(params.week);
+  if (!Number.isInteger(asked) || asked < 1 || asked > parts.program.total_weeks) return null;
+  return { programId: parts.program.id, ...parts.week(asked) };
+}
+
+// The Training tab's read in two parts (27 Nov): what every week shares (the programme, its weeks, the library, the
+// answers, the trends, the muscle map), and a week's own (week(n)), which a week switched to on screen reads alone.
+// loadTraining puts the two together into the same draft as before.
+function trainingParts(coachId: number, clientId: number, params: { program?: string }, thread: ChatThread, ck: CheckInRows, sr: SetRows) {
   // Every programme the client has had, is on, or has waiting: the switch in
   // the header. The one shown is the one asked for, else the live one.
   const deployed = sub("programme", () => getDeployedProgram(clientId));
@@ -237,8 +263,6 @@ export function loadTraining(coachId: number, clientId: number, params: { week?:
   const gyms = gymRows.map(gymCard);
   const allGyms = allGymRows.map(gymCard);
 
-  // The coach's library, for the add-exercise row; cardio has its own form.
-  const byGroup = sub("library", () => listExercisesByGroup(coachId));
   // Names of every exercise, those taken out of the library too: an
   // alternative or a swap may still point at one.
   const libName = new Map(listExercises(coachId).map((e) => [e.id, e.name] as const));
@@ -249,29 +273,36 @@ export function loadTraining(coachId: number, clientId: number, params: { week?:
   const exById = new Map(getData().exercises.map((e) => [e.id, e] as const));
   const assistedRow = (a: { exercise_id: number; exercise_name?: string | null; variation_id?: number | null }) =>
     isAssisted(a.exercise_name) || (a.variation_id != null && isAssisted(exById.get(a.exercise_id)?.variations?.find((v) => v.id === a.variation_id)?.name));
-  // Each with its default cue (the Library page, 5 Oct): the note an exercise
-  // starts with when it is added to a session.
-  const library: Library = coachGroups(coachId).filter((g) => g.slug !== "cardio" && (byGroup[g.slug]?.length ?? 0) > 0).map((g) => ({
-    slug: g.slug,
-    label: g.label,
-    // group and video (15 Oct): the substitutes and variation pop-ups search by group and show a demo's poster.
-    exercises: (byGroup[g.slug] ?? []).map((e) => ({ id: e.id, name: e.name, group: g.slug, video: e.video_url ?? null, ...(e.cue ? { cue: e.cue } : {}), ...(e.variations?.length ? { variations: e.variations.map((v) => ({ id: v.id, name: v.name, video: v.video_url ?? null, ...(v.cue ? { cue: v.cue } : {}) })) } : {}) })),
-  }));
-  // The coach's cardio movements, offered when a cardio is added, each with its cue.
-  const cardioMoves = (byGroup.cardio ?? []).map((e) => ({ name: e.name, cue: e.cue ?? "" }));
-
-  const videos = sub("videos", () => listCoachVideos(coachId)).map((v) => ({ id: v.id, path: v.path, name: v.name, at: v.at, bytes: v.bytes ?? null }));
+  // The library, the cardio movements and the coach's videos: the page's alone, never a week's read.
+  const extras = (): TrainingExtras => {
+    // The coach's library, for the add-exercise row; cardio has its own form.
+    const byGroup = sub("library", () => listExercisesByGroup(coachId));
+    // Each with its default cue (the Library page, 5 Oct): the note an exercise
+    // starts with when it is added to a session.
+    const library: Library = coachGroups(coachId).filter((g) => g.slug !== "cardio" && (byGroup[g.slug]?.length ?? 0) > 0).map((g) => ({
+      slug: g.slug,
+      label: g.label,
+      // group and video (15 Oct): the substitutes and variation pop-ups search by group and show a demo's poster.
+      exercises: (byGroup[g.slug] ?? []).map((e) => ({ id: e.id, name: e.name, group: g.slug, video: e.video_url ?? null, ...(e.cue ? { cue: e.cue } : {}), ...(e.variations?.length ? { variations: e.variations.map((v) => ({ id: v.id, name: v.name, video: v.video_url ?? null, ...(v.cue ? { cue: v.cue } : {}) })) } : {}) })),
+    }));
+    // The coach's cardio movements, offered when a cardio is added, each with its cue.
+    const cardioMoves = (byGroup.cardio ?? []).map((e) => ({ name: e.name, cue: e.cue ?? "" }));
+    const videos = sub("videos", () => listCoachVideos(coachId)).map((v) => ({ id: v.id, path: v.path, name: v.name, at: v.at, bytes: v.bytes ?? null }));
+    return { library, cardioMoves, videos };
+  };
+  if (!program) return { program: null, extras } as const;
   const demoClients = sub("videos", () => exerciseClientCounts(coachId));
-  if (!program) return { draft: null, library, cardioMoves, videos };
 
   // NOW only on the week this calendar week really is (21 Oct, Alex: an ended programme kept NOW on its last week). Ended
   // (a later one is live) or run out (its weeks are behind us): every week is over and none is live; it opens on its last.
   const nowIdx = program.status === "deployed" ? programWeekNow(program) : 0;
   const allOver = stateOf(program) === "past" || nowIdx > program.total_weeks;
   const liveIdx = !allOver && nowIdx >= 1 ? nowIdx : 0;
-  const askedWeek = Number(params.week);
-  const weekIdx = Number.isInteger(askedWeek) && askedWeek >= 1 && askedWeek <= program.total_weeks ? askedWeek : program.status === "deployed" ? getProgramCurrentWeekIndex(program) : 1;
-  const weekNumber = program.start_week + weekIdx - 1;
+  /** The week asked for, else the programme's current one. */
+  const weekFor = (asked: string | undefined) => {
+    const askedWeek = Number(asked);
+    return Number.isInteger(askedWeek) && askedWeek >= 1 && askedWeek <= program.total_weeks ? askedWeek : program.status === "deployed" ? getProgramCurrentWeekIndex(program) : 1;
+  };
 
   const weeks = sub("weeks", () => Array.from({ length: program.total_weeks }, (_, i) => {
     const n = program.start_week + i;
@@ -349,7 +380,7 @@ export function loadTraining(coachId: number, clientId: number, params: { week?:
   // Every workout the client has ended in this programme, any week, with
   // what they answered on ending it (the workout questionnaire), newest
   // first: the Training tab's answers feed under the questionnaire (6 Oct).
-  const answersFeed = sub("answers", () => Array.from({ length: program.total_weeks }, (_, i) => {
+  const answersFeedOf = () => sub("answers", () => Array.from({ length: program.total_weeks }, (_, i) => {
     const n = program.start_week + i;
     // A duplicate's answers too, as it asks them (9 Nov).
     return [...weekOf(n), ...freeOf(n).filter((f) => f.copy_of != null)]
@@ -374,7 +405,7 @@ export function loadTraining(coachId: number, clientId: number, params: { week?:
     .flat()
     .sort((a, b) => (a.ended < b.ended ? 1 : -1)));
 
-  const days = weekOf(weekNumber);
+  type Day = ReturnType<typeof weekOf>[number];
   // The chat about an exercise, both sides (the workout's chat button and the
   // coach's replies link a message to it), by assignment, oldest first.
   const aboutExercise = new Map<number, { id: number; mine: boolean; text: string; when: string; at: number; media: { path: string; type: string } | null }[]>();
@@ -441,7 +472,7 @@ export function loadTraining(coachId: number, clientId: number, params: { week?:
     ruleRows.set(exerciseId, got);
     return got;
   };
-  const raisedFromOf = (a: ReturnType<typeof rowsOf>[number], d: (typeof days)[number]) => {
+  const raisedFromOf = (a: ReturnType<typeof rowsOf>[number], d: Day) => {
     const kg = a.target_weight_kg;
     if (d.free || d.copy_of != null || a.swap || a.coach_kg === undefined || kg == null || a.exercise_id === 0 || assistedRow(a)) return null;
     const over = programOver(d.week_number);
@@ -476,7 +507,7 @@ export function loadTraining(coachId: number, clientId: number, params: { week?:
     const m = missedOf.get(rowId);
     return m ? { sessions: m.sessions, fromKg: m.fromKg, best: m.best, to: m.to, weeks: m.weeks } : null;
   };
-  const buildSession = (d: (typeof days)[number], si: number) => {
+  const buildSession = (d: Day, si: number) => {
     const assignments = rowsOf(d.id);
     const videos = videoRequestsFor(assignments.map((a) => a.id));
     const rows = assignments.map((a) => {
@@ -554,81 +585,97 @@ export function loadTraining(coachId: number, clientId: number, params: { week?:
       .map((n) => n - program.start_week + 1);
     return { id: d.id, number: si + 1, name: d.label || `Session ${si + 1}`, rows, cardio, setsPlanned, setsLogged, gym, gymId, skip: d.skip_reason ?? null, duration, ended: d.session_ended_at ?? null, note: d.session_note ?? null, answers: sessionAnswers(d).map((a) => ({ label: a.label, kind: a.kind ?? "scale", value: a.value ?? null, text: a.text ?? null, unit: a.unit ?? "" })), laterWeeks, copies: freeOf(d.week_number).filter((f) => f.copy_of === d.id && f.session_started_at).map((f) => f.id) };
   };
-  const sessions = sub("sessions", () => days.map(buildSession));
-  // Duplicates are built as the week's sessions are (9 Nov, Alex: "build it just like a regular session").
-  const copySessions = sub("copySessions", () => freeOf(weekNumber).filter((f) => f.copy_of != null && f.session_started_at).map((f, i) => {
-    // Its number is the session it copies.
-    const at = days.findIndex((x) => x.id === f.copy_of);
-    return { ...buildSession(f, at >= 0 ? at : i), extra: "copy" as const };
-  }));
-  // Rogue sessions the same (9 Nov, Alex: "pretty much like this"): what the client logged is all there is to plan, so a
-  // set added as they go is no extra set.
-  const rogueSessions = sub("rogueSessions", () =>
-    freeOf(weekNumber)
-      .filter((f) => f.copy_of == null && f.session_started_at)
-      .map(buildSession)
-      .map((s) => {
-        const rows = s.rows.map((r) => ({ ...r, sets: Math.max(r.sets, ...r.logged.map((l) => l.set)) }));
-        return { ...s, rows, setsPlanned: rows.reduce((t, r) => t + r.sets, 0), number: 0, extra: "rogue" as const };
-      })
-  );
+  // A week's own (27 Nov): its sessions, duplicates and rogue sessions, and what Apply and Copy would change from it.
+  const week = (weekIdx: number) => {
+    const weekNumber = program.start_week + weekIdx - 1;
+    const days = weekOf(weekNumber);
+    const sessions = sub("sessions", () => days.map(buildSession));
+    // Duplicates are built as the week's sessions are (9 Nov, Alex: "build it just like a regular session").
+    const copySessions = sub("copySessions", () => freeOf(weekNumber).filter((f) => f.copy_of != null && f.session_started_at).map((f, i) => {
+      // Its number is the session it copies.
+      const at = days.findIndex((x) => x.id === f.copy_of);
+      return { ...buildSession(f, at >= 0 ? at : i), extra: "copy" as const };
+    }));
+    // Rogue sessions the same (9 Nov, Alex: "pretty much like this"): what the client logged is all there is to plan, so a
+    // set added as they go is no extra set.
+    const rogueSessions = sub("rogueSessions", () =>
+      freeOf(weekNumber)
+        .filter((f) => f.copy_of == null && f.session_started_at)
+        .map(buildSession)
+        .map((s) => {
+          const rows = s.rows.map((r) => ({ ...r, sets: Math.max(r.sets, ...r.logged.map((l) => l.set)) }));
+          return { ...s, rows, setsPlanned: rows.reduce((t, r) => t + r.sets, 0), number: 0, extra: "rogue" as const };
+        })
+    );
 
-
-  // What Apply to the rest and each session's Apply to remaining weeks would change, as their confirms read it, so
-  // neither is offered when it would change nothing (23 Oct, Alex: "once I apply and there are no other changes, the
-  // button disappears"). The week on screen only, a done one too while weeks are still to run.
-  const applyFrom = stateOf(program) !== "past" ? sub("applyPreview", () => applyReads(sr, clientId, program, weekNumber, (i) => weeks[i - 1]?.state !== "past")) : null;
-  // The weeks whose copy would change the week on screen, read as Apply to the rest reads (25 Oct, Alex: "Copy Week 3
-  // here" stood over a Week 4 that was Week 3; the weights the progression had raised made the two look different). A
-  // weight the progression would raise again, and a session already logged on, are no change; kg and lbs as shown.
-  const copyIn = stateOf(program) !== "past" && weeks[weekIdx - 1]?.state !== "past"
-    ? sub("copyIn", () => {
-        const read = applyReader(sr, clientId);
-        const kg: number[] = [];
-        const lbs: number[] = [];
-        for (const w of weeks) {
-          if (w.index === weekIdx || w.trained.length === 0) continue;
-          const p = read.week(program, program.start_week + w.index - 1, [weekNumber]);
-          if (changedWeeks(p, false).length) kg.push(w.index);
-          if (changedWeeks(p, true).length) lbs.push(w.index);
-        }
-        return { kg, lbs };
-      })
-    : null;
-
-  const phase = getData().client_phases.find((p) => p.program_id === program.id) ?? null;
-  const noteMeta = getClientProgramNoteMeta(clientId, program.id);
-  const draft: DraftProgram = {
-    id: program.id,
-    planCtx: sub("planCtx", () => planCtxOf(clientId, sr)),
-    programs,
-    answersFeed,
-    name: program.name ?? "Programme",
-    status: stateOf(program),
-    totalWeeks: program.total_weeks,
-    startWeek: program.start_week,
-    phaseId: phase?.id ?? null,
-    goals: phase?.objectives ?? [],
-    // What the client is asked as they end a workout in this programme.
-    workoutQuestions: sub("questions", () => getWorkoutQuestions(clientId, program.id)),
-    coachNote: phase?.client_note ?? "",
-    startDate: phase?.start_week ?? null,
-    endDate: phase?.end_week ?? null,
-    openEnded: !!phase?.open_ended,
-    weekIdx,
-    liveIdx,
-    weeks,
-    sessions,
-    copySessions,
-    rogueSessions,
-    apply: applyFrom ? { week: weekIdx, ...applyFrom } : null,
-    copyIn: copyIn ? { week: weekIdx, ...copyIn } : null,
-    bodyKg,
-    gyms,
-    allGyms,
-    note: noteMeta ? { seen: noteMeta.seen, text: noteMeta.text, when: dayMonth(noteMeta.updatedAt) } : null,
+    // What Apply to the rest and each session's Apply to remaining weeks would change, as their confirms read it, so
+    // neither is offered when it would change nothing (23 Oct, Alex: "once I apply and there are no other changes, the
+    // button disappears"). The week on screen only, a done one too while weeks are still to run.
+    const applyFrom = stateOf(program) !== "past" ? sub("applyPreview", () => applyReads(sr, clientId, program, weekNumber, (i) => weeks[i - 1]?.state !== "past")) : null;
+    // The weeks whose copy would change the week on screen, read as Apply to the rest reads (25 Oct, Alex: "Copy Week 3
+    // here" stood over a Week 4 that was Week 3; the weights the progression had raised made the two look different). A
+    // weight the progression would raise again, and a session already logged on, are no change; kg and lbs as shown.
+    const copyIn = stateOf(program) !== "past" && weeks[weekIdx - 1]?.state !== "past"
+      ? sub("copyIn", () => {
+          const read = applyReader(sr, clientId);
+          const kg: number[] = [];
+          const lbs: number[] = [];
+          for (const w of weeks) {
+            if (w.index === weekIdx || w.trained.length === 0) continue;
+            const p = read.week(program, program.start_week + w.index - 1, [weekNumber]);
+            if (changedWeeks(p, false).length) kg.push(w.index);
+            if (changedWeeks(p, true).length) lbs.push(w.index);
+          }
+          return { kg, lbs };
+        })
+      : null;
+    return {
+      weekIdx,
+      sessions,
+      copySessions,
+      rogueSessions,
+      apply: applyFrom ? { week: weekIdx, ...applyFrom } : null,
+      copyIn: copyIn ? { week: weekIdx, ...copyIn } : null,
+    };
   };
-  return { draft, library, cardioMoves, videos };
+
+  // The whole draft: what every week shares, with the week asked for.
+  const draft = (weekIdx: number): DraftProgram => {
+    const w = week(weekIdx);
+    const phase = getData().client_phases.find((p) => p.program_id === program.id) ?? null;
+    const noteMeta = getClientProgramNoteMeta(clientId, program.id);
+    return {
+      id: program.id,
+      planCtx: sub("planCtx", () => planCtxOf(clientId, sr)),
+      programs,
+      answersFeed: answersFeedOf(),
+      name: program.name ?? "Programme",
+      status: stateOf(program),
+      totalWeeks: program.total_weeks,
+      startWeek: program.start_week,
+      phaseId: phase?.id ?? null,
+      goals: phase?.objectives ?? [],
+      // What the client is asked as they end a workout in this programme.
+      workoutQuestions: sub("questions", () => getWorkoutQuestions(clientId, program.id)),
+      coachNote: phase?.client_note ?? "",
+      startDate: phase?.start_week ?? null,
+      endDate: phase?.end_week ?? null,
+      openEnded: !!phase?.open_ended,
+      weekIdx: w.weekIdx,
+      liveIdx,
+      weeks,
+      sessions: w.sessions,
+      copySessions: w.copySessions,
+      rogueSessions: w.rogueSessions,
+      apply: w.apply,
+      copyIn: w.copyIn,
+      bodyKg,
+      gyms,
+      allGyms,
+      note: noteMeta ? { seen: noteMeta.seen, text: noteMeta.text, when: dayMonth(noteMeta.updatedAt) } : null,
+    };
+  };
+  return { program, extras, weekFor, week, draft } as const;
 }
 
 // ---- Nutrition ----------------------------------------------------------------
