@@ -1,14 +1,12 @@
 import { redirect } from "next/navigation";
-import { cookies, headers } from "next/headers";
 import { clerkIdentity, clerkOn } from "../lib/clerk";
 import { getSessionUser, getUserForClient } from "../lib/auth";
 import { readInviteToken } from "../lib/inviteToken";
 import { getClient, getCoachProfile, getCoachProfileView, getCoachSettings } from "../lib/queries";
 import { passwordsOnHint } from "../lib/clerkPasswords";
-import { NATIVE_COOKIE } from "../lib/quietLoad";
+import { inApp } from "../lib/inApp";
 import { InviteFlow, InviteOtherAccount } from "../login/ClerkFlows";
 import type { InviteCoach } from "../login/InviteScreen";
-import type { InApp } from "../login/SignInScreens";
 import ForgetKept from "../login/ForgetKept";
 
 // Where a client's invite link lands (Clerk sends the email). Clerk adds
@@ -20,12 +18,6 @@ import ForgetKept from "../login/ForgetKept";
 // or Apple and Google with that address. Our account for them is found by that verified email (lib/clerk.ts), so once
 // in they are the coach's client, no code and no request: /auth/continue, then their app.
 export const dynamic = "force-dynamic";
-
-/** The phone app this page is in, as the sign-in page reads it (app/login/page.tsx). */
-async function inApp(): Promise<InApp> {
-  if ((await cookies()).get(NATIVE_COOKIE)?.value !== "1") return null;
-  return /iPhone|iPad|iPod/.test((await headers()).get("user-agent") ?? "") ? "ios" : "android";
-}
 
 /** The client's coach for the invite: name, first name, business and the picture by the link's own token. */
 function inviteCoach(coachId: number, token: string): InviteCoach {

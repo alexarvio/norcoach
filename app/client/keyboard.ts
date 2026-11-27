@@ -227,6 +227,11 @@ export function keyboardSettled(ms = 500) {
 
 /** A field's block, brought in whole when it fits: its note's Cancel and Save, its row, its label. */
 const BLOCK = ".fdi-panel, .wo-note, .cki-row, .cki-note-box, .st-details-row, .evs-field, .evs-note, .ws-noteedit, .ws-rowwrap";
+/** The sign-in and sign-up screens' form (27 Nov, Alex: on Create your account in the app "the textboxes for email and
+ *  password… jump"): brought in whole, down to its button, with the first field tapped, so the next one is in sight
+ *  already and moving to it moves nothing. A form taller than the room (the join's About you on a small phone) is left
+ *  to its field alone. Sign in, its code and reset, Create your account and the join's steps. */
+const FORM = ".su-form .auth-form";
 /** What sits over the foot of a screen, so a field must stay above it too. */
 const DOCKS = ".wo-dock, .cm-compose, .app-sticky-footer, .evs-savebar";
 
@@ -239,7 +244,12 @@ function scrollBoxOf(el: HTMLElement): HTMLElement | null {
   return doc && doc.scrollHeight > doc.clientHeight + 1 ? doc : null;
 }
 
-function blockRect(el: HTMLElement, f: DOMRect): { top: number; bottom: number } {
+function blockRect(el: HTMLElement, f: DOMRect, room: number): { top: number; bottom: number } {
+  const form = el.closest<HTMLElement>(FORM);
+  if (form) {
+    const r = form.getBoundingClientRect();
+    return r.height <= room ? r : f;
+  }
   // The food diary's search: the panel down to its first results, so what is found shows as it is typed.
   if (el.closest(".fdi-search")) {
     const panel = el.closest<HTMLElement>(".fdi-panel");
@@ -310,7 +320,7 @@ export function revealField(el: HTMLElement) {
   ceiling += 8;
   if (floor - ceiling < 40) return;
   const f = el.getBoundingClientRect();
-  const t = blockRect(el, f);
+  const t = blockRect(el, f, floor - ceiling);
   let d = 0;
   if (t.bottom > floor) d = Math.min(t.bottom - floor, t.top - ceiling);
   else if (t.top < ceiling) d = t.top - ceiling;
