@@ -1,0 +1,16 @@
+/* A week asked for whose read is still on its way (27 Nov; TrainingDraft's WeekNav): the ring is on it already, the
+   week under it stays and quietens until it lands, then comes in whole. The fade waits a moment, so a week read ahead
+   (most of them) never flickers. Only while the Training tab has trn-going: nothing else wears it. */
+.rd.trn.trn-going .trn-weekhead,
+.rd.trn.trn-going .trn-list,
+.rd.trn.trn-going .trn-rogue-sec {
+  opacity: 0.55;
+  transition: opacity 160ms ease 120ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rd.trn.trn-going .trn-weekhead,
+  .rd.trn.trn-going .trn-list,
+  .rd.trn.trn-going .trn-rogue-sec {
+    transition: none;
+  }
+}
