@@ -1,0 +1,195 @@
+/* New invoice (26 Nov, Alex: B of docs/boards/invoice-new-mockup.html; NewInvoiceDialog.tsx): the .dlh card in C, the
+   form on the left and what the client gets on the right on the page grey. Clean lines, ink while typing, Archivo at
+   500 and 600, facts parted by the drawn bar, the brand on the picked option and the one pill. Portaled, so never
+   under .rd. */
+
+/* As wide as B (1080), as tall as the window allows, then it scrolls inside, so Send is always in reach. */
+.dlh.dlh.nvb { width: min(1080px, 100vw - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #dce1e8 transparent; gap: 0; }
+.nvb .nvb-split { display: grid; grid-template-columns: minmax(0, 556px) minmax(0, 1fr); gap: 24px; align-items: start; }
+.nvb .nvb-form { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.nvb .nvb-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.nvb .dlh-label small, .nvb .nvb-static small { font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; color: #8b93a1; }
+.nvb .nvb-faint { color: #98a2b3; font-weight: 500; }
+.nvb .nvb-grey { color: #8b93a1; }
+
+/* The number on the left, the Template pill on the right. */
+.nvb .nvb-sub { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: -6px; }
+.nvb .nvb-num.nvb-num { margin: 0; font-size: 13.5px; font-weight: 500; color: #5b6474; font-variant-numeric: tabular-nums; }
+
+/* The plan: a clean line that opens the floating list; its price and rhythm grey on the right, a price of the client's
+   own beside the plan's struck. */
+.nvb .nvb-pick { display: flex; align-items: center; gap: 10px; width: 100%; height: 42px; padding: 0; border: 0; border-bottom: 1px solid #e1e5eb; border-radius: 0; background: none; font: inherit; text-align: left; color: #141a24; cursor: pointer; transition: border-color 0.15s; }
+.nvb .nvb-pick[data-state="open"], .nvb .nvb-pick:focus-visible { outline: none; border-bottom-color: #141a24; }
+.nvb .nvb-pick-name { min-width: 0; overflow: hidden; font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.nvb .nvb-pick-facts { margin-left: auto; flex: none; font-size: 13.5px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nvb .nvb-pick-facts s { color: #98a2b3; }
+.nvb .nvb-pick-facts em { font-style: normal; font-weight: 600; color: #141a24; }
+.nvb .nvb-pick > svg { flex: none; width: 14px; height: 14px; color: #8b93a1; }
+.nvb .nvb-pick-name + svg { margin-left: auto; }
+
+/* The plans' list (portaled): the ⋯ look, as wide as its field; six rows then it scrolls, Custom pinned at its foot. */
+.nvb-planpop.nvb-planpop { width: var(--radix-popover-trigger-width); max-width: calc(100vw - 32px); padding: 5px; }
+.nvb-planlist { max-height: 204px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #dce1e8 transparent; }
+.nvb-planrow { display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 10px; border: 0; border-radius: 7px; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: #141a24; text-align: left; cursor: pointer; }
+.nvb-planrow:hover, .nvb-planrow:focus-visible { outline: none; background: #fafbfd; }
+.nvb-planrow svg { flex: none; width: 14px; height: 14px; color: #141a24; visibility: hidden; }
+.nvb-planrow.on svg { visibility: visible; }
+.nvb-planrow-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nvb-planrow small { margin-left: auto; flex: none; font-size: 12.5px; font-weight: 500; color: #8b93a1; font-variant-numeric: tabular-nums; }
+.nvb-planfoot { margin-top: 4px; padding-top: 4px; border-top: 1px solid #eef0f3; }
+
+/* Issued (typed or picked, DatePick) and Due with how long. */
+.nvb .nvb-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.nvb .rd-picker.nvb-daypick { height: 40px; padding: 0; border: 0; border-bottom: 1px solid #e1e5eb; border-radius: 0; background: none; box-shadow: none; gap: 8px; transition: border-color 0.15s; }
+.nvb .rd-picker.nvb-daypick:focus-within { border-bottom-color: #141a24; }
+.nvb.nvb .rd-picker.nvb-daypick .rdt { font-size: 15px; font-weight: 500; color: #141a24; font-variant-numeric: tabular-nums; }
+.nvb.nvb .rd-picker.nvb-daypick .rdt.bad { color: #b42318; }
+.nvb .nvb-static { display: flex; align-items: center; height: 40px; border-bottom: 1px solid transparent; font-size: 15px; font-weight: 500; color: #141a24; font-variant-numeric: tabular-nums; }
+
+/* The lines: the words (the month a chip in them), qty, price, amount, ✕ on hover. */
+.nvb .nvb-lines { display: flex; flex-direction: column; }
+.nvb .nvb-line { display: grid; grid-template-columns: minmax(0, 1fr) 52px 84px 92px 24px; align-items: center; gap: 12px; }
+.nvb .nvb-line.head { padding: 2px 0 0; font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #5b6474; }
+.nvb .nvb-line.head span:nth-child(n + 2):nth-child(-n + 4) { text-align: right; }
+.nvb .nvb-desc { display: flex; align-items: center; gap: 6px; min-width: 0; height: 38px; border-bottom: 1px solid #e1e5eb; transition: border-color 0.15s; }
+.nvb .nvb-desc:focus-within { border-bottom-color: #141a24; }
+.nvb .nvb-desc.bad { border-bottom-color: #b42318; }
+.nvb .nvb-desc-in { min-width: 1ch; height: 100%; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; outline: none; font: inherit; font-size: 15px; font-weight: 500; color: #141a24; field-sizing: content; }
+/* Without the chip the words take the whole line; with it, the words after the chip do. */
+.nvb .nvb-desc.nochip .nvb-desc-in.pre, .nvb .nvb-desc-in.post { flex: 1; field-sizing: fixed; width: 0; }
+.nvb .nvb-desc-in.pre { flex: none; max-width: 70%; }
+.nvb .nvb-desc.nochip .nvb-desc-in.pre { max-width: none; }
+/* The month: a soft chip that reads the issue day's month (each invoice of the series its own), its × on hover. */
+.nvb .nvb-chip { position: relative; flex: none; display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 9px; border-radius: 999px; background: #eef0f3; font-size: 13.5px; font-weight: 600; color: #141a24; cursor: default; }
+.nvb .nvb-chip-x { display: none; align-items: center; justify-content: center; width: 14px; height: 14px; margin-right: -4px; padding: 0; border: 0; border-radius: 50%; background: none; font: inherit; font-size: 9px; color: #5b6474; cursor: pointer; }
+.nvb .nvb-chip:hover .nvb-chip-x, .nvb .nvb-chip-x:focus-visible { display: inline-flex; }
+@media (any-hover: none) { html:not([data-mouse]) { .nvb .nvb-chip-x { display: inline-flex; } } }
+.nvb .nvb-chip-x:hover { background: #dfe3e9; color: #141a24; }
+.nvb .nvb-addmonth { flex: none; margin-left: auto; height: 26px; padding: 0 8px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 12.5px; font-weight: 600; color: #5b6474; cursor: pointer; visibility: hidden; }
+.nvb .nvb-line:hover .nvb-addmonth, .nvb .nvb-desc:focus-within .nvb-addmonth, .nvb .nvb-addmonth:focus-visible { visibility: visible; }
+@media (any-hover: none) { html:not([data-mouse]) { .nvb .nvb-addmonth { visibility: visible; } } }
+.nvb .nvb-addmonth:hover { background: #f5f6f8; color: #141a24; }
+.nvb .nvb-in { width: 100%; min-width: 0; height: 38px; margin: 0; padding: 0; border: 0; border-bottom: 1px solid #e1e5eb; border-radius: 0; background: none; box-shadow: none; outline: none; box-sizing: border-box; font: inherit; font-size: 15px; font-weight: 500; color: #141a24; }
+.nvb .nvb-in.num { text-align: right; font-variant-numeric: tabular-nums; }
+.nvb .nvb-in:focus { border-bottom-color: #141a24; }
+.nvb .nvb-in.bad, .nvb .nvb-in.bad:focus { border-bottom-color: #b42318; color: #b42318; }
+.nvb .nvb-amount { font-size: 14px; font-weight: 600; color: #141a24; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nvb .nvb-x { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 999px; background: none; font-size: 11px; color: #8b93a1; cursor: pointer; opacity: 0; transition: opacity 0.12s; }
+.nvb .nvb-line:hover .nvb-x, .nvb .nvb-line:focus-within .nvb-x, .nvb .nvb-x:focus-visible { opacity: 1; }
+@media (any-hover: none) { html:not([data-mouse]) { .nvb .nvb-x { opacity: 1; } } }
+.nvb .nvb-x:hover { background: #f5f6f8; color: #141a24; }
+.nvb .nvb-addline { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; height: 32px; margin: 6px 0 0 -10px; padding: 0 10px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; cursor: pointer; }
+.nvb .nvb-addline:hover { background: #f5f6f8; }
+.nvb .nvb-addline svg { width: 14px; height: 14px; translate: 0 -0.5px; }
+.nvb .nvb-totals { display: grid; grid-template-columns: auto 92px; gap: 4px 12px; justify-content: end; margin: 2px 36px 0 0; }
+.nvb .nvb-totals dt { font-size: 13px; font-weight: 500; color: #8b93a1; text-align: right; }
+.nvb .nvb-totals dd { margin: 0; font-size: 13.5px; font-weight: 500; color: #3a4250; text-align: right; font-variant-numeric: tabular-nums; }
+.nvb .nvb-totals .grand { padding-top: 4px; font-size: 15px; font-weight: 600; color: #141a24; }
+
+/* The note: empty, no sample, a clean line that grows with its words. */
+.nvb .nvb-note { width: 100%; min-height: 38px; margin: 0; padding: 8px 0; border: 0; border-bottom: 1px solid #e1e5eb; border-radius: 0; background: none; outline: none; resize: none; box-sizing: border-box; font: inherit; font-size: 15px; font-weight: 500; line-height: 1.4; color: #141a24; }
+.nvb .nvb-note:focus { border-bottom-color: #141a24; }
+
+/* The capsules (design rules 5; .rd-btn-group, sliding by SlidePills), their facts said back under them. */
+.nvb .nvb-cap { align-self: flex-start; }
+.nvb .nvb-back { display: flex; align-items: center; min-height: 20px; margin-top: 8px; font-size: 13.5px; font-weight: 500; color: #3a4250; font-variant-numeric: tabular-nums; transition: opacity 0.2s; }
+.nvb .hide { visibility: hidden; opacity: 0; }
+/* What Settings lacks for the way picked: the fact in rust and its fix in words. */
+.nvb .nvb-fix { display: inline-flex; align-items: center; gap: 10px; color: #b8471f; }
+.nvb .nvb-fix a { display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 999px; font-size: 13px; font-weight: 600; color: #141a24; text-decoration: none; }
+.nvb .nvb-fix a:hover { background: #f5f6f8; }
+
+/* Charge automatically: a soft grey row with the one switch (design rules 5), its room kept off a repeat by link. */
+.nvb .nvb-swrow { display: flex; align-items: center; gap: 14px; margin-top: 14px; padding: 12px 14px; border-radius: 14px; background: #f5f6f8; transition: opacity 0.2s; }
+.nvb .nvb-swrow-words { flex: 1; min-width: 0; }
+.nvb .nvb-swrow-words b { display: block; font-size: 14px; font-weight: 600; color: #141a24; }
+.nvb .nvb-swrow-words small { display: block; margin-top: 2px; font-size: 12.5px; font-weight: 500; color: #8b93a1; }
+.nvb .nvb-switch { position: relative; flex: none; width: 36px; height: 22px; padding: 0; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; cursor: pointer; transition: background 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
+.nvb .nvb-switch i { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #98a2b3; transition: left 0.25s cubic-bezier(0.22, 1, 0.36, 1), background 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
+.nvb .nvb-switch.on { background: var(--brand, #141a24); box-shadow: none; }
+.nvb .nvb-switch.on i { left: 17px; background: var(--brand-ink, #fff); }
+.nvb .nvb-switch:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; }
+
+/* The footer: a failure on the left, Cancel and Save draft in words, Send the brand pill. */
+.nvb .nvb-foot { margin-top: 18px; }
+.nvb .nvb-error.nvb-error { margin-right: auto; }
+.nvb .nvb-draft { height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: #141a24; cursor: pointer; }
+.nvb .nvb-draft:hover:not(:disabled), .nvb .nvb-draft:focus-visible { outline: none; background: #f5f6f8; }
+.nvb .nvb-draft:disabled { color: #c9cfd8; cursor: default; }
+
+/* ---- What the client gets: on the page grey beside the form, kept in sight while the form scrolls. */
+.nvb .nvb-pv { position: sticky; top: 0; align-self: start; min-width: 0; padding: 4px 22px 22px; border-radius: 18px; background: #f5f6f8; }
+.nvb .nvb-pvhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0 14px; }
+
+/* The page: our invoice page's own drawing (invoice-page.css), set in the column instead of a whole window. */
+.nvb .nvb-url { display: flex; align-items: center; justify-content: center; height: 28px; max-width: 300px; margin: 0 auto 10px; padding: 0 12px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #e1e5eb; overflow: hidden; font-size: 12px; font-weight: 500; color: #8b93a1; text-overflow: ellipsis; white-space: nowrap; }
+.nvb .ivw.nvb-ivw { min-height: 0; padding: 0; background: none; }
+.nvb .nvb-ivw .ivw-card { box-shadow: 0 0 0 1px #e1e5eb, 0 20px 40px -26px rgba(16, 24, 40, 0.35); }
+.nvb .nvb-ivw .ivw-btn.nvb-ivw-btn { display: grid; place-items: center; cursor: default; font-variant-numeric: tabular-nums; }
+.nvb .nvb-ivw .ivw-foot { margin-top: 14px; }
+
+/* The email: lib/mail.ts invoiceEmail's own inline drawing, redrawn (a white card with a hairline, radius 20). */
+.nvb .nvb-mail { display: flex; flex-direction: column; align-items: center; }
+.nvb .nvb-mailmeta { width: 100%; max-width: 440px; margin: 0 0 10px; font-size: 12.5px; font-weight: 500; line-height: 1.6; color: #8b93a1; overflow-wrap: anywhere; }
+.nvb .nvb-mailmeta b { font-weight: 600; color: #141a24; }
+.nvb .nvb-mailcard { width: 100%; max-width: 440px; box-sizing: border-box; padding: 28px; border: 1px solid #e1e5eb; border-radius: 20px; background: #fff; }
+.nvb .nvb-mail-label { font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #5b6474; }
+.nvb .nvb-mail-seller { padding-top: 6px; font-size: 16px; line-height: 22px; font-weight: 600; color: #141a24; }
+.nvb .nvb-mail-amount { padding-top: 18px; font-size: 34px; line-height: 40px; font-weight: 600; color: #141a24; font-variant-numeric: tabular-nums; }
+.nvb .nvb-mail-facts { margin-top: 14px; border-collapse: collapse; }
+.nvb .nvb-mail-facts td { padding: 5px 0; font-size: 14px; line-height: 20px; font-weight: 500; color: #141a24; vertical-align: top; }
+.nvb .nvb-mail-facts td:first-child { padding-right: 16px; color: #8b93a1; white-space: nowrap; }
+.nvb .nvb-mail-facts td.num { font-variant-numeric: tabular-nums; }
+.nvb .nvb-mail-btns { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 24px; }
+.nvb .nvb-mail-pill { display: inline-block; padding: 11px 21px; border: 1px solid #dce1e8; border-radius: 999px; background: #fff; font-size: 15px; line-height: 20px; font-weight: 600; color: #141a24; font-variant-numeric: tabular-nums; }
+.nvb .nvb-mail-pill.main { padding: 12px 22px; border: 0; background: var(--brand, #141a24); color: var(--brand-ink, #fff); }
+.nvb .nvb-mail-bank { padding-top: 28px; }
+.nvb .nvb-mail-bank .nvb-mail-facts { margin-top: 8px; }
+.nvb .nvb-mail-words { margin: 0; padding-top: 6px; font-size: 14px; line-height: 20px; font-weight: 500; color: #3a4250; white-space: pre-wrap; }
+.nvb .nvb-mail-foot { padding-top: 16px; font-size: 12px; line-height: 16px; font-weight: 500; color: #98a2b3; }
+
+/* The template pill beside the number: white with a hairline, ink while its list is open. */
+.nvb .nvb-tpl-btn { flex: none; display: inline-flex; align-items: center; gap: 6px; max-width: 220px; height: 36px; padding: 0 10px 0 14px; border: 0; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px #dce1e8; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; cursor: pointer; }
+.nvb .nvb-tpl-btn span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nvb .nvb-tpl-btn svg { flex: none; width: 14px; height: 14px; color: #8b93a1; }
+.nvb .nvb-tpl-btn:hover, .nvb .nvb-tpl-btn[data-state="open"] { box-shadow: inset 0 0 0 1px #141a24; }
+.nvb .nvb-tpl-btn:focus-visible { outline: 2px solid #141a24; outline-offset: 2px; }
+
+/* The template list (portaled): six rows then it scrolls; Save as template pinned at its foot (design rules 6). */
+.nvb-tpl-pop.nvb-tpl-pop { width: 300px; padding: 5px; }
+.nvb-tpl-list { max-height: 312px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #dce1e8 transparent; }
+.nvb-tpl-row { display: flex; align-items: center; gap: 4px; border-radius: 7px; }
+.nvb-tpl-row:hover { background: #fafbfd; }
+.nvb-tpl-row.on { background: #f5f6f8; }
+.nvb-tpl-pick { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }
+.nvb-tpl-pick b { overflow: hidden; font-size: 13.5px; font-weight: 600; color: #141a24; text-overflow: ellipsis; white-space: nowrap; }
+.nvb-tpl-pick small { overflow: hidden; font-size: 12px; font-weight: 500; color: #8b93a1; text-overflow: ellipsis; white-space: nowrap; }
+.nvb-tpl-pick:focus-visible { outline: 2px solid #141a24; outline-offset: -2px; border-radius: 7px; }
+.nvb-tpl-x { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; margin-right: 4px; padding: 0; border: 0; border-radius: 999px; background: none; font-size: 11px; color: #8b93a1; cursor: pointer; opacity: 0; transition: opacity 0.12s; }
+.nvb-tpl-row:hover .nvb-tpl-x, .nvb-tpl-row:focus-within .nvb-tpl-x { opacity: 1; }
+@media (any-hover: none) { html:not([data-mouse]) { .nvb-tpl-x { opacity: 1; } } }
+.nvb-tpl-x:hover { background: #eef0f3; color: #141a24; }
+.nvb-tpl-row.ask { gap: 2px; padding: 4px 4px 4px 10px; background: #f5f6f8; }
+.nvb-tpl-row.ask span { flex: 1; min-width: 0; overflow: hidden; font-size: 13px; font-weight: 600; color: #141a24; text-overflow: ellipsis; white-space: nowrap; }
+.nvb-tpl-act { height: 30px; padding: 0 10px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #5b6474; cursor: pointer; }
+.nvb-tpl-act:hover { color: #141a24; }
+.nvb-tpl-act.danger { color: #b42318; }
+.nvb-tpl-act.danger:hover { background: #f5f6f8; }
+.nvb-tpl-none { margin: 0; padding: 10px; font-size: 13px; font-weight: 500; color: #8b93a1; }
+.nvb-tpl-save { display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 4px; padding: 10px; border: 0; border-top: 1px solid #eef0f3; border-radius: 0 0 7px 7px; background: none; font: inherit; font-size: 13px; font-weight: 600; color: #141a24; text-align: left; cursor: pointer; }
+.nvb-tpl-save svg { width: 14px; height: 14px; translate: 0 -0.5px; }
+.nvb-tpl-save:hover:not(:disabled) { background: #fafbfd; }
+.nvb-tpl-save:disabled { color: #98a2b3; cursor: default; }
+.nvb-tpl-new { display: flex; flex-direction: column; gap: 4px; padding: 8px 8px 4px; }
+.nvb-tpl-foot { display: flex; justify-content: flex-end; gap: 2px; margin-top: 8px; }
+
+/* Narrower than B's two columns: the form alone, as every .dlh (640), the preview left out. */
+@media (max-width: 940px) {
+  .dlh.dlh.nvb { width: min(640px, 100vw - 32px); }
+  .nvb .nvb-split { grid-template-columns: minmax(0, 1fr); }
+  .nvb .nvb-pv { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nvb .nvb-switch, .nvb .nvb-switch i, .nvb .nvb-back, .nvb .nvb-swrow { transition: none; }
+}

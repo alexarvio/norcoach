@@ -39,7 +39,7 @@ export type TodoItem = {
   /** The Needs-you id ("week", "complete-12", "read-…"), unique on one client. */
   key: string;
   tab: DotTab;
-  kind: "setup" | "week" | "locked" | "video" | "ask-call" | "complete-call" | "read" | "missed";
+  kind: "setup" | "week" | "locked" | "video" | "ask-call" | "complete-call" | "read" | "missed" | "charge-failed";
   /** "Week 5 has no sessions", "Video of Back Squat", "Check-In, 2/11, to complete". */
   what: string;
   /** The client's own words, in quotes after it. */
@@ -92,9 +92,9 @@ export type TodoItem = {
 
 export const NO_DOTS: DotTrail = { tabs: [], training: { weeks: {}, days: [], exercises: [] }, food: {}, meetings: false, unlock: false, todo: [] };
 
-/** The tabs a To do row can be on (24 Nov, Alex: "Build B"): every tab that had a to-do strip. Invoices never had one, so
- *  its dot leads to no row. */
-export const TODO_TABS: readonly DotTab[] = ["home", "plan", "measurements", "training", "nutrition", "pictures", "meetings"];
+/** The tabs a To do row can be on (24 Nov, Alex: "Build B"): every tab that had a to-do strip, and Invoices since 26 Nov
+ *  (Alex: a failed automatic charge, after its third retry, "Finlay is told on his To do"). */
+export const TODO_TABS: readonly DotTab[] = ["home", "plan", "measurements", "training", "nutrition", "pictures", "meetings", "invoices"];
 
 /** Every row of the client's To do panel, across their tabs, and so its button's count: exactly the rows the strips
  *  showed, less any let go on the screen (`gone`, its keys). */

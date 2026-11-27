@@ -18,11 +18,12 @@ import { muscleMapFor } from "../../lib/muscleMap";
 import { getUserForClient, isOwner } from "../../lib/auth";
 import { mailConfigured } from "../../lib/mail";
 import { clerkOn } from "../../lib/clerk";
-import { getCoachSettings, getInvoiceView, listInvoices, listInvoiceTemplates, invoiceRepeatViews, runRecurringInvoices, type FeedEvent, type HomeAction, type InvoiceView, listCoachVideos, exerciseClientCounts, listMeetings, activityWords, callThing, callOver, callToComplete } from "../../lib/queries";
+import { getCoachSettings, listInvoiceTemplates, invoiceRepeatViews, runRecurringInvoices, type FeedEvent, type HomeAction, listCoachVideos, exerciseClientCounts, listMeetings, activityWords, callThing, callOver, callToComplete } from "../../lib/queries";
 import { getHomeBoard, type HomeBoard } from "../../lib/homeBoard";
 import { activityMarkOf } from "../../lib/activityMark";
 import { SERVER_TZ, zonedToUtc } from "../../lib/timezones";
-import { hasBankDetails, invoicingFor } from "../../lib/countries";
+import { formatMoney, hasBankDetails, invoicingFor } from "../../lib/countries";
+import { chargeTodosOf } from "../../lib/invoiceEvents";
 import { actionsFrom, clientActions, coachNeeds } from "../../lib/coachNeeds";
 import { fetchCoachChat, type ChatCoachView, type ChatDockView, type ChatThread } from "../../lib/chat/rows";
 import { fetchCoachFood, noFoodRows, type FoodRows } from "../../lib/food/rows";
@@ -125,7 +126,8 @@ import type { DraftMessages } from "./messages/MessagesDraft";
 import type { MessageLink } from "../../lib/messageLinks";
 import { dayMonth, dayMonthTime } from "../../lib/dayMonth";
 import { metricSummary } from "../../lib/metricSummary";
-import { clientPlanBilling, clientPlanId, clientPlanNext, clientPlanSeries, listCoachPlans } from "../../lib/coachPlans";
+import { clientPlanId, clientPlanNext, clientPlanSeries, listCoachPlans } from "../../lib/coachPlans";
+import { billingCardFor, invoiceComposeFor, invoiceRowsFor, type BillingCard, type InvoiceCompose, type InvoiceRow } from "../../lib/invoiceBilling";
 import { coachIdOfClient } from "../../lib/tenancy";
 import { getCoachFocus } from "../../lib/focus";
 import { supportUnreadForCoach, supportUnreadForOwner } from "../../lib/support";
@@ -946,6 +948,25 @@ export function loadDots(clientId: number, chat: ChatCoachView, food: FoodRows, 
       },
     });
   }
+  // A failed automatic charge, once the coach has been told after its third retry (26 Nov, Alex: "Finlay is told on his
+  // To do"; lib/invoiceEvents.ts chargeTodosOf): a row under Invoices, the invoice its name, what happened in rust and
+  // the decline's words grey, Open landing on the invoice's row. Gone once it is paid, marked paid or refunded, or let
+  // go with the row's round check (its key carries when the coach was told, so a later run comes back as a new row).
+  for (const c of chargeTodosOf(clientId)) {
+    if (client.coach_dismissed?.[c.key] != null) continue;
+    todo("invoices", {
+      key: c.key,
+      kind: "charge-failed",
+      what: `Invoice ${c.number}`,
+      words: null,
+      facts: [formatMoney(c.amount, c.currency), c.reason],
+      happened: "Payment failed",
+      since: Date.parse(c.toldAt) || null,
+      action: "Open",
+      href: route("invoices", `#invoice-${c.invoiceId}`),
+      ref: c.invoiceId,
+    });
+  }
   // A call today is no dot (25 Oct, Alex: "this is not the calendar"): nothing is owed for it until it is over.
   return dots;
 }
@@ -1627,15 +1648,19 @@ export function loadMessages(clientId: number, thread: ChatThread, food: FoodRow
 // gives a new one (numbering, VAT, terms), with what is still missing there.
 export type DraftInvoices = {
   today: string;
-  invoices: InvoiceView[];
+  /** As they print, each with what happened to it and its state (26 Nov, Alex; lib/invoiceBilling.ts). */
+  invoices: InvoiceRow[];
   defaults: { currency: string; vatRate: number; taxLabel: string; pricesIncludeVat: boolean; termsDays: number; nextNumber: string };
   missing: string[];
   /** The coach's saved invoices to start from (21 Oct). */
   templates: InvoiceTemplate[];
   /** This client's recurring invoices (21 Oct). */
   repeats: ReturnType<typeof invoiceRepeatViews>;
-  /** The plan they are on, and whether billing it can start (28 Oct: Start billing). */
-  billing: ReturnType<typeof clientPlanBilling>;
+  /** The Billing card (26 Nov, Alex: docs/boards/client-invoices-mockup.html, A): their plan, own price, the series
+      billing them, how they pay, the figures; its plan.lines and canStart are the Start billing fill (28 Oct). */
+  billing: BillingCard;
+  /** What New invoice and its preview need (26 Nov, Alex: docs/boards/invoice-new-mockup.html, B). */
+  compose: InvoiceCompose;
 };
 
 export function loadInvoices(coachId: number, clientId: number): DraftInvoices {
@@ -1647,10 +1672,7 @@ export function loadInvoices(coachId: number, clientId: number): DraftInvoices {
   const b = s.business ?? {};
   const i = s.invoicing ?? {};
   const next = Math.max(1, Math.round(i.next_number ?? 1));
-  const invoices = listInvoices(clientId)
-    .map((inv) => getInvoiceView(inv.id))
-    .filter((v): v is InvoiceView => !!v)
-    .sort((a, b2) => (a.issueDate === b2.issueDate ? b2.id - a.id : a.issueDate < b2.issueDate ? 1 : -1));
+  const invoices = invoiceRowsFor(clientId, today);
   const eff = invoicingFor(b, i);
   const missing = [!b.business_name && "business name", !(b.address && b.city) && "address", !hasBankDetails(i, eff.country) && "bank details"].filter(Boolean) as string[];
   return {
@@ -1667,7 +1689,8 @@ export function loadInvoices(coachId: number, clientId: number): DraftInvoices {
     missing,
     templates: listInvoiceTemplates(coachId),
     repeats: invoiceRepeatViews(clientId),
-    billing: clientPlanBilling(coachId, clientId),
+    billing: billingCardFor(coachId, clientId, invoices),
+    compose: invoiceComposeFor(coachId, clientId),
   };
 }
 

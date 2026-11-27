@@ -28,3 +28,28 @@ export function planPerPeriod(p: Pick<PlanChoice, "price" | "every">, currency: 
   if (p.price == null || !p.every) return "";
   return `${planMoney(p.price, currency)} ${p.every === "2weeks" ? "every 2 weeks" : `a ${p.every}`}`;
 }
+
+/** How many of a rhythm fit a month (26 Nov, Alex: docs/boards/plans-redesign-mockup.html, A): a week 52 ÷ 12, two
+ *  weeks 26 ÷ 12, a month 1, as Business counts a series' month. */
+export const PER_MONTH: Record<InvoiceEvery, number> = { week: 52 / 12, "2weeks": 26 / 12, month: 1 };
+
+/** A price's month's worth in whole money (26 Nov, Alex: "€35 × 26 ÷ 12 = €76 a month"); none without a rhythm. */
+export function monthWorth(price: number, every: InvoiceEvery | null | undefined): number {
+  return every ? Math.round((Number(price) || 0) * PER_MONTH[every]) : 0;
+}
+
+/**
+ * The tax in a price (26 Nov, Alex: "€89 = €73.55 + €15.45 VAT"), at `ratePct` percent. Prices with VAT in (the plans'
+ * own way where the business says so): net = price ÷ (1 + rate), to the cent, and the VAT the rest. Prices without it:
+ * the price is the net, the VAT on top. `total` is what the client pays.
+ */
+export function vatSplit(price: number, ratePct: number, pricesIncludeVat = true): { net: number; vat: number; total: number } {
+  const p = Math.round((Number(price) || 0) * 100) / 100;
+  const r = Math.max(0, Number(ratePct) || 0) / 100;
+  if (pricesIncludeVat) {
+    const net = Math.round((p / (1 + r)) * 100) / 100;
+    return { net, vat: Math.round((p - net) * 100) / 100, total: p };
+  }
+  const vat = Math.round(p * r * 100) / 100;
+  return { net: p, vat, total: Math.round((p + vat) * 100) / 100 };
+}

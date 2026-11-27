@@ -35,6 +35,14 @@ const withToken = (base: string, path: string, invoiceId: number, extra: Record<
   return `${base}${path}${s ? `?${s}` : ""}`;
 };
 
+/** Our own invoice page in the browser (26 Nov, Alex: "every invoice email links to our own page"): the invoice in the
+ *  coach's brand with its Pay, signed as Pay is. Null when the app has no address of its own. `extra`: paid=1 on the way
+ *  back from Stripe. */
+export function invoicePageUrl(invoiceId: number, extra: Record<string, string> = {}): string | null {
+  const base = appUrl();
+  return base ? withToken(base, `/invoice/${invoiceId}`, invoiceId, extra) : null;
+}
+
 /** Pay: our route, which sends the client on to Stripe. Null when the app has no address of its own. */
 export function invoicePayUrl(invoiceId: number): string | null {
   const base = appUrl();

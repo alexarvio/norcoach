@@ -14,12 +14,13 @@ import { noteTakenKey } from "./onceKeep";
 import { groupOfNotification } from "./notifGroups";
 import { healthStoreName, healthWorkoutFacts, healthWorkoutWords } from "./healthWorkouts";
 import { allocId, DATA_DIR, DAY_NAMES_FULL, getData, persist, persistNow, mergeDuplicateMetricDefinitions, CardioEntry } from "./db";
-import type { CalorieLog, CheckInNote, CustomFood, FoodDay, FoodEntry, FoodMealSlot, OffFood, SavedDay, SavedMeal, ClientEvent, ClientGym, ClientPhase, CoachProfile, CoachBusiness, CoachNotify, CoachInvoicing, CoachPayments, CoachSettings, Data, EventCategory, InvoiceEvery, InvoiceLine, InvoiceParty, InvoiceRecipient, InvoiceRepeat, InvoiceTemplate, KeptActivity, MetricAskAt, PhaseTrack, SessionAnswer, VideoRequest, WorkoutQuestion, MeetingRequest } from "./db";
+import type { CalorieLog, CheckInNote, CustomFood, FoodDay, FoodEntry, FoodMealSlot, OffFood, SavedDay, SavedMeal, ClientEvent, ClientGym, ClientPhase, CoachProfile, CoachBusiness, CoachNotify, CoachInvoicing, CoachPayments, CoachSettings, Data, EventCategory, InvoiceEvery, InvoiceLine, InvoiceParty, InvoicePayMethod, InvoicePays, InvoiceRecipient, InvoiceRepeat, InvoiceTemplate, KeptActivity, MetricAskAt, PhaseTrack, SessionAnswer, VideoRequest, WorkoutQuestion, MeetingRequest } from "./db";
 import type { CoachProfileFields, CoachProfileView } from "./coachProfileView";
 import { getCatalogFood, searchCatalog, type CatalogFood } from "./foods/catalog";
 import type { OffProduct } from "./foods/openfoodfacts";
 import type { LinkView, MessageLink } from "./messageLinks";
 import { coachIdOfClient } from "./tenancy";
+import { addInvoiceEvent, chargeTodosOf } from "./invoiceEvents";
 import { isStockCover, PHASE_COVERS } from "./phaseCovers";
 import { coachCardOfClient, dropUnusedCoachCards, isCoachCardPicture } from "./coachCards";
 import { inViewZone, viewZone } from "./viewZone";
@@ -8484,6 +8485,8 @@ export function dismissHomeAction(clientId: number, actionId: string | string[],
   const standing = new Set(getClientHomeActions(clientId, chat, food, ck, sr).allActionIds);
   // A target not reached (24 Nov) is Training's strip alone, never a Needs-you item: kept while it still stands.
   for (const m of missedTargets(sr, clientId)) standing.add(m.key);
+  // A failed automatic charge the coach was told of (26 Nov, Alex): the Invoices To do row, kept while it stands.
+  for (const t of chargeTodosOf(clientId)) standing.add(t.key);
   const next: Record<string, number> = {};
   for (const [id, at] of Object.entries(client.coach_dismissed ?? {})) if (standing.has(id)) next[id] = at;
   const now = Date.now();
@@ -15664,7 +15667,9 @@ const addDaysIso = (iso: string, n: number) => {
 };
 const formatNumber = (prefix: string, n: number, issueDate: string) => `${prefix.replaceAll("{year}", issueDate.slice(0, 4))}${String(n).padStart(4, "0")}`;
 
-export type NewInvoice = { issueDate: string; lines: InvoiceLine[]; note?: string; sent?: boolean };
+/** `pays` (26 Nov, Alex): how the client pays it, link unless bank. `repeatId`: the series making it. `by`: who made
+    it, for its history ("auto" for a series). */
+export type NewInvoice = { issueDate: string; lines: InvoiceLine[]; note?: string; sent?: boolean; pays?: InvoicePays; repeatId?: string; by?: "coach" | "auto" };
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 /** "{month}" and "{year}" in a line or note, as of the day it is issued: "Coaching, {month}" → "Coaching, November". */
@@ -15712,7 +15717,14 @@ export function createInvoice(coachId: number, clientId: number, v: NewInvoice):
     vat: t.vat,
     note: fillInvoiceText(String(v.note ?? "").trim(), issue).slice(0, 600) || undefined,
     ...(sent ? { from: coachParty(coachId), to: clientParty(clientId) } : {}),
+    // How it is paid and which series made it (26 Nov, Alex); link is the default and left off.
+    ...(v.pays === "bank" ? { pays: "bank" as const } : {}),
+    ...(v.repeatId ? { repeat_id: String(v.repeatId) } : {}),
   });
+  // Its history starts here (26 Nov, Alex: lib/invoiceEvents.ts): made, and sent when it goes out at once.
+  const by = v.by === "auto" ? ("auto" as const) : ("coach" as const);
+  addInvoiceEvent(id, { kind: "made", by }, { persist: false });
+  if (sent) addInvoiceEvent(id, { kind: "sent", by }, { persist: false });
   user.coach_settings = { ...(user.coach_settings ?? {}), invoicing: { ...inv, next_number: next + 1 } };
   persist();
   return id;
@@ -15777,7 +15789,7 @@ export function nextInvoiceDate(iso: string, every: InvoiceEvery, anchorDay: num
 }
 
 /** Starts a series whose first invoice was issued on `issueDate`: the next one is a period on. */
-export function addInvoiceRepeat(clientId: number, v: { every: InvoiceEvery; issueDate: string; lines: InvoiceLine[]; note?: string; send: boolean; template?: string; firstInvoiceId?: number; planId?: string }): string | null {
+export function addInvoiceRepeat(clientId: number, v: { every: InvoiceEvery; issueDate: string; lines: InvoiceLine[]; note?: string; send: boolean; template?: string; firstInvoiceId?: number; planId?: string; pays?: InvoicePays; auto?: boolean }): string | null {
   const client = getData().clients.find((c) => c.id === clientId);
   const lines = cleanLines(v.lines);
   if (!client || lines.length === 0 || !["week", "2weeks", "month"].includes(v.every) || !/^\d{4}-\d{2}-\d{2}$/.test(v.issueDate)) return null;
@@ -15789,10 +15801,81 @@ export function addInvoiceRepeat(clientId: number, v: { every: InvoiceEvery; iss
   const id = newKey();
   const note = String(v.note ?? "").trim().slice(0, 600) || undefined;
   const template = String(v.template ?? "").trim().slice(0, 60) || undefined;
-  const r: InvoiceRepeat = { id, every: v.every, next, anchor_day: anchor, lines, send: !!v.send, created_at: new Date().toISOString(), ...(note ? { note } : {}), ...(template ? { template } : {}), ...(v.firstInvoiceId != null ? { last_invoice_id: v.firstInvoiceId } : {}), ...(v.planId ? { plan_id: v.planId } : {}) };
+  // How it is paid (26 Nov, Alex): bank or link; Charge automatically only on a link.
+  const pays = v.pays === "bank" ? ("bank" as const) : undefined;
+  const r: InvoiceRepeat = { id, every: v.every, next, anchor_day: anchor, lines, send: !!v.send, created_at: new Date().toISOString(), started: v.issueDate, ...(note ? { note } : {}), ...(template ? { template } : {}), ...(v.firstInvoiceId != null ? { last_invoice_id: v.firstInvoiceId } : {}), ...(v.planId ? { plan_id: v.planId } : {}), ...(pays ? { pays } : {}), ...(!pays && v.auto ? { auto: true } : {}) };
   client.invoice_repeats = [...(client.invoice_repeats ?? []), r];
+  // The first invoice is the series' own.
+  const first = v.firstInvoiceId != null ? getData().invoices.find((i) => i.id === v.firstInvoiceId && i.client_id === clientId) : undefined;
+  if (first) first.repeat_id = id;
   persist();
   return id;
+}
+
+/**
+ * A running series changed from its next invoice on (26 Nov, Alex: Edit lines, "the running series' lines and rhythm,
+ * changing every invoice from the next one on"): its lines, how often, how it is paid and Charge automatically. Invoices
+ * already made never change. A new rhythm keeps the next day; a monthly one then keeps to that day of the month. On the
+ * plan's series, the plan's line at a price other than the plan's is the client's own price (coaching_plan_price), at
+ * the plan's price none, so the Billing card and Settings › Plans say it. Answers whether it changed.
+ */
+export function updateInvoiceRepeat(clientId: number, repeatId: string, v: { lines?: InvoiceLine[]; every?: InvoiceEvery; pays?: InvoicePays; auto?: boolean }): boolean {
+  const data = getData();
+  const client = data.clients.find((c) => c.id === clientId);
+  const r = client?.invoice_repeats?.find((x) => x.id === repeatId);
+  if (!client || !r) return false;
+  if (v.lines !== undefined) {
+    const lines = cleanLines(v.lines);
+    if (lines.length === 0) return false;
+    r.lines = lines;
+  }
+  if (v.every !== undefined) {
+    if (!["week", "2weeks", "month"].includes(v.every)) return false;
+    if (v.every !== r.every) {
+      r.every = v.every;
+      if (v.every === "month") r.anchor_day = Number(r.next.slice(8, 10)) || r.anchor_day;
+    }
+  }
+  if (v.pays !== undefined) {
+    if (v.pays === "bank") {
+      r.pays = "bank";
+      delete r.auto;
+    } else delete r.pays;
+  }
+  if (v.auto !== undefined) {
+    if (v.auto && r.pays !== "bank") r.auto = true;
+    else delete r.auto;
+  }
+  // The plan's own line on the plan's series: its price, the client's own where it isn't the plan's (26 Nov, Alex).
+  if (v.lines !== undefined && r.plan_id) {
+    const profile = data.client_profiles.find((p) => p.client_id === clientId);
+    const plan = client.coach_id != null ? data.users.find((u) => u.id === client.coach_id)?.coach_settings?.plans?.find((p) => p.id === r.plan_id) : undefined;
+    if (profile && plan && profile.coaching_plan_id === plan.id) {
+      const line = r.lines[planLineIndexOf(r.lines, plan.name)];
+      if (line && plan.price != null && line.unit_price !== plan.price) {
+        if (profile.coaching_plan_price !== line.unit_price) {
+          profile.coaching_plan_price = line.unit_price;
+          profile.coaching_plan_price_since = r.next;
+        }
+      } else if (line) {
+        delete profile.coaching_plan_price;
+        delete profile.coaching_plan_price_since;
+      }
+    }
+  }
+  persist();
+  return true;
+}
+
+/** Which of a series' lines is its plan's (26 Nov, Alex): the one named for the plan ("Online coaching" or "Online
+ *  coaching, {month}" and what it was filled to), else the first. */
+export function planLineIndexOf(lines: InvoiceLine[], planName: string): number {
+  const name = planName.trim().toLowerCase();
+  const i = lines.findIndex((l) => {
+    const d = l.description.trim().toLowerCase();
+    return d === name || d.startsWith(`${name},`);
+  });
+  return i >= 0 ? i : 0;
 }
 
 /** Paused, a series makes nothing; resumed, it picks up at its next day still to come (missed ones are not made late). */
@@ -15831,7 +15914,8 @@ export function runRecurringInvoices(today: string = localDateStr(), push = fals
       const issued = r.next;
       r.next = nextInvoiceDate(issued, r.every, r.anchor_day);
       changed = true;
-      const id = createInvoice(c.coach_id, c.id, { issueDate: issued, lines: r.lines, note: r.note, sent: r.send });
+      // Paid as the series says, and its own (26 Nov, Alex): Charge automatically reads repeat_id (lib/invoiceCheckouts.ts).
+      const id = createInvoice(c.coach_id, c.id, { issueDate: issued, lines: r.lines, note: r.note, sent: r.send, pays: r.pays, repeatId: r.id, by: "auto" });
       if (id == null) continue;
       r.last_invoice_id = id;
       made++;
@@ -15865,13 +15949,26 @@ export function invoiceRepeatViews(clientId: number) {
     plan: (r.plan_id && plans.find((p) => p.id === r.plan_id)?.name) || null,
     total: invoiceTotals(r.lines, eff.rate, eff.pricesIncludeVat).total,
     currency: eff.currency,
+    // 26 Nov, Alex: how it is paid, Charge automatically, the plan's id, the day a month keeps to, since when.
+    pays: r.pays === "bank" ? ("bank" as const) : ("link" as const),
+    auto: r.pays !== "bank" && !!r.auto,
+    planId: r.plan_id ?? null,
+    anchorDay: r.anchor_day,
+    started: r.started ?? r.created_at.slice(0, 10),
   }));
 }
 
-/** A status change; leaving "Not sent" freezes who it is from and for. */
-export function setInvoiceStatusFrozen(invoiceId: number, status: Invoice["status"]) {
+/** A status change; leaving "Not sent" freezes who it is from and for. Its history says so (26 Nov, Alex): sent when it
+    leaves Not sent, marked paid by hand (how: `method`, bank unless said) or marked not paid, by the coach, unless
+    `events` is false (Stripe's paid writes its own). */
+export function setInvoiceStatusFrozen(invoiceId: number, status: Invoice["status"], opts: { method?: InvoicePayMethod; events?: boolean } = {}) {
   const inv = getData().invoices.find((i) => i.id === invoiceId);
   if (!inv) return;
+  if (opts.events !== false && status !== inv.status) {
+    if (inv.status === "unpaid" && status !== "unpaid") addInvoiceEvent(invoiceId, { kind: "sent", by: "coach" }, { persist: false });
+    if (status === "paid") addInvoiceEvent(invoiceId, { kind: "marked_paid", via: opts.method ?? "bank", by: "coach" }, { persist: false });
+    else if (inv.status === "paid") addInvoiceEvent(invoiceId, { kind: "marked_unpaid", by: "coach" }, { persist: false });
+  }
   if (status !== "unpaid" && inv.number && !inv.from) {
     const coachId = inv.coach_id ?? coachIdOfClient(inv.client_id);
     if (coachId != null) inv.from = coachParty(coachId);
@@ -15881,9 +15978,11 @@ export function setInvoiceStatusFrozen(invoiceId: number, status: Invoice["statu
   if (status === "paid" && inv.status !== "paid") {
     inv.paid_at = new Date().toISOString();
     inv.paid_via = "manual";
+    inv.paid_method = opts.method ?? "bank";
   } else if (status !== "paid") {
     delete inv.paid_at;
     delete inv.paid_via;
+    delete inv.paid_method;
   }
   inv.status = status;
   inv.updated_at = new Date().toISOString().replace("T", " ").slice(0, 19);
@@ -15928,6 +16027,11 @@ export function getInvoiceView(invoiceId: number) {
     status: inv.status,
     paidAt: inv.paid_at ?? null,
     paidVia: inv.paid_via ?? null,
+    // 26 Nov, Alex: how it was paid, refunded, how it is paid (link unless bank), the series that made it.
+    paidMethod: inv.paid_method ?? (inv.status === "paid" && inv.paid_via === "manual" ? ("bank" as const) : null),
+    refundedAt: inv.refunded_at ?? null,
+    pays: inv.pays === "bank" ? ("bank" as const) : ("link" as const),
+    repeatId: inv.repeat_id ?? null,
     lines,
     vatRate: rate,
     pricesIncludeVat: incl,
@@ -15971,14 +16075,34 @@ export function coachIdForStripeAccount(account: string): number | null {
 }
 
 /** Stripe says the checkout went through: paid, if it is this coach's account and this invoice. Answers the invoice when it changed. */
-export function markInvoicePaidOnline(invoiceId: number, sessionId: string, account: string | undefined) {
+/** `opts` (26 Nov, Alex): the paid event's detail ("Visa •••• 4242"), who paid (the client, or "auto" for an automatic
+ *  charge), and the PaymentIntent it came through (what a refund is made on). `sessionId` is the checkout (cs_…) or,
+ *  for an automatic charge, the PaymentIntent (pi_…). */
+export function markInvoicePaidOnline(invoiceId: number, sessionId: string, account: string | undefined, method?: InvoicePayMethod, opts: { detail?: string; by?: "client" | "auto"; intent?: string } = {}) {
   const inv = getData().invoices.find((i) => i.id === invoiceId);
-  if (!inv || inv.status === "paid") return null;
+  if (!inv) return null;
   const coachId = inv.coach_id ?? coachIdOfClient(inv.client_id);
   if (coachId == null || !account || getCoachPayments(coachId).stripe_account_id !== account) return null;
-  setInvoiceStatusFrozen(invoiceId, "paid");
+  if (inv.status === "paid") {
+    // Money for an invoice already paid (26 Nov, Alex: never silent): kept in its history once a checkout, for the
+    // coach to see and refund. Telling the coach is the payments code's (lib/payments.ts). The payment that paid it,
+    // seen again by its PaymentIntent, is not a second one.
+    const same = inv.stripe_session_id === sessionId || (!!inv.stripe_payment_intent && (inv.stripe_payment_intent === sessionId || inv.stripe_payment_intent === opts.intent));
+    if (!same && !(inv.events ?? []).some((e) => e.kind === "paid_twice" && e.detail === sessionId)) {
+      addInvoiceEvent(invoiceId, { kind: "paid_twice", detail: sessionId, by: "auto", ...(method ? { via: method } : {}) });
+    }
+    return null;
+  }
+  setInvoiceStatusFrozen(invoiceId, "paid", { events: false });
   inv.paid_via = "stripe";
+  if (method) inv.paid_method = method;
+  else delete inv.paid_method;
   inv.stripe_session_id = sessionId;
+  if (opts.intent) inv.stripe_payment_intent = opts.intent;
+  else if (sessionId.startsWith("pi_")) inv.stripe_payment_intent = sessionId;
+  // Paid: no retry of a failed charge is due any more.
+  delete inv.charge_next_at;
+  addInvoiceEvent(invoiceId, { kind: "paid", by: opts.by ?? "client", ...(method ? { via: method } : {}), ...(opts.detail ? { detail: opts.detail } : {}) }, { persist: false });
   persist();
   return inv;
 }

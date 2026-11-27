@@ -3,6 +3,7 @@
 // Never throws: a coach with no clients, no invoices and no series gets zeros, nulls and empty lists.
 
 import type { BillingRow, BusinessBoard, EndingRow, MoneyMonth, MonthInvoice, OwedRow, RosterMonth, SeriesEvery, SeriesRow } from "./businessBoard";
+import { invoiceLateDays, invoiceStateOf } from "./invoiceEvents";
 import { getData, persist, type Data, type PhaseTrack } from "./db";
 import { getCoachSettings, invoiceRepeatViews, localDateStr, nextInvoiceDate } from "./queries";
 import { invoicingFor } from "./countries";
@@ -153,7 +154,8 @@ function context(coachId: number, today: string): Ctx {
 
   const allInvoices = data.invoices.filter((i) => i.coach_id === coachId || ids.has(i.client_id));
   // An invoice from before invoices carried a currency was in euros (the print view reads it so, queries.ts).
-  const invoices = allInvoices.filter((i) => (i.currency || "EUR") === currency);
+  // A refunded invoice is neither paid nor owed (26 Nov, Alex): in no sum, Owed or month.
+  const invoices = allInvoices.filter((i) => (i.currency || "EUR") === currency && !i.refunded_at);
 
   const series = new Map<number, (RepeatView & { anchorDay: number })[]>();
   for (const c of clients) {
@@ -272,11 +274,12 @@ function emptyBoard(today: string): BusinessBoard {
 type State = "paid" | "overdue" | "sent" | "draft";
 /** Overdue is what a sent invoice is once its due day has gone (as the Invoices tab shows it); one stored as Overdue stays it. */
 function stateOf(i: InvoiceRow, today: string): State {
-  if (i.status === "paid") return "paid";
-  if (i.status === "unpaid") return "draft";
-  if (i.status === "due") return "overdue";
-  const due = dayOrNull(i.due_date);
-  return due && due < today ? "overdue" : "sent";
+  // The one state an invoice is in (26 Nov, Alex; lib/invoiceEvents.ts), in Business's four: a charge failed or a debit
+  // pending is owed, overdue once its due day has gone.
+  const st = invoiceStateOf(i, today);
+  if (st === "paid" || st === "refunded") return "paid";
+  if (st === "not_sent") return "draft";
+  return st === "overdue" || invoiceLateDays(i, today) > 0 ? "overdue" : "sent";
 }
 /** Its issue day, else the day it was made. */
 const issueDay = (i: InvoiceRow) => dayOrNull(i.issue_date) ?? stampDay(i.created_at);

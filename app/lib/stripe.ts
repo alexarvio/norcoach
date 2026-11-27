@@ -12,8 +12,11 @@ import crypto from "crypto";
 //   STRIPE_SECRET_KEY      the platform account's secret key (sk_test_… to try it)
 //   STRIPE_WEBHOOK_SECRET  the signing secret of a Connect webhook endpoint at
 //                          /api/stripe/webhook, listening for checkout.session.completed,
-//                          checkout.session.async_payment_succeeded and account.updated
-// No SDK: the handful of calls below go straight to the REST API.
+//                          checkout.session.async_payment_succeeded, checkout.session.async_payment_failed,
+//                          payment_intent.succeeded, payment_intent.payment_failed, charge.refunded and
+//                          account.updated (26 Nov: automatic charges and refunds, lib/invoiceCharges.ts)
+// No SDK: the handful of calls below go straight to the REST API (no stripe package is installed; the shapes below are
+// Stripe's REST objects as documented, the fields read kept to the few that are used).
 
 const API = "https://api.stripe.com/v1";
 
@@ -57,9 +60,161 @@ async function call<T>(method: "GET" | "POST" | "DELETE", path: string, params: 
     body: method === "GET" ? undefined : body,
     cache: "no-store",
   });
-  const json = (await res.json().catch(() => ({}))) as T & { error?: { message?: string } };
-  if (!res.ok) throw new Error(json.error?.message || `Stripe answered ${res.status}`);
+  const json = (await res.json().catch(() => ({}))) as T & { error?: StripeErrorBody };
+  if (!res.ok) throw new StripeError(res.status, json.error);
   return json;
+}
+
+type StripeErrorBody = { message?: string; type?: string; code?: string; decline_code?: string; payment_intent?: RawIntent };
+
+/** What Stripe refused, with its reasons (26 Nov): a card declined answers 402 with its code, the bank's decline code
+ *  and the PaymentIntent as it was left; a bad request or Stripe down has no intent. A plain Error to every older
+ *  caller, which reads only its message. */
+export class StripeError extends Error {
+  status: number;
+  type?: string;
+  code?: string;
+  declineCode?: string;
+  intent?: StripeIntent;
+  constructor(status: number, e?: StripeErrorBody) {
+    super(e?.message || `Stripe answered ${status}`);
+    this.status = status;
+    this.type = e?.type;
+    this.code = e?.code;
+    this.declineCode = e?.decline_code;
+    if (e?.payment_intent && typeof e.payment_intent === "object") this.intent = intentOf(e.payment_intent);
+  }
+}
+
+// ---- PaymentIntents (26 Nov, Alex: automatic payment; lib/invoiceCharges.ts) --------------------------------------
+
+/** How a charge was paid, from its payment_method_details: a card (Apple Pay when its wallet says so), iDEAL (with the
+ *  SEPA method and mandate it left when kept for later), or a SEPA debit. */
+export type PaidFacts = { type: string; wallet?: string; brand?: string; last4?: string; bank?: string; generatedSepa?: string; generatedMandate?: string; mandate?: string };
+/** A PaymentIntent as the app reads it. Amounts in the currency's minor units. */
+export type StripeIntent = {
+  id: string;
+  status: string;
+  amount: number;
+  amountReceived: number;
+  currency: string;
+  customer: string | null;
+  paymentMethod: string | null;
+  metadata: Record<string, string>;
+  lastError: { code?: string; declineCode?: string; message?: string } | null;
+  facts: PaidFacts | null;
+};
+type RawCharge = { id: string; payment_method_details?: { type?: string; card?: { brand?: string; last4?: string; wallet?: { type?: string } | null }; ideal?: { bank?: string | null; iban_last4?: string | null; generated_sepa_debit?: string | { id: string } | null; generated_sepa_debit_mandate?: string | { id: string } | null }; sepa_debit?: { last4?: string | null; mandate?: string | null } } };
+type RawIntent = {
+  id: string;
+  status?: string;
+  amount?: number;
+  amount_received?: number;
+  currency?: string;
+  customer?: string | { id: string } | null;
+  payment_method?: string | { id: string } | null;
+  metadata?: Record<string, string>;
+  last_payment_error?: { code?: string; decline_code?: string; message?: string } | null;
+  latest_charge?: string | RawCharge | null;
+};
+const idOf = (x: string | { id: string } | null | undefined) => (typeof x === "string" ? x : (x?.id ?? null));
+
+function factsOf(c: RawCharge | null): PaidFacts | null {
+  const d = c?.payment_method_details;
+  if (!d?.type) return null;
+  if (d.type === "card") return { type: "card", ...(d.card?.wallet?.type ? { wallet: d.card.wallet.type } : {}), ...(d.card?.brand ? { brand: d.card.brand } : {}), ...(d.card?.last4 ? { last4: d.card.last4 } : {}) };
+  if (d.type === "ideal") {
+    const sepa = idOf(d.ideal?.generated_sepa_debit);
+    const mandate = idOf(d.ideal?.generated_sepa_debit_mandate);
+    return { type: "ideal", ...(d.ideal?.bank ? { bank: d.ideal.bank } : {}), ...(d.ideal?.iban_last4 ? { last4: d.ideal.iban_last4 } : {}), ...(sepa ? { generatedSepa: sepa } : {}), ...(mandate ? { generatedMandate: mandate } : {}) };
+  }
+  if (d.type === "sepa_debit") return { type: "sepa_debit", ...(d.sepa_debit?.last4 ? { last4: d.sepa_debit.last4 } : {}), ...(d.sepa_debit?.mandate ? { mandate: d.sepa_debit.mandate } : {}) };
+  return { type: d.type };
+}
+
+function intentOf(p: RawIntent): StripeIntent {
+  const charge = p.latest_charge && typeof p.latest_charge === "object" ? p.latest_charge : null;
+  return {
+    id: p.id,
+    status: p.status ?? "",
+    amount: p.amount ?? 0,
+    amountReceived: p.amount_received ?? 0,
+    currency: (p.currency ?? "").toUpperCase(),
+    customer: idOf(p.customer),
+    paymentMethod: idOf(p.payment_method),
+    metadata: p.metadata ?? {},
+    lastError: p.last_payment_error ? { code: p.last_payment_error.code, declineCode: p.last_payment_error.decline_code, message: p.last_payment_error.message } : null,
+    facts: factsOf(charge),
+  };
+}
+
+/** The client as a customer on the coach's account, made once (the key makes a retry give back the same one). */
+export async function createCustomer(account: string, v: { email?: string; name?: string; metadata: Record<string, string>; idempotencyKey: string }): Promise<string> {
+  const c = await call<{ id: string }>("POST", "/customers", { ...(v.email ? { email: v.email } : {}), ...(v.name ? { name: v.name } : {}), metadata: v.metadata }, account, v.idempotencyKey);
+  return c.id;
+}
+
+/**
+ * An automatic charge on the coach's account (26 Nov, Alex): the kept card or SEPA mandate, off session (the client
+ * isn't there), confirmed at once. Answers the PaymentIntent: succeeded (a card), processing (a SEPA debit, paid days
+ * later by payment_intent.succeeded), or it throws a StripeError carrying the intent when the bank declines. Always sent
+ * with an idempotency key, one a try, so a retry of the call is the same charge, never a second.
+ */
+export async function chargeOffSession(account: string, v: { amount: number; currency: string; customer: string; paymentMethod: string; kind: "card" | "sepa_debit"; mandate?: string; description: string; metadata: Record<string, string>; idempotencyKey: string }): Promise<StripeIntent> {
+  const p = await call<RawIntent>(
+    "POST",
+    "/payment_intents",
+    {
+      amount: v.amount,
+      currency: v.currency.toLowerCase(),
+      customer: v.customer,
+      payment_method: v.paymentMethod,
+      payment_method_types: [v.kind],
+      ...(v.kind === "sepa_debit" && v.mandate ? { mandate: v.mandate } : {}),
+      off_session: true,
+      confirm: true,
+      description: v.description,
+      metadata: v.metadata,
+      expand: ["latest_charge"],
+    },
+    account,
+    v.idempotencyKey,
+  );
+  return intentOf(p);
+}
+
+export async function readPaymentIntent(account: string, id: string): Promise<StripeIntent> {
+  return intentOf(await call<RawIntent>("GET", `/payment_intents/${encodeURIComponent(id)}`, { expand: ["latest_charge"] }, account));
+}
+
+/** The customer's latest PaymentIntents (twenty): before a charge is sent, one already made for the invoice is found. */
+export async function customerIntents(account: string, customer: string): Promise<StripeIntent[]> {
+  const r = await call<{ data?: RawIntent[] }>("GET", "/payment_intents", { customer, limit: 20 }, account);
+  return (r.data ?? []).map(intentOf);
+}
+
+/** A charge left waiting on the client (3D Secure): cancelled, so it can never be completed as well as a later one. */
+export async function cancelPaymentIntent(account: string, id: string): Promise<void> {
+  await call("POST", `/payment_intents/${encodeURIComponent(id)}/cancel`, {}, account);
+}
+
+/** A kept card or mandate taken off the customer, so nothing can be charged on it again. */
+export async function detachPaymentMethod(account: string, id: string): Promise<void> {
+  await call("POST", `/payment_methods/${encodeURIComponent(id)}/detach`, {}, account);
+}
+
+/** A refund of the whole PaymentIntent, on the coach's account. Answers its status: succeeded, or pending (a SEPA
+ *  debit's, confirmed later by charge.refunded). */
+export async function refundPaymentIntent(account: string, v: { paymentIntent: string; metadata: Record<string, string>; idempotencyKey: string }): Promise<{ id: string; status: string; amount: number; currency: string }> {
+  const r = await call<{ id: string; status?: string; amount?: number; currency?: string }>("POST", "/refunds", { payment_intent: v.paymentIntent, reason: "requested_by_customer", metadata: v.metadata }, account, v.idempotencyKey);
+  return { id: r.id, status: r.status ?? "", amount: r.amount ?? 0, currency: (r.currency ?? "").toUpperCase() };
+}
+
+/** A charge as Stripe has it now: what it was for and how much of it is refunded (charge.refunded reads this, never the
+ *  event's copy). */
+export async function readCharge(account: string, id: string): Promise<{ id: string; paymentIntent: string | null; amount: number; amountRefunded: number; currency: string; refunded: boolean }> {
+  const c = await call<{ id: string; payment_intent?: string | { id: string } | null; amount?: number; amount_refunded?: number; currency?: string; refunded?: boolean }>("GET", `/charges/${encodeURIComponent(id)}`, {}, account);
+  return { id: c.id, paymentIntent: idOf(c.payment_intent), amount: c.amount ?? 0, amountRefunded: c.amount_refunded ?? 0, currency: (c.currency ?? "").toUpperCase(), refunded: !!c.refunded };
 }
 
 export type StripeAccountState = { id: string; chargesEnabled: boolean; detailsSubmitted: boolean };
@@ -88,17 +243,26 @@ export function minorUnits(amount: number, currency: string): number {
 }
 
 /** A checkout for one invoice, on the coach's account; answers with the page to send the client to. */
-export async function invoiceCheckout(account: string, v: { invoiceId: number; number: string; amount: number; currency: string; seller: string; email?: string; successUrl: string; cancelUrl: string; idempotencyKey?: string }): Promise<{ id: string; url: string; expiresAt: number | null }> {
+/** `save` (26 Nov, Alex: "Pay automatically from now on"): the payment is kept for later on `customer`, the client on
+ *  the coach's account, so the series' next invoices are charged by themselves (lib/invoiceCharges.ts). The methods are
+ *  then card (Apple Pay rides on it) and, in euros, iDEAL: an iDEAL payment with setup_future_usage leaves a SEPA Direct
+ *  Debit method and its mandate on the customer (charge.payment_method_details.ideal.generated_sepa_debit and
+ *  generated_sepa_debit_mandate), which later charges are made on. Checkout itself shows the client the consent to being
+ *  charged later. Without it, whatever methods the coach has on their account, as before. */
+export async function invoiceCheckout(account: string, v: { invoiceId: number; number: string; amount: number; currency: string; seller: string; email?: string; successUrl: string; cancelUrl: string; idempotencyKey?: string; customer?: string; save?: boolean; metadata?: Record<string, string> }): Promise<{ id: string; url: string; expiresAt: number | null }> {
+  const meta = { ...(v.metadata ?? {}), invoice_id: String(v.invoiceId), invoice_number: v.number };
+  const save = !!v.save && !!v.customer;
   const s = await call<{ id: string; url: string; expires_at?: number }>(
     "POST",
     "/checkout/sessions",
     {
       mode: "payment",
       line_items: [{ quantity: 1, price_data: { currency: v.currency.toLowerCase(), unit_amount: minorUnits(v.amount, v.currency), product_data: { name: `Invoice ${v.number}`, description: v.seller } } }],
-      customer_email: v.email,
+      ...(v.customer ? { customer: v.customer } : { customer_email: v.email }),
+      ...(save ? { payment_method_types: v.currency.toUpperCase() === "EUR" ? ["card", "ideal"] : ["card"] } : {}),
       client_reference_id: String(v.invoiceId),
-      metadata: { invoice_id: String(v.invoiceId), invoice_number: v.number },
-      payment_intent_data: { metadata: { invoice_id: String(v.invoiceId), invoice_number: v.number }, description: `Invoice ${v.number}` },
+      metadata: { ...meta, ...(save ? { autopay: "1" } : {}) },
+      payment_intent_data: { metadata: meta, description: `Invoice ${v.number}`, ...(save ? { setup_future_usage: "off_session" } : {}) },
       success_url: v.successUrl,
       cancel_url: v.cancelUrl,
     },
@@ -109,10 +273,28 @@ export async function invoiceCheckout(account: string, v: { invoiceId: number; n
 }
 
 /** An invoice's checkout as Stripe has it now, on the coach's account: still open, paid, or expired. */
-export type InvoiceCheckoutState = { id: string; url: string | null; status: "open" | "complete" | "expired" | string; paymentStatus: string; metadata: Record<string, string>; expiresAt: number | null };
+/** With what it took (26 Nov): the amount and currency (amount_total, minor units), the customer, and its PaymentIntent
+ *  with its charge and how it was paid, so it is marked Paid only for the right money and a way kept is known. */
+export type InvoiceCheckoutState = { id: string; url: string | null; status: "open" | "complete" | "expired" | string; paymentStatus: string; metadata: Record<string, string>; expiresAt: number | null; amountTotal: number | null; currency: string | null; customer: string | null; intent: StripeIntent | null };
 export async function readInvoiceCheckout(account: string, id: string): Promise<InvoiceCheckoutState> {
-  const s = await call<{ id: string; url?: string | null; status?: string; payment_status?: string; metadata?: Record<string, string>; expires_at?: number }>("GET", `/checkout/sessions/${encodeURIComponent(id)}`, {}, account);
-  return { id: s.id, url: s.url ?? null, status: s.status ?? "", paymentStatus: s.payment_status ?? "", metadata: s.metadata ?? {}, expiresAt: typeof s.expires_at === "number" ? s.expires_at : null };
+  const s = await call<{ id: string; url?: string | null; status?: string; payment_status?: string; metadata?: Record<string, string>; expires_at?: number; amount_total?: number | null; currency?: string | null; customer?: string | { id: string } | null; payment_intent?: RawIntent | string | null }>(
+    "GET",
+    `/checkout/sessions/${encodeURIComponent(id)}`,
+    { expand: ["payment_intent", "payment_intent.latest_charge"] },
+    account,
+  );
+  return {
+    id: s.id,
+    url: s.url ?? null,
+    status: s.status ?? "",
+    paymentStatus: s.payment_status ?? "",
+    metadata: s.metadata ?? {},
+    expiresAt: typeof s.expires_at === "number" ? s.expires_at : null,
+    amountTotal: typeof s.amount_total === "number" ? s.amount_total : null,
+    currency: s.currency ? s.currency.toUpperCase() : null,
+    customer: idOf(s.customer),
+    intent: s.payment_intent && typeof s.payment_intent === "object" ? intentOf(s.payment_intent) : null,
+  };
 }
 
 /** Closes an invoice's checkout left open (its amount changed), so the old page can't be paid as well. */

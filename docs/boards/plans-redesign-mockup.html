@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plans, redesigned</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root { --brand:#c8e87a; --on:#141a24; --ink:#141a24; --body:#3a4250; --sec:#5b6474; --muted:#8b93a1; --faint:#98A2B3; --line:#E1E5EB; --bh:#DCE1E8; --div:#EEF0F3; --page:#f4f7fc; --rust:#b8471f; --green:#2f7a3f; --red:#b42318; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #e9edf2; font-family: Archivo, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1440px; margin: 0 auto; padding: 36px 32px 60px; }
+  h1 { margin: 0; font-size: 26px; font-weight: 600; }
+  .lede { margin: 6px 0 0; color: var(--muted); font-size: 14px; font-weight: 500; max-width: 900px; line-height: 21px; }
+  h2 { margin: 44px 0 6px; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: #5b6474; }
+  .what { margin: 0 0 16px; font-size: 14px; font-weight: 500; color: var(--body); line-height: 21px; max-width: 900px; }
+  .bar { display: inline-block; width: 1px; height: 11px; background: #C9CFD8; margin: 0 8px; vertical-align: -1px; flex: none; }
+  svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* ---------- the admin frame (as the To do board draws it) ---------- */
+  .admin { position: relative; display: grid; grid-template-columns: 236px 1fr; min-height: 680px; border-radius: 16px; overflow: hidden; background: var(--page); box-shadow: 0 24px 50px -24px rgba(16,24,40,.4); }
+  .rail { background: var(--brand); color: var(--on); display: flex; flex-direction: column; position: relative; overflow: hidden; }
+  .rail::before { content: ""; position: absolute; right: -73px; top: 40px; width: 220px; height: 220px; background: var(--on); opacity: .1; -webkit-mask: url(../../public/brand/mark.svg) center / contain no-repeat; mask: url(../../public/brand/mark.svg) center / contain no-repeat; }
+  .top { padding: 18px 20px 6px; position: relative; }
+  .word { font-size: 22px; font-weight: 600; letter-spacing: .18em; }
+  .coach { display: flex; gap: 10px; align-items: center; padding-top: 14px; }
+  .coach i { width: 30px; height: 30px; border-radius: 999px; background: #fff; color: var(--ink); display: grid; place-items: center; font-style: normal; font-weight: 600; font-size: 13px; }
+  .coach b { display: block; font-size: 13px; font-weight: 600; }
+  .coach small { display: block; font-size: 11px; opacity: .62; font-weight: 500; }
+  .views { padding: 8px 10px 14px; display: grid; gap: 1px; position: relative; }
+  .views span { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 10px; font-size: 13.5px; font-weight: 500; opacity: .9; }
+  .views span::before { content: ""; width: 14px; height: 14px; border-radius: 4px; box-shadow: inset 0 0 0 1.3px currentColor; opacity: .7; }
+  .views span.on { background: #fff; opacity: 1; font-weight: 600; }
+  .rpaper { flex: 1; background: #fff; border-radius: 20px 20px 0 0; padding: 14px 12px; position: relative; }
+  .chead { display: flex; align-items: center; gap: 8px; padding: 0 6px 10px; }
+  .chead .lab { font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: #5b6474; }
+  .chead .n { font-size: 12px; color: var(--muted); }
+  .search { height: 32px; border-radius: 999px; box-shadow: inset 0 0 0 1.5px var(--ink); font-size: 12.5px; color: var(--faint); display: flex; align-items: center; padding: 0 12px; margin-bottom: 8px; }
+  .rcap { display: flex; margin: 0 0 8px; padding: 3px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--bh); font-size: 12px; font-weight: 600; }
+  .rcap span { flex: 1; text-align: center; padding: 5px 0; border-radius: 999px; color: var(--body); }
+  .rcap span.on { background: var(--brand); color: var(--on); }
+  .cl { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 9px; font-size: 13.5px; font-weight: 500; }
+  .cl i { width: 24px; height: 24px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); display: grid; place-items: center; font-style: normal; font-size: 11px; font-weight: 600; }
+  .cl .k { margin-left: auto; color: var(--rust); font-size: 12px; font-weight: 600; }
+
+  .main { position: relative; padding: 28px 72px 48px 32px; overflow: hidden; }
+  .main::before { content: ""; position: absolute; right: 48px; top: 28px; width: 560px; height: 560px; background: var(--brand); opacity: .3; pointer-events: none; -webkit-mask: url(../../public/brand/mark.svg) center / contain no-repeat; mask: url(../../public/brand/mark.svg) center / contain no-repeat; }
+  .pg { position: relative; font-size: 26px; line-height: 32px; font-weight: 600; }
+  .cols { position: relative; display: grid; grid-template-columns: 230px minmax(0, 760px); gap: 36px; margin-top: 24px; align-items: start; }
+  .snav { display: flex; flex-direction: column; gap: 2px; }
+  .snav a { display: block; padding: 11px 16px 12px; border-radius: 14px; font-size: 15px; line-height: 20px; font-weight: 600; }
+  .snav a.on { background: #fff; box-shadow: inset 0 0 0 1px var(--line); }
+  .snav .out { margin-top: 14px; padding: 8px 16px; font-size: 13px; font-weight: 600; color: var(--red); }
+  .edge { position: absolute; right: 0; top: 80px; display: grid; gap: 6px; }
+  .edge span { width: 34px; height: 40px; border-radius: 10px 0 0 10px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); display: grid; place-items: center; font-size: 13px; font-weight: 600; color: var(--ink); }
+  .edge svg { width: 16px; height: 16px; }
+
+  /* ---------- Settings' section voice ---------- */
+  .sechead { display: flex; align-items: center; justify-content: space-between; min-height: 36px; }
+  .sechead h3 { margin: 0; font-size: 20px; line-height: 26px; font-weight: 600; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 15px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px var(--bh); font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; cursor: pointer; border: 0; font-family: inherit; }
+  .pill svg { width: 14px; height: 14px; translate: 0 -.5px; }
+  .pill.off { opacity: .45; pointer-events: none; }
+  .part { margin-top: 20px; }
+  .lbl { display: flex; align-items: center; gap: 8px; height: 36px; margin-bottom: 4px; }
+  .lbl b { font-size: 10.5px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--ink); white-space: nowrap; }
+  .lbl span { font-size: 12.5px; font-weight: 500; color: var(--muted); white-space: nowrap; }
+  .card { background: #fff; border-radius: 18px; box-shadow: inset 0 0 0 1px var(--line); }
+
+  /* fields: small caps over clean lines */
+  .fl { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .fl > span:first-child { font-size: 10.5px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: #5b6474; }
+  .ln, .lined input { height: 30px; width: 100%; min-width: 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; outline: none; padding: 0; font: inherit; font-size: 15px; font-weight: 500; color: var(--ink); transition: border-color .15s; }
+  .ln:focus { border-bottom-color: var(--ink); }
+  .lined { display: flex; align-items: center; gap: 8px; height: 30px; border-bottom: 1px solid var(--line); transition: border-color .15s; }
+  .lined:focus-within { border-bottom-color: var(--ink); }
+  .lined.bad { border-bottom-color: var(--red); }
+  .lined em { flex: none; padding-right: 8px; border-right: 1px solid var(--line); font-size: 15px; font-style: normal; font-weight: 500; line-height: 18px; color: var(--muted); }
+  .lined input { border-bottom: 0; height: 29px; font-variant-numeric: tabular-nums; }
+  .vat { display: block; min-height: 17px; font-size: 12px; line-height: 17px; font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .caps { display: inline-flex; height: 36px; padding: 4px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 1px var(--bh); flex: none; }
+  .caps i { display: flex; align-items: center; padding: 0 14px; border-radius: 999px; font-style: normal; font-size: 13px; font-weight: 600; color: var(--sec); white-space: nowrap; cursor: pointer; transition: background-color .25s, color .25s; }
+  .caps i.on { background: var(--brand); color: var(--on); }
+  .foot { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+  .wa { display: inline-flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--sec); white-space: nowrap; cursor: pointer; }
+  .wa:hover { background: #F5F6F8; }
+  .go { display: inline-flex; align-items: center; height: 36px; padding: 0 18px; border-radius: 999px; background: var(--brand); color: var(--on); font-size: 13.5px; font-weight: 600; cursor: pointer; }
+  .go.off { opacity: .45; pointer-events: none; }
+
+  /* faces: white, the hairline, the initial ink at 600 */
+  .stack { display: flex; flex: none; }
+  .stack i { width: var(--f, 28px); height: var(--f, 28px); border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 1px var(--line), 0 0 0 2px #fff; display: grid; place-items: center; font-style: normal; font-size: calc(var(--f, 28px) * .45); font-weight: 600; color: var(--ink); margin-left: calc(var(--f, 28px) * -.26); }
+  .stack i:first-child { margin-left: 0; }
+  .stack i.plus { color: var(--muted); font-size: 11px; }
+  .face { width: 28px; height: 28px; flex: none; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 1px var(--line); display: grid; place-items: center; font-size: 12.5px; font-weight: 600; }
+
+  /* the ⋯ and its floating list */
+  .more { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: var(--ink); opacity: 0; transition: opacity .12s, background-color .12s; cursor: pointer; }
+  .more svg { width: 16px; height: 16px; }
+  .more:hover, .more.open { background: #F5F6F8; }
+  .more.open { opacity: 1; }
+  .fmenu { position: absolute; z-index: 5; display: flex; flex-direction: column; width: 170px; padding: 5px; border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(20,30,50,.16); cursor: default; }
+  .fmenu i { display: flex; align-items: center; height: 34px; padding: 0 10px; border-radius: 7px; font-style: normal; font-size: 13.5px; font-weight: 600; color: var(--ink); cursor: pointer; }
+  .fmenu i:hover { background: #fafbfd; }
+  .fmenu i.red { color: var(--red); }
+  .fmenu .ask { padding: 8px 10px 4px; }
+  .fmenu .ask b { display: block; font-size: 13.5px; font-weight: 600; }
+  .fmenu .ask span { display: flex; justify-content: flex-end; gap: 2px; margin-top: 6px; }
+  .fmenu .ask span i { height: 30px; }
+
+  /* the clients on a plan, opened */
+  .clab { display: flex; align-items: center; gap: 8px; margin: 22px 0 4px; }
+  .clab b { font-size: 10.5px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--ink); }
+  .clab span { font-size: 12.5px; font-weight: 500; color: var(--muted); }
+  .crow { display: grid; grid-template-columns: 28px minmax(0, 1fr) 92px; align-items: center; gap: 12px; min-height: 52px; margin: 0 -10px; padding: 0 10px; border-radius: 10px; transition: background-color .15s; }
+  .crow:hover { background: #fafbfd; }
+  .crow .t { min-width: 0; }
+  .crow .t b { display: block; font-size: 14px; line-height: 19px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .crow .t small { display: flex; align-items: center; margin-top: 2px; font-size: 12.5px; line-height: 17px; font-weight: 500; color: var(--muted); white-space: nowrap; }
+  .crow .t small .own { color: var(--ink); font-weight: 600; }
+  .crow .t small { overflow: hidden; }
+  .crow .back { display: none; color: var(--ink); font-weight: 600; cursor: pointer; }
+  .crow:hover .back { display: inline; }
+  .crow:hover .nx { display: none; }
+  .crow .lined input { text-align: right; }
+  .well { display: flex; gap: 10px; margin-top: 16px; padding: 12px 14px; border-radius: 12px; background: #F5F6F8; cursor: pointer; }
+  .tk { flex: none; width: 18px; height: 18px; margin-top: 1px; border-radius: 5px; background: #fff; box-shadow: inset 0 0 0 1px #c9cfd8; display: grid; place-items: center; color: var(--on); }
+  .tk svg { width: 12px; height: 12px; opacity: 0; }
+  .tk.on { background: var(--brand); box-shadow: none; }
+  .tk.on svg { opacity: 1; }
+  .well b { display: block; font-size: 13.5px; line-height: 19px; font-weight: 600; }
+  .well small { display: block; margin-top: 1px; font-size: 12.5px; font-weight: 500; color: var(--muted); }
+
+  /* ---------- A: cards ---------- */
+  .pgrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .pc { position: relative; display: flex; flex-direction: column; min-height: 212px; padding: 18px 20px 18px; border-radius: 18px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; transition: box-shadow .15s; }
+  .pc:hover { box-shadow: inset 0 0 0 1px #c9cfd8; }
+  .pc:hover .more { opacity: 1; }
+  .pc .nm { padding-right: 34px; font-size: 16px; line-height: 22px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pc > .more { position: absolute; top: 14px; right: 14px; }
+  .pc > .fmenu { top: 48px; right: 14px; }
+  .pc .price { display: flex; align-items: baseline; gap: 7px; margin-top: 12px; }
+  .pc .price b { font-size: 30px; line-height: 36px; font-weight: 600; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+  .pc .price span { font-size: 14px; font-weight: 500; color: var(--muted); }
+  .pc .who { display: flex; align-items: center; gap: 12px; margin-top: auto; padding-top: 18px; }
+  .pc .who b { display: flex; align-items: center; font-size: 13.5px; line-height: 19px; font-weight: 600; }
+  .pc .who small { display: block; margin-top: 1px; font-size: 12.5px; font-weight: 500; color: var(--muted); }
+  .pc .who .none { font-size: 13.5px; font-weight: 500; color: var(--muted); }
+  .pc.arch > :not(.more):not(.fmenu) { opacity: .5; }
+  .pc.edit, .pc.edit:hover { cursor: default; padding-bottom: 16px; box-shadow: inset 0 0 0 1px #c9cfd8; }
+  .frow { display: grid; grid-template-columns: minmax(0, 1fr) 116px; gap: 16px; align-items: start; }
+  .pc.edit .caps { margin-top: 12px; align-self: flex-start; }
+  .pc.edit > .foot { margin-top: 18px; }
+  .pc.new { cursor: default; }
+  .pc.new .caps { margin-top: 10px; align-self: flex-start; }
+  .pc.new > .foot { margin-top: auto; }
+  .ptile { min-height: 212px; border-radius: 18px; border: 1.5px dashed #c9cfd8; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--body); cursor: pointer; transition: background-color .15s; }
+  .ptile:hover { background: #fff; }
+  .ptile svg { width: 15px; height: 15px; translate: 0 -.5px; }
+
+  /* ---------- B: rows ---------- */
+  .bcard { overflow: visible; }
+  .brow { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 168px 178px 96px 30px; align-items: center; gap: 12px; min-height: 66px; padding: 0 16px 0 20px; cursor: pointer; transition: background-color .15s; }
+  .brow:hover { background: #fafbfd; }
+  .brow:hover .more { opacity: 1; }
+  .brow.head { min-height: 38px; cursor: default; }
+  .brow.head:hover { background: none; }
+  .brow.head span { font-size: 10.5px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: #5b6474; }
+  .brow.head .r, .brow .bm { text-align: right; }
+  .bline { height: 1px; background: var(--div); }
+  .card > .brow:first-child { border-radius: 18px 18px 0 0; }
+  .bn { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .bn b { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chev { display: inline-grid; place-items: center; width: 16px; height: 16px; color: var(--muted); transition: rotate .28s cubic-bezier(.22,1,.36,1); }
+  .chev svg { width: 12px; height: 12px; }
+  .chev.down { rotate: 90deg; }
+  .bp b { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .bp > span { margin-left: 5px; font-size: 13px; font-weight: 500; color: var(--muted); }
+  .bc { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .bc div span { display: block; font-size: 13.5px; font-weight: 500; color: var(--body); white-space: nowrap; }
+  .bc small { display: block; font-size: 12px; font-weight: 500; color: var(--muted); white-space: nowrap; }
+  .bm { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .bm .dash, .bc .dash, .bp .dash, .pc .price .dash { color: var(--faint); font-weight: 500; }
+  .brow > .fmenu { top: 52px; right: 16px; }
+  .brow.arch > :not(.more):not(.fmenu) { opacity: .5; }
+  .bfold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 340ms cubic-bezier(.22,1,.36,1); }
+  .bfold.open { grid-template-rows: 1fr; }
+  .bfold > div { overflow: hidden; min-height: 0; }
+  .bfold .bin { opacity: 0; translate: 0 -4px; transition: opacity 220ms, translate 340ms cubic-bezier(.22,1,.36,1); }
+  .bfold.open .bin { opacity: 1; translate: 0 0; }
+  .bin { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 20px 40px; padding: 2px 20px 18px; }
+  .bin .left { display: flex; flex-direction: column; gap: 14px; }
+  .bin .left .well { margin-top: 2px; }
+  .bin .clab { margin-top: 0; }
+  .bin > .foot { grid-column: 1 / -1; }
+  .bnew { display: grid; grid-template-columns: minmax(0, 1fr) 140px auto; gap: 8px 20px; align-items: start; padding: 14px 16px 16px 20px; }
+  .bnew .caps { margin-top: 13px; }
+  .bnew > .foot { grid-column: 1 / -1; }
+  @media (prefers-reduced-motion: reduce) { .bfold, .bfold .bin, .chev, .caps i { transition: none; } }
+
+  .notes ul { margin: 0; padding-left: 18px; font-size: 14px; line-height: 22px; color: var(--body); max-width: 920px; }
+  .notes li + li { margin-top: 4px; }
+  .notes b { color: var(--ink); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Plans, redesigned</h1>
+  <p class="lede">Settings › Plans read like a spreadsheet: a name, a price, a rhythm and a count. Here each plan shows who is on it, what it brings in a month and what the price holds in VAT, and opening a plan lists its clients, where one client's own price is typed. Change a plan's price and it asks whether the clients already on it move too, from their next invoice. Everything on the board is clickable: open a plan, change its price, tick the box, Save, ⋯, + Plan.</p>
+
+  <h2>A · Plans as cards</h2>
+  <p class="what">A card a plan, two across: its price big, the VAT in it grey, its clients' faces and what they bring in a month. A click opens the card where it is (the card under it moves down, nothing beside it): its name, price and rhythm to change, then its clients, each with their price; a figure typed that isn't the plan's makes it their own price, and the hover on that row offers Back to the plan's. The dashed tile is + Plan: it turns into the new card in its own room, as tall as the tile. Drawn with Online coaching open and its price typed up to €95.</p>
+  <div class="admin" id="frameA">
+    <aside class="rail"></aside>
+    <main class="main"><div class="pg">Settings</div><div class="cols"><nav class="snav"></nav><section class="sec" id="A"></section></div></main>
+    <div class="edge"></div>
+  </div>
+
+  <h2>B · Richer rows</h2>
+  <p class="what">One hairline card of rows, which stays easy to scan with ten plans: the name with its chevron, the price with its VAT under it, the faces and how many, and the month's total on the right. A row opens on the shared fold: on the left its name, price and rhythm, on the right its clients with their prices, the same as A. + Plan adds a row at the card's foot, as today, with the VAT showing under the price as it is typed.</p>
+  <div class="admin" id="frameB">
+    <aside class="rail"></aside>
+    <main class="main"><div class="pg">Settings</div><div class="cols"><nav class="snav"></nav><section class="sec" id="B"></section></div></main>
+    <div class="edge"></div>
+  </div>
+
+  <h2>No plans yet · the same in A and B</h2>
+  <p class="what">The title and + Plan, nothing under it. In A + Plan opens the new card; in B the new row.</p>
+  <div class="admin" style="min-height: 420px">
+    <aside class="rail"></aside>
+    <main class="main"><div class="pg">Settings</div><div class="cols"><nav class="snav"></nav><section class="sec"><div class="sechead"><h3>Plans</h3><span class="pill"><svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>Plan</span></div></section></div></main>
+    <div class="edge"></div>
+  </div>
+
+  <h2>What changes</h2>
+  <div class="notes"><ul>
+    <li><b>Who is on a plan</b>: their faces and the count, on the plan itself, and the list of them once it is opened (today: `1 client`).</li>
+    <li><b>What it brings in</b>: `3 clients | €257 a month`, what the clients on it really pay, a 2-weekly plan counted as its month's worth (`€35` × 26 ÷ 12 = `€76 a month`), whole euros as Business counts.</li>
+    <li><b>The VAT in a price</b>, grey under it, read from the business's rate (`€89` = `€73.55 + €15.45 VAT`), live while a price is typed.</li>
+    <li><b>A client's own price</b>, typed on their row inside the plan; the plan says `1 on their own price`, the row `Own price`, and the row's hover `Back to €89`. Their invoices from the next one on carry it.</li>
+    <li><b>A new price on a plan</b> is still for new clients first, as today. Typed, a grey well asks to <b>Also move</b> the clients on the old price, from their next invoice; a client on their own price never moves. Unticked, the old price becomes theirs, and the list says so before Save.</li>
+    <li><b>Adding</b>: A the dashed last tile, turning into the card in its own room; B the row at the card's foot as today. Both keep + Plan beside the title, as the Library does.</li>
+    <li>As today: archived plans last and faded (out of the Details picker, their clients still billed), Delete in the ⋯ only with no client on it, asking first (here in the ⋯ itself), each change saved at once, never on the page's bar.</li>
+    <li>No Saved toast any more (today's code toasts `Saved` and `{Plan} added`, which the admin rules took out on 16 Nov): the card or row showing the new figures says it.</li>
+    <li>Not on this screen, on purpose: how each client pays (card, iDEAL, bank transfer) and a failed charge. They are the client's Invoices tab's and the invoice's.</li>
+  </ul></div>
+</div>
+
+<script>
+(() => {
+  const I = {
+    plus: '<svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>',
+    more: '<svg viewBox="0 0 16 16"><circle cx="3.5" cy="8" r=".9"/><circle cx="8" cy="8" r=".9"/><circle cx="12.5" cy="8" r=".9"/></svg>',
+    chev: '<svg viewBox="0 0 12 12"><path d="M4.5 2.5 8 6l-3.5 3.5"/></svg>',
+    check: '<svg viewBox="0 0 12 12"><path d="M2.5 6.2 5 8.6l4.5-5"/></svg>',
+    chat: '<svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>',
+  };
+  const BAR = '<i class="bar"></i>';
+
+  // The frame's fixed parts.
+  const RAIL = `<div class="top"><div class="word">NORCOACH</div><div class="coach"><i>F</i><div><b>Finlay Chedd</b><small>Full Potential Coaching</small></div></div></div>
+    <div class="views"><span>Feed</span><span>Phases</span><span>Calendar</span><span>Library</span><span>Business</span><span class="on">Settings</span></div>
+    <div class="rpaper"><div class="chead"><span class="lab">Clients</span><span class="n">7</span></div><div class="search">Search clients</div>
+    <div class="rcap"><span class="on">All</span><span>Needs you 2</span></div>
+    <div class="cl"><i>A</i>Alex Arvio<span class="k">1</span></div><div class="cl"><i>E</i>Elena Rossi</div><div class="cl"><i>E</i>Esmee Grit</div><div class="cl"><i>J</i>Jonas Weber<span class="k">1</span></div><div class="cl"><i>L</i>Lotte Visser</div><div class="cl"><i>M</i>Maya Brooks</div></div>`;
+  const NAV = ['Profile', 'Account', 'Business details', 'Branding', 'Plans', 'Invoicing &amp; payments', 'Preferences', 'Data &amp; privacy', 'Support']
+    .map((n) => `<a class="${n === 'Plans' ? 'on' : ''}">${n}</a>`).join('') + '<div class="out">Sign out</div>';
+  document.querySelectorAll('.rail').forEach((r) => (r.innerHTML = RAIL));
+  document.querySelectorAll('.snav').forEach((n) => (n.innerHTML = NAV));
+  document.querySelectorAll('.edge').forEach((e) => (e.innerHTML = `<span>${I.chat}</span><span>?</span>`));
+
+  // The plans. VAT 21% is in every price.
+  const BASE = [
+    { id: 'online', name: 'Online coaching', price: 89, every: 'month', archived: false, clients: [
+      { n: 'Alex Arvio', i: 'A', price: 89, next: '1/12' },
+      { n: 'Esmee Grit', i: 'E', price: 89, next: '4/12' },
+      { n: 'Elena Rossi', i: 'E', price: 79, next: '9/12' } ] },
+    { id: 'premium', name: '1:1 Premium', price: 150, every: 'month', archived: false, clients: [
+      { n: 'Jonas Weber', i: 'J', price: 150, next: '2/12' },
+      { n: 'Maya Brooks', i: 'M', price: 150, next: '15/12' } ] },
+    { id: 'checkin', name: 'Check-in only', price: 35, every: '2w', archived: false, clients: [
+      { n: 'Lotte Visser', i: 'L', price: 35, next: '3/12' } ] },
+  ];
+  const EVERY = { week: { cap: 'Week', per: 'a week', f: 52 / 12 }, '2w': { cap: '2 weeks', per: 'every 2 weeks', f: 26 / 12 }, month: { cap: 'Month', per: 'a month', f: 1 } };
+  const ORDER = ['week', '2w', 'month'];
+
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const parse = (s) => { s = String(s).trim().replace(',', '.'); if (s === '') return null; const n = Number(s); return Number.isFinite(n) && n >= 0 ? n : NaN; };
+  const ok = (n) => n != null && !Number.isNaN(n);
+  const eur = (n) => '€' + (Number.isInteger(n) ? n : n.toFixed(2));
+  const cents = (n) => '€' + n.toFixed(2);
+  const vatTxt = (p) => { if (!ok(p) || p === 0) return ''; const net = Math.round((p / 1.21) * 100) / 100; return `${cents(net)} + ${cents(Math.round((p - net) * 100) / 100)} VAT`; };
+  const monthOf = (pl) => Math.round(pl.clients.reduce((s, c) => s + c.price, 0) * EVERY[pl.every].f);
+  const ownOf = (pl) => pl.clients.filter((c) => c.price !== pl.price).length;
+  const count = (n) => (n === 1 ? '1 client' : `${n} clients`);
+  const first = (n) => n.split(' ')[0];
+  const names = (a) => (a.length === 1 ? a[0] : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]);
+  const stack = (cl, f) => { const shown = cl.slice(0, 4); return `<span class="stack" style="--f:${f}px">${shown.map((c) => `<i>${c.i}</i>`).join('')}${cl.length > 4 ? `<i class="plus">+${cl.length - 4}</i>` : ''}</span>`; };
+
+  function mkDraft(p) { return { name: p.name, price: String(p.price), every: p.every, move: false, clients: p.clients.map((c) => ({ ...c, val: String(c.price) })) }; }
+  // The draft's price when it's a figure, else the plan's own.
+  const effPrice = (p, d) => { const n = parse(d.price); return ok(n) ? n : p.price; };
+  const onOld = (p, d) => d.clients.filter((c) => c.price === p.price);
+
+  function caps(on, ctx) { return `<span class="caps">${ORDER.map((v) => `<i class="${v === on ? 'on' : ''}" data-act="cap" data-v="${v}" data-ctx="${ctx}">${EVERY[v].cap}</i>`).join('')}</span>`; }
+  function menu(p, st) {
+    if (st.menu !== p.id) return '';
+    if (st.ask === p.id) return `<div class="fmenu" data-act="noop"><div class="ask"><b>Delete ${esc(p.name)}?</b><span><i data-act="delno">Cancel</i><i class="red" data-act="delyes" data-id="${p.id}">Delete</i></span></div></div>`;
+    return `<div class="fmenu" data-act="noop"><i data-act="arch" data-id="${p.id}">${p.archived ? 'Restore' : 'Archive'}</i>${p.clients.length === 0 ? `<i class="red" data-act="del" data-id="${p.id}">Delete</i>` : ''}</div>`;
+  }
+  function wellHtml(p, d) {
+    const n = parse(d.price), old = onOld(p, d);
+    if (!ok(n) || n === p.price || old.length === 0) return '';
+    return `<div class="well" data-act="move"><span class="tk${d.move ? ' on' : ''}">${I.check}</span><span><b>Also move ${old.length > 3 ? `the ${old.length} clients on ${eur(p.price)}` : names(old.map((c) => first(c.n)))} to ${eur(n)}</b><small>From their next invoice</small></span></div>`;
+  }
+  function factHtml(p, d, c) {
+    const v = parse(c.val), plan = effPrice(p, d), own = ok(v) && v !== plan;
+    return own ? `<span class="own">Own price</span>${BAR}<span class="nx">Next ${c.next}</span><span class="back" data-act="back" data-ci="${d.clients.indexOf(c)}">Back to ${eur(plan)}</span>` : `Next ${c.next}`;
+  }
+  function clientsHtml(p, d) {
+    if (!d.clients.length) return '';
+    return `<div class="clab"><b>Clients</b><span>${d.clients.length}</span></div>` + d.clients.map((c, ci) => `
+      <div class="crow"><span class="face">${c.i}</span><div class="t"><b>${esc(c.n)}</b><small data-fact="${ci}">${factHtml(p, d, c)}</small></div>
+      <span class="lined${ok(parse(c.val)) || c.val === '' ? '' : ' bad'}" data-cbox="${ci}"><em>€</em><input data-in="client" data-ci="${ci}" inputmode="decimal" value="${esc(c.val)}" aria-label="${esc(c.n)}'s price"></span></div>`).join('');
+  }
+  const canSave = (d) => d.name.trim() !== '' && ok(parse(d.price));
+  function fields(p, d) {
+    const n = parse(d.price);
+    return `<div class="frow"><label class="fl"><span>Name</span><input class="ln" data-in="name" maxlength="60" value="${esc(d.name)}"></label>
+      <label class="fl"><span>Price</span><span class="lined${d.price === '' || ok(n) ? '' : ' bad'}" data-pbox><em>€</em><input data-in="price" inputmode="decimal" value="${esc(d.price)}"></span><small class="vat" data-vat>${vatTxt(n)}</small></label></div>`;
+  }
+  const editFoot = (d) => `<div class="foot"><span class="wa" data-act="cancel">Cancel</span><span class="go${canSave(d) ? '' : ' off'}" data-act="save" data-save>Save</span></div>`;
+  function newFields(nd, cls) {
+    const n = parse(nd.price);
+    return `<label class="fl"><span>Name</span><input class="ln" data-in="nname" maxlength="60" value="${esc(nd.name)}"></label>
+      <label class="fl"><span>Price</span><span class="lined${nd.price === '' || ok(n) ? '' : ' bad'}" data-npbox><em>€</em><input data-in="nprice" inputmode="decimal" value="${esc(nd.price)}"></span><small class="vat" data-nvat>${vatTxt(n)}</small></label>`;
+  }
+  const newFoot = (nd) => `<div class="foot"><span class="wa" data-act="addcancel">Cancel</span><span class="go${nd.name.trim() && (nd.price === '' || ok(parse(nd.price))) ? '' : ' off'}" data-act="addsave" data-nsave>Add</span></div>`;
+  const sorted = (st) => [...st.plans.filter((p) => !p.archived), ...st.plans.filter((p) => p.archived)];
+  const head = (st) => `<div class="sechead"><h3>Plans</h3><span class="pill${st.adding ? ' off' : ''}" data-act="add">${I.plus}Plan</span></div>`;
+  const label = `<div class="lbl"><b>Your plans</b>${BAR}<span>Prices include 21% VAT</span></div>`;
+
+  // ---------- A ----------
+  function renderA(root, st) {
+    const cards = sorted(st).map((p) => {
+      if (st.open === p.id) {
+        const d = st.draft;
+        return `<div class="pc edit">${fields(p, d)}${caps(d.every, 'edit')}<div data-well>${wellHtml(p, d)}</div>${clientsHtml(p, d)}${editFoot(d)}</div>`;
+      }
+      const own = ownOf(p), n = p.clients.length;
+      const facts = n ? `<b>${p.archived ? 'Archived' + BAR : ''}${count(n)}${BAR}€${monthOf(p)} a month</b>${own ? `<small>${own} on their own price</small>` : ''}` : `<span class="none">${p.archived ? 'Archived' : 'No clients'}</span>`;
+      return `<div class="pc${p.archived ? ' arch' : ''}" data-act="open" data-id="${p.id}">
+        <div class="nm">${esc(p.name)}</div><span class="more${st.menu === p.id ? ' open' : ''}" data-act="more" data-id="${p.id}">${I.more}</span>${menu(p, st)}
+        <div class="price">${p.price ? `<b>${eur(p.price)}</b><span>${EVERY[p.every].per}</span>` : '<b class="dash">—</b>'}</div><span class="vat">${vatTxt(p.price)}</span>
+        <div class="who">${n ? stack(p.clients, 28) : ''}<div>${facts}</div></div></div>`;
+    }).join('');
+    const tile = st.adding
+      ? `<div class="pc new"><div class="frow">${newFields(st.newDraft)}</div>${caps(st.newDraft.every, 'new')}${newFoot(st.newDraft)}</div>`
+      : `<div class="ptile" data-act="add">${I.plus}Plan</div>`;
+    root.innerHTML = head(st) + `<div class="part">${label}<div class="pgrid">${cards}${tile}</div></div>`;
+  }
+
+  // ---------- B ----------
+  function renderB(root, st) {
+    const rows = sorted(st).map((p, ix) => {
+      const isOpen = st.open === p.id, own = ownOf(p), n = p.clients.length;
+      const row = `${ix ? '<div class="bline"></div>' : ''}<div class="brow${p.archived ? ' arch' : ''}" data-act="open" data-id="${p.id}">
+        <div class="bn"><b>${esc(p.name)}</b><span class="chev${isOpen ? ' down' : ''}">${I.chev}</span></div>
+        <div class="bp">${p.price ? `<b>${eur(p.price)}</b><span>${EVERY[p.every].per}</span><small class="vat">${vatTxt(p.price)}</small>` : '<b class="dash">—</b>'}</div>
+        <div class="bc">${n ? `${stack(p.clients, 24)}<div><span>${p.archived ? 'Archived' : count(n)}</span>${own ? `<small>${own} own price</small>` : ''}</div>` : `<span class="dash">${p.archived ? 'Archived' : 'None'}</span>`}</div>
+        <div class="bm">${n ? '€' + monthOf(p) : '<span class="dash">—</span>'}</div>
+        <span class="more${st.menu === p.id ? ' open' : ''}" data-act="more" data-id="${p.id}">${I.more}</span>${menu(p, st)}</div>`;
+      if (!isOpen) return row;
+      const d = st.draft;
+      return row + `<div class="bfold${st.anim ? '' : ' open'}" data-fold><div><div class="bin">
+        <div class="left">${fields(p, d)}${caps(d.every, 'edit')}<div data-well>${wellHtml(p, d)}</div></div>
+        <div class="right">${clientsHtml(p, d)}</div>${editFoot(d)}</div></div></div>`;
+    }).join('');
+    const add = st.adding ? `<div class="bline"></div><div class="bnew">${newFields(st.newDraft)}${caps(st.newDraft.every, 'new')}${newFoot(st.newDraft)}</div>` : '';
+    root.innerHTML = head(st) + `<div class="part">${label}<div class="card bcard"><div class="brow head"><span>Plan</span><span>Price</span><span>Clients</span><span class="r">A month</span><span></span></div><div class="bline"></div>${rows}${add}</div></div>`;
+    if (st.anim) {
+      st.anim = false;
+      const f = root.querySelector('[data-fold]');
+      requestAnimationFrame(() => requestAnimationFrame(() => f && f.classList.add('open')));
+    }
+  }
+
+  // ---------- one state each, one set of actions ----------
+  function mount(root, render, init) {
+    const st = { plans: JSON.parse(JSON.stringify(BASE)), open: null, draft: null, menu: null, ask: null, adding: false, newDraft: null, anim: false, fold: render === renderB };
+    init(st);
+    const draw = () => render(root, st);
+    const plan = (id) => st.plans.find((p) => p.id === id);
+    const close = (then) => {
+      const f = st.fold && root.querySelector('[data-fold]');
+      const done = () => { then && then(); st.open = null; st.draft = null; draw(); };
+      if (f) { f.classList.remove('open'); setTimeout(done, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 340); } else done();
+    };
+    const openPlan = (id) => { st.open = id; st.draft = mkDraft(plan(id)); st.menu = null; st.adding = false; st.anim = st.fold; draw(); };
+
+    root.addEventListener('click', (e) => {
+      const a = e.target.closest('[data-act]');
+      if (!a || !root.contains(a)) return;
+      const id = a.dataset.id, p = id && plan(id);
+      switch (a.dataset.act) {
+        case 'noop': return;
+        case 'open':
+          if (st.open === id) { if (st.fold) close(); return; }
+          if (st.open) { st.open = null; st.draft = null; }
+          openPlan(id); return;
+        case 'cancel': close(); return;
+        case 'save': {
+          const d = st.draft, pl = plan(st.open);
+          if (!canSave(d)) return;
+          close(() => {
+            pl.name = d.name.trim(); pl.price = parse(d.price); pl.every = d.every;
+            d.clients.forEach((c, ci) => { const v = parse(c.val); if (ok(v)) pl.clients[ci].price = v; });
+          });
+          return;
+        }
+        case 'cap':
+          if (a.dataset.ctx === 'new') st.newDraft.every = a.dataset.v; else st.draft.every = a.dataset.v;
+          draw(); return;
+        case 'move': {
+          const d = st.draft, pl = plan(st.open), np = parse(d.price);
+          d.move = !d.move;
+          d.clients.forEach((c) => { if (c.price === pl.price) c.val = String(d.move && ok(np) ? np : pl.price); });
+          draw(); return;
+        }
+        case 'back': { const d = st.draft; d.clients[+a.dataset.ci].val = String(effPrice(plan(st.open), d)); draw(); return; }
+        case 'more': st.menu = st.menu === id ? null : id; st.ask = null; draw(); return;
+        case 'arch': p.archived = !p.archived; st.menu = null; draw(); return;
+        case 'del': st.ask = id; draw(); return;
+        case 'delno': st.menu = null; st.ask = null; draw(); return;
+        case 'delyes': st.plans = st.plans.filter((x) => x.id !== id); st.menu = null; st.ask = null; draw(); return;
+        case 'add': if (st.adding) return; st.adding = true; st.newDraft = { name: '', price: '', every: 'month' }; st.open = null; st.draft = null; st.menu = null; draw(); root.querySelector('[data-in="nname"]').focus(); return;
+        case 'addcancel': st.adding = false; draw(); return;
+        case 'addsave': {
+          const nd = st.newDraft, n = parse(nd.price);
+          if (!nd.name.trim() || (nd.price !== '' && !ok(n))) return;
+          st.plans.push({ id: 'p' + Date.now(), name: nd.name.trim(), price: ok(n) ? n : 0, every: nd.every, archived: false, clients: [] });
+          st.adding = false; draw(); return;
+        }
+      }
+    });
+
+    // Typing never redraws the card (so the field keeps the keyboard): only what depends on it.
+    root.addEventListener('input', (e) => {
+      const t = e.target, k = t.dataset.in;
+      if (!k) return;
+      const clean = (s) => s.replace(/[^\d.,]/g, '');
+      if (k === 'nname' || k === 'nprice') {
+        const nd = st.newDraft;
+        if (k === 'nname') nd.name = t.value; else { t.value = clean(t.value); nd.price = t.value; }
+        const n = parse(nd.price);
+        root.querySelector('[data-nvat]').textContent = vatTxt(n);
+        root.querySelector('[data-npbox]').classList.toggle('bad', nd.price !== '' && !ok(n));
+        root.querySelector('[data-nsave]').classList.toggle('off', !(nd.name.trim() && (nd.price === '' || ok(n))));
+        return;
+      }
+      const d = st.draft, pl = plan(st.open);
+      if (k === 'name') d.name = t.value;
+      if (k === 'price') {
+        t.value = clean(t.value); d.price = t.value;
+        const n = parse(d.price);
+        if (d.move) d.clients.forEach((c, ci) => { if (c.price === pl.price) { c.val = String(ok(n) ? n : pl.price); const f = root.querySelector(`[data-ci="${ci}"][data-in]`); if (f) f.value = c.val; } });
+        if (!ok(n) || n === pl.price) d.move = false;
+        root.querySelector('[data-vat]').textContent = vatTxt(n);
+        root.querySelector('[data-pbox]').classList.toggle('bad', d.price !== '' && !ok(n));
+        root.querySelector('[data-well]').innerHTML = wellHtml(pl, d);
+      }
+      if (k === 'client') {
+        t.value = clean(t.value);
+        d.clients[+t.dataset.ci].val = t.value;
+        root.querySelector(`[data-cbox="${t.dataset.ci}"]`).classList.toggle('bad', t.value !== '' && !ok(parse(t.value)));
+      }
+      d.clients.forEach((c, ci) => { const f = root.querySelector(`[data-fact="${ci}"]`); if (f) f.innerHTML = factHtml(pl, d, c); });
+      root.querySelector('[data-save]').classList.toggle('off', !canSave(d));
+    });
+
+    // A press outside a ⋯ menu closes it.
+    document.addEventListener('click', (e) => {
+      if (st.menu && !e.target.closest('.fmenu, .more')) { st.menu = null; st.ask = null; draw(); }
+    });
+    draw();
+  }
+
+  // A opens drawn as the coach types Online coaching up to €95 and ticks the move; B with Online coaching open, nothing typed.
+  mount(document.getElementById('A'), renderA, (st) => {
+    const p = st.plans[0];
+    st.open = p.id; st.draft = mkDraft(p); st.draft.price = '95'; st.draft.move = true;
+    st.draft.clients.forEach((c) => { if (c.price === p.price) c.val = '95'; });
+  });
+  mount(document.getElementById('B'), renderB, (st) => { st.open = st.plans[0].id; st.draft = mkDraft(st.plans[0]); });
+})();
+</script>
+</body>
+</html>
