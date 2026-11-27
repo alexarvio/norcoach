@@ -13,6 +13,9 @@ import { startTiming } from "../../../lib/timing";
 import { loadChatDock } from "../loaders";
 import ChatDock from "../ChatDock";
 import CoachesDraft, { type CoachRow } from "./CoachesDraft";
+import { staffSettings } from "../../../lib/staff";
+import { listWaitingCoaches } from "../../../lib/staffSignups";
+import "../settings/settings.css";
 import "../messages/messages.css";
 import "../../../components/ui/ui.css";
 import "../training/draft.css";
@@ -22,8 +25,8 @@ import "../rail.css";
 import "./coaches.css";
 
 // The owner's Coaches in the redesign (22 Oct, Alex: the old /admin?view=coaches in the new style): every coach
-// account, how many clients each has and when one last logged something (no sign-ups to let in since 17 Nov: a coach is in
-// at once, lib/coachSignUp.ts), the
+// account, how many clients each has and when one last logged something, the sign-ups waiting for a yes while Accept new
+// coaches by hand is on (27 Nov, SignupsSection, until the staff admin is online), the
 // coaches' Support threads (23 Oct, SupportInbox, lib/support.ts), and the owner's account actions (CoachesPanel's
 // own, see ./actions.ts). Never any client's name or data. Owner only.
 //   /coaches
@@ -56,7 +59,7 @@ export default async function CoachesPage() {
     <>
       <ChatDock chats={t.time("chatDock", () => loadChatDock(coach, chat.dock))} />
       <div className="rd-page">
-        <CoachesDraft accounts={accounts} support={t.time("supportThreads", () => listSupportThreads())} guides={listGuidesForOwner()} billingOn={billingOn()} />
+        <CoachesDraft accounts={accounts} signups={{ approve: staffSettings().approveCoaches, waiting: listWaitingCoaches() }} support={t.time("supportThreads", () => listSupportThreads())} guides={listGuidesForOwner()} billingOn={billingOn()} />
       </div>
     </>
   );

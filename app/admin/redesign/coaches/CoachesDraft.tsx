@@ -15,6 +15,8 @@ import { addCoach, removeCoach, resetCoachPassword, type CoachOutcome } from "./
 import { setCoachPaysAction } from "../../../lib/billingActions";
 import type { SupportInboxRow } from "../../../lib/support";
 import SupportInbox from "./SupportInbox";
+import SignupsSection from "./SignupsSection";
+import type { WaitingCoach } from "../../../lib/staffSignups";
 import GuidesSection from "./GuidesSection";
 import type { GuideView } from "../../../lib/guides";
 import { PopupTitle } from "../PopupWho";
@@ -23,8 +25,8 @@ import { PopupTitle } from "../PopupWho";
 // bare header with Add coach as a white pill; the coaches' Support threads
 // (SupportInbox, 23 Oct), then every coach account, each a row
 // in one hairline card: the name semi-bold, the email grey, the clients, when one of them last logged something, the
-// password as a state pill, and the owner's actions in words on hover (Remove asks first). No sign-ups to let in since
-// 17 Nov (Alex): a coach is in at once. Add coach and
+// password as a state pill, and the owner's actions in words on hover (Remove asks first). Sign-ups over them (27 Nov,
+// SignupsSection): Accept new coaches by hand and the coaches waiting for a yes. Add coach and
 // Reset password are .dlh pop-ups on clean lines. Never any client's name or data. Ink, never navy; 500 and 600.
 // Finding a coach (18 Nov, Alex: "a way for us to find coach profiles easy in our admin"): the search pill beside
 // Accounts reads the name, the business, the email and the Norcode (typed with or without its NC-); a row leads with
@@ -56,7 +58,7 @@ async function settle(p: Promise<CoachOutcome>): Promise<CoachOutcome> {
 
 const accountGrid = { gridTemplateColumns: "minmax(0, 1fr) 64px 132px 104px 124px 300px", columnGap: 16 } as const;
 
-export default function CoachesDraft({ accounts, support, guides = [], billingOn = false }: { accounts: CoachRow[]; /** The coaches' Support threads, newest first (SupportInbox). */ support: SupportInboxRow[]; /** The help guides, drafts too (GuidesSection, 24 Nov). */ guides?: GuideView[]; /** Subscriptions set up on the server (lib/billing.ts): the owner can switch who pays. */ billingOn?: boolean }) {
+export default function CoachesDraft({ accounts, signups, support, guides = [], billingOn = false }: { accounts: CoachRow[]; /** Accept new coaches by hand and who waits (27 Nov, SignupsSection). */ signups: { approve: boolean; waiting: WaitingCoach[] };/** The coaches' Support threads, newest first (SupportInbox). */ support: SupportInboxRow[]; /** The help guides, drafts too (GuidesSection, 24 Nov). */ guides?: GuideView[]; /** Subscriptions set up on the server (lib/billing.ts): the owner can switch who pays. */ billingOn?: boolean }) {
   const router = useRouter();
   const [, start] = useTransition();
   const [busy, setBusy] = useState<number | null>(null);
@@ -102,6 +104,9 @@ export default function CoachesDraft({ accounts, support, guides = [], billingOn
           </button>
         </div>
       </header>
+
+      {/* ---- Who may join as a coach (27 Nov, Alex): the switch, and the coaches waiting for a yes. */}
+      <SignupsSection approve={signups.approve} waiting={signups.waiting} />
 
       {/* ---- What the coaches wrote from Settings' Support: a coach a row, a thread opening under it. */}
       <SupportInbox initial={support} />
