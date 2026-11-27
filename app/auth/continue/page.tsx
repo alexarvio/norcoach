@@ -25,9 +25,9 @@ function backTo(next: string | undefined, role: string): string | null {
   return fits ? next : null;
 }
 
-export default async function ContinuePage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+export default async function ContinuePage({ searchParams }: { searchParams: Promise<{ next?: string; as?: string; code?: string }> }) {
   if (!clerkOn()) redirect("/login");
-  const { next } = await searchParams;
+  const { next, as, code } = await searchParams;
   // On the staff admin's host (admin.norcoachapp.com, 26 Nov): never a coach's or client's setup or sign-up, and no
   // users row needed. Signed in, the staff home (or the staff page they were sent to sign in from); requireStaff there
   // decides whether they are on staff.
@@ -39,6 +39,9 @@ export default async function ContinuePage({ searchParams }: { searchParams: Pro
   const user = await getSessionUser();
   // A coach signing in inside the phone app goes straight to its coach screens (17 Nov, Alex: the admin showed first).
   const inApp = (await cookies()).get(NATIVE_COOKIE)?.value === "1";
+  // From a sign-up of the other kind (27 Nov, Alex: Client on Sign in "logs me into a coach account"): the client sign-up
+  // with a coach's email, Apple or Google, or the coach sign-up with a client's, says whose account it is instead.
+  if (user && ((as === "client" && user.role === "coach") || (as === "coach" && user.role === "client"))) redirect(`/auth/other-account?as=${as}${code ? `&code=${encodeURIComponent(code)}` : ""}`);
   // A coach still waiting is let in now (17 Nov, Alex: no approval), unless the staff admin asks for a yes (26 Nov,
   // its Sign-ups): then the waiting screen until someone on staff says it.
   if (user?.pending && letCoachInOrWait(user.id) === "waiting") redirect("/auth/waiting");

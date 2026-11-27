@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function SignUpPage() {
   if (!clerkOn()) redirect("/login");
   const user = await getSessionUser();
-  if (user) redirect("/auth/continue");
+  // Signed in already: their admin, unless it is a client's account (27 Nov), which says so (/auth/other-account).
+  if (user) redirect("/auth/continue?as=coach");
   return <CoachSignUpFlow passwordsHint={await passwordsOnHint()} />;
 }
