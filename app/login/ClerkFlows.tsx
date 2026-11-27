@@ -554,7 +554,10 @@ export function SignInFlow({ notice, passwordsHint = null, app = null, staff = f
  * code alone, as before.
  */
 export function CoachSignUpFlow({ passwordsHint = null, client = false, code = "" }: { passwordsHint?: boolean | null; /** The client's own sign-up (ClientSignUpFlow). */ client?: boolean; /** A coach's code from their link, carried to the join screens. */ code?: string }) {
-  const f = useEmailCode();
+  // Which sign-up this was rides in the address (27 Nov, Alex: Client on Sign in "logs me into a coach account"): an
+  // email, Apple or Google that is already an account of the other kind says so (/auth/other-account), never lands in it.
+  const as = client ? "client" : "coach";
+  const f = useEmailCode({ landAt: () => `${CONTINUE_BASE}?as=${as}`, callback: () => `/sso-callback?as=${as}` });
   const passwords = usePasswordsOn(passwordsHint);
   // Where they were going, through Apple's and Google's round trips too: /auth/continue reads it.
   const remember = () => {
