@@ -1,0 +1,8 @@
+/* The keyboard going down on the sign-in and sign-up screens (27 Nov, Alex: on Create your account in the app the email
+   and password boxes jumped). While the keyboard is up the page has its room at its foot (html.kb-open .su-page, the
+   sign-in block of globals.css); as it goes, that room is kept through the keyboard's slide (kb-leaving, kb-dropping,
+   app/client/keyboard.ts) and, where the page was scrolled into it, until it has glided back (data-kb-hold, set by
+   useKeyboardEaseBack in SiteShell; an attribute, not a class, so a className re-render never drops it), so the form
+   never snaps down when the room goes. */
+html:is(.kb-leaving, .kb-dropping) .su-page { padding-bottom: var(--kb-was, 0px); }
+.su-page[data-kb-hold] { padding-bottom: var(--su-kb-hold, 0px); }

@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
-import { cookies, headers } from "next/headers";
-import { NATIVE_COOKIE } from "../lib/quietLoad";
-import type { InApp } from "./SignInScreens";
+import { headers } from "next/headers";
+import { inApp } from "../lib/inApp";
 import { resetsAvailable } from "../lib/passwordReset";
 import { ensureCoachFromEnv, ensureOwnerFromEnv, getSessionUser, resetCoachFromEnv, resetWorkspaceFromEnv } from "../lib/auth";
 import { LoginCard } from "./AuthCards";
@@ -10,13 +9,6 @@ import { passwordsOnHint } from "../lib/clerkPasswords";
 import { SignInFlow } from "./ClerkFlows";
 import ForgetKept from "./ForgetKept";
 import { hostOf, isStaffHost, safeStaffNext } from "../lib/staffHost";
-
-/** The phone app this page is in, from the app's own cookie (set before anything draws, lib/quietLoad.ts) and the phone's
- *  name, so the sign-in is drawn as the app shows it from the first frame (18 Nov). */
-async function inApp(): Promise<InApp> {
-  if ((await cookies()).get(NATIVE_COOKIE)?.value !== "1") return null;
-  return /iPhone|iPad|iPod/.test((await headers()).get("user-agent") ?? "") ? "ios" : "android";
-}
 
 export default async function LoginPage({
   searchParams,

@@ -553,7 +553,7 @@ export function SignInFlow({ notice, passwordsHint = null, app = null, staff = f
  * server, so it is there from the first frame); until then an email gets a
  * code alone, as before.
  */
-export function CoachSignUpFlow({ passwordsHint = null, client = false, code = "" }: { passwordsHint?: boolean | null; /** The client's own sign-up (ClientSignUpFlow). */ client?: boolean; /** A coach's code from their link, carried to the join screens. */ code?: string }) {
+export function CoachSignUpFlow({ passwordsHint = null, client = false, code = "", app = null }: { passwordsHint?: boolean | null; /** The client's own sign-up (ClientSignUpFlow). */ client?: boolean; /** A coach's code from their link, carried to the join screens. */ code?: string; /** The phone app the page is in, as the server tells it (InApp). */ app?: InApp }) {
   // Which sign-up this was rides in the address (27 Nov, Alex: Client on Sign in "logs me into a coach account"): an
   // email, Apple or Google that is already an account of the other kind says so (/auth/other-account), never lands in it.
   const as = client ? "client" : "coach";
@@ -569,9 +569,12 @@ export function CoachSignUpFlow({ passwordsHint = null, client = false, code = "
   return (
     <CoachSignUpScreen
       client={client}
+      app={app}
       busy={f.busy}
       error={f.error}
-      askPassword={passwords === true}
+      // The password box drawn with the page while Clerk's answer is unknown (27 Nov, Alex: the boxes jumped; passwords
+      // are on since 18 Nov): only a confirmed no takes it away.
+      askPassword={passwords !== false}
       onEmail={(email, password) => {
         remember();
         if (password) f.signUpWithPassword(email, password);
@@ -594,8 +597,8 @@ export function CoachSignUpFlow({ passwordsHint = null, client = false, code = "
  * Apple, Google, or an email and a password, the email confirmed by a code; then About you and their coach's code on
  * /auth/join. The coach sign-up's frame, its title `Create your account` and no coach pitch.
  */
-export function ClientSignUpFlow({ passwordsHint = null, code = "" }: { passwordsHint?: boolean | null; code?: string }) {
-  return <CoachSignUpFlow passwordsHint={passwordsHint} client code={code} />;
+export function ClientSignUpFlow({ passwordsHint = null, code = "", app = null }: { passwordsHint?: boolean | null; code?: string; app?: InApp }) {
+  return <CoachSignUpFlow passwordsHint={passwordsHint} client code={code} app={app} />;
 }
 
 /**

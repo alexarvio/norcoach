@@ -7,6 +7,7 @@ import { nativePlatform } from "../lib/native";
 import { NorCoachLogo } from "../components/NorCoachLogo";
 import { Bars } from "../client/Bars";
 import { useKeyboardReveal } from "../client/keyboard";
+import { useKeyboardEaseBack } from "./useKeyboardEaseBack";
 import PasswordInput from "./PasswordInput";
 import { NativeStatusBar } from "../client/NativeStatusBar";
 // The website's dark background, one file for the site and the coach sign-up (17 Nov, Alex): change it there.
@@ -49,8 +50,11 @@ export function AuthShell({ children }: { children: ReactNode }) {
  */
 export function SiteShell({ title, children, aside, pitch = true, className, steps }: { title: ReactNode; children?: ReactNode; aside?: ReactNode; pitch?: boolean; className?: string; /** The coach sign-up's steps, listed on the dark on a laptop in place of the pitch (18 Nov, Alex): done ticked green, the one on screen white. */ steps?: { labels: string[]; now: number } }) {
   useKeyboardReveal();
+  // The keyboard going down glides the page back, never snapping (27 Nov, Alex; useKeyboardEaseBack).
+  const pageRef = useRef<HTMLDivElement>(null);
+  useKeyboardEaseBack(pageRef);
   return (
-    <div className={`su-page${className ? ` ${className}` : ""}`}>
+    <div ref={pageRef} className={`su-page${className ? ` ${className}` : ""}`}>
       {/* In the iPhone app the clock and battery turn white over the dark (they followed only the client app). */}
       <NativeStatusBar leaveDark />
       <div className="su-band site-bg site-bg-mark" data-clock="dark">
@@ -426,13 +430,13 @@ export function ResetPasswordScreen({ email, onSubmit, onResend, onBack, busy, e
 
 /** A coach making their own account (17 Nov, Alex: B of docs/boards/coach-signup-mockup.html): Apple, Google, or an
  *  email and a password, the email then confirmed by a code. Who they are comes next (CoachDetailsScreen). */
-export function CoachSignUpScreen({ onEmail, onApple, onGoogle, busy, error, askPassword = true, client = false }: Oauth & Busy & { onEmail?: (email: string, password: string) => void; askPassword?: boolean; /** The client's own sign-up (18 Nov, Alex): `Create your account`, no coach pitch. */ client?: boolean }) {
+export function CoachSignUpScreen({ onEmail, onApple, onGoogle, busy, error, askPassword = true, client = false, app = null }: Oauth & Busy & { onEmail?: (email: string, password: string) => void; askPassword?: boolean; /** The client's own sign-up (18 Nov, Alex): `Create your account`, no coach pitch. */ client?: boolean; /** The phone app the page is in, as the server can tell it (InApp): the Apple button drawn with the page (27 Nov). */ app?: InApp }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   return (
     <SiteShell title={client ? "Create your account" : "Create your coach account"} aside={<SignInLink />} pitch={!client}>
       <ErrorLine error={error} />
-      <Providers onApple={onApple} onGoogle={onGoogle} busy={busy} />
+      <Providers onApple={onApple} onGoogle={onGoogle} busy={busy} app={app} />
       <Or />
       {/* POST, as Sign in's (18 Nov): an early tap never puts the password in the address. */}
       <form
