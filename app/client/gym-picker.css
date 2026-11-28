@@ -1,0 +1,5 @@
+/* The gym picker in the iPhone app (28 Nov, Alex: Finlay added 6 gyms and "the start button does not seem to be able to
+   fit"): the card stops short of the clock (html.native-app .gpk-card, globals.css), so its content does too; it was
+   still the screen's height less 80px, ran past the card's foot by the clock's room and cut Start off. With it the list
+   scrolls in what is left and Start always sits at the foot. */
+html.native-app:not(.kb-open) .gpk-content { max-height: calc(100dvh - 80px - var(--sat, 0px)); }
