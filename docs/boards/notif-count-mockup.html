@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bell with a number</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root { --ink: #141a24; --body: #3a4250; --muted: #8b93a1; --paper: #f5f5f5; --line: #E1E5EB; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #e9edf2; font-family: Archivo, -apple-system, "Segoe UI", sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 36px 32px 60px; }
+  h1 { margin: 0; font-size: 26px; font-weight: 600; }
+  .lede { margin: 6px 0 0; color: var(--muted); font-size: 14px; font-weight: 500; line-height: 21px; max-width: 980px; }
+  .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; margin-top: 28px; }
+  h2 { margin: 0 0 4px; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; color: #5b6474; }
+  .what { margin: 0 0 14px; font-size: 13.5px; font-weight: 500; color: var(--body); line-height: 20px; min-height: 60px; }
+  svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* A phone's head: the brand's head (Finlay's lime, ink words), the default dark head, and a paper screen's bar. */
+  .head { position: relative; height: 96px; border-radius: 22px; margin-bottom: 12px; overflow: hidden; display: flex; align-items: flex-end; padding: 0 18px 20px; }
+  .head.lime { background: #c3e86c; color: var(--ink); }
+  .head.dark { background: #1c1c1e; color: #fff; }
+  .head.paper { background: var(--paper); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+  .bar { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+  .word { font-size: 18px; font-weight: 600; letter-spacing: .2em; }
+  .btn { position: relative; width: 36px; height: 36px; display: grid; place-items: center; }
+  .btn svg { width: 20px; height: 20px; }
+  .lab { position: absolute; left: 18px; top: 12px; font-size: 10px; letter-spacing: .16em; text-transform: uppercase; font-weight: 600; opacity: .55; }
+
+  /* A · a count on the bell's corner */
+  .a .n { position: absolute; top: 2px; right: 0; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; display: grid; place-items: center; font-size: 10.5px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1; }
+  .lime .a .n, .paper .a .n { background: var(--ink); color: #fff; }
+  .dark .a .n { background: #fff; color: var(--ink); }
+  .lime .a .n { box-shadow: 0 0 0 2px #c3e86c; }
+  .dark .a .n { box-shadow: 0 0 0 2px #1c1c1e; }
+  .paper .a .n { box-shadow: 0 0 0 2px var(--paper); }
+
+  /* B · bell and number together in a capsule */
+  .b { width: auto; height: 32px; padding: 0 11px 0 9px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .b svg { width: 17px; height: 17px; }
+  .lime .b { background: rgba(20,26,36,.1); }
+  .dark .b { background: rgba(255,255,255,.14); }
+  .paper .b { background: #fff; box-shadow: inset 0 0 0 1px var(--line); }
+
+  /* C · the number in the bell's place, in a ring; the bell comes back with nothing unread */
+  .c .ring { width: 26px; height: 26px; border-radius: 999px; display: grid; place-items: center; box-shadow: inset 0 0 0 1.5px currentColor; font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .note { font-size: 12px; font-weight: 500; color: var(--muted); margin: 2px 0 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Bell with a number</h1>
+  <p class="lede">28 Nov, Alex: "a number instead of a dot". Each shown on Home's head in a coach's colour (Finlay's lime), on the default dark head, and on a paper screen's bar, with 3 unread, then 12 (past 9 it reads 9+).</p>
+  <div class="row">
+    <div>
+      <h2>A · A count on the bell</h2>
+      <p class="what">The bell as now, its dot grown into a small disc with the number, on the bell's top-right corner. Ink on a light head, white on a dark one, a ring of the head's own colour round it so it sits clear of the bell.</p>
+      <div class="head lime"><span class="lab">Home, coach's colour</span><div class="bar"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span class="word">NORCOACH</span><span class="btn a"><svg viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 3.2 1 5.1 1.8 6.1.4.5.1 1.2-.5 1.2H4.7c-.6 0-.9-.7-.5-1.2C5 14.1 6 12.2 6 9Z"/><path d="M9.5 19.2a2.6 2.6 0 0 0 5 0"/></svg><span class="n">3</span></span></div></div>
+      <div class="head dark"><span class="lab">Home, no colour set</span><div class="bar"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span class="word">NORCOACH</span><span class="btn a"><svg viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 3.2 1 5.1 1.8 6.1.4.5.1 1.2-.5 1.2H4.7c-.6 0-.9-.7-.5-1.2C5 14.1 6 12.2 6 9Z"/><path d="M9.5 19.2a2.6 2.6 0 0 0 5 0"/></svg><span class="n">9+</span></span></div></div>
+      <div class="head paper"><span class="lab">Training, paper</span><div class="bar"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span class="word">NORCOACH</span><span class="btn a"><svg viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 3.2 1 5.1 1.8 6.1.4.5.1 1.2-.5 1.2H4.7c-.6 0-.9-.7-.5-1.2C5 14.1 6 12.2 6 9Z"/><path d="M9.5 19.2a2.6 2.6 0 0 0 5 0"/></svg><span class="n">3</span></span></div></div>
+    </div>
+    <div>
+      <h2>B · Bell and number together</h2>
+      <p class="what">A soft capsule holding the bell and the number side by side, see-through on the head's colour. Reads most clearly; takes a little more room. With nothing unread, the bell alone, no capsule.</p>
+      <div class="head lime"><span class="lab">Home, coach's colour</span><div class="bar"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span class="word">NORCOACH</span><span class="btn b"><svg viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 3.2 1 5.1 1.8 6.1.4.5.1 1.2-.5 1.2H4.7c-.6 0-.9-.7-.5-1.2C5 14.1 6 12.2 6 9Z"/><path d="M9.5 19.2a2.6 2.6 0 0 0 5 0"/></svg>3</span></div></div>
+      <div class="head dark"><span class="lab">Home, no colour set</span><div class="bar"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span class="word">NORCOACH</span><span class="btn b"><svg viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 3.2 1 5.1 1.8 6.1.4.5.1 1.2-.5 1.2H4.7c-.6 0-.9-.7-.5-1.2C5 14.1 6 12.2 6 9Z"/><path d="M9.5 19.2a2.6 2.6 0 0 0 5 0"/></svg>12</span></div></div>
+      <div class="head paper"><span class="lab">Training, paper</span><div class="bar"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span class="word">NORCOACH</span><span class="btn b"><svg viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 3.2 1 5.1 1.8 6.1.4.5.1 1.2-.5 1.2H4.7c-.6 0-.9-.7-.5-1.2C5 14.1 6 12.2 6 9Z"/><path d="M9.5 19.2a2.6 2.6 0 0 0 5 0"/></svg>3</span></div></div>
+    </div>
+    <div>
+      <h2>C · The number in the bell's place</h2>
+      <p class="what">With something unread the bell gives way to the number in a thin ring, the app's own ring language; read everything and the bell comes back. The calmest, but the bell isn't there to say what the number counts.</p>
+      <div class="head lime"><span class="lab">Home, coach's colour</span><div class="bar"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span class="word">NORCOACH</span><span class="btn c"><span class="ring">3</span></span></div></div>
+      <div class="head dark"><span class="lab">Home, no colour set</span><div class="bar"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span class="word">NORCOACH</span><span class="btn c"><span class="ring">12</span></span></div></div>
+      <div class="head paper"><span class="lab">Training, paper</span><div class="bar"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span class="word">NORCOACH</span><span class="btn c"><span class="ring">3</span></span></div></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

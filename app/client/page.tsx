@@ -1431,7 +1431,8 @@ export default async function ClientPage({
   const progressPictures = progressPicturesData(CLIENT_ID);
   // The bell: anything unread but the chat, which has its own dot on the Messages tab (7 Oct).
   // Reminders and chat messages are not notifications (9 Oct): neither counts for the bell.
-  const hasUnreadNotifications = getNotifications(notes, CLIENT_ID).some((n) => isListed(n) && !n.read);
+  // How many, since 28 Nov (Alex: "a number instead of a dot"; NotifBell).
+  const unreadNotifications = getNotifications(notes, CLIENT_ID).filter((n) => isListed(n) && !n.read).length;
 
   const currentWeekNum = getCurrentWeekNumber(CLIENT_ID);
   // Only the currently deployed program's own weeks — not every published
@@ -1599,7 +1600,7 @@ export default async function ClientPage({
       clientName={client?.name ?? ""}
       tabs={tabs}
       notificationsContent={<NotificationsPanel CLIENT_ID={CLIENT_ID} notes={notes} phoneTz={phoneTz} />}
-      hasUnreadNotifications={hasUnreadNotifications}
+      unreadNotifications={unreadNotifications}
       clientId={CLIENT_ID}
       preview={preview}
       checkIn={checkIn}
