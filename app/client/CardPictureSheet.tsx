@@ -225,7 +225,7 @@ export default function CardPictureSheet({
   const full = items.length >= MAX_PICTURES;
   return createPortal(
     <div className="cv-scrim" onClick={close}>
-      <div className={`cv-sheet${saving ? " busy" : ""}`} role="dialog" aria-label={`${TRACK_LABEL[track]} card pictures`} onClick={(e) => e.stopPropagation()}>
+      <div className={`cv-sheet${saving ? " busy" : ""}`} role="dialog" aria-modal="true" aria-label={`${TRACK_LABEL[track]} card pictures`} onClick={(e) => e.stopPropagation()}>
         <span className="cv-grab" aria-hidden="true" />
         <div className="cv-head">
           <div className="cv-head-text">

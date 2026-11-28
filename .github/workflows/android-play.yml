@@ -11,7 +11,9 @@
 #   ANDROID_KEYSTORE_PASSWORD  its store password
 #   ANDROID_KEY_ALIAS          the key's alias in it
 #   ANDROID_KEY_PASSWORD       the key's password
-#   GOOGLE_SERVICES_JSON       Firebase's google-services.json for com.arvio.norcoach (push), the whole text; optional
+#   GOOGLE_SERVICES_JSON       Firebase's google-services.json with a com.arvio.norcoach app (push), the whole text;
+#                              required: a build without it crashes when the push switch is tapped once the server
+#                              has FCM_SERVICE_ACCOUNT, so the run stops instead of building one
 #   PLAY_SERVICE_ACCOUNT_JSON  a Google Cloud service account's key with release rights in Play Console; optional
 name: Android to Google Play
 
@@ -54,12 +56,10 @@ jobs:
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
-          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
-            printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
-          else
-            echo "No GOOGLE_SERVICES_JSON: built without push"
-            rm -f android/app/google-services.json
-          fi
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then echo "GOOGLE_SERVICES_JSON is not set"; exit 1; fi
+          printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          grep -q '"package_name": *"com.arvio.norcoach"' android/app/google-services.json \
+            || { echo "google-services.json has no com.arvio.norcoach app"; exit 1; }
 
       - name: The upload key
         env:

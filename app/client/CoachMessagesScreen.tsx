@@ -493,7 +493,7 @@ export default function CoachMessagesScreen({ coachName, coachPhoto = null, myPh
   return (
     <>
       <header className="cn-header cm-header">
-        <button type="button" className="cn-icon-btn" onClick={onBack} aria-label="Back">
+        <button data-back type="button" className="cn-icon-btn" onClick={onBack} aria-label="Back">
           <ChevronLeftIcon />
         </button>
         <CoachMark size="lg" />
@@ -652,7 +652,7 @@ function MessageMenu({
         <ChevronDownIcon />
       </button>
       {open && (
-        <span className={`cm-menu-list ${align}${down ? " down" : ""}`} role="menu">
+        <span data-back-layer className={`cm-menu-list ${align}${down ? " down" : ""}`} role="menu">
           {confirming ? (
             <>
               <span className="cm-menu-ask">Delete for both of you?</span>

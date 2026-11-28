@@ -69,7 +69,7 @@ export default function MessageReactions({
           </svg>
         </button>
         {open && (
-          <span className="mr-row" role="listbox" aria-label="Pick a reaction">
+          <span data-back-layer className="mr-row" role="listbox" aria-label="Pick a reaction">
             {REACTIONS.map((e) => (
               <button key={e} type="button" role="option" aria-selected={mine === e} className={`mr-pick${mine === e ? " on" : ""}`} onClick={() => set(mine === e ? null : e)}>
                 {e}

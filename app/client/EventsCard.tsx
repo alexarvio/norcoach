@@ -256,7 +256,7 @@ export function EventSheet({ clientId, event, categories, coachName, today, onCl
               Delete
             </button>
           ))}
-        <button type="button" className="pp-app-sheet-cancel" onClick={onClose} disabled={pending}>
+        <button data-back type="button" className="pp-app-sheet-cancel" onClick={onClose} disabled={pending}>
           Cancel
         </button>
       </div>

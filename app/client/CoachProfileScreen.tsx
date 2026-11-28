@@ -41,7 +41,7 @@ function MinimalProfile({ profile, onBack }: { profile: CoachProfileView; onBack
   return (
     <div className="cpf cpf-minimal">
       {onBack && (
-        <button type="button" className="cpf-back solid" onClick={onBack} aria-label="Back">
+        <button data-back type="button" className="cpf-back solid" onClick={onBack} aria-label="Back">
           <ChevronLeftIcon />
         </button>
       )}
@@ -153,7 +153,7 @@ function FullProfile({ profile, onBack, onBook }: { profile: CoachProfileView; o
     <div className="cpf">
       <div className="cpf-statusbar" data-clock="light" style={{ opacity: clamp((y - 340) / 60, 0, 1) }} aria-hidden="true" />
       {onBack && (
-        <button type="button" className={`cpf-back${y > HERO - STRIP ? " solid" : ""}`} onClick={onBack} aria-label="Back">
+        <button data-back type="button" className={`cpf-back${y > HERO - STRIP ? " solid" : ""}`} onClick={onBack} aria-label="Back">
           <ChevronLeftIcon />
         </button>
       )}

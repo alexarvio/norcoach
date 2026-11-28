@@ -73,7 +73,7 @@ export default function VideoReplySheet({ reply, onClose, coachName = "Coach" }:
         </div>
         {/* Only the coach's side: the client's own clip stays on the exercise it was filmed on. */}
         <VideoReplyBody reply={reply} coachName={coachName} />
-        <button type="button" className="pp-app-sheet-cancel" onClick={onClose}>
+        <button data-back type="button" className="pp-app-sheet-cancel" onClick={onClose}>
           Close
         </button>
       </div>

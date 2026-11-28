@@ -269,7 +269,7 @@ export default function ChatComposeForm({
           <RingEdge size={38} />
         </button>
         {plusOpen && (
-          <div className="chat-plus-menu" role="menu">
+          <div data-back-layer className="chat-plus-menu" role="menu">
             <button type="button" role="menuitem" className="chat-plus-row" onClick={() => { setPlusOpen(false); cameraRef.current?.click(); }}>
               <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.6l1.2-2h5.4l1.2 2h1.6A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-8z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="12" cy="12.5" r="3.2" stroke="currentColor" strokeWidth="1.6" /></svg>
               Camera

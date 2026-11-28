@@ -980,8 +980,8 @@ export default function ExercisePage({
       )}
       {videoOpen && <VideoAskSheet ask={ask} assignmentId={exercise.id} about={mediaAbout} exerciseName={shownName(exercise)} coachName={coachName} onClose={() => setVideoOpen(false)} />}
       {demoOpen && exercise.videoUrl && (
-        <div className="lw-demo-modal" role="dialog" aria-label={`${shownName(exercise)} demo`} onClick={() => setDemoOpen(false)}>
-          <button type="button" className="lw-demo-close" onClick={() => setDemoOpen(false)} aria-label="Close the demo">
+        <div className="lw-demo-modal" role="dialog" aria-modal="true" aria-label={`${shownName(exercise)} demo`} onClick={() => setDemoOpen(false)}>
+          <button data-back type="button" className="lw-demo-close" onClick={() => setDemoOpen(false)} aria-label="Close the demo">
             ✕
           </button>
           <video className="lw-demo-video" src={exercise.videoUrl} controls autoPlay playsInline onClick={(e) => e.stopPropagation()} />

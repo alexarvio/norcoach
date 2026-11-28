@@ -19,11 +19,21 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Back from Google (or Apple) sign-in in a Custom Tab: /auth/native/finish ends on
+                 norcoach://auth?code&state (NorcoachAuthPlugin.java). Chrome's Auth Tab catches it itself. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="norcoach" android:host="auth" />
+            </intent-filter>
         </activity>
 
-        <!-- Notifications (Firebase): the white mark in the status bar, the
-             brand blue, and the channel the app creates (NativePush.tsx). -->
-        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_ironline" />
+        <!-- Notifications (Firebase): the white star in the status bar, the
+             ink accent, and the channel the app creates (NativePush.tsx; its id
+             stays "ironline", as app/lib/fcm.ts sends to it). -->
+        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_norcoach" />
         <meta-data android:name="com.google.firebase.messaging.default_notification_color" android:resource="@color/notification_accent" />
         <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="ironline" />
 
@@ -35,6 +45,13 @@
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
     </application>
+
+    <!-- The browsers that can open a Custom Tab, for the sign-in (Android 11 on hides other apps without it). -->
+    <queries>
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService" />
+        </intent>
+    </queries>
 
     <!-- Permissions -->
 

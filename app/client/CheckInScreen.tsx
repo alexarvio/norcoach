@@ -152,7 +152,7 @@ export default function CheckInScreen({
       <div className="ci-screen ci-one ci-naked">
         <div className="ci-scroll">
           <div className="ci-bar">
-            <button type="button" className="ci-back" onClick={onBack} aria-label="Back to home">
+            <button data-back type="button" className="ci-back" onClick={onBack} aria-label="Back to home">
               <ChevronLeftIcon />
             </button>
             <span aria-hidden="true" />
@@ -179,7 +179,7 @@ export default function CheckInScreen({
       <div className="ci-scroll" onScroll={onScroll}>
         {/* The top row, sticky: over the photo at first, then a frosted bar. */}
         <div className={`ci-bar${stuck ? " stuck" : ""}`}>
-          <button type="button" className="ci-back" onClick={onBack} aria-label="Back to home">
+          <button data-back type="button" className="ci-back" onClick={onBack} aria-label="Back to home">
             <ChevronLeftIcon />
           </button>
           {/* The section is Lifestyle (22 Nov, Alex: "it is still named check in, change that to lifestyle"); a day filled in stays a check-in. */}

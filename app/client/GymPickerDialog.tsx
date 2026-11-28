@@ -381,7 +381,7 @@ export function AddGymForm({
       <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => void onPicture(e)} />
       <div className="gpk-head center">
         {onBack && (
-          <button type="button" className="gpk-round" onClick={onBack} aria-label="Back to your gyms">
+          <button data-back type="button" className="gpk-round" onClick={onBack} aria-label="Back to your gyms">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="m14.5 6-6 6 6 6" />
             </svg>

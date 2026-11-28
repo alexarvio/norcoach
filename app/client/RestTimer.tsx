@@ -99,7 +99,7 @@ export default function RestTimerPill({ timer }: { timer: ReturnType<typeof useR
     <div className="wo-rest-wrap">
       {open && (
         <>
-          <button type="button" className="wo-rest-scrim" aria-label="Close" onClick={() => setOpen(false)} />
+          <button data-back data-back-layer type="button" className="wo-rest-scrim" aria-label="Close" onClick={() => setOpen(false)} />
           <div className="wo-rest-menu" role="menu" aria-label="Rest for">
             {CHOICES.map((s) => (
               <button key={s} type="button" role="menuitem" className={`wo-rest-opt${timer.running && timer.duration === s ? " on" : ""}`} onClick={() => pick(s)}>

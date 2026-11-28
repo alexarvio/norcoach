@@ -6,8 +6,10 @@
 type Cap = {
   isNativePlatform?: () => boolean;
   getPlatform?: () => string;
+  isPluginAvailable?: (plugin: string) => boolean;
+  Plugins?: Record<string, unknown>;
   nativePromise?: (plugin: string, method: string, options?: object) => Promise<unknown>;
-  addListener?: (plugin: string, event: string, callback: (data: unknown) => void) => unknown;
+  addListener?: (plugin: string, event: string, callback: (data: unknown) => void) => NativeListener | undefined;
 };
 
 export function nativeApp(): Cap | null {
@@ -23,6 +25,17 @@ export function nativePlatform(): NativePlatform | null {
   return p === "ios" || p === "android" ? p : null;
 }
 
+/** Whether the app on this phone has a native plugin (an older build may not have one the site now uses). */
+export function nativeHas(plugin: string): boolean {
+  const c = nativeApp();
+  if (!c) return false;
+  try {
+    return c.isPluginAvailable ? c.isPluginAvailable(plugin) : !!c.Plugins && Object.prototype.hasOwnProperty.call(c.Plugins, plugin);
+  } catch {
+    return false;
+  }
+}
+
 /** Calls a native plugin method; throws outside the app. */
 export function callNative<T>(plugin: string, method: string, options?: object): Promise<T> {
   const c = nativeApp();
@@ -30,7 +43,10 @@ export function callNative<T>(plugin: string, method: string, options?: object):
   return c.nativePromise(plugin, method, options) as Promise<T>;
 }
 
-/** Listens for a native plugin event (for the life of the page). */
-export function onNative<T>(plugin: string, event: string, callback: (data: T) => void) {
-  nativeApp()?.addListener?.(plugin, event, callback as (data: unknown) => void);
+/** What addListener hands back: its remove() takes the listener off again. */
+export type NativeListener = { remove: () => Promise<void> };
+
+/** Listens for a native plugin event (for the life of the page, or until the handle's remove()). */
+export function onNative<T>(plugin: string, event: string, callback: (data: T) => void): NativeListener | undefined {
+  return nativeApp()?.addListener?.(plugin, event, callback as (data: unknown) => void);
 }

@@ -111,7 +111,7 @@ export default function ChatMediaGallery({ items, onShow, onClose }: { items: Ga
   return (
     <div className="cmg" role="dialog" aria-label="Media and files">
       <div className="cmg-head">
-        <button type="button" className="cmg-back" onClick={onClose} aria-label="Back to the chat">
+        <button data-back type="button" className="cmg-back" onClick={onClose} aria-label="Back to the chat">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M15 5l-7 7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>

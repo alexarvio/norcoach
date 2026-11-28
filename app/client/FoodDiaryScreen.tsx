@@ -1107,7 +1107,7 @@ export default function FoodDiaryScreen({
                               </button>
                               {mealMenu === meal.id && (
                                 <>
-                                  <button type="button" className="fdi-meal-menu-scrim" aria-label="Close" onClick={() => setMealMenu(null)} />
+                                  <button data-back data-back-layer type="button" className="fdi-meal-menu-scrim" aria-label="Close" onClick={() => setMealMenu(null)} />
                                   <span className="fdi-meal-menu" role="menu">
                                     <button
                                       type="button"
@@ -1450,7 +1450,7 @@ export default function FoodDiaryScreen({
                     <>
                     <div className="app-layer app-layer-push cn-screen fdi-saved-screen" inert={savedScreen === "days" && openDay != null}>
                       <header className="cn-header">
-                        <button
+                        <button data-back
                           type="button"
                           className="cn-icon-btn"
                           onClick={() => {
@@ -1630,7 +1630,7 @@ export default function FoodDiaryScreen({
             <div className="fdi-sheet-head">
               <span />
               <span className="fdi-sheet-title">{cardTitle(shownPhoto)}</span>
-              <button type="button" className="fdi-sheet-x" onClick={closePhoto} aria-label="Close">
+              <button data-back type="button" className="fdi-sheet-x" onClick={closePhoto} aria-label="Close">
                 ×
               </button>
             </div>
@@ -2460,7 +2460,7 @@ function EditableMealCards({
                       </button>
                       {menu === c.key && (
                         <>
-                          <button type="button" className="fdi-meal-menu-scrim" aria-label="Close" onClick={() => setMenu(null)} />
+                          <button data-back data-back-layer type="button" className="fdi-meal-menu-scrim" aria-label="Close" onClick={() => setMenu(null)} />
                           <span className="fdi-meal-menu" role="menu">
                             <button
                               type="button"
@@ -2650,7 +2650,7 @@ function EditableMealCards({
               <div className="fdi-sheet-head">
                 <span />
                 <span className="fdi-sheet-title">{shown.name}</span>
-                <button type="button" className="fdi-sheet-x" onClick={closePhoto} aria-label="Close">
+                <button data-back type="button" className="fdi-sheet-x" onClick={closePhoto} aria-label="Close">
                   ×
                 </button>
               </div>
@@ -3158,7 +3158,7 @@ function SavedDayScreen({
     <div ref={root} className={`app-layer app-layer-push cn-screen fdi-saved-screen fdi-dayscreen${deploying ? " deploy" : ""}`}>
       <div ref={cover} className="fdi-day-cover" aria-hidden="true" />
       <header className="cn-header">
-        <button type="button" className="cn-icon-btn" onClick={leave} aria-label="Back">
+        <button data-back type="button" className="cn-icon-btn" onClick={leave} aria-label="Back">
           <ChevronLeftIcon />
         </button>
         <div className="cn-header-titles">
@@ -3173,7 +3173,7 @@ function SavedDayScreen({
             </button>
             {menu && (
               <>
-                <button type="button" className="fdi-meal-menu-scrim" aria-label="Close" onClick={() => setMenu(false)} />
+                <button data-back data-back-layer type="button" className="fdi-meal-menu-scrim" aria-label="Close" onClick={() => setMenu(false)} />
                 <span className="fdi-meal-menu" role="menu">
                   <button
                     type="button"
@@ -3551,7 +3551,7 @@ function UnitPicker({ id, value, options, onChange }: { id: string; value: strin
       {open &&
         place &&
         createPortal(
-        <ul ref={menuRef} className="fdi-pick-menu" role="listbox" aria-labelledby={id} style={{ top: place.top, bottom: place.bottom, left: place.left, width: place.width }}>
+        <ul data-back-layer ref={menuRef} className="fdi-pick-menu" role="listbox" aria-labelledby={id} style={{ top: place.top, bottom: place.bottom, left: place.left, width: place.width }}>
           {options.map((o) => (
             <li key={o.id}>
               <button

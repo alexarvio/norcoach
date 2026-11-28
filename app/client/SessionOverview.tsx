@@ -135,7 +135,7 @@ export default function SessionOverview({
     <div className={`app-layer app-layer-push so-screen${still ? " still" : ""}`} role="dialog" aria-label={day.title}>
       <header className="so-head" style={picture ? { backgroundImage: `url("${pic(picture, 1080)}")`, backgroundPosition: "center" } : undefined}>
         <div className="so-head-row">
-        <button type="button" className="so-back" onClick={onBack} aria-label="Back to training">
+        <button data-back type="button" className="so-back" onClick={onBack} aria-label="Back to training">
           <ChevronLeftIcon />
         </button>
         {((currentWeek && !done && !live) || done) && (
@@ -149,7 +149,7 @@ export default function SessionOverview({
         )}
         {menuOpen && (
           <>
-            <button type="button" className="wo-menu-scrim" aria-label="Close menu" onClick={() => setMenuOpen(false)} />
+            <button data-back data-back-layer type="button" className="wo-menu-scrim" aria-label="Close menu" onClick={() => setMenuOpen(false)} />
             <div className="wo-menu so-menu" role="menu">
               {reopenAsk ? (
                 // Asked in the menu itself (13 Nov, Alex: A of docs/boards/reopen-session-mockup.html).
@@ -310,7 +310,7 @@ export default function SessionOverview({
 
       {skipOpen && (
         <div className="wo-sheet-scrim" onClick={() => setSkipOpen(false)}>
-          <div className="wo-sheet" role="dialog" aria-label="Couldn't train" onClick={(e) => e.stopPropagation()}>
+          <div className="wo-sheet" role="dialog" aria-modal="true" aria-label="Couldn't train" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === "Escape" && setSkipOpen(false)}>
             <span className="wo-sheet-grab" aria-hidden="true" />
             {/* The title alone (3 Nov, Alex: the words audit). */}
             <h2 className="wo-sheet-title">Couldn&rsquo;t train</h2>

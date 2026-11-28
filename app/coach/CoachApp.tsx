@@ -176,7 +176,7 @@ export default function CoachApp({ inbox: fromPage, calendar, today, coach, push
         }}
       />
       <nav className="cph-nav" aria-label="Coach app">
-        <button type="button" className={`cph-tab${tab === "chats" ? " on" : ""}`} aria-current={tab === "chats" ? "page" : undefined} onClick={() => tab !== "chats" && go("", "replace")}>
+        <button type="button" data-home-tab={tab === "chats" ? "on" : "off"} className={`cph-tab${tab === "chats" ? " on" : ""}`} aria-current={tab === "chats" ? "page" : undefined} onClick={() => tab !== "chats" && go("", "replace")}>
           <Icon name="chat" />
           Chats
           {unreadChats > 0 && <b aria-label={`${unreadChats} unread`}>{unreadChats}</b>}

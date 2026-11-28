@@ -341,8 +341,8 @@ export default function SwapExerciseDialog({
         </div>
       </div>
       {lightbox && lightbox.video && (
-        <div className="sw-lightbox" role="dialog" aria-label={`${lightbox.name} demo`} onClick={(e) => (e.stopPropagation(), setLightbox(null))}>
-          <button type="button" className="sw-lightbox-x" aria-label="Close the demo">
+        <div className="sw-lightbox" data-back-layer role="dialog" aria-label={`${lightbox.name} demo`} onClick={(e) => (e.stopPropagation(), setLightbox(null))}>
+          <button data-back type="button" className="sw-lightbox-x" aria-label="Close the demo">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M6 6l12 12M18 6 6 18" />
             </svg>

@@ -8,7 +8,7 @@ import { AuthShell, COACH_STEPS, CodeScreen, CoachSignUpScreen, ResetPasswordScr
 import { InviteOtherAccountScreen, InviteSignUpScreen, type InviteCoach } from "./InviteScreen";
 import { inviteCallbackHref, inviteHref } from "../invite/href";
 import { dropStrayInviteAccountAction } from "../invite/actions";
-import { callNative, nativePlatform } from "../lib/native";
+import { callNative, nativeHas, nativePlatform } from "../lib/native";
 import { leaveWithDarkClock } from "../client/NativeStatusBar";
 import { usePasswordsOn } from "./usePasswordsOn";
 import { isReviewEmail } from "../lib/reviewAccount";
@@ -440,9 +440,14 @@ function useEmailCode({
     if (!ready) return;
     setBusy(true);
     // In the iPhone app (11 Nov, Alex): Google in Apple's secure sheet and back with a one-time ticket, Apple through its
-    // own sheet; a web redirect would leave the app (Google refuses app web views).
-    if (nativePlatform() === "ios") {
-      (strategy === "oauth_google" ? googleInApp() : appleInApp()).catch((e) => {
+    // own sheet; a web redirect would leave the app (Google refuses app web views). In the Android app (28 Nov) both in a
+    // browser tab the same way (NorcoachAuthPlugin.java), Apple having no sheet of its own there; an Android build from
+    // before the plugin keeps the web redirect.
+    const platform = nativePlatform();
+    const android = platform === "android" && nativeHas("NorcoachAuth");
+    if (platform === "ios" || android) {
+      const provider = strategy === "oauth_google" ? "google" : "apple";
+      (android || provider === "google" ? inSheet(provider) : appleInApp()).catch((e) => {
         if (signedIn(e)) return go();
         if (cancelled(e)) {
           setBusy(false);
@@ -462,21 +467,23 @@ function useEmailCode({
     });
   };
 
-  /** Google in the app's secure sheet, PKCE-shaped (app/lib/nativeAuth.ts): the site sees only the secret's SHA-256, the
-   *  sheet comes back on norcoach://auth with a one-time code, and the code and the secret together buy the ticket. */
-  const googleInApp = async () => {
+  /** Google in the app's secure sheet (on Android a browser tab, Apple too), PKCE-shaped (app/lib/nativeAuth.ts): the site
+   *  sees only the secret's SHA-256, the sheet comes back on norcoach://auth with a one-time code, and the code and the
+   *  secret together buy the ticket. */
+  const inSheet = async (provider: "google" | "apple") => {
+    const didntFinish = provider === "google" ? "Google sign-in didn't finish. Try again." : "Apple sign-in didn't finish. Try again.";
     if (!signIn || !setActive) throw new Error("Sign-in isn't ready yet. Try again.");
     const b64url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
     const state = b64url(crypto.getRandomValues(new Uint8Array(24)));
     const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
     const challenge = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
-    const { url } = await callNative<{ url: string }>("NorcoachAuth", "openSignIn", { url: `${window.location.origin}/auth/native/start?provider=google&state=${state}&challenge=${challenge}` });
+    const { url } = await callNative<{ url: string }>("NorcoachAuth", "openSignIn", { url: `${window.location.origin}/auth/native/start?provider=${provider}&state=${state}&challenge=${challenge}` });
     const back = new URL(url).searchParams;
     const code = back.get("code");
-    if (!code || back.get("state") !== state) throw new Error("Google sign-in didn't finish. Try again.");
+    if (!code || back.get("state") !== state) throw new Error(didntFinish);
     const res = await fetch("/auth/native/exchange", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, verifier }) });
     const { ticket } = (await res.json().catch(() => ({}))) as { ticket?: string };
-    if (!res.ok || !ticket) throw new Error("Google sign-in didn't finish. Try again.");
+    if (!res.ok || !ticket) throw new Error(didntFinish);
     const done = await signIn.create({ strategy: "ticket", ticket });
     if (done.status !== "complete" || !done.createdSessionId) throw new Error("Sign-in didn't finish. Try again.");
     await setActive({ session: done.createdSessionId });

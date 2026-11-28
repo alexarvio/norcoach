@@ -57,11 +57,11 @@ export default function FinishSheet({
 }) {
   return (
     <div className="wo-sheet-scrim" onClick={onClose}>
-      <div className="wo-sheet ws-finish" role="dialog" aria-label={editing ? "Save changes" : `Finish ${day.title}`} onClick={(e) => e.stopPropagation()}>
+      <div className="wo-sheet ws-finish" role="dialog" aria-modal="true" aria-label={editing ? "Save changes" : `Finish ${day.title}`} onClick={(e) => e.stopPropagation()}>
         <span className="wo-sheet-grab" aria-hidden="true" />
         <div className="ws-finish-head">
           <h2 className="wo-sheet-title">{editing ? "Save changes" : `Finish ${day.title}`}</h2>
-          <button type="button" className="ws-x" onClick={onClose} aria-label="Close">
+          <button data-back type="button" className="ws-x" onClick={onClose} aria-label="Close">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" aria-hidden="true" focusable="false">
               <path vectorEffect="non-scaling-stroke" d="M6 6l12 12M18 6 6 18" />
             </svg>
