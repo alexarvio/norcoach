@@ -948,7 +948,7 @@ function WeightCard({
             <SepJoin parts={goalParts} />
           </span>
         )}
-        <p className="rls-none">None yet</p>
+        <EmptyWeightChart />
         {dialog}
       </section>
     );
@@ -1013,10 +1013,44 @@ function WeightCard({
       {grid ? (
         <WeightChart key={span} points={points} grid={grid} gridText={gridText} rhythm={weight.rhythm} plan={plan} from={goalFrom ?? undefined} onGoal={(g) => setGoalDlg({ goal: g })} />
       ) : charted ? (
-        <div className="rh-wempty" aria-hidden="true" />
+        <EmptyWeightChart />
       ) : null}
       {dialog}
     </section>
+  );
+}
+
+/** The chart with nothing on it (28 Nov, Alex: "instead of none yet… we just have the naked graph in there, of course,
+    without data, but just a graph"): Weight's own frame, its three faint lines, the strip a pale mark a day and the last
+    30 days under it, ending on Today; no line, no figures, nothing to read. */
+function EmptyWeightChart() {
+  const today = Date.now();
+  const days = 30;
+  const t0 = today - (days - 1) * DAY_MS;
+  return (
+    <div className="rh-wbox rh-wnaked" aria-hidden="true">
+      <div className="rh-wstage">
+        <div className="rh-wchart">
+          <div className="rh-wplot">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+              {[0, 50, 100].map((y) => (
+                <line key={y} x1={0} x2={100} y1={y} y2={y} stroke="#e1e5eb" strokeWidth={1} vectorEffect="non-scaling-stroke" shapeRendering="crispEdges" />
+              ))}
+            </svg>
+          </div>
+        </div>
+      </div>
+      <div className="rh-wstrip">
+        {Array.from({ length: days }, (_, i) => (
+          <i key={i} className="miss" style={{ flexGrow: 1 }} />
+        ))}
+      </div>
+      <div className="rh-waxis">
+        <span>{axisDay(t0)}</span>
+        <span className="mid">{axisDay(t0 + Math.round((days - 1) / 2) * DAY_MS)}</span>
+        <span className="end today">Today</span>
+      </div>
+    </div>
   );
 }
 
