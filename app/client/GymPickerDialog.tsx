@@ -9,6 +9,7 @@ import { pic } from "../lib/pic";
 import { GYM_COLORS, GYM_COLOR_KEYS, GYM_KINDS, gymColor, initials, nextFreeColor, type GymColorKey, type GymKind } from "../lib/gymColors";
 import RingEdge from "../components/RingEdge";
 import "./gyms.css";
+import "./gym-picker.css";
 
 // Which gym the session is at (13 Oct, "Gym rows"): a centred pop-up over
 // the dimmed session overview, the first step of starting a workout.
