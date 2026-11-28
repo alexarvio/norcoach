@@ -127,6 +127,8 @@
    the stack's height. */
 .rd.rh .rls-card.rh-panel.rh-weight { flex: 1; }
 .rd.rh .rh-wempty { flex: 1; min-height: 138px; }
+/* The naked chart (28 Nov, Alex: "just a graph"), nothing on it to read. */
+.rd.rh .rh-wnaked .rh-wchart { cursor: default; }
 .rd.rh .rh-wbox { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .rd.rh .rh-wchart { position: relative; flex: 1; min-height: 120px; outline: none; cursor: crosshair; -webkit-user-select: none; user-select: none; }
 .rd.rh .rh-wchart:focus-visible { outline: 1px solid #141a24; outline-offset: 4px; border-radius: 8px; }

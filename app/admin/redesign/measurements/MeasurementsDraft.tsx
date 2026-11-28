@@ -1421,7 +1421,8 @@ function Graphs({ view, cadence, shortCount }: { view: LoggedValues; cadence: Ca
               </span>
               <Spark points={s.points} colour={m.colour} />
               <span className={`rm-graph-pick-delta${s.tone ? ` ${s.tone}` : ""}`}>
-                {s.delta == null ? (s.last ? "One reading" : "Nothing logged") : s.delta === 0 ? "No change" : <SepJoin parts={changeParts(s.delta, s.first!.value, m.unit)} />}
+                {/* Nothing logged says nothing (28 Nov, Alex: no "nothing logged"), its line's room kept. */}
+                {s.delta == null ? (s.last ? "One reading" : " ") : s.delta === 0 ? "No change" : <SepJoin parts={changeParts(s.delta, s.first!.value, m.unit)} />}
               </span>
             </button>
           );
@@ -1507,16 +1508,44 @@ function MetricGraph({ metric: m, series, rangeSwitch = null }: { metric: Logged
   const unit = m.unit.trim();
   const tail = tailOf(unit);
   if (!first || !last) {
+    // The naked graph (28 Nov, Alex: "instead of none yet or nothing logged, we just have the naked graph in there, of
+    // course, without data, but just a graph"): the room of the figure kept unseen, so the plot sits where a filled one
+    // does, its three faint lines, the strip a pale mark a period and the periods' dates under it; nothing to read.
+    const xs = (i: number) => PAD.l + (points.length <= 1 ? (W - PAD.l - PAD.r) / 2 : (i * (W - PAD.l - PAD.r)) / (points.length - 1));
+    const dates = points.length ? [...new Set([0, Math.floor((points.length - 1) / 2), points.length - 1])] : [];
     return (
-      <section className="rm-graph">
+      <section className="rm-graph rm-graph-naked">
         <header className="rm-graph-head">
           <span className="rm-graph-cat" style={{ color: m.colour }}>
             {m.categoryLabel}
           </span>
           {rangeSwitch}
         </header>
-        {/* The empty word alone (6 Nov, Alex: admin audit). */}
-        <p className="rm-graph-empty">Nothing logged</p>
+        <div className="rm-graph-figure" aria-hidden="true" style={{ visibility: "hidden" }}>
+          <span className="rm-graph-now">0</span>
+        </div>
+        <div className="rm-graph-facts" aria-hidden="true" style={{ visibility: "hidden" }}>
+          Average 0
+        </div>
+        <div className="rm-graph-plot">
+          <svg className="rm-graph-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={`${m.name}: nothing logged`}>
+            {[PAD.t, (PAD.t + H - PAD.b) / 2, H - PAD.b].map((yy) => (
+              <line key={yy} className="rm-graph-base" x1={0} x2={W} y1={yy} y2={yy} vectorEffect="non-scaling-stroke" />
+            ))}
+          </svg>
+        </div>
+        <div className="rm-graph-strip" aria-hidden="true">
+          {points.map((_, i) => (
+            <i key={i} style={{ flexGrow: points.length > 1 && (i === 0 || i === points.length - 1) ? 0.5 : 1 }} />
+          ))}
+        </div>
+        <div className="rm-graph-axis" aria-hidden="true">
+          {dates.map((i, k) => (
+            <span key={i} className={k === 0 ? "first" : k === dates.length - 1 ? "last" : ""} style={{ left: `${(xs(i) / W) * 100}%` }}>
+              {points[i].axis}
+            </span>
+          ))}
+        </div>
       </section>
     );
   }
