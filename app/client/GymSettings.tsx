@@ -205,7 +205,7 @@ function GymPage({ gym, busy, failed, onBack, onBringBack, onChange, onMadeHome 
   return (
     <div className="app-layer app-layer-push cn-screen gy-screen" style={{ "--g": tint.hex, "--g-rgb": tint.rgb } as React.CSSProperties}>
       <header className="cn-header">
-        <button type="button" className="cn-icon-btn" onClick={onBack} aria-label="Back">
+        <button data-back type="button" className="cn-icon-btn" onClick={onBack} aria-label="Back">
           <ChevronLeftIcon />
         </button>
         <div className="cn-header-titles">
@@ -226,7 +226,7 @@ function GymPage({ gym, busy, failed, onBack, onBringBack, onChange, onMadeHome 
             {menuOpen && (
               <>
                 <span className="gy-menu-back" onClick={() => setMenuOpen(false)} aria-hidden="true" />
-                <div className="gy-menu" role="menu">
+                <div className="gy-menu" role="menu" data-back-layer onKeyDown={(e) => e.key === "Escape" && setMenuOpen(false)}>
                   {asking ? (
                     <>
                       <span className="gy-menu-q">Delete {gym.name}?</span>
@@ -423,7 +423,7 @@ function EditGym({ gym, onClose, onSaved }: { gym: GymDashboard; onClose: () => 
             <h2 id="gy-edit-title" className="gpk-title sm ads-title">
               Edit gym
             </h2>
-            <button type="button" className="gpk-round" onClick={onClose} aria-label="Close">
+            <button data-back type="button" className="gpk-round" onClick={onClose} aria-label="Close">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M6 6l12 12M18 6 6 18" />
               </svg>

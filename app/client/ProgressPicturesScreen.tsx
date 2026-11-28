@@ -136,7 +136,7 @@ export default function ProgressPicturesScreen({
     <>
       <main className="pp-app-body pp-one ci-one" onScroll={onScroll}>
         <div className={`ci-bar pp-bar${stuck ? " stuck" : ""}`}>
-          <button type="button" className="ci-back" onClick={back} aria-label="Back">
+          <button data-back type="button" className="ci-back" onClick={back} aria-label="Back">
             <ChevronLeftIcon />
           </button>
           <h1 className="ci-title">Shape update</h1>

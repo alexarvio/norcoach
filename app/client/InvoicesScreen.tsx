@@ -59,7 +59,7 @@ export default function InvoicesScreen({ invoices, onBack, focusId = null }: Inv
   return (
     <>
       <header className="cn-header">
-        <button type="button" className="cn-icon-btn" onClick={onBack} aria-label="Back">
+        <button data-back type="button" className="cn-icon-btn" onClick={onBack} aria-label="Back">
           <ChevronLeftIcon />
         </button>
         <div className="cn-header-titles">

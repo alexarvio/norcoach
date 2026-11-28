@@ -180,7 +180,7 @@ export default function CoachSettings({
   return (
     <main className="cph-set">
       <header className="cph-set-top">
-        <button type="button" className="cph-icon-btn" onClick={onBack} aria-label="Back">
+        <button data-back type="button" className="cph-icon-btn" onClick={onBack} aria-label="Back">
           <Icon name="back" />
         </button>
         <h1>Settings</h1>

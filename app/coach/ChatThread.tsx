@@ -391,7 +391,7 @@ export default function ChatThread({ clientId, name, avatarPath, onBack, onRead 
   const kb = useKeyboardInset();
 
   const messageMenu = (m: DraftMessage) => (
-    <span className={`cm-menu-list right${menuDown ? " down" : ""}`} role="menu" onClick={(e) => e.stopPropagation()}>
+    <span data-back-layer className={`cm-menu-list right${menuDown ? " down" : ""}`} role="menu" onClick={(e) => e.stopPropagation()}>
       {confirmDelete ? (
         <>
           <span className="cm-menu-ask">Delete for both of you?</span>
@@ -571,7 +571,7 @@ export default function ChatThread({ clientId, name, avatarPath, onBack, onRead 
   return (
     <section className="cph-thread" style={{ bottom: kb }} aria-label={`Chat with ${name || "client"}`}>
       <header className="cph-thread-head">
-        <button type="button" className="cph-icon-btn" onClick={onBack} aria-label="Back to the chats">
+        <button data-back type="button" className="cph-icon-btn" onClick={onBack} aria-label="Back to the chats">
           <Icon name="back" size={22} />
         </button>
         <Avatar name={name || "?"} src={avatar} size={34} />

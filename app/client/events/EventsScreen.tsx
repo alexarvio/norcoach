@@ -360,7 +360,7 @@ export default function EventsScreen({ clientId, events, coachName, today, me = 
   return (
     <>
       <header className="cn-header evp-nav">
-        <button type="button" className="cn-icon-btn" onClick={onBack} aria-label="Back">
+        <button data-back type="button" className="cn-icon-btn" onClick={onBack} aria-label="Back">
           <ChevronLeftIcon />
         </button>
         <div className="cn-header-titles">

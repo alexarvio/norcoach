@@ -280,7 +280,7 @@ export default function WorkoutSheet({
             <div className="wo-head-row">
               {/* Leaving loses nothing (every tick is saved, and what is typed is kept for the session and back on
                   Resume), so there is nothing to ask. */}
-              <button type="button" className="wo-head-btn" onClick={onBack} aria-label="Back">
+              <button data-back type="button" className="wo-head-btn" onClick={onBack} aria-label="Back">
                 <ChevronLeftIcon />
               </button>
               <button
@@ -343,7 +343,7 @@ export default function WorkoutSheet({
             )}
             {gymDrop && (
               <>
-                <button type="button" className="wo-menu-scrim" aria-label="Close" onClick={() => setGymDrop(null)} />
+                <button data-back data-back-layer type="button" className="wo-menu-scrim" aria-label="Close" onClick={() => setGymDrop(null)} />
                 <div className="wo-menu wo-gymdrop" role="menu" aria-label="Switch gym" style={{ top: gymDrop.top, left: gymDrop.left }}>
                   {day.gyms
                     .filter((g) => !g.once || g.id === gymId)
@@ -376,7 +376,7 @@ export default function WorkoutSheet({
             )}
             {menuOpen && (
               <>
-                <button type="button" className="wo-menu-scrim" aria-label="Close menu" onClick={closeMenu} />
+                <button data-back data-back-layer type="button" className="wo-menu-scrim" aria-label="Close menu" onClick={closeMenu} />
                 <div className="wo-menu" role="menu" style={menuAt ? { top: menuAt.top, right: menuAt.right } : undefined}>
                   {discardAsk ? (
                     <div className="so-ask" role="alertdialog" aria-label={`Discard ${day.title}?`}>

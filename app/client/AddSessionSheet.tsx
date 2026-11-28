@@ -34,7 +34,7 @@ export default function AddSessionSheet({
         <div className="gpk-content">
           <div className="gpk-head center">
             {picking && (
-              <button type="button" className="gpk-round" onClick={() => setPicking(false)} aria-label="Back">
+              <button data-back type="button" className="gpk-round" onClick={() => setPicking(false)} aria-label="Back">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="m14.5 6-6 6 6 6" />
                 </svg>

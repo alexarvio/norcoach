@@ -6,8 +6,8 @@ Railway shows up in the app. Only native changes (new plugins, permissions,
 icon, the site address) need a new store build.
 
 - App id: `com.arvio.norcoach` on iPhone (11 Nov, Alex), permanent from its first
-  TestFlight upload. Android is still `com.arvio.ironline` (its Firebase app is
-  registered under it); move it to the same id before its first store upload.
+  TestFlight upload, and on Android too (`applicationId`), with its own Firebase
+  Android app under that package for push (below).
 - iPhone builds: GitHub > Actions > iOS to TestFlight (.github/workflows/ios-testflight.yml).
 - Site: the Railway address for now. Switch it to the own domain before the
   first store upload, because changing it later needs an app update.
@@ -50,8 +50,25 @@ npx cap open android
   production), the Push Notifications capability on the App ID, and on Railway
   `APNS_KEY` (the .p8 text), `APNS_KEY_ID`, `APNS_TEAM_ID`. Without them the
   Settings switch says `Not available`.
-- Android: Firebase (FCM), `app/lib/fcm.ts`, `FCM_SERVICE_ACCOUNT` on the server
-  and `google-services.json` in `android/app`.
+- Android: Firebase (FCM). The push plugin's own service receives them; the page
+  makes the `ironline` channel (`Coach updates`), asks Android 13+ for permission and
+  posts the token to `/api/push` as kind `fcm` (`app/client/NativePush.tsx`), and
+  `app/lib/fcm.ts` sends to it. Two keys, from one Firebase project:
+  - `GOOGLE_SERVICES_JSON` (GitHub secret, the whole `google-services.json`, which
+    must list a `com.arvio.norcoach` app) for the build. The Play workflow stops
+    without it, or when it lists no such app: a build without Firebase crashes the
+    moment the push switch is tapped ("Default FirebaseApp is not initialized").
+    Locally the same file goes in `android/app/google-services.json`, which git
+    ignores; the gradle plugin is applied only when it is there.
+  - `FCM_SERVICE_ACCOUNT` (Railway, the service account's JSON or base64 of it)
+    for sending. Set it only once a build with Firebase is the one testers have:
+    until then the switch says `Not available`, and an older build without
+    Firebase would crash when it is tapped. Read once per process, so Railway
+    restarts the app after setting it.
+  - The two from different projects fail every send with `SENDER_ID_MISMATCH`
+    (`[fcm] send failed` in the logs).
+- The status-bar icon is the star in white (`res/drawable/ic_stat_norcoach.xml`),
+  its accent ink (`notification_accent`), set in `AndroidManifest.xml`.
 
 ## Still to do before the stores
 

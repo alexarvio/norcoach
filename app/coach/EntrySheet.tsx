@@ -273,7 +273,7 @@ export default function EntrySheet({
   }, [page]);
 
   const back = (
-    <button type="button" className="cph-icon-btn" onClick={() => setPage("form")} aria-label="Back">
+    <button data-back type="button" className="cph-icon-btn" onClick={() => setPage("form")} aria-label="Back">
       <Icon name="back" />
     </button>
   );
@@ -555,7 +555,7 @@ export default function EntrySheet({
             {who &&
               createPortal(
                 <>
-                  <button type="button" className="cph-ent-dropscrim" aria-label="Close the clients" onClick={() => (setWho(null), setQ(""))} />
+                  <button data-back data-back-layer type="button" className="cph-ent-dropscrim" aria-label="Close the clients" onClick={() => (setWho(null), setQ(""))} />
                   <div className="cph-ent-drop cph-ent-whodrop" role="listbox" aria-label="Clients" style={{ top: who.top, right: who.right }}>
                     <label className="cph-ent-dropsearch">
                       <Icon name="search" />
@@ -582,7 +582,7 @@ export default function EntrySheet({
             {drop &&
               createPortal(
               <>
-                <button type="button" className="cph-ent-dropscrim" aria-label="Close the times" onClick={() => setDrop(null)} />
+                <button data-back data-back-layer type="button" className="cph-ent-dropscrim" aria-label="Close the times" onClick={() => setDrop(null)} />
                 <div ref={dropList} className="cph-ent-drop" role="listbox" aria-label={drop.which === "end" ? "Ends" : "Starts"} style={{ top: drop.top, left: drop.left }}>
                   {(drop.which === "end" ? [...QUARTERS.map(toMin), 24 * 60].filter((m) => m > toMin(time)) : QUARTERS.map(toMin)).map((m) => {
                     const on = m === (drop.which === "end" ? endMin : toMin(time));

@@ -4,17 +4,18 @@ import { cookies } from "next/headers";
 import { clerkOn } from "../../../lib/clerk";
 import { B64URL, issueCode } from "../../../lib/nativeAuth";
 
-// The end of the iPhone app's Google sign-in in the secure sheet (11 Nov, Alex). Only for a sign-in that began on
-// /auth/native/start in this sheet and whose Clerk session was made after it began (review of 2e029fe: an older website
-// session must never be handed on, nor signed out): the signed-in user is kept under a one-time code (app/lib/
-// nativeAuth.ts) and the sheet ends on norcoach://auth with that code and the app's state. The app trades the code
-// and its secret for a ticket. The sheet's own session is ended, as the sheet is thrown away.
+// The end of the iPhone app's Google sign-in in the secure sheet (11 Nov, Alex), and the Android app's Google and Apple
+// sign-in in a browser tab (28 Nov). Only for a sign-in that began on /auth/native/start in this sheet and whose Clerk
+// session was made after it began (review of 2e029fe: an older website session must never be handed on, nor signed
+// out): the signed-in user is kept under a one-time code (app/lib/nativeAuth.ts) and the sheet ends on norcoach://auth
+// with that code and the app's state. The app trades the code and its secret for a ticket. The sheet's own session is
+// ended, as the sheet is thrown away.
 export const dynamic = "force-dynamic";
 
 const CLEAR = "Path=/auth/native; Max-Age=0; HttpOnly; Secure; SameSite=Lax";
 function back(params: Record<string, string>) {
   const headers = new Headers({ Location: `norcoach://auth?${new URLSearchParams(params).toString()}`, "Cache-Control": "no-store" });
-  for (const name of ["norcoach_native_state", "norcoach_native_challenge", "norcoach_native_started", "norcoach_native_nonce"]) headers.append("Set-Cookie", `${name}=; ${CLEAR}`);
+  for (const name of ["norcoach_native_state", "norcoach_native_challenge", "norcoach_native_started", "norcoach_native_nonce", "norcoach_native_provider"]) headers.append("Set-Cookie", `${name}=; ${CLEAR}`);
   return new Response(null, { status: 302, headers });
 }
 

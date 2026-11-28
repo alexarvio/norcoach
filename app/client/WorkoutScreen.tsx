@@ -359,7 +359,7 @@ export default function WorkoutScreen({
     <div ref={screenRef} className="app-layer app-layer-push wo-screen" role="dialog" aria-label={`${day.title} workout`}>
       <header className="wo-head">
         <div className="wo-head-row">
-          <button type="button" className="wo-head-btn" onClick={() => (ended || editing || window.confirm("Leave workout? Your sets are saved.") ? onBack() : undefined)} aria-label="Back">
+          <button data-back type="button" className="wo-head-btn" onClick={() => (ended || editing || window.confirm("Leave workout? Your sets are saved.") ? onBack() : undefined)} aria-label="Back">
             <ChevronLeftIcon />
           </button>
           {/* The gym and the live clock in one ink capsule (15 Oct), the only dark thing up here; a tap switches gym. Its
@@ -410,7 +410,7 @@ export default function WorkoutScreen({
         </div>
         {gymDrop && (
           <>
-            <button type="button" className="wo-menu-scrim" aria-label="Close" onClick={() => setGymDrop(null)} />
+            <button data-back data-back-layer type="button" className="wo-menu-scrim" aria-label="Close" onClick={() => setGymDrop(null)} />
             <div className="wo-menu wo-gymdrop" role="menu" aria-label="Switch gym" style={{ top: gymDrop.top, left: gymDrop.left }}>
               {day.gyms
                 .filter((g) => !g.once || g.id === gymId)
@@ -443,7 +443,7 @@ export default function WorkoutScreen({
         )}
         {menuOpen && (
           <>
-            <button type="button" className="wo-menu-scrim" aria-label="Close menu" onClick={() => setMenuOpen(false)} />
+            <button data-back data-back-layer type="button" className="wo-menu-scrim" aria-label="Close menu" onClick={() => setMenuOpen(false)} />
             <div className="wo-menu" role="menu" style={menuAt ? { top: menuAt.top, right: menuAt.right } : undefined}>
               {/* A free session (19 Oct, Alex): no Change gym, no Substitute today, no note for yourself; it is all the client's own already. */}
               {day.gyms.length > 0 && (

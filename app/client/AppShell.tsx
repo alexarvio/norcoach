@@ -773,7 +773,7 @@ export default function AppShell({
     ) : pushView === "settings" && settingsContent ? (
       <div className="app-layer app-layer-push cn-screen">
         <header className="cn-header">
-          <button type="button" className="cn-icon-btn" onClick={() => setPushView(null)} aria-label="Back">
+          <button data-back type="button" className="cn-icon-btn" onClick={() => setPushView(null)} aria-label="Back">
             <ChevronLeftIcon />
           </button>
           <div className="cn-header-titles">
@@ -909,16 +909,18 @@ export default function AppShell({
           <nav className="app-bottom-nav dark">
             {/* A tab has no Back of its own: sent here from the chat, this takes the client back to it. */}
             {chatReturn === "nutrition" && activeId === "nutrition" && (
-              <button type="button" className="app-chat-return" onClick={backToChat}>
+              <button data-back-tab type="button" className="app-chat-return" onClick={backToChat}>
                 <ChevronLeftIcon />
                 Back to chat
               </button>
             )}
-            {tabs.map((t) => (
+            {tabs.map((t, i) => (
               <button
                 key={t.id}
                 type="button"
                 className={`app-tab-btn${t.id === activeId ? " active" : ""}`}
+                // Android's back goes to the first tab (Home) before it leaves the app (app/lib/androidBack.ts).
+                data-home-tab={i === 0 ? (t.id === activeId ? "on" : "off") : undefined}
                 onClick={() => {
                   // A tap on the tab already showing does nothing. It used to
                   // rebuild the tab, which read as the screen jumping to the top.
@@ -1008,7 +1010,7 @@ export default function AppShell({
               Tapping the scrim or a row closes it. */}
           {menuOpen && (
             <>
-              <button type="button" className="app-menu-scrim" onClick={() => setMenuOpen(false)} aria-label="Close menu" />
+              <button data-back data-back-layer type="button" className="app-menu-scrim" onClick={() => setMenuOpen(false)} aria-label="Close menu" />
               <nav className="app-menu" aria-label="Menu">
                 <div className="app-menu-head">
                   <BrandLogo className="app-header-brand app-menu-brand" banner={brand.banner} bannerRatio={brand.bannerRatio} name={brand.businessName} />

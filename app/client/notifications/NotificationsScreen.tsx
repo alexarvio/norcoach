@@ -113,7 +113,7 @@ export default function NotificationsScreen({ items, clientId, coachName }: { it
   return (
     <>
       <header className="cn-header ntf-nav evp-nav">
-        <button type="button" className="cn-icon-btn" onClick={() => back?.()} aria-label="Back">
+        <button data-back type="button" className="cn-icon-btn" onClick={() => back?.()} aria-label="Back">
           <ChevronLeftIcon />
         </button>
         <div className="cn-header-titles">

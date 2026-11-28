@@ -10,6 +10,7 @@ import SlidePills from "./components/SlidePills";
 import FreshBuild from "./components/FreshBuild";
 import ZoomCalm from "./components/ZoomCalm";
 import NativeLinks from "./components/NativeLinks";
+import NativeBack from "./components/NativeBack";
 import { buildId } from "./lib/buildId";
 import { getSessionUser } from "./lib/auth";
 import { bannerInline, bannerPathFor, brandFor, brandMarkInline, markFor, markInline } from "./lib/brandMark";
@@ -139,6 +140,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <ZoomCalm />
         {/* A tapped invite link opens in the iPhone app, on its page (13 Nov, Alex). */}
         <NativeLinks />
+        {/* Android's back: the pop-up, the pushed screen, Home, then out of the app (28 Nov, Alex). */}
+        <NativeBack />
       </body>
     </html>
   );

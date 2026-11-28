@@ -110,7 +110,7 @@ export default function PhoneReview({ requestId, onBack, onSent }: { requestId: 
     return (
       <section className="cph-review" aria-label="Video">
         <div className="cph-stage">
-          <button type="button" className="cph-stage-btn back" onClick={onBack} aria-label="Back to the videos">
+          <button data-back type="button" className="cph-stage-btn back" onClick={onBack} aria-label="Back to the videos">
             <Icon name="back" size={22} />
           </button>
           {review === null && <p className="cph-stage-empty">Gone</p>}

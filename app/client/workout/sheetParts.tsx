@@ -36,7 +36,7 @@ export function BlockMenu({ menu, label, children }: { menu: ReturnType<typeof u
   if (!menu.at || !menu.host) return null;
   return createPortal(
     <>
-      <button type="button" className="wo-menu-scrim" aria-label="Close menu" onClick={menu.close} />
+      <button data-back data-back-layer type="button" className="wo-menu-scrim" aria-label="Close menu" onClick={menu.close} />
       <div className="wo-menu ws-menu" role="menu" aria-label={label} style={{ top: menu.at.top ?? "auto", bottom: menu.at.bottom ?? "auto", right: menu.at.right }}>
         {children}
       </div>

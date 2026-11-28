@@ -87,7 +87,7 @@ export default function BarcodeScanner({ onCode, onClose }: { onCode: (code: str
         <div className="fdi-sheet-head">
           <span />
           <span className="fdi-sheet-title">Scan a barcode</span>
-          <button type="button" className="fdi-sheet-x" onClick={onClose} aria-label="Close">
+          <button data-back type="button" className="fdi-sheet-x" onClick={onClose} aria-label="Close">
             ×
           </button>
         </div>
