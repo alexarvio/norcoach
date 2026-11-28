@@ -39,7 +39,7 @@ export default function SupportPage() {
         <ul>
           <li>Create your account with Apple, Google or your email, then type your coach&rsquo;s code (it starts with NC-) to send them a request. You&rsquo;re in once your coach accepts.</li>
           <li>Got a link from your coach? Open it and it takes you straight to them.</li>
-          <li>Forgot your password? On the sign-in screen, choose Forgot password, or Email me a code instead to sign in with a code.</li>
+          <li>Forgot your password? On the sign-in screen, choose Forgot password, or leave the password empty and you get a code to sign in with.</li>
         </ul>
 
         <h2>Notifications</h2>
