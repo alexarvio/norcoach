@@ -145,7 +145,8 @@ function Or() {
 /**
  * Signing in, coach or client (17 Nov, Alex: "make the sign in have that dark look… the email and password combo"): the
  * coach sign-up's frame, Apple, Google, then the email and the password together. Sign in with a password goes in with
- * it; with the password left empty it emails a code, as everyone signs in today, and so does "Email me a code instead".
+ * it; with the password left empty it emails a code, as everyone signs in today (28 Nov, Alex: no "Email me a code
+ * instead" link, Forgot password? alone).
  * The password field shows once Clerk takes passwords (`passwords`); until then the email alone and Continue, a code.
  */
 export function SignInScreen({
@@ -268,11 +269,10 @@ export function SignInScreen({
         <p className="auth-note su-links">
           <Bars
             parts={[
+              // Forgot password? alone (28 Nov, Alex: "Email me a code instead" taken out): an empty password, or any on an
+              // account with none, emails a code already, and so does Forgot password? on one.
               <button key="f" type="button" className="au-link" onClick={() => withEmail(onForgot)} disabled={busy}>
                 Forgot password?
-              </button>,
-              <button key="c" type="button" className="au-link" onClick={() => withEmail(onEmail)} disabled={busy}>
-                Email me a code instead
               </button>,
             ]}
           />

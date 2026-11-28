@@ -234,7 +234,12 @@ function useEmailCode({
       setStep({ email, via: "reset" });
     } catch (e) {
       if (signedIn(e)) return go();
-      setError(notFound(e) ? "No account with this email." : noPassword(e) ? "No password on this account yet. Email me a code instead." : says(e, "Couldn't send a reset code. Try again."));
+      // An account with no password to reset signs in with a code (28 Nov: the "Email me a code instead" link is gone).
+      if (noPassword(e)) {
+        setBusy(false);
+        return sendCode(email, "No password on this account yet.");
+      }
+      setError(notFound(e) ? "No account with this email." : says(e, "Couldn't send a reset code. Try again."));
     }
     setBusy(false);
   };
