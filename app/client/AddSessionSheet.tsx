@@ -78,14 +78,21 @@ export default function AddSessionSheet({
                   <span className="gpk-addrow-ico" aria-hidden="true">
                     <CompassIcon size={18} />
                   </span>
-                  Rogue session
+                  {/* A line under each (28 Nov, Alex: "just one sentence on each"), the session rows' own grey fact. */}
+                  <span className="ads-row-text">
+                    <span>Rogue session</span>
+                    <span className="ads-row-fact">Build your own workout at the gym</span>
+                  </span>
                   <span className="gpk-chev" aria-hidden="true" />
                 </button>
                 <button type="button" className="gpk-addrow flat training" disabled={busy} onClick={() => setPicking(true)}>
                   <span className="gpk-addrow-ico" aria-hidden="true">
                     <CopyIcon />
                   </span>
-                  Duplicate a session
+                  <span className="ads-row-text">
+                    <span>Duplicate a session</span>
+                    <span className="ads-row-fact">Do one of this week’s sessions again</span>
+                  </span>
                   <span className="gpk-chev" aria-hidden="true" />
                 </button>
               </>
