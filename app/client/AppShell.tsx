@@ -18,7 +18,8 @@ import type { NotificationCategory } from "../lib/notificationTypes";
 import { goalItemId } from "../lib/weightGoal";
 import { logoutAction } from "../lib/auth-actions";
 import { BrandLogo } from "../components/BrandLogo";
-import { BellIcon, CalendarIcon, CameraIcon, ChevronLeftIcon, GearIcon, HeartIcon, MenuIcon, ChatIcon, ReceiptIcon } from "../components/icons";
+import { NotifBell } from "./NotifBell";
+import { CalendarIcon, CameraIcon, ChevronLeftIcon, GearIcon, HeartIcon, MenuIcon, ChatIcon, ReceiptIcon } from "../components/icons";
 import CheckInScreen, { CheckInProps } from "./CheckInScreen";
 import PreviewBar from "./PreviewBar";
 import ProgressPicturesScreen, { type ProgressPicturesProps, warmShapeUpdateBanner } from "./ProgressPicturesScreen";
@@ -157,7 +158,7 @@ export default function AppShell({
   tabs,
   notificationsContent,
   hasCoachUpdate,
-  hasUnreadNotifications,
+  unreadNotifications = 0,
   clientId,
   checkIn,
   photos,
@@ -210,7 +211,8 @@ export default function AppShell({
   tabs: AppTab[];
   notificationsContent: ReactNode;
   hasCoachUpdate?: boolean;
-  hasUnreadNotifications?: boolean;
+  /** How many notifications are unread: the bell carries the number (28 Nov). */
+  unreadNotifications?: number;
   clientId: number;
   checkIn: CheckInProps;
   photos: ProgressPicturesProps;
@@ -850,9 +852,8 @@ export default function AppShell({
             </button>
             <BrandLogo className="app-header-brand" word banner={brand.banner} bannerRatio={brand.bannerRatio} name={brand.businessName} />
             <div className="app-header-actions">
-              <button type="button" className="app-header-icon-btn" onClick={() => setPushView("notifications")} aria-label="Notifications">
-                <BellIcon />
-                {hasUnreadNotifications && <span className="app-header-icon-badge" aria-hidden="true" />}
+              <button type="button" className="app-header-icon-btn" onClick={() => setPushView("notifications")} aria-label={unreadNotifications > 0 ? `Notifications, ${unreadNotifications} unread` : "Notifications"}>
+                <NotifBell count={unreadNotifications} />
               </button>
             </div>
           </header>
